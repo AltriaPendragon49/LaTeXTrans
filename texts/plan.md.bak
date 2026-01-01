@@ -1,0 +1,553 @@
+# LaTeXTrans Web 平台 1-2 周紧急实施计划
+
+> **最后更新**: 2026-01-01
+> **项目状态**: Phase 0 → Phase 1 转换中
+> **目标**: 将现有 LaTeX 翻译原型系统改造为 Web 平台（FastAPI + React）
+
+---
+
+## 📋 计划概述
+
+### 核心目标
+将现有的 LaTeX 翻译原型系统改造为 **Web 平台（FastAPI + React）**，用于毕设答辩演示
+
+### 时间限制
+**1-2 周（9-10 个工作日）** - 紧急交付
+
+### 核心策略
+- ✅ **最大化复用现有多智能体系统**（CoordinatorAgent, ParserAgent, TranslatorAgent, ValidatorAgent, GeneratorAgent）
+- ✅ **废弃 Streamlit UI**，全面转向 React 前端
+- ✅ **Docker 中优先级**（可先用本地编译，后续 Docker 化）
+- ✅ **RAG 和 LangChain 暂不实现**（Phase 2/3 功能延后）
+
+### 成功标准
+演示时能完成以下流程即为成功：
+1. ✅ 访问 Web 界面（http://localhost:5173）
+2. ✅ 上传 .zip 文件
+3. ✅ 看到进度条从 0% 到 100%
+4. ✅ 下载翻译后的 PDF
+5. ✅ PDF 能正常打开且格式正确
+
+---
+
+## 🗓️ 时间线汇总
+
+| 阶段 | 天数 | 累计 | 关键里程碑 | 状态 |
+|------|------|------|------------|------|
+| 第一阶段：后端 API | 2-3 天 | 3 天 | API 能接收文件并返回 task_id | ⏳ 待开始 |
+| 第二阶段：前端 UI | 2 天 | 5 天 | 完整的上传→翻译→下载流程 | ⏳ 待开始 |
+| 第三阶段：稳定性 | 2 天 | 7 天 | 处理异常、日志、清理 | ⏳ 待开始 |
+| 第四阶段：部署准备 | 1-2 天 | 9 天 | 一键启动脚本 + 文档 | ⏳ 待开始 |
+| 第五阶段：Docker（可选） | 1 天 | 10 天 | 容器化部署 | 📌 可选 |
+
+**总计**：9-10 天（工作日）
+
+---
+
+## 📦 第一阶段：后端核心 API（2-3 天）
+
+**目标**：搭建 FastAPI 服务，封装 CoordinatorAgent 为异步任务
+
+**可交付成果**：能通过 POST 上传文件并返回 task_id，后台开始翻译
+
+### 后端任务清单
+
+#### 1.1 创建 FastAPI 项目骨架
+**文件**：`backend/app/main.py`
+- 初始化 FastAPI 应用
+- 配置 CORS 中间件（允许前端调用）
+- 设置静态文件服务（/uploads, /outputs）
+
+**代码示例**：
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="LaTeXTrans API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+#### 1.2 实现任务管理模块
+**文件**：`backend/app/services/task_manager.py`
+- 使用字典 + asyncio.Lock 管理任务状态（内存存储）
+- 任务状态：`pending`, `parsing`, `translating`, `compiling`, `completed`, `failed`
+- 存储结构：`{"task_id": {"status": "...", "progress": 0-100, "error": None, "pdf_path": None}}`
+
+**核心功能**：
+```python
+class TaskManager:
+    def __init__(self):
+        self._tasks = {}
+        self._lock = asyncio.Lock()
+
+    async def create_task(self, task_id: str) -> dict
+    async def update_progress(self, task_id: str, status: str, progress: int)
+    async def get_task(self, task_id: str) -> dict
+    async def mark_completed(self, task_id: str, pdf_path: str)
+    async def mark_failed(self, task_id: str, error: str)
+```
+
+#### 1.3 封装 CoordinatorAgent
+**文件**：`backend/app/services/translation_service.py`
+
+**关键修改**：
+- 从 `prototype_system/src/agents/coordinator_agent.py` 复制代码
+- 移除所有 Streamlit 依赖（`st.progress()`, `st.text()` 等）
+- 添加进度回调机制：`on_progress_update(task_id, stage, percentage)`
+- 异步包装：`async def run_translation(task_id, config, project_dir, output_dir)`
+- 错误捕获并更新任务状态
+
+**复用文件清单**：
+- `prototype_system/src/agents/coordinator_agent.py` → 主逻辑
+- `prototype_system/src/agents/tool_agents/parser_agent.py` → 保持原样
+- `prototype_system/src/agents/tool_agents/translator_agent.py` → 移除 `st.` 调用
+- `prototype_system/src/agents/tool_agents/validator_agent.py` → 保持原样
+- `prototype_system/src/agents/tool_agents/generator_agent.py` → 移除 `st.` 调用
+
+**适配示例**：
+```python
+# 原代码 (translator_agent.py)
+sys.stderr = open(os.devnull, 'w')
+process_b = st.empty()
+with process_b:
+    process_bar = st.progress(0, text="Translating...")
+
+# 适配后
+if self.on_progress:
+    await self.on_progress(self.task_id, "translating", 0)
+```
+
+#### 1.4 文件上传接口
+**文件**：`backend/app/api/routes/upload.py`
+
+**功能**：
+```python
+@router.post("/upload")
+async def upload_file(file: UploadFile):
+    # 1. 生成 task_id (UUID)
+    # 2. 保存到 data/uploads/{task_id}/
+    # 3. 如果是 .zip，调用 extract_compressed_files (复用 utils.py)
+    # 4. 创建任务记录
+    # 5. 返回 {"task_id": "xxx", "status": "pending"}
+```
+
+**复用**：`prototype_system/src/formats/latex/utils.py` 的 `extract_compressed_files()`
+
+#### 1.5 arXiv 下载接口
+**文件**：`backend/app/api/routes/arxiv.py`
+
+**功能**：
+```python
+@router.post("/arxiv")
+async def translate_arxiv(request: ArxivRequest):
+    # 1. 生成 task_id
+    # 2. 调用 batch_download_arxiv_tex (复用 utils.py)
+    # 3. 保存到 data/uploads/{task_id}/
+    # 4. 解压文件
+    # 5. 返回 {"task_id": "xxx", "status": "pending"}
+```
+
+**复用**：
+- `prototype_system/src/formats/latex/utils.py` 的 `batch_download_arxiv_tex()`
+- `prototype_system/src/formats/latex/utils.py` 的 `get_arxiv_category()`
+
+#### 1.6 任务状态查询
+**文件**：`backend/app/api/routes/task.py`
+
+**功能**：
+```python
+@router.get("/task/{task_id}")
+async def get_task_status(task_id: str):
+    # 返回 {"status": "translating", "progress": 45, "message": "Translating section 3/10"}
+```
+
+#### 1.7 启动翻译任务
+**文件**：`backend/app/api/routes/translate.py`
+
+**功能**：
+```python
+@router.post("/translate/{task_id}")
+async def start_translation(task_id: str, background_tasks: BackgroundTasks):
+    # 1. 验证 task_id 存在
+    # 2. 加载配置 (从环境变量或默认配置)
+    # 3. 触发后台任务: background_tasks.add_task(run_translation, ...)
+    # 4. 更新任务状态为 "parsing"
+    # 5. 返回 {"message": "Translation started"}
+```
+
+#### 1.8 配置管理
+**文件**：`backend/app/core/config.py`
+
+**功能**：
+- 从环境变量读取 `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`
+- 设置文件路径：`UPLOAD_DIR = "data/uploads"`, `OUTPUT_DIR = "data/outputs"`
+- 复用 `prototype_system/config/default.toml` 的配置结构
+
+**依赖文件**：
+- `backend/.env.example` - 环境变量模板
+- 复用 `prototype_system/config/default.toml` 作为默认配置
+
+### 集成测试（第一阶段）
+
+**测试场景 1**：上传 .tex 文件
+1. POST /api/upload（上传文件）→ 获得 task_id
+2. POST /api/translate/{task_id} → 触发翻译
+3. GET /api/task/{task_id} → 查询状态变为 `completed`
+4. 检查 `data/outputs/{task_id}/` 目录有 PDF
+
+**测试场景 2**：arXiv 下载
+1. POST /api/arxiv（提交 arXiv ID）→ 获得 task_id
+2. 自动下载并开始翻译
+3. GET /api/task/{task_id} → 查询进度更新
+
+### 风险点及应对（第一阶段）
+
+**风险**：CoordinatorAgent 中的 Streamlit 依赖导致服务端崩溃
+
+**应对**：
+1. 创建 `backend/app/utils/remove_streamlit.py` 脚本，替换所有 `st.` 为空操作
+2. 或使用 `sys.stderr = open(os.devnull, 'w')` 抑制 Streamlit 输出（已在现有代码中使用）
+3. 最坏情况：复制 Agent 代码到 `backend/app/services/agents/`，手动删除 `st.` 调用
+
+---
+
+## 🎨 第二阶段：前端基础 UI（2 天）
+
+**目标**：实现文件上传、arXiv 输入、进度显示界面
+
+**可交付成果**：可视化的翻译流程，用户能看到实时进度
+
+### 前端任务清单
+
+#### 2.1 初始化 React 项目
+**目录**：`frontend/`
+
+**命令**：
+```bash
+npm create vite@latest frontend -- --template react
+cd frontend
+npm install axios tailwindcss @headlessui/react
+npx tailwindcss init
+```
+
+**配置文件**：
+- `frontend/tailwind.config.js` - TailwindCSS 配置
+- `frontend/src/index.css` - 全局样式
+- `frontend/.env` - 环境变量（`VITE_API_BASE_URL=http://localhost:8000`）
+
+#### 2.2 文件上传组件
+**文件**：`frontend/src/components/FileUpload.jsx`
+
+**功能**：
+- 拖拽区域（react-dropzone 或原生）
+- 文件类型限制（.tex, .zip）
+- 上传进度条
+- 调用 `POST /api/upload` 并获取 task_id
+
+#### 2.3 arXiv 输入组件
+**文件**：`frontend/src/components/ArxivInput.jsx`
+
+**功能**：
+- 输入框 + 提交按钮
+- 正则验证 arXiv ID 格式（`\d{4}\.\d{4,5}`）
+- 调用 `POST /api/arxiv`
+
+#### 2.4 进度显示组件
+**文件**：`frontend/src/components/ProgressTracker.jsx`
+
+**功能**：
+- 轮询 `GET /api/task/{task_id}`（每 2 秒）
+- 显示当前阶段：解析 → 翻译 → 编译
+- 进度条 + 百分比 + 状态文本
+
+#### 2.5 下载按钮组件
+**文件**：`frontend/src/components/DownloadButton.jsx`
+
+**功能**：
+- 翻译完成后显示
+- 点击下载 PDF：`GET /api/download/{task_id}/pdf`
+- 下载源码 ZIP：`GET /api/download/{task_id}/source`
+
+#### 2.6 主页面布局
+**文件**：`frontend/src/App.jsx`
+
+**功能**：
+- 顶部 Logo + 标题
+- 左侧：文件上传 OR arXiv 输入（Tab 切换）
+- 右侧：进度显示 + 下载按钮
+- TailwindCSS 简洁样式
+
+#### 2.7 错误提示组件
+**文件**：`frontend/src/components/ErrorAlert.jsx`
+
+**功能**：
+- 显示翻译失败的错误信息
+- 支持重试按钮
+
+### 后端补充任务（第二阶段）
+
+#### 2.8 下载接口
+**文件**：`backend/app/api/routes/download.py`
+
+**功能**：
+```python
+@router.get("/download/{task_id}/pdf")
+async def download_pdf(task_id: str):
+    # 1. 查找 outputs/{task_id}/*.pdf
+    # 2. 返回 FileResponse(pdf_path, filename=f"translated_{task_id}.pdf")
+
+@router.get("/download/{task_id}/source")
+async def download_source(task_id: str):
+    # 1. 打包 outputs/{task_id}/ 为 .zip
+    # 2. 使用 zipfile 模块压缩
+    # 3. 返回 FileResponse(zip_path, filename=f"source_{task_id}.zip")
+```
+
+### 集成测试（第二阶段）
+
+**测试场景 1**：拖拽上传
+1. 拖拽 .zip 文件到上传区 → 上传成功
+2. 看到进度条从 0% 增长到 100%
+3. 点击"下载 PDF"按钮 → PDF 成功下载并能正常打开
+
+**测试场景 2**：arXiv ID 输入
+1. 输入 arXiv ID（例如：2508.18791）→ 提交
+2. 前端显示"下载中..." → "解析中..." → "翻译中..." → "编译中..."
+3. 进度完成后显示下载按钮
+
+### 风险点及应对（第二阶段）
+
+**风险**：CORS 错误导致前端无法调用后端
+
+**应对**：在 `backend/app/main.py` 启动时添加 CORS 中间件配置
+
+---
+
+## 🛡️ 第三阶段：稳定性优化（2 天）
+
+**目标**：处理异常情况、优化用户体验
+
+**可交付成果**：能应对大文件、编译失败、网络超时等场景
+
+### 后端任务清单
+
+#### 3.1 文件大小限制
+- 限制单次上传 50MB
+- 返回友好错误信息
+
+#### 3.2 任务超时处理
+- 设置翻译总超时时间（30 分钟）
+- 使用 `asyncio.wait_for` 包装
+
+#### 3.3 编译失败重试
+- 复用 `CoordinatorAgent` 已实现的 3 次重试机制
+- 将编译日志保存到 `data/outputs/{task_id}/compile.log`
+
+#### 3.4 磁盘清理策略
+- 定时任务：删除 7 天前的 `data/uploads/` 和 `data/outputs/`
+- 使用 APScheduler 或 FastAPI startup 事件
+
+#### 3.5 日志系统
+- 使用 Python logging
+- 输出到 `logs/app.log`
+
+### 前端任务清单
+
+#### 3.6 网络错误处理
+- axios 拦截器捕获 500/404 错误
+- 显示用户友好提示
+
+#### 3.7 断点续传支持（可选）
+- 支持重新查询 task_id 继续
+- 在 localStorage 保存最近的 task_id
+
+#### 3.8 编译日志查看
+- 翻译失败时显示"查看日志"按钮
+- 模态框显示日志内容
+
+---
+
+## 🚀 第四阶段：生产环境准备（1-2 天）
+
+**目标**：确保系统可在演示环境稳定运行
+
+**可交付成果**：一键启动的完整系统 + 部署文档
+
+### 任务清单
+
+#### 4.1 环境变量配置
+- `backend/.env.example` - 环境变量模板
+
+#### 4.2 依赖锁定
+- `backend/requirements.txt` - 锁定版本
+
+#### 4.3 健康检查接口
+- 检查 latexmk 是否可用
+- 检查磁盘空间
+
+#### 4.4 启动脚本
+- `start.sh` - Linux/Mac 启动脚本
+- `start.bat` - Windows 启动脚本
+
+#### 4.5 依赖检查脚本
+- `check_env.py` - 环境检查
+
+#### 4.6 README 更新
+- 快速启动步骤
+- 常见问题排查
+
+---
+
+## 🐳 第五阶段（可选）：Docker 化（1 天）
+
+**目标**：容器化部署，避免环境依赖问题
+
+**可交付成果**：`docker-compose up` 一键启动
+
+### 任务清单
+
+#### 5.1 后端 Dockerfile
+- 基于 `python:3.10-slim`
+- 安装 LaTeX（最小化）
+
+#### 5.2 前端 Dockerfile
+- 基于 `node:18-alpine`
+- 构建生产版本
+
+#### 5.3 Docker Compose
+- 编排后端和前端服务
+- 配置环境变量和卷挂载
+
+---
+
+## 🔄 关键代码复用策略
+
+### 直接复用（无需修改）
+
+| 原文件 | 复用位置 | 说明 |
+|--------|----------|------|
+| `prototype_system/src/formats/latex/parser.py` | `backend/app/services/latex/parser.py` | LaTeX AST 解析 |
+| `prototype_system/src/formats/latex/compile.py` | `backend/app/services/latex/compile.py` | PDF 编译（添加超时） |
+| `prototype_system/src/formats/latex/utils.py` | `backend/app/services/latex/utils.py` | arXiv 下载、文件处理 |
+| `prototype_system/src/formats/latex/reconstruct.py` | `backend/app/services/latex/reconstruct.py` | LaTeX 重建 |
+| `prototype_system/terms/*.csv` | `backend/data/terms/*.csv` | 术语表 |
+| `prototype_system/config/default.toml` | `backend/app/core/default_config.toml` | 配置模板 |
+
+### 需要适配（移除 Streamlit）
+
+| 原文件 | 目标文件 | 主要修改 |
+|--------|----------|----------|
+| `prototype_system/src/agents/coordinator_agent.py` | `backend/app/services/agents/coordinator.py` | 添加进度回调 |
+| `prototype_system/src/agents/tool_agents/translator_agent.py` | `backend/app/services/agents/translator.py` | 移除所有 `st.` 调用 |
+| `prototype_system/src/agents/tool_agents/generator_agent.py` | `backend/app/services/agents/generator.py` | 移除 `st.empty()` 和 `st.success()` |
+| `prototype_system/src/agents/tool_agents/parser_agent.py` | `backend/app/services/agents/parser.py` | 保持原样 |
+| `prototype_system/src/agents/tool_agents/validator_agent.py` | `backend/app/services/agents/validator.py` | 保持原样 |
+
+---
+
+## ⚠️ 降级策略
+
+如果某个功能卡住，按以下优先级舍弃：
+
+| 优先级 | 功能 | 理由 |
+|--------|------|------|
+| 可舍弃 | Docker 化 | 本地运行即可演示 |
+| 可舍弃 | 断点续传、日志查看 | 演示时避免失败场景 |
+| 可舍弃 | arXiv 下载 | 仅演示本地上传 |
+| **不可舍弃** | **文件上传 + 翻译 + 下载 PDF** | **核心流程** |
+
+---
+
+## 📂 关键文件清单
+
+### 第一阶段（核心后端）
+```
+backend/
+├── app/
+│   ├── main.py                          # FastAPI 入口
+│   ├── core/
+│   │   ├── config.py                    # 配置管理
+│   │   └── logging.py                   # 日志配置
+│   ├── api/routes/
+│   │   ├── upload.py                    # 文件上传
+│   │   ├── arxiv.py                     # arXiv 下载
+│   │   ├── task.py                      # 任务查询
+│   │   ├── translate.py                 # 启动翻译
+│   │   ├── download.py                  # 下载结果
+│   │   └── health.py                    # 健康检查
+│   └── services/
+│       ├── task_manager.py              # 任务状态管理
+│       ├── translation_service.py       # 翻译服务封装
+│       ├── agents/                      # Agent 适配版
+│       └── latex/                       # LaTeX 处理（复制自原型）
+├── requirements.txt
+└── .env.example
+```
+
+### 第二阶段（前端）
+```
+frontend/
+├── src/
+│   ├── App.jsx                          # 主应用
+│   ├── components/
+│   │   ├── FileUpload.jsx               # 文件上传
+│   │   ├── ArxivInput.jsx               # arXiv 输入
+│   │   ├── ProgressTracker.jsx          # 进度显示
+│   │   ├── DownloadButton.jsx           # 下载按钮
+│   │   └── ErrorAlert.jsx               # 错误提示
+│   ├── utils/api.js                     # API 封装
+│   └── index.css                        # TailwindCSS 样式
+├── .env
+└── vite.config.js
+```
+
+### 第四阶段（部署）
+```
+项目根目录/
+├── start.sh                             # Linux/Mac 启动脚本
+├── start.bat                            # Windows 启动脚本
+├── check_env.py                         # 环境检查
+└── docker-compose.yml                   # Docker Compose（可选）
+```
+
+---
+
+## 💡 实施建议
+
+### 每日交付策略
+1. **每天提交可运行版本** - 确保每天下班前代码能跑通
+2. **先跑通 MVP，再优化** - 第一阶段结束后应该就能演示基础流程
+3. **复用优先于重写** - 遇到问题先想如何适配现有代码
+4. **前后端并行开发** - 第一阶段后端完成后，前端可以用 Mock 数据先开发
+
+### 风险管理
+- **Streamlit 依赖移除困难** → 最坏情况手动复制代码并删除 `st.` 调用
+- **编译器卡死** → 添加超时保护（10 分钟）
+- **CORS 问题** → 提前配置好中间件
+- **时间不足** → 优先完成第一、二阶段（核心流程）
+
+### 测试策略
+- 每个阶段结束都进行集成测试
+- 准备 3-5 个测试用例（简单 .tex、复杂 .tex、arXiv 论文、错误文件）
+- 演示前全流程预演
+
+---
+
+## 📍 附录：关键文件路径
+
+### 原型系统文件（复用源）
+- `D:\future\cursor\LaTexTrans\prototype_system\src\agents\coordinator_agent.py`
+- `D:\future\cursor\LaTexTrans\prototype_system\src\agents\tool_agents\*.py`
+- `D:\future\cursor\LaTexTrans\prototype_system\src\formats\latex\*.py`
+- `D:\future\cursor\LaTexTrans\prototype_system\config\default.toml`
+- `D:\future\cursor\LaTexTrans\prototype_system\terms\*.csv`
+
+---
+
+**本计划由 Claude Code 生成 - 2026-01-01**
