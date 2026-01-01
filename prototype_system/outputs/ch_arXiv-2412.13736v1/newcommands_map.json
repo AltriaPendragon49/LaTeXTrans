@@ -1,0 +1,7 @@
+[
+    {
+        "placeholder": "<PLACEHOLDER_NEWCOMMAND_0>",
+        "name": "greencheck",
+        "content": "\\newcommand{\\greencheck}{\\textcolor{darkgreen}{\\ding{51}}}"
+    }
+]
