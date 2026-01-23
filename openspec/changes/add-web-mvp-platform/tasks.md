@@ -1,17 +1,17 @@
 # Implementation Tasks
 
 ## 1. Code Audit and Refactoring Preparation
-- [ ] 1.1 Review `prototype_system/src/agents/coordinator_agent.py` to understand workflow orchestration
-- [ ] 1.2 Review `prototype_system/src/formats/latex/parser.py` and `compile.py` for AST parsing and compilation logic
-- [ ] 1.3 Review `prototype_system/src/formats/latex/utils.py` for arXiv download utilities
-- [ ] 1.4 Document reusable components and required adaptations (remove Streamlit dependencies)
-- [ ] 1.5 Create reuse mapping document listing files to copy/adapt
+- [x] 1.1 Review `prototype_system/src/agents/coordinator_agent.py` to understand workflow orchestration
+- [x] 1.2 Review `prototype_system/src/formats/latex/parser.py` and `compile.py` for AST parsing and compilation logic
+- [x] 1.3 Review `prototype_system/src/formats/latex/utils.py` for arXiv download utilities
+- [x] 1.4 Document reusable components and required adaptations (remove Streamlit dependencies)
+- [x] 1.5 Create reuse mapping document listing files to copy/adapt
 
 ## 2. Project Structure Initialization (Backend Only)
-- [ ] 2.1 Create `backend/app/` directory structure (`core/`, `api/routes/`, `services/`)
-- [ ] 2.2 Create `data/` directory structure (`uploads/`, `outputs/`, `terms/`)
-- [ ] 2.3 Create `docker/` directory for future containerization
-- [ ] 2.4 Initialize `backend/requirements.txt` with FastAPI dependencies
+- [x] 2.1 Create `backend/app/` directory structure (`core/`, `api/routes/`, `services/`)
+- [x] 2.2 Create `data/` directory structure (`uploads/`, `outputs/`, `terms/`)
+- [x] 2.3 Create `docker/` directory for future containerization
+- [x] 2.4 Initialize `backend/requirements.txt` with FastAPI dependencies
 
 **Note**: Frontend initialization (React/Vite setup) is handled separately in the `add-web-mvp-frontend` change.
 
@@ -19,23 +19,25 @@
 - [ ] 3.1 Adapt LaTeX parser from prototype to `backend/app/services/latex/parser.py`
   - Remove `st.progress()` and `st.text()` dependencies
   - Add progress callback mechanism for web integration
-- [ ] 3.2 Adapt LaTeX utilities to `backend/app/services/latex/utils.py`
-  - Copy `batch_download_arxiv_tex()` and related functions
-  - Adapt file paths for web environment
-- [ ] 3.3 Implement intelligent LaTeX compiler with fallback (`backend/app/services/latex/compiler.py`)
-  - Create `compile_with_fallback()` function that tries pdflatex first, then xelatex
-  - Implement `.log` file parser to count errors (match patterns: `! LaTeX Error`, `! Undefined control sequence`, `! Missing`)
-  - Compare error counts and select PDF with fewer errors
-  - Return best PDF or raise exception if both fail
-  - Support MiKTeX auto-install for missing packages
+- [x] 3.2 Adapt LaTeX utilities to `backend/app/services/latex/utils.py` (MVP simplified version)
+  - ✅ Copied `batch_download_arxiv_tex()` and related functions
+  - ✅ Removed all Streamlit dependencies
+  - ✅ Added Python logging
+  - ⏳ Full version with AST parsing deferred to later phase
+- [x] 3.3 Implement intelligent LaTeX compiler with fallback (`backend/app/services/latex/compiler.py`)
+  - ✅ Created `compile_with_fallback()` function that tries pdflatex first, then xelatex
+  - ✅ Implemented `.log` file parser to count errors
+  - ✅ Compares error counts and selects PDF with fewer errors
+  - ✅ Returns best PDF or raises exception if both fail
+  - ✅ Supports MiKTeX auto-install for missing packages
 - [ ] 3.4 Adapt agent system to `backend/app/services/agents/`
   - Copy `coordinator_agent.py`, `parser_agent.py`, `translator_agent.py`, etc.
   - Replace Streamlit logging with structured logging (Python `logging` module)
   - Update `generator_agent.py` to use new `compile_with_fallback()` function
-- [ ] 3.5 Create task manager service (`backend/app/services/task_manager.py`)
-  - In-memory task status tracking
-  - Progress update mechanism (0-100%)
-  - Task state management (pending → processing → completed/failed)
+- [x] 3.5 Create task manager service (`backend/app/services/task_manager.py`)
+  - ✅ In-memory task status tracking
+  - ✅ Progress update mechanism (0-100%)
+  - ✅ Task state management (pending → processing → completed/failed)
 
 
 ## 4. Backend API Implementation
@@ -70,12 +72,12 @@
   - Return archive as download attachment
 
 ## 5. Integration and Configuration
-- [ ] 5.1 Create backend configuration module (`backend/app/core/config.py`)
+- [x] 5.1 Create backend configuration module (`backend/app/core/config.py`)
   - Load settings from environment variables or `config/default. toml`
   - Configure LLM API with specific parameters:
     * `api_key`: "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu" (load from env var `LLM_API_KEY` if available)
     * `base_url`: "https://aicanapi.com/v1"
-    * `model`: "gpt-4.1-mini" (or as specified)
+    * `model`: "gpt-4.1-mini"
     * `timeout`: 60 seconds
   - Storage paths configuration
   - Task status enum definitions (pending, processing, completed, completed_with_warnings, failed_compilation, failed)
