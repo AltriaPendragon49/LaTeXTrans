@@ -47,7 +47,7 @@ class Settings(BaseSettings):
         env="LLM_API_KEY"
     )
     llm_base_url: str = Field(
-        default="https://aicanapi.com/v1",
+        default="https://aicanapi.com",
         env="LLM_BASE_URL"
     )
     llm_model: str = Field(
@@ -130,3 +130,9 @@ settings = Settings()
 def get_settings() -> Settings:
     """Get application settings"""
     return settings
+
+
+# Helper function to get LLM config
+def get_llm_config() -> Dict[str, Any]:
+    """Get LLM API configuration as a dictionary"""
+    return settings.get_llm_config()

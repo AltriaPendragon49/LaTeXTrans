@@ -10,7 +10,7 @@ LaTeXTrans 项目目前作为 CLI 原型 (`prototype_system/`) 存在，它演�
 
 ### 约束
 - **AST解析**：必须继续使用`pylatexenc`用于 LaTeX 结构处理（无正则表达式）
-- **Python环境**：后端需要 Python 3.10+ 以及必要的依赖项
+- **Python环境**：后端需要Python 3.10+以及必要的依赖项
 - **Docker 隔离**：LaTeX 编译必须在 Docker 中与 MiKTeX 一起进行
 - **向后兼容性**：现有的 CLI 原型必须保持功能
 - **时间表**：两周 MVP 交付窗口
@@ -182,7 +182,7 @@ TaskManager（更新{task_id：{status，progress}}）
     "stage": "解析" | 「翻译」| “编译” | “完成”| “编译失败”，
     "message": "当前操作说明",
     “错误”：空 | “错误消息”，
-    “警告”：空 | “编译警告摘要”，
+    “警告”：空| “编译警告摘要”，
     “source_available”：true | false, # LaTeX源可以下载
     "created_at": "ISO 时间戳",
     “completed_at”：空 | “ISO时间戳”，
@@ -196,9 +196,9 @@ TaskManager（更新{task_id：{status，progress}}）
 后端应使用以下 LLM API 配置（改编自原型的“config/default.toml”）：
 
 ````蟒蛇
-LLM_CONFIG = {
+LLM_配置 = {
     "api_key": "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
-    "base_url": "https://aicanapi.com/v1",
+    "base_url": "https://aicanapi.com",
     "model": "gpt-4.1-mini", # 或按照配置中指定
     "timeout": 60 # 每个请求秒
 }

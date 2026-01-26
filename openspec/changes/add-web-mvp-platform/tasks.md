@@ -16,23 +16,31 @@
 **Note**: Frontend initialization (React/Vite setup) is handled separately in the `add-web-mvp-frontend` change.
 
 ## 3. Backend Core Services
-- [ ] 3.1 Adapt LaTeX parser from prototype to `backend/app/services/latex/parser.py`
-  - Remove `st.progress()` and `st.text()` dependencies
-  - Add progress callback mechanism for web integration
-- [x] 3.2 Adapt LaTeX utilities to `backend/app/services/latex/utils.py` (MVP simplified version)
-  - ✅ Copied `batch_download_arxiv_tex()` and related functions
+
+**Current Phase**: Agent System Adaptation (3.4)
+
+- [x] 3.1 Adapt LaTeX parser from prototype to `backend/app/services/latex/parser.py`
+  - ✅ Copied `prompts.py` (48,373 bytes, no modifications needed)
+  - ✅ Fully enhanced `utils.py` with all 876 lines from prototype (Streamlit removed)
+  - ✅ Adapted `parser.py` with progress callbacks (16,739 bytes)  
+  - ✅ Adapted `reconstruct.py` with logging (7,268 bytes)
+- [x] 3.2 Adapt LaTeX utilities to `backend/app/services/latex/utils.py`
+  - ✅ Fully migrated with all 876 lines (31KB)
   - ✅ Removed all Streamlit dependencies
-  - ✅ Added Python logging
-  - ⏳ Full version with AST parsing deferred to later phase
+  - ✅ Added comprehensive logging
 - [x] 3.3 Implement intelligent LaTeX compiler with fallback (`backend/app/services/latex/compiler.py`)
   - ✅ Created `compile_with_fallback()` function that tries pdflatex first, then xelatex
   - ✅ Implemented `.log` file parser to count errors
   - ✅ Compares error counts and selects PDF with fewer errors
   - ✅ Returns best PDF or raises exception if both fail
   - ✅ Supports MiKTeX auto-install for missing packages
-- [ ] 3.4 Adapt agent system to `backend/app/services/agents/`
-  - Copy `coordinator_agent.py`, `parser_agent.py`, `translator_agent.py`, etc.
-  - Replace Streamlit logging with structured logging (Python `logging` module)
+- [x] 3.4 Adapt agent system from prototype to `backend/app/services/agents/`
+  - ✅ base_tool_agent.py - 添加logging和进度回调
+  - ✅ parser_agent.py - 集成LatexParser
+  - ✅ generator_agent.py - 集成智能编译器compile_with_fallback()
+  - ✅ validator_agent.py - 完整验证逻辑
+  - ✅ translator_agent.py - 最复杂（1010行），已改编完成
+  - ✅ coordinator_agent.py - 已改编，集成所有代理with structured logging (Python `logging` module)
   - Update `generator_agent.py` to use new `compile_with_fallback()` function
 - [x] 3.5 Create task manager service (`backend/app/services/task_manager.py`)
   - ✅ In-memory task status tracking
@@ -76,7 +84,7 @@
   - Load settings from environment variables or `config/default. toml`
   - Configure LLM API with specific parameters:
     * `api_key`: "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu" (load from env var `LLM_API_KEY` if available)
-    * `base_url`: "https://aicanapi.com/v1"
+    * `base_url`: "https://aicanapi.com"
     * `model`: "gpt-4.1-mini"
     * `timeout`: 60 seconds
   - Storage paths configuration
