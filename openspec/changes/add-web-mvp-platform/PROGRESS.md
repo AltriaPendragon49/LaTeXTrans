@@ -77,7 +77,7 @@ docker/
 **关键配置**:
 ```python
 llm_api_key = "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu"
-llm_base_url = "https://aicanapi.com"
+llm_base_url = "https://aicanapi.com/v1/chat/completions"
 llm_model = "gpt-4.1-mini"
 llm_timeout = 60
 ```

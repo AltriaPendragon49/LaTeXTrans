@@ -199,7 +199,7 @@ The backend SHALL use the following LLM API configuration (adapted from prototyp
 ```python
 LLM_CONFIG = {
     "api_key": "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
-    "base_url": "https://aicanapi.com",
+    "base_url": "https://aicanapi.com/v1/chat/completions",
     "model": "gpt-4.1-mini",  # or as specified in config
     "timeout": 60  # seconds per request
 }

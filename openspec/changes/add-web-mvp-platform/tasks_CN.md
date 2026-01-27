@@ -84,7 +84,7 @@
   - 从环境变量或`config/default.conf加载设置托姆尔`
   - 使用特定参数配置LLM API：
     *`api_key`: "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu" (load from env var `LLM_API_KEY`如果有的话）
-    * `base_url`: "https://aicanapi.com"
+    * `base_url`: "https://aicanapi.com/v1/chat/completions"
     * `型号`: "gpt-4.1-mini"
     * `超时`: 60 秒
   - 存储路径配置

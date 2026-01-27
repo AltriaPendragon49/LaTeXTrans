@@ -171,10 +171,20 @@ class TaskManager:
             task_id: Task ID
         
         Returns:
-            Callback function with signature: on_progress(stage, percentage, message)
+            Callback function with signature: on_progress(percentage, message)
         """
-        def on_progress(stage: str, percentage: int, message: str):
+        def on_progress(percentage: int, message: str = ""):
             """Progress callback"""
+            # Infer stage from progress percentage
+            if percentage < 10:
+                stage = CompilationStage.PARSING.value
+            elif percentage < 70:
+                stage = CompilationStage.TRANSLATING.value
+            elif percentage < 100:
+                stage = CompilationStage.COMPILING.value
+            else:
+                stage = CompilationStage.DONE.value
+            
             self.update_task(
                 task_id=task_id,
                 status=TaskStatus.PROCESSING.value,

@@ -868,7 +868,8 @@ class TranslatorAgent(BaseToolAgent):
             self.term_dict.update(zip(df['English Term'], df['Chinese Translation']))
         else:
             arxiv_id = os.path.basename(self.project_dir)
-            if self.category.get(arxiv_id):
+            # Check if category is not None and has the arxiv_id
+            if self.category and self.category.get(arxiv_id):
                 term_dict_loaded = False
                 for category in self.category[arxiv_id]:
                     file_path = os.path.join('terms', f'{category}.csv')

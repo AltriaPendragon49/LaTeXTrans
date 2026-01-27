@@ -67,7 +67,7 @@ class CoordinatorAgent:
             config=self.config,
             project_dir=self.project_dir,
             output_dir=transed_project_dir,
-            on_progress=lambda p, m: self.update_progress(5 + int(p * 0.05), m)
+            on_progress=lambda s, p, m: self.update_progress(5 + int(p * 0.05), m)
         )
         parser_agent.execute()
         self.update_progress(10, "Parsing completed")
@@ -81,7 +81,7 @@ class CoordinatorAgent:
             project_dir=self.project_dir,
             output_dir=transed_project_dir,
             trans_mode=self.mode,
-            on_progress=lambda p, m: self.update_progress(10 + int(p * 0.6), m)
+            on_progress=lambda s, p, m: self.update_progress(10 + int(p * 0.6), m)
         )
         await translator_agent.execute()
         self.update_progress(70, "Translation completed")
@@ -94,7 +94,7 @@ class CoordinatorAgent:
             config=self.config,
             project_dir=self.project_dir,
             output_dir=transed_project_dir,
-            on_progress=lambda p, m: self.update_progress(70 + int(p * 0.05), m)
+            on_progress=lambda s, p, m: self.update_progress(70 + int(p * 0.05), m)
         )
         errors_report = validator_agent.execute()
         
@@ -124,7 +124,7 @@ class CoordinatorAgent:
             config=self.config,
             project_dir=self.project_dir,
             output_dir=transed_project_dir,
-            on_progress=lambda p, m: self.update_progress(85 + int(p * 0.15), m)
+            on_progress=lambda s, p, m: self.update_progress(85 + int(p * 0.15), m)
         )
         
         try:

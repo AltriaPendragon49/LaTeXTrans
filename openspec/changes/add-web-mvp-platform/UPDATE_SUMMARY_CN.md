@@ -56,7 +56,7 @@
 ```python
 LLM_CONFIG = {
     "api_key": "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
-    "base_url": "https://aicanapi.com",
+    "base_url": "https://aicanapi.com/v1/chat/completions",
     "model": "gpt-4.1-mini",
     "timeout": 60
 }
@@ -82,7 +82,7 @@ class Settings:
         "LLM_API_KEY", 
         "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu"
     )
-    LLM_BASE_URL: str = "https://aicanapi.com"
+    LLM_BASE_URL: str = "https://aicanapi.com/v1/chat/completions"
     LLM_MODEL: str = "gpt-4.1-mini"
     LLM_TIMEOUT: int = 60
     

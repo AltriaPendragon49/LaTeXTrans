@@ -130,7 +130,7 @@ backend/
 配置文件位于 `app/core/config.py`,支持以下环境变量:
 
 - `LLM_API_KEY`: LLM API 密钥 (默认: sk-SVd...)
-- `LLM_BASE_URL`: API 基础 URL (默认: https://aicanapi.com)
+- `LLM_BASE_URL`: API 基础 URL (默认: https://aicanapi.com/v1/chat/completions)
 - `LLM_MODEL`: 模型名称 (默认: gpt-4.1-mini)
 - `LLM_TIMEOUT`: 请求超时 (默认: 60秒)
 

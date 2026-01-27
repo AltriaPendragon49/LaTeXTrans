@@ -774,6 +774,9 @@ def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
     """
     Download TeX source .tar.gz file (Streamlit removed)
     """
+    # Ensure save directory exists
+    os.makedirs(save_dir, exist_ok=True)
+    
     file_path = os.path.join(save_dir, f"{arxiv_id}.tar.gz")
 
     try:
@@ -794,10 +797,30 @@ def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
                         bar.update(len(chunk))
         
         logger.info(f"[SUCCESS] {arxiv_id} successfully downloaded to {file_path}.")
-        return os.path.join(save_dir, f"{arxiv_id}")
+        
+        # Extract the tar.gz file
+        extract_dir = os.path.join(save_dir, arxiv_id)
+        os.makedirs(extract_dir, exist_ok=True)
+        
+        try:
+            with tarfile.open(file_path, 'r:gz') as tar:
+                tar.extractall(path=extract_dir)
+            logger.info(f"[SUCCESS] {arxiv_id} extracted to {extract_dir}")
+            
+            # Remove the tar.gz file after extraction
+            os.remove(file_path)
+            logger.debug(f"Removed tar.gz file: {file_path}")
+            
+        except tarfile.TarError as e:
+            logger.error(f"[FAIL] Failed to extract {file_path}: {e}")
+            # Return None to indicate failure
+            return None
+        
+        return extract_dir
 
     except requests.RequestException as e:
         logger.error(f"[FAIL] {arxiv_id} download failed: {e}")
+        return None
 
 
 def batch_download_arxiv_tex(arxiv_ids: List[str], save_dir: str = "./tex_sources"):
@@ -815,9 +838,14 @@ def batch_download_arxiv_tex(arxiv_ids: List[str], save_dir: str = "./tex_source
         tex_url = get_tex_url(arxiv_id, headers)
         if tex_url:
             dir = download_tex(arxiv_id, tex_url, save_dir, headers)
-            source_dirs.append(dir)
+            if dir:  # Only add if download and extraction succeeded
+                source_dirs.append(dir)
+            else:
+                logger.error(f"[FAIL] Failed to download or extract {arxiv_id}")
+                continue
         else:
             logger.warning(f"[SKIP] No TeX source found for {arxiv_id}. Please check the arXiv ID or the availability of the source.")
+            continue
 
         # Download PDF file
         pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"

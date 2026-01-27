@@ -47,7 +47,7 @@ class Settings(BaseSettings):
         env="LLM_API_KEY"
     )
     llm_base_url: str = Field(
-        default="https://aicanapi.com",
+        default="https://aicanapi.com/v1/chat/completions",
         env="LLM_BASE_URL"
     )
     llm_model: str = Field(
@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # Translation Settings
     target_language: str = "ch"
     source_language: str = "en"
+    
+    # LaTeX Compiler Settings
+    latex_bin_dir: Optional[str] = Field(
+        default=None,
+        env="LATEX_BIN_DIR"
+    )
     
     # Storage Paths (relative to project root)
     base_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent)

@@ -116,11 +116,24 @@ def compile_latex(
     last_exit_code = 0
     for run in range(max_runs):
         try:
+            # Check if latex_bin_dir is configured
+            from backend.app.core.config import settings
+            
+            if settings.latex_bin_dir and os.path.exists(settings.latex_bin_dir):
+                # Use full path to compiler
+                engine_path = os.path.join(settings.latex_bin_dir, f"{engine}.exe")
+                if not os.path.exists(engine_path):
+                    logger.error(f"Compiler not found: {engine_path}")
+                    return CompilationResult(success=False, exit_code=-3)
+            else:
+                # Use system PATH
+                engine_path = engine
+            
             # -interaction=nonstopmode: continue on errors
             # -halt-on-error: stop on first error (we use nonstopmode instead)
             # -output-directory: specify output directory
             cmd = [
-                engine,
+                engine_path,
                 "-interaction=nonstopmode",
                 "-output-directory", str(output_dir),
                 tex_filename

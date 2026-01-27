@@ -198,7 +198,7 @@ TaskManager（更新{task_id：{status，progress}}）
 ````蟒蛇
 LLM_配置 = {
     "api_key": "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
-    "base_url": "https://aicanapi.com",
+    "base_url": "https://aicanapi.com/v1/chat/completions",
     "model": "gpt-4.1-mini", # 或按照配置中指定
     "timeout": 60 # 每个请求秒
 }
