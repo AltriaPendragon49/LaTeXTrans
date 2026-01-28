@@ -1,63 +1,101 @@
-# LaTeXTrans Backend
+# LaTeXTrans 后端API服务
 
-Web MVP 后端 API 服务 - 最小可测试版本
+LaTeX论文自动翻译系统的Web后端服务,基于FastAPI构建。
 
-## 快速开始
+## 📋 目录
+
+- [快速开始](#快速开始)
+- [系统要求](#系统要求)
+- [API端点](#api端点)
+- [使用示例](#使用示例)
+- [项目结构](#项目结构)
+- [配置说明](#配置说明)
+- [故障排除](#故障排除)
+
+## 🚀 快速开始
 
 ### 1. 安装依赖
 
 ```bash
-cd backend
-pip install -r requirements.txt
+# 从项目根目录执行
+pip install -r backend/requirements.txt
 ```
 
-**注意**: 如果遇到 `tiktoken` 编译错误,这是正常的,该依赖已被注释掉(MVP 不需要)。
+### 2. 启动服务
 
-### 2. 启动服务器
+**Windows:**
+```bash
+cd backend
+start.bat
+```
 
 **Linux/Mac:**
 ```bash
+cd backend
 chmod +x start.sh
 ./start.sh
 ```
 
-**Windows:**
-```powershell
-.\start.ps1
-```
-
-**或直接使用 uvicorn:**
+**手动启动(推荐用于开发):**
 ```bash
-cd ..  # 回到项目根目录
+# 从项目根目录执行
 python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 3. 访问 API
+### 3. 访问服务
 
-服务启动后访问:
-- **API 文档**: http://localhost:8000/docs
+启动成功后访问:
+- **API文档(Swagger)**: http://localhost:8000/docs
+- **API文档(ReDoc)**: http://localhost:8000/redoc
 - **健康检查**: http://localhost:8000/health
-- **根路径**: http://localhost:8000/
 
-## API 端点
+## 💻 系统要求
 
-### ✅ 已实现 (MVP 版本)
+### 必需
+- **Python**: >= 3.10
+- **LaTeX发行版**: TexLive 2024+ 或 MiKTeX (需包含 `pdflatex` 和 `xelatex`)
+- **系统工具**: `tar`, `gzip` (Linux/Mac自带, Windows需配置Git Bash或WSL)
 
-#### GET /health
+### 推荐
+- **内存**: >= 8GB
+- **磁盘空间**: >= 5GB (用于存储上传文件和输出)
+
+## 📡 API端点
+
+### 核心端点
+
+#### `GET /health`
 健康检查端点
 
-**响应:**
+**响应示例:**
 ```json
 {
   "status": "healthy",
   "app": "LaTeXTrans Backend",
-  "version": "0.1.0",
-  "llm_model": "gpt-4.1-mini"
+  "version": "1.0.0",
+  "timestamp": "2026-01-28T01:00:00"
 }
 ```
 
-#### POST /api/arxiv
-下载 arXiv 论文源码
+#### `POST /upload`
+上传LaTeX文件
+
+**请求:**
+- **Content-Type**: `multipart/form-data`
+- **文件类型**: `.tex`, `.zip`, `.tar`, `.tar.gz`
+
+**响应:**
+```json
+{
+  "task_id": "abc123...",
+  "status": "pending",
+  "message": " Files uploaded successfully",
+  "file_count": 5
+}
+```
+
+#### `POST /arxiv`
+从arXiv下载论文源码
 
 **请求:**
 ```json
@@ -69,163 +107,383 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 **响应:**
 ```json
 {
-  "task_id": "uuid-string",
+  "task_id": "xyz789...",
   "arxiv_id": "2508.18791",
   "status": "success",
-  "message": "arXiv paper 2508.18791 downloaded successfully",
-  "source_path": "/path/to/data/uploads/{task_id}/2508.18791"
+  "message": "arXiv source downloaded",
+  "file_count": 12
 }
 ```
 
-#### GET /api/arxiv/validate/{arxiv_id}
-验证 arXiv ID 格式
+#### `POST /translate/{task_id}`
+启动翻译任务
+
+**请求:**
+```json
+{
+  "target_lang": "zh",
+  "config": {
+    "preserve_math": true,
+    "preserve_citations": true
+  }
+}
+```
 
 **响应:**
 ```json
 {
-  "arxiv_id": "2508.18791",
-  "is_valid": true,
-  "message": "Valid arXiv ID"
+  "task_id": "abc123...",
+  "status": "processing",
+  "message": "Translation started"
 }
 ```
 
-### ⏳ 待实现 (后续版本)
+#### `GET /task/{task_id}`
+查询任务状态
 
-以下端点将在完整版本中实现:
-- `POST /api/upload` - 文件上传
-- `POST /api/translate/{task_id}` - 触发翻译
-- `GET /api/task/{task_id}` - 查询任务状态
-- `GET /api/download/{task_id}/pdf` - 下载 PDF
-- `GET /api/download/{task_id}/source` - 下载源码
+**响应:**
+```json
+{
+  "task_id": "abc123...",
+  "status": "processing",
+  "progress": 45,
+  "stage": "translating",
+  "message": "Translating section: Introduction",
+  "error": null,
+  "warnings": null,
+  "source_available": true,
+  "created_at": "2026-01-28T01:00:00",
+  "completed_at": null
+}
+```
 
-## 项目结构
+**状态值说明:**
+- `pending`: 等待处理
+- `processing`: 正在处理
+- `completed`: 成功完成
+- `completed_with_warnings`: 完成但有警告
+- `failed_compilation`: 编译失败
+- `failed`: 其他失败
+
+#### `GET /download/{task_id}/pdf`
+下载翻译后的PDF
+
+**响应:** PDF文件流
+
+#### `GET /download/{task_id}/source`
+下载翻译后的LaTeX源码(zip压缩包)
+
+**响应:** ZIP文件流
+
+#### `GET /download/{task_id}/logs`
+下载编译日志
+
+**响应:** 日志文件
+
+#### `GET /tasks`
+列出所有任务(调试用)
+
+**响应:**
+```json
+{
+  "tasks": [
+    { "task_id": "abc123...", "status": "completed", ... },
+    { "task_id": "xyz789...", "status": "processing", ... }
+  ],
+  "total": 2
+}
+```
+
+#### `DELETE /task/{task_id}`
+删除任务及相关文件
+
+**响应:**
+```json
+{
+  "task_id": "abc123...",
+  "status": "deleted",
+  "message": "Task deleted successfully"
+}
+```
+
+## 📝 使用示例
+
+### 示例1: arXiv论文翻译(完整流程)
+
+```bash
+# 1. 下载arXiv论文
+curl -X POST http://localhost:8000/arxiv \
+  -H "Content-Type: application/json" \
+  -d '{"arxiv_id": "2508.18791"}'
+  
+# 响应: {"task_id": "abc123...", ...}
+
+# 2. 启动翻译
+curl -X POST http://localhost:8000/translate/abc123 \
+  -H "Content-Type: application/json" \
+  -d '{"target_lang": "zh"}'
+
+# 3. 查询进度(轮询)
+curl http://localhost:8000/task/abc123
+
+# 4. 下载PDF
+curl -O -J http://localhost:8000/download/abc123/pdf
+```
+
+### 示例2: 上传本地文件翻译
+
+```bash
+# 1. 上传zip文件
+curl -X POST http://localhost:8000/upload \
+  -F "file=@my_paper.zip"
+  
+# 响应: {"task_id": "xyz789...", ...}
+
+# 2. 启动翻译
+curl -X POST http://localhost:8000/translate/xyz789 \
+  -H "Content-Type: application/json" \
+  -d '{"target_lang": "en"}'
+
+# 3 查询状态
+curl http://localhost:8000/task/xyz789
+
+# 4. 下载源码
+curl -O -J http://localhost:8000/download/xyz789/source
+```
+
+### 示例3: Python脚本
+
+```python
+import requests
+import time
+
+BASE_URL = "http://localhost:8000"
+
+# 下载arXiv论文
+response = requests.post(
+    f"{BASE_URL}/arxiv",
+    json={"arxiv_id": "2508.18791"}
+)
+task_id = response.json()["task_id"]
+
+# 启动翻译
+requests.post(
+    f"{BASE_URL}/translate/{task_id}",
+    json={"target_lang": "zh"}
+)
+
+# 轮询状态
+while True:
+    status = requests.get(f"{BASE_URL}/task/{task_id}").json()
+    print(f"进度: {status['progress']}% - {status['stage']}")
+    
+    if status["status"] in ["completed", "completed_with_warnings"]:
+        print("✅ 翻译完成!")
+        break
+    elif status["status"].startswith("failed"):
+        print(f"❌ 失败: {status['error']}")
+        break
+    
+    time.sleep(5)
+
+# 下载PDF
+with open(f"{task_id}.pdf", "wb") as f:
+    f.write(requests.get(f"{BASE_URL}/download/{task_id}/pdf").content)
+```
+
+## 📁 项目结构
 
 ```
 backend/
 ├── app/
+│   ├── main.py                    # FastAPI应用入口
 │   ├── core/
-│   │   ├── __init__.py
-│   │   └── config.py           # ✅ 配置管理
+│   │   ├── config.py              # 配置管理
+│   │   └── enums.py               # 枚举定义(TaskStatus等)
 │   ├── api/
-│   │   ├── __init__.py
 │   │   └── routes/
-│   │       ├── __init__.py
-│   │       └── arxiv.py        # ✅ arXiv 下载路由
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── task_manager.py     # ✅ 任务管理器
-│   │   └── latex/
-│   │       ├── __init__.py
-│   │       ├── compiler.py     # ✅ 智能编译器
-│   │       └── utils.py        # ✅ 简化工具函数
-│   ├── __init__.py
-│   └── main.py                 # ✅ FastAPI 应用
-├── requirements.txt            # ✅ 依赖列表
-├── start.sh                    # ✅ Linux/Mac 启动脚本
-└── start.ps1                   # ✅ Windows 启动脚本
+│   │       ├── arxiv.py           # arXiv下载端点
+│   │       ├── upload.py          # 文件上传端点
+│   │       ├── translate.py       # 翻译端点
+│   │       ├── task.py            # 任务状态端点
+│   │       └── download.py        # 下载端点
+│   └── services/
+│       ├── task_manager.py        # 任务管理器(内存存储)
+│       ├── agents/                # 代理系统
+│       │   ├── coordinator_agent.py
+│       │   ├── parser_agent.py
+│       │   ├── translator_agent.py
+│       │   ├── generator_agent.py
+│       │   └── validator_agent.py
+│       └── latex/                 # LaTeX处理
+│           ├── parser.py          # AST解析器
+│           ├── compiler.py        # 智能编译器(pdflatex/xelatex)
+│           ├── utils.py           # 工具函数(arXiv下载等)
+│           ├── prompts.py         # LLM提示词
+│           └── reconstruct.py     # 代码重构器
+├── data/                          # 数据目录
+│   ├── uploads/                   # 上传文件
+│   ├── outputs/                   # 翻译输出
+│   └── terms/                     # 术语词典
+├── requirements.txt               # 依赖列表
+├── start.bat                      # Windows启动脚本
+├── start.sh                       # Linux/Mac启动脚本
+└── README.md                      # 本文档  
 ```
 
-## 配置
+## ⚙️ 配置说明
 
-配置文件位于 `app/core/config.py`,支持以下环境变量:
+### 环境变量
 
-- `LLM_API_KEY`: LLM API 密钥 (默认: sk-SVd...)
-- `LLM_BASE_URL`: API 基础 URL (默认: https://aicanapi.com/v1/chat/completions)
-- `LLM_MODEL`: 模型名称 (默认: gpt-4.1-mini)
-- `LLM_TIMEOUT`: 请求超时 (默认: 60秒)
+在启动脚本或系统环境中设置:
 
-## 测试
-
-### 使用 curl
-
-**健康检查:**
 ```bash
-curl http://localhost:8000/health
+# LLM API配置
+export LLM_API_KEY="your-api-key"
+export LLM_BASE_URL="https://aicanapi.com/v1/chat/completions"
+export LLM_MODEL="gpt-4.1-mini"
+export LLM_TIMEOUT="60"
+
+# LaTeX工具路径(可选,如果不在PATH中)
+export LATEX_BIN_DIR="/usr/local/texlive/2024/bin/x86_64-linux"
+
+# 数据目录(可选)
+export DATA_DIR="/path/to/data"
 ```
 
-**下载 arXiv 论文:**
-```bash
-curl -X POST http://localhost:8000/api/arxiv \
-  -H "Content-Type: application/json" \
-  -d '{"arxiv_id": "2508.18791"}'
-```
+### 配置文件
 
-**验证 arXiv ID:**
-```bash
-curl http://localhost:8000/api/arxiv/validate/2508.18791
-```
-
-### 使用 Python
+编辑 `backend/app/core/config.py`:
 
 ```python
-import requests
-
-# 健康检查
-response = requests.get("http://localhost:8000/health")
-print(response.json())
-
-# 下载 arXiv 论文
-response = requests.post(
-    "http://localhost:8000/api/arxiv",
-    json={"arxiv_id": "2508.18791"}
-)
-print(response.json())
+class Settings:
+    # API配置
+    api_key: str = "sk-..."
+    base_url: str = "https://..."
+    model: str = "gpt-4.1-mini"
+    
+    # 路径配置
+    uploads_dir: Path = Path("data/uploads")
+    outputs_dir: Path = Path("data/outputs")
+    
+    # 编译配置
+    latex_timeout: int = 300  # 超时时间(秒)
 ```
 
-## 数据存储
+## 🔧 故障排除
 
-下载的文件存储在:
-```
-data/
-├── uploads/
-│   └── {task_id}/
-│       └── {arxiv_id}/
-│           ├── main.tex
-│           ├── ...
-│           └── {arxiv_id}.pdf
-├── outputs/      # 翻译输出 (待实现)
-└── terms/        # 术语词典 (待实现)
-```
+### 1. 启动失败: `ModuleNotFoundError`
 
-## 已知限制 (MVP 版本)
+**问题:** 无法导入 `backend.app.main`
 
-1. **无翻译功能**: 仅支持下载,翻译功能待后续实现
-2. **无进度追踪**: 下载是同步的,没有实时进度更新
-3. **无文件上传**: 仅支持 arXiv 下载
-4. **内存存储**: 任务状态存储在内存中,重启丢失
-5. **无认证**: 没有用户认证
-
-## 下一步
-
-完整功能实施需要:
-1. LaTeX 解析器改编
-2. 翻译代理系统改编
-3. 文件上传端点
-4. 翻译任务端点
-5. 下载端点
-6. 进度追踪
-
-详见 `openspec/changes/add-web-mvp-platform/` 中的实施计划文档。
-
-## 故障排除
-
-### 依赖安装失败
-
-如果遇到编译错误:
-1. `tiktoken` 需要 Rust - 已在 MVP 中禁用
-2. 确保 Python 版本 >= 3.10
-
-### 端口被占用
-
-修改 `app/core/config.py` 中的 `port` 设置,或使用:
+**解决:**
 ```bash
+# 确保从项目根目录启动,不是backend/目录
+cd /path/to/LaTexTrans
+python -m uvicorn backend.app.main:app --reload
+```
+
+### 2. arXiv下载失败
+
+**问题:** `tar: command not found` (Windows)
+
+**解决:**
+- 安装 Git Bash 并添加到PATH
+- 或使用 WSL (Windows Subsystem for Linux)
+- 或手动安装 GNU tar for Windows
+
+### 3. 编译失败: `pdflatex not found`
+
+**问题:** LaTeX未安装或不在PATH中
+
+**解决:**
+```bash
+# 检查LaTeX
+which pdflatex
+which xelatex
+
+# 如果未找到,设置环境变量
+export LATEX_BIN_DIR="/path/to/texlive/bin"
+```
+
+### 4. 翻译卡住在某个进度
+
+**问题:** LLM API超时或限流
+
+**解决:**
+- 检查API key是否有效
+- 增加 `LLM_TIMEOUT` 值
+- 查看 `data/outputs/{task_id}/translation.log`
+
+### 5. 内存不足
+
+**问题:** 处理大型论文时OOM
+
+**解决:**
+- 增加系统内存
+- 减小并发任务数
+- 考虑添加任务队列(如Celery)
+
+### 6. 端口被占用
+
+**问题:** `Address already in use: 8000`
+
+**解决:**
+```bash
+# 使用其他端口
 python -m uvicorn backend.app.main:app --port 8001
 ```
 
-### 无法导入模块
+### 7. CORS错误(前端调用)
 
-确保从项目根目录运行,而不是 `backend/` 目录。
+**问题:** `Access-Control-Allow-Origin` 错误
 
-## 开发日志
+**解决:**
+编辑 `backend/app/main.py`:
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # 添加你的前端URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
 
-查看 `openspec/changes/add-web-mvp-platform/PROGRESS.md` 了解详细的开发进度。
+### 8. 文件上传大小限制
+
+**问题:** `413 Request Entity Too Large`
+
+**解决:**
+编辑 `backend/app/main.py`:
+```python
+app = FastAPI(
+    max_request_size=100 * 1024 * 1024  # 100MB
+)
+```
+
+## 📚 更多资源
+
+- **API文档**: http://localhost:8000/docs (启动服务后访问)
+- **开发进度**: `openspec/changes/add-web-mvp-platform/PROGRESS.md`
+- **测试脚本**: `backend/test_api_comprehensive.py`
+- **CLI版本**: `python prototype_system/main.py --help`
+
+## 🧪 测试
+
+运行综合测试套件:
+
+```bash
+# 确保后端正在运行
+python backend/test_api_comprehensive.py
+```
+
+测试覆盖:
+- ✅ 错误处理(无效ID、文件缺失)
+- ✅ 编译器回退机制(pdflatex -> xelatex)
+- ✅ 错误对比与选择
+- ✅ CLI兼容性
+
+## 📜 许可
+
+见项目根目录 `LICENSE` 文件
