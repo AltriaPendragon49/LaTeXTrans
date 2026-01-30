@@ -11,7 +11,7 @@ Adapted from prototype system with:
 from typing import Dict, Any, Optional, Callable
 from .base_tool_agent import BaseToolAgent
 from backend.app.services.latex.reconstruct import LatexConstructor
-from backend.app.services.latex.compiler import compile_with_fallback
+from backend.app.services.latex.compiler import compile_with_fallback, find_main_tex_file
 from pathlib import Path
 import os
 import shutil
@@ -75,26 +75,15 @@ class GeneratorAgent(BaseToolAgent):
 
         self.update_progress(80, "Compiling PDF document")
         
-        # Find main .tex file in translated directory
-        from pathlib import Path as PathLib
-        tex_files = list(PathLib(transed_latex_dir).glob("*.tex"))
+        # Use intelligent main tex file detection
+        main_tex = find_main_tex_file(transed_latex_dir)
         
-        if not tex_files:
-            logger.error(f"No .tex files found in {transed_latex_dir}")
-            self.update_progress(100, "No .tex files to compile")
+        if not main_tex:
+            logger.error(f"No main .tex file found in {transed_latex_dir}")
+            self.update_progress(100, "No main .tex file found")
             return None
         
-        # Try to find main.tex or the first .tex file
-        main_tex = None
-        for tex in tex_files:
-            if tex.stem.lower() in ["main", "paper", "article"]:
-                main_tex = tex
-                break
-        
-        if main_tex is None:
-            main_tex = tex_files[0]
-        
-        logger.info(f"Compiling {main_tex.name}...")
+        logger.info(f"Compiling {Path(main_tex).name}...")
         
         # Use new intelligent compiler with fallback
         result = compile_with_fallback(

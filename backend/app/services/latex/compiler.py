@@ -12,10 +12,98 @@ import os
 import re
 import subprocess
 import logging
+import json
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
+
+
+def find_main_tex_file(directory: str) -> Optional[str]:
+    """
+    Find the main LaTeX file in the given directory.
+    
+    Strategy (from prototype system):
+    1. Check for 00README.json config file
+    2. Scan for .tex files containing \\documentclass
+    
+    Args:
+        directory: Path to LaTeX project directory
+        
+    Returns:
+        Path to main .tex file, or None if not found
+    """
+    dir_path = Path(directory)
+    
+    # Strategy 1: Check 00README.json config
+    readme_path = dir_path / "00README.json"
+    if readme_path.exists():
+        try:
+            with open(readme_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            for source in config.get("sources", []):
+                if source.get("usage") == "toplevel":
+                    main_file_name = source.get("filename")
+                    main_file_path = dir_path / main_file_name
+                    if main_file_path.exists():
+                        logger.info(f"Found main tex from 00README.json: {main_file_name}")
+                        return str(main_file_path)
+        except Exception as e:
+            logger.warning(f"Failed to parse 00README.json: {e}")
+    
+    # Strategy 2: Scan for .tex files with \documentclass
+    documentclass_pattern = re.compile(r"\\document(class|style)(\[.*?\])?\{.*?\}", re.DOTALL)
+    
+    tex_files = list(dir_path.glob("*.tex"))
+    
+    for tex_file in tex_files:
+        try:
+            with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            # Remove comments before checking
+            content = _remove_comments(content)
+            
+            if documentclass_pattern.search(content):
+                logger.info(f"Found main tex by documentclass: {tex_file.name}")
+                return str(tex_file)
+        except Exception as e:
+            logger.warning(f"Failed to read {tex_file}: {e}")
+            continue
+    
+    # Fallback: try common names
+    common_names = ["main.tex", "paper.tex", "article.tex"]
+    for name in common_names:
+        candidate = dir_path / name
+        if candidate.exists():
+            logger.info(f"Found main tex by common name: {name}")
+            return str(candidate)
+    
+    # Last resort: first .tex file
+    if tex_files:
+        logger.warning(f"No main tex found, using first file: {tex_files[0].name}")
+        return str(tex_files[0])
+    
+    return None
+
+
+def _remove_comments(tex: str) -> str:
+    """Remove LaTeX comments from content."""
+    # Remove \begin{comment}...\end{comment} environments
+    tex = re.sub(r'\\begin\s*\{comment\}.*?\\end\s*\{comment\}', '', tex, flags=re.DOTALL)
+    
+    lines = tex.splitlines()
+    cleaned = []
+    for line in lines:
+        stripped_line = line.lstrip()
+        # Skip full-line comments
+        if re.match(r'^(?<!\\)%', stripped_line):
+            continue
+        # Remove inline comments
+        line = re.sub(r'(?<!\\)%.*', '', line)
+        cleaned.append(line)
+    
+    return '\n'.join(cleaned)
 
 
 class CompilationResult:
@@ -87,13 +175,18 @@ def compile_latex(
     max_runs: int = 2
 ) -> CompilationResult:
     """
-    Compile LaTeX file with specified engine
+    Compile LaTeX file with latexmk (intelligent build tool)
+    
+    Uses latexmk for smarter compilation that handles:
+    - Multiple compilation passes automatically
+    - BibTeX/biber integration
+    - Dependency tracking
     
     Args:
         tex_file: Path to .tex file
         output_dir: Output directory
         engine: LaTeX engine ("pdflatex" or "xelatex")
-        max_runs: Maximum compilation runs (for references)
+        max_runs: Maximum compilation runs (ignored, latexmk handles this)
     
     Returns:
         CompilationResult object
@@ -110,28 +203,110 @@ def compile_latex(
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     
-    logger.info(f"Compiling {tex_filename} with {engine}...")
+    logger.info(f"Compiling {tex_filename} with latexmk ({engine})...")
     
-    # Run compilation (may need multiple runs for references)
+    try:
+        # Use latexmk for intelligent compilation
+        # -interaction=nonstopmode: continue on errors
+        # -outdir: specify output directory
+        # -file-line-error: better error messages
+        # -synctex=1: for editor integration
+        # -f: force mode, continue despite errors
+        cmd = [
+            "latexmk",
+            f"-{engine}",
+            "-interaction=nonstopmode",
+            f"-outdir={output_dir}",
+            "-file-line-error",
+            "-synctex=1",
+            "-f",  # force mode
+            tex_filename
+        ]
+        
+        # Run compilation with binary mode to avoid encoding issues on Windows
+        result = subprocess.run(
+            cmd,
+            cwd=str(tex_path.parent),
+            capture_output=True,
+            text=False,  # Binary mode to avoid Windows gbk encoding issues
+            timeout=600  # 10 minute timeout for latexmk
+        )
+        
+        last_exit_code = result.returncode
+        
+        logger.info(f"latexmk ({engine}) completed with exit code {result.returncode}")
+        
+    except subprocess.TimeoutExpired:
+        logger.error(f"latexmk ({engine}) compilation timed out")
+        return CompilationResult(success=False, exit_code=-2)
+    except FileNotFoundError:
+        logger.warning("latexmk not found, falling back to direct compiler call")
+        return _compile_latex_direct(tex_file, output_dir, engine, max_runs)
+    except Exception as e:
+        logger.error(f"latexmk ({engine}) compilation failed: {e}")
+        return CompilationResult(success=False, exit_code=-3)
+    
+    # Check for output PDF
+    pdf_path = out_path / f"{tex_basename}.pdf"
+    log_path = out_path / f"{tex_basename}.log"
+    
+    pdf_exists = pdf_path.exists()
+    
+    # Parse errors from log file
+    error_count = 0
+    errors = []
+    if log_path.exists():
+        error_count, errors = parse_log_errors(str(log_path))
+    
+    success = pdf_exists and error_count == 0
+    
+    logger.info(
+        f"latexmk ({engine}) result: "
+        f"PDF={'✓' if pdf_exists else '✗'}, "
+        f"Errors={error_count}, "
+        f"Exit Code={last_exit_code}"
+    )
+    
+    return CompilationResult(
+        success=success,
+        pdf_path=str(pdf_path) if pdf_exists else None,
+        log_path=str(log_path) if log_path.exists() else None,
+        error_count=error_count,
+        errors=errors,
+        exit_code=last_exit_code
+    )
+
+
+def _compile_latex_direct(
+    tex_file: str,
+    output_dir: str,
+    engine: str = "pdflatex",
+    max_runs: int = 2
+) -> CompilationResult:
+    """
+    Fallback: Compile LaTeX file directly with pdflatex/xelatex
+    Used when latexmk is not available.
+    """
+    tex_path = Path(tex_file)
+    tex_filename = tex_path.name
+    tex_basename = tex_path.stem
+    out_path = Path(output_dir)
+    
+    logger.info(f"Compiling {tex_filename} directly with {engine}...")
+    
     last_exit_code = 0
     for run in range(max_runs):
         try:
-            # Check if latex_bin_dir is configured
             from backend.app.core.config import settings
             
             if settings.latex_bin_dir and os.path.exists(settings.latex_bin_dir):
-                # Use full path to compiler
                 engine_path = os.path.join(settings.latex_bin_dir, f"{engine}.exe")
                 if not os.path.exists(engine_path):
                     logger.error(f"Compiler not found: {engine_path}")
                     return CompilationResult(success=False, exit_code=-3)
             else:
-                # Use system PATH
                 engine_path = engine
             
-            # -interaction=nonstopmode: continue on errors
-            # -halt-on-error: stop on first error (we use nonstopmode instead)
-            # -output-directory: specify output directory
             cmd = [
                 engine_path,
                 "-interaction=nonstopmode",
@@ -143,12 +318,11 @@ def compile_latex(
                 cmd,
                 cwd=str(tex_path.parent),
                 capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
+                text=False,  # Binary mode to avoid encoding issues
+                timeout=300
             )
             
             last_exit_code = result.returncode
-            
             logger.info(f"{engine} run {run + 1}/{max_runs} completed with exit code {result.returncode}")
             
         except subprocess.TimeoutExpired:
@@ -158,13 +332,10 @@ def compile_latex(
             logger.error(f"{engine} compilation failed: {e}")
             return CompilationResult(success=False, exit_code=-3)
     
-    # Check for output PDF
     pdf_path = out_path / f"{tex_basename}.pdf"
     log_path = out_path / f"{tex_basename}.log"
-    
     pdf_exists = pdf_path.exists()
     
-    # Parse errors from log file
     error_count = 0
     errors = []
     if log_path.exists():
@@ -335,24 +506,14 @@ class LaTeXCompiler:
         Returns:
             Path to PDF file or None if compilation failed
         """
-        # Find main .tex file
-        tex_files = list(Path(self.output_latex_dir).glob("*.tex"))
+        # Use intelligent main tex file detection
+        main_tex = find_main_tex_file(self.output_latex_dir)
         
-        if not tex_files:
-            logger.error(f"No .tex files found in {self.output_latex_dir}")
+        if not main_tex:
+            logger.error(f"No main .tex file found in {self.output_latex_dir}")
             return None
         
-        # Try to find main.tex or the first .tex file
-        main_tex = None
-        for tex in tex_files:
-            if tex.stem.lower() in ["main", "paper", "article"]:
-                main_tex = tex
-                break
-        
-        if main_tex is None:
-            main_tex = tex_files[0]
-        
-        logger.info(f"Compiling {main_tex.name}...")
+        logger.info(f"Compiling {Path(main_tex).name}...")
         
         try:
             result = compile_with_fallback(str(main_tex), self.output_latex_dir)
