@@ -23,13 +23,17 @@ export default function Dashboard() {
     const handleTranslate = async () => {
         if (!arxivId) return
         setIsSubmitting(true)
+
+        // 立即跳转到处理页面，不等待API响应
+        navigate("/processing")
+
+        // 在后台执行下载和翻译
         try {
             await startArxivDownload(arxivId)
             await startTranslation({ source_language: sourceLang, target_language: targetLang })
-            navigate("/processing")
         } catch (error) {
             console.error("Workflow failed", error)
-            setIsSubmitting(false)
+            // 错误会通过 store 的状态和 toast 显示
         }
     }
 

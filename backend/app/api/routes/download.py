@@ -83,6 +83,70 @@ async def download_pdf(task_id: str):
     )
 
 
+@router.get("/preview/{task_id}/pdf")
+async def preview_pdf(task_id: str):
+    """
+    Preview translated PDF (inline display for iframe)
+    
+    Args:
+        task_id: Task ID
+    
+    Returns:
+        PDF file for inline display
+    
+    Raises:
+        HTTPException: If task not found or PDF not available
+    """
+    logger.info(f"PDF preview request for task: {task_id}")
+    
+    # Get task
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task not found: {task_id}"
+        )
+    
+    # Check if task is completed
+    if task["status"] not in [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_WITH_WARNINGS.value]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Translation not completed. Current status: {task['status']}"
+        )
+    
+    # Find PDF file in output directory
+    output_dir = Path(task.get("output_path", ""))
+    if not output_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Output directory not found"
+        )
+    
+    # Search for PDF files
+    pdf_files = list(output_dir.rglob("*_translated.pdf"))
+    if not pdf_files:
+        # Try finding any PDF
+        pdf_files = list(output_dir.rglob("*.pdf"))
+    
+    if not pdf_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Translated PDF not found"
+        )
+    
+    # Return the first PDF found with inline content disposition for preview
+    pdf_file = pdf_files[0]
+    logger.info(f"Returning PDF for preview: {pdf_file}")
+    
+    return FileResponse(
+        path=str(pdf_file),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename=\"preview_{task_id}.pdf\""
+        }
+    )
+
+
 @router.get("/download/{task_id}/source")
 async def download_source(task_id: str):
     """

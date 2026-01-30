@@ -16,11 +16,13 @@ export default function ComparisonsPage() {
     const { taskId, arxivId } = useStore()
 
     const sourceUrl = arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null
-    const targetUrl = taskId ? `http://localhost:8000/api/download/${taskId}/pdf` : null
+    // 使用 preview 端点显示 PDF（inline），download 端点用于实际下载
+    const previewUrl = taskId ? `http://localhost:8000/api/preview/${taskId}/pdf` : null
+    const downloadUrl = taskId ? `http://localhost:8000/api/download/${taskId}/pdf` : null
 
     const handleDownload = () => {
-        if (targetUrl) {
-            window.open(targetUrl, '_blank')
+        if (downloadUrl) {
+            window.open(downloadUrl, '_blank')
         }
     }
 
@@ -61,7 +63,7 @@ export default function ComparisonsPage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
-                    <Button variant="default" size="sm" className="ml-4" onClick={handleDownload} disabled={!targetUrl}>
+                    <Button variant="default" size="sm" className="ml-4" onClick={handleDownload} disabled={!downloadUrl}>
                         <Download className="mr-2 h-4 w-4" /> Download PDF
                     </Button>
                 </div>
@@ -79,13 +81,13 @@ export default function ComparisonsPage() {
                         <ResizableHandle withHandle />
                         <ResizablePanel defaultSize={50} minSize={30}>
                             <div className="h-full overflow-hidden flex justify-center bg-white dark:bg-zinc-900">
-                                <PDFViewer url={targetUrl} title="Target PDF (Translated)" />
+                                <PDFViewer url={previewUrl} title="Target PDF (Translated)" />
                             </div>
                         </ResizablePanel>
                     </ResizablePanelGroup>
                 ) : (
                     <div className="h-full overflow-hidden flex justify-center bg-white dark:bg-zinc-900">
-                        <PDFViewer url={targetUrl} title="Target PDF (Translated)" />
+                        <PDFViewer url={previewUrl} title="Target PDF (Translated)" />
                     </div>
                 )}
             </div>

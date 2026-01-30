@@ -18,13 +18,12 @@ export default function ProcessingPage() {
     const navigate = useNavigate()
 
     useEffect(() => {
-        if (!taskId) {
-            navigate("/")
-            return
+        // 只有在有 taskId 时才开始轮询，没有时保持等待状态
+        if (taskId) {
+            pollStatus()
         }
-        pollStatus()
         return () => stopPolling()
-    }, [taskId, navigate])
+    }, [taskId])
 
     // Derive current step from status message or status enum
     // For MVP, simplistic mapping:
