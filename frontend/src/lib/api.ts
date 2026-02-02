@@ -1,6 +1,9 @@
 import axios from "axios"
 
-const API_BASE_URL = "http://localhost:8000/api"
+// API base URL - configurable via environment variable for deployment flexibility
+// Development: http://localhost:8000/api (default)
+// Production: Set VITE_API_URL to your Cloudflare Tunnel URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api"
 
 export interface ArxivResponse {
     task_id: string

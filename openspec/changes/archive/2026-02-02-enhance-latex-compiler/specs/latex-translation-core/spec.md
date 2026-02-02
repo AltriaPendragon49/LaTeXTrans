@@ -1,45 +1,9 @@
-# latex-translation-core Specification
+# latex-translation-core Specification Delta
 
-## Purpose
-TBD - created by archiving change add-web-mvp-platform. Update Purpose after archive.
-## Requirements
-### Requirement: LaTeX Parsing and Translation
-The system SHALL parse LaTeX source files into an Abstract Syntax Tree (AST), translate extracted text content while preserving structure, and reconstruct valid LaTeX output.
+> **Change ID**: `enhance-latex-compiler`
+> **Target Spec**: `openspec/specs/latex-translation-core/spec.md`
 
-#### Scenario: CLI translation workflow (existing)
-- **WHEN** user runs `python main.py --arxiv 2508.18791`
-- **THEN** the system downloads source, parses LaTeX using `pylatexenc`, translates text chunks via LLM, reconstructs `.tex` files, and compiles PDF in `outputs/` directory
-
-#### Scenario: Web API translation workflow (new)
-- **WHEN** backend invokes `CoordinatorAgent.workflow_latextrans()` from a FastAPI background task
-- **THEN** the system executes the same parsing → translation → compilation pipeline, updates task progress via callbacks, and writes output to `data/outputs/{task_id}/`
-
-#### Scenario: Progress callback integration (new)
-- **WHEN** `ParserAgent`, `TranslatorAgent`, or `GeneratorAgent` completes a processing step
-- **THEN** each agent invokes `on_progress(stage, percentage, message)` callback to update `TaskManager` state
-
-#### Scenario: Streamlit-free operation (new)
-- **WHEN** any agent runs without Streamlit context (web environment)
-- **THEN** the system uses Python `logging` module for output and does not call `st.progress()`, `st.text()`, or `st.spinner()`
-
-#### Scenario: Error propagation to web layer (new)
-- **WHEN** translation fails due to LaTeX parsing error, LLM timeout, or compilation error
-- **THEN** the agent raises an exception with descriptive message, which is caught by background task handler and stored in `TaskManager` error field
-
-### Requirement: arXiv Source Download
-The system SHALL download LaTeX source code from arXiv.org given a valid paper ID.
-
-#### Scenario: CLI arXiv download (existing)
-- **WHEN** user provides `--arxiv` argument to CLI
-- **THEN** `batch_download_arxiv_tex()` downloads `.tar.gz` source to `tex source/` directory
-
-#### Scenario: Web API arXiv download (new)
-- **WHEN** backend receives `POST /arxiv` request with arXiv ID
-- **THEN** adapted `batch_download_arxiv_tex()` downloads source to `data/uploads/{task_id}/` and returns task ID to caller
-
-#### Scenario: arXiv metadata extraction (existing)
-- **WHEN** downloading from arXiv
-- **THEN** the system extracts paper category (e.g., "cs.AI") via `get_arxiv_category()` for potential terminology selection (unused in MVP, used in Phase 2)
+## MODIFIED Requirements
 
 ### Requirement: LaTeX Compilation with Intelligent Fallback
 
@@ -79,6 +43,8 @@ The system SHALL compile translated LaTeX files into PDF using a multi-stage com
 - **WHEN** all three engines (pdflatex, xelatex, lualatex) fail to produce any PDF output
 - **THEN** the system preserves the translated `.tex` source files, marks task status as "failed_compilation", stores combined error details from all `.log` files in the task error field, and makes the source files available for download via the `/download/{task_id}/source` endpoint
 
+## ADDED Requirements
+
 ### Requirement: PDF Generation Readiness Verification
 
 The system SHALL verify that generated PDF files are fully written and accessible before marking translation tasks as completed.
@@ -107,4 +73,3 @@ The system SHALL verify that generated PDF files are fully written and accessibl
 - **WHEN** the task status is "completed" but the PDF file is not yet readable
 - **THEN** the preview/download endpoints return HTTP 503 (Service Unavailable) instead of HTTP 404 (Not Found)
 - **AND** the response includes a "Retry-After" header suggesting client retry in 1-2 seconds
-

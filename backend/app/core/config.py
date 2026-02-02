@@ -80,8 +80,17 @@ class Settings(BaseSettings):
     max_upload_size: int = 50 * 1024 * 1024  # 50MB in bytes
     allowed_extensions: set = {".zip", ".tex", ".tar", ".tar.gz"}
     
-    # CORS Settings
-    cors_origins: list = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # CORS Settings - Extended for Cloudflare Pages deployment
+    # Includes: localhost (dev), Cloudflare Pages default domain, and pattern for custom domains
+    cors_origins: list = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        # Cloudflare Pages default domain pattern
+        # Note: For production, add your specific *.pages.dev subdomain
+        "https://latextrans.pages.dev",
+    ]
     
     # Server Settings
     host: str = "0.0.0.0"

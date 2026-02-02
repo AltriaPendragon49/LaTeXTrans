@@ -106,10 +106,20 @@ async def run_translation(task_id: str, target_language: str, source_language: s
         await coordinator.workflow_latextrans_async()
         
         # Check if translation succeeded by looking for output PDF
-        # The workflow saves PDF as {target_language}_{project_name}.pdf
+        # The workflow saves PDF as {target_language}_{project_name}/{target_language}_{project_name}.pdf
         project_name = source_path.name
-        output_pdf = output_dir / f"{target_language}_{project_name}.pdf"
+        # Subdirectory logic matching CoordinatorAgent's transed_project_dir
+        transed_subdir = f"{target_language}_{project_name}"
+        output_pdf = output_dir / transed_subdir / f"{target_language}_{project_name}.pdf"
         
+        # Fallback recursive check: prioritize files starting with target_language_
+        if not output_pdf.exists():
+            prefix = f"{target_language}_"
+            found_pdfs = [p for p in output_dir.rglob("*.pdf") if p.name.startswith(prefix)]
+            if found_pdfs:
+                output_pdf = found_pdfs[0]
+                logger.info(f"Found translated PDF via fallback: {output_pdf}")
+
         if output_pdf.exists():
             task_manager.update_task(
                 task_id=task_id,

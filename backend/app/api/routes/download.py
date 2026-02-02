@@ -74,6 +74,31 @@ async def download_pdf(task_id: str):
     
     # Return the first PDF found
     pdf_file = pdf_files[0]
+    
+    # Verify PDF file integrity before download
+    if pdf_file.stat().st_size == 0:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF generation in progress, please retry"
+        )
+    
+    # Verify PDF header
+    try:
+        with open(pdf_file, 'rb') as f:
+            header = f.read(5)
+            if header != b'%PDF-':
+                raise HTTPException(
+                    status_code=503,
+                    detail="PDF not ready, please retry"
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF not accessible, please retry"
+        )
+    
     logger.info(f"Returning PDF: {pdf_file}")
     
     return FileResponse(
@@ -136,6 +161,32 @@ async def preview_pdf(task_id: str):
     
     # Return the first PDF found with inline content disposition for preview
     pdf_file = pdf_files[0]
+    
+    # Verify PDF file integrity
+    # Check file size
+    if pdf_file.stat().st_size == 0:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF generation in progress, please retry"
+        )
+    
+    # Verify PDF header
+    try:
+        with open(pdf_file, 'rb') as f:
+            header = f.read(5)
+            if header != b'%PDF-':
+                raise HTTPException(
+                    status_code=503,
+                    detail="PDF not ready, please retry"
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF not accessible, please retry"
+        )
+    
     logger.info(f"Returning PDF for preview: {pdf_file}")
     
     return FileResponse(

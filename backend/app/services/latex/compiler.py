@@ -18,6 +18,125 @@ from typing import Dict, Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
 
+# CJK character detection threshold
+CJK_THRESHOLD = 100
+
+# Maximum content to read for language detection (100KB)
+MAX_DETECTION_CONTENT = 100 * 1024
+
+
+def detect_document_language_from_content(content: str) -> str:
+    """
+    Detect document language from text content.
+    
+    Checks for CJK (Chinese, Japanese, Korean) characters.
+    
+    Args:
+        content: Text content to analyze
+        
+    Returns:
+        "cjk" if CJK characters exceed threshold, otherwise "latin"
+    """
+    import re
+    
+    # CJK character ranges:
+    # - Chinese: \u4e00-\u9fff (CJK Unified Ideographs)
+    # - Japanese Hiragana: \u3040-\u309f
+    # - Japanese Katakana: \u30a0-\u30ff  
+    # - Korean Hangul: \uac00-\ud7af
+    cjk_pattern = re.compile(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]')
+    
+    cjk_chars = cjk_pattern.findall(content)
+    cjk_count = len(cjk_chars)
+    
+    if cjk_count > CJK_THRESHOLD:
+        return "cjk"
+    return "latin"
+
+
+def detect_document_language(tex_file: str) -> str:
+    """
+    Detect the primary language type of a LaTeX document.
+    
+    Strategy:
+    1. Read the .tex file content (up to 100KB)
+    2. Count CJK characters (Chinese, Japanese, Korean)
+    3. If CJK chars exceed threshold (100), classify as CJK document
+    
+    Args:
+        tex_file: Path to .tex file
+        
+    Returns:
+        "cjk" or "latin"
+    """
+    try:
+        with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read(MAX_DETECTION_CONTENT)
+        return detect_document_language_from_content(content)
+    except Exception as e:
+        logger.warning(f"Failed to detect language for {tex_file}: {e}")
+        return "latin"  # Default to latin for safety
+
+
+def verify_pdf_ready(pdf_path: str, timeout: float = 5.0) -> bool:
+    """
+    Verify that a PDF file is fully ready for use.
+    
+    Checks:
+    1. File exists
+    2. File size > 0
+    3. File is readable (can be opened)
+    4. File has valid PDF header (%PDF-)
+    5. Wait for file system buffer to flush
+    
+    Args:
+        pdf_path: Path to PDF file
+        timeout: Maximum wait time in seconds
+        
+    Returns:
+        True if PDF is ready, False otherwise
+    """
+    import time
+    start_time = time.time()
+    
+    while (time.time() - start_time) < timeout:
+        try:
+            path = Path(pdf_path)
+            
+            # Check file exists
+            if not path.exists():
+                time.sleep(0.1)
+                continue
+            
+            # Check file size > 0
+            file_size = path.stat().st_size
+            if file_size == 0:
+                time.sleep(0.1)
+                continue
+            
+            # Try to read file and verify PDF header
+            with open(pdf_path, 'rb') as f:
+                header = f.read(5)
+                if header == b'%PDF-':
+                    logger.info(f"PDF verified ready: {pdf_path} ({file_size} bytes)")
+                    return True
+                else:
+                    # File exists but doesn't have valid PDF header yet
+                    time.sleep(0.1)
+                    continue
+                    
+        except (IOError, OSError) as e:
+            # File may be locked by another process
+            logger.debug(f"PDF not ready, waiting: {e}")
+            time.sleep(0.1)
+            continue
+        except Exception as e:
+            logger.warning(f"Unexpected error verifying PDF: {e}")
+            return False
+    
+    logger.warning(f"PDF verification timed out after {timeout}s: {pdf_path}")
+    return False
+
 
 def find_main_tex_file(directory: str) -> Optional[str]:
     """
@@ -185,7 +304,7 @@ def compile_latex(
     Args:
         tex_file: Path to .tex file
         output_dir: Output directory
-        engine: LaTeX engine ("pdflatex" or "xelatex")
+        engine: LaTeX engine ("pdflatex", "xelatex", or "lualatex")
         max_runs: Maximum compilation runs (ignored, latexmk handles this)
     
     Returns:
@@ -360,32 +479,158 @@ def _compile_latex_direct(
     )
 
 
-def compile_with_fallback(tex_file: str, output_dir: str) -> Dict:
+def compile_with_intelligent_fallback(
+    tex_file: str, 
+    output_dir: str,
+    preferred_order: Optional[List[str]] = None
+) -> Dict:
     """
-    Intelligent LaTeX compilation with fallback strategy
+    Intelligent LaTeX compilation with three-engine fallback strategy
     
     Strategy:
-    1. Try pdflatex first
-    2. If perfect (zero errors), return immediately
-    3. If failed or has errors, try xelatex
-    4. Compare error counts and select best PDF
-    5. If both fail to produce PDF, raise exception
+    1. Detect document language if no preferred_order is specified
+    2. For CJK documents: XeLaTeX → LuaLaTeX → PDFLaTeX
+    3. For Latin documents: PDFLaTeX → XeLaTeX → LuaLaTeX
+    4. Try each engine in order
+    5. If perfect compilation (zero errors), return immediately
+    6. Otherwise, collect all results and select the best PDF
+    7. If all engines fail to produce PDF, return failure with source files
+    
+    Args:
+        tex_file: Path to .tex file
+        output_dir: Output directory
+        preferred_order: Optional list of engines to try in order
+                        e.g., ["xelatex", "lualatex", "pdflatex"]
+                        If not provided, auto-detect based on document language
+    
+    Returns:
+        Dictionary with:
+        - pdf_path: Path to best PDF (None if all failed)
+        - status: "completed" | "completed_with_warnings" | "failed_compilation"
+        - engine: Engine that produced the PDF
+        - error_count: Number of errors in selected PDF
+        - warnings: Warning message if errors present
+        - errors: Combined error details if compilation failed
+    """
+    logger.info(f"Starting intelligent three-engine compilation for {tex_file}")
+    
+    # Determine engine order
+    if preferred_order is not None:
+        engines = preferred_order
+        logger.info(f"Using custom engine order: {engines}")
+    else:
+        # Auto-detect language
+        language = detect_document_language(tex_file)
+        if language == "cjk":
+            engines = ["xelatex", "lualatex", "pdflatex"]
+            logger.info(f"Detected CJK document, using engine order: {engines}")
+        else:
+            engines = ["pdflatex", "xelatex", "lualatex"]
+            logger.info(f"Detected Latin document, using engine order: {engines}")
+    
+    # Collect results from all engines
+    results: Dict[str, CompilationResult] = {}
+    
+    for engine in engines:
+        logger.info(f"⚡ Attempting compilation with {engine}...")
+        result = compile_latex(tex_file, output_dir, engine=engine)
+        results[engine] = result
+        
+        # Perfect compilation - return immediately
+        if result.success and result.error_count == 0:
+            logger.info(f"✅ {engine} produced perfect compilation (zero errors)")
+            return {
+                "pdf_path": result.pdf_path,
+                "status": "completed",
+                "engine": engine,
+                "error_count": 0,
+                "warnings": None,
+                "errors": None
+            }
+    
+    # No perfect compilation - select best result
+    # Find all engines that produced PDFs
+    engines_with_pdf = [
+        (engine, result) 
+        for engine, result in results.items() 
+        if result.pdf_path is not None
+    ]
+    
+    if engines_with_pdf:
+        # Sort by error count (ascending)
+        engines_with_pdf.sort(key=lambda x: x[1].error_count)
+        best_engine, best_result = engines_with_pdf[0]
+        
+        # Build comparison string
+        comparison = ", ".join(
+            f"{engine}: {result.error_count}" 
+            for engine, result in results.items()
+        )
+        
+        logger.warning(
+            f"⚠️ Selected {best_engine} PDF with {best_result.error_count} errors "
+            f"({comparison})"
+        )
+        
+        return {
+            "pdf_path": best_result.pdf_path,
+            "status": "completed_with_warnings",
+            "engine": best_engine,
+            "error_count": best_result.error_count,
+            "warnings": f"Compilation completed with {best_result.error_count} errors using {best_engine}.",
+            "errors": None
+        }
+    
+    # All engines failed to produce PDF
+    logger.error(f"❌ All engines failed to produce PDF: {engines}")
+    
+    # Combine error messages
+    combined_errors = "Compilation failed with all engines:\n\n"
+    for engine, result in results.items():
+        combined_errors += f"{engine} ({result.error_count} errors):\n"
+        combined_errors += "\n".join(result.errors[:10]) + "\n\n"
+    
+    total_errors = sum(result.error_count for result in results.values())
+    
+    return {
+        "pdf_path": None,
+        "status": "failed_compilation",
+        "engine": None,
+        "error_count": total_errors,
+        "warnings": None,
+        "errors": combined_errors
+    }
+
+
+def compile_with_fallback(tex_file: str, output_dir: str) -> Dict:
+    """
+    Intelligent LaTeX compilation with fallback strategy (backward compatible)
+    
+    This function is kept for backward compatibility.
+    It now delegates to compile_with_intelligent_fallback.
+    
+    Strategy:
+    1. Auto-detect document language
+    2. For CJK: XeLaTeX → LuaLaTeX → PDFLaTeX
+    3. For Latin: PDFLaTeX → XeLaTeX → LuaLaTeX
+    4. Try each engine, return best result
     
     Args:
         tex_file: Path to .tex file
         output_dir: Output directory
     
     Returns:
-        Dictionary with:
-        - pdf_path: Path to best PDF
-        - status: "completed" | "completed_with_warnings" | "failed_compilation"
-        - engine: Engine that produced the PDF
-        - error_count: Number of errors in selected PDF
-        - warnings: Warning message if errors present
-        - errors: Combined error details if compilation failed
+        Dictionary with pdf_path, status, engine, error_count, warnings, errors
+    """
+    return compile_with_intelligent_fallback(tex_file, output_dir)
+
+
+# Keep the old compile_with_fallback_legacy for reference (can be removed later)
+def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
+    """
+    Legacy two-engine fallback strategy (pdflatex then xelatex)
     
-    Raises:
-        Exception: If both compilers fail to produce any PDF
+    Kept for reference. Use compile_with_intelligent_fallback instead.
     """
     logger.info(f"Starting intelligent compilation for {tex_file}")
     

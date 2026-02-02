@@ -137,8 +137,15 @@ class CoordinatorAgent:
         if PDF_file_path:
             new_PDF_path = os.path.join(transed_project_dir, f"{self.target_language}_{base_name}.pdf")
             shutil.move(PDF_file_path, new_PDF_path)
-            logger.info(f"Successfully translated {base_name} to {new_PDF_path}")
-            self.update_progress(100, "Translation completed successfully")
+            
+            # Verify PDF is fully ready before updating status
+            from backend.app.services.latex.compiler import verify_pdf_ready
+            if verify_pdf_ready(new_PDF_path):
+                logger.info(f"PDF verified ready: {new_PDF_path}")
+                self.update_progress(100, "Translation completed successfully")
+            else:
+                logger.warning(f"PDF may not be fully ready: {new_PDF_path}")
+                self.update_progress(100, "Translation completed, PDF may need refresh")
         else:
             logger.error(f"Failed to generate PDF for {base_name}")
             self.update_progress(100, "Failed to generate PDF")

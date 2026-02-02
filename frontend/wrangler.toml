@@ -1,0 +1,11 @@
+name = "latextrans"
+compatibility_date = "2024-01-01"
+
+# Build configuration for Cloudflare Pages
+[build]
+command = "npm run build"
+directory = "dist"
+
+# Note: Environment variables should be set in Cloudflare Dashboard
+# Settings > Environment Variables > Add variable
+# - VITE_API_URL: Your Cloudflare Tunnel URL (e.g., https://xxx-xxx.trycloudflare.com/api)

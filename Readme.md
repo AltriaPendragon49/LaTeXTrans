@@ -177,6 +177,41 @@ CLI 示例: python main.py --arxiv 2508.18791 (下载、翻译、编译)
 配置环境变量:
 在 backend/.env 中配置 LLM API Key (Gemini)。
 
+### Cloudflare 部署 (外部访问)
+
+如需让外部用户访问系统，可使用 Cloudflare Pages + Tunnel 进行免费部署：
+
+**1. 安装依赖工具:**
+```powershell
+# 安装 Wrangler CLI (Cloudflare Pages)
+npm install -g wrangler
+
+# 安装 cloudflared (Cloudflare Tunnel)
+winget install Cloudflare.cloudflared
+```
+
+**2. 启动本地后端:**
+```powershell
+cd backend
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+**3. 启动 Tunnel 暴露后端:**
+```powershell
+.\scripts\start-tunnel.ps1
+# 记录输出的公网 URL (如: https://xxx-xxx.trycloudflare.com)
+```
+
+**4. 部署前端:**
+```powershell
+.\scripts\deploy-frontend.ps1 -TunnelUrl "https://你的tunnel地址"
+```
+
+**5.地址**：https://latextrans.pages.dev
+
+
+> **注意**: 每次启动 Tunnel 地址会变化，需要重新部署前端。保持 Tunnel 终端开启以维持连接。
+
 6. 贡献指南
 
 提交代码前请确保通过 AST 解析测试。
