@@ -1,4 +1,5 @@
 import axios from "axios"
+import type { AdvancedConfig, LatexValidation } from "@/types/config"
 
 // API base URL - configurable via environment variable for deployment flexibility
 // Development: http://localhost:8000/api (default)
@@ -13,9 +14,13 @@ export interface ArxivResponse {
     source_path?: string
 }
 
+/**
+ * Translation request with full advanced configuration.
+ */
 export interface TranslateRequest {
     target_language: string
     source_language: string
+    advanced_config?: AdvancedConfig
 }
 
 export interface TranslateResponse {
@@ -33,6 +38,19 @@ export interface TaskStatusResponse {
     error?: string
     output_path?: string
     logs?: string[]
+    advanced_config?: AdvancedConfig
+    latex_validation?: LatexValidation
+}
+
+/**
+ * Upload response with LaTeX validation result.
+ */
+export interface UploadResponse {
+    task_id: string
+    status: string
+    message: string
+    source_path: string
+    latex_validation?: LatexValidation
 }
 
 const api = axios.create({
@@ -47,6 +65,12 @@ export const downloadArxiv = async (arxivId: string): Promise<ArxivResponse> => 
     return response.data
 }
 
+/**
+ * Start translation with full configuration.
+ * 
+ * @param taskId - Task ID from upload or arxiv endpoint
+ * @param config - Translation configuration including advanced options
+ */
 export const startTranslation = async (taskId: string, config: TranslateRequest): Promise<TranslateResponse> => {
     const response = await api.post<TranslateResponse>(`/translate/${taskId}`, config)
     return response.data
@@ -69,6 +93,44 @@ export const getTaskLogs = async (taskId: string): Promise<string[]> => {
     } catch {
         return []
     }
+}
+
+/**
+ * Upload a file (ZIP, TAR.GZ, RAR, or .tex) for translation.
+ * 
+ * @param file - File to upload
+ * @returns Upload response with task ID and LaTeX validation
+ */
+export const uploadFile = async (file: File): Promise<UploadResponse> => {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const response = await api.post<UploadResponse>("/upload", formData, {
+        headers: {
+            "Content-Type": "multipart/form-data",
+        },
+    })
+    return response.data
+}
+
+/**
+ * Get download URL for translated PDF.
+ * 
+ * @param taskId - Task ID
+ * @returns URL to download the PDF
+ */
+export const getDownloadUrl = (taskId: string): string => {
+    return `${API_BASE_URL}/download/${taskId}`
+}
+
+/**
+ * Get preview URL for translated PDF (inline display).
+ * 
+ * @param taskId - Task ID
+ * @returns URL to preview the PDF
+ */
+export const getPreviewUrl = (taskId: string): string => {
+    return `${API_BASE_URL}/preview/${taskId}`
 }
 
 export default api

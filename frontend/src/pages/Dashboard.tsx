@@ -1,177 +1,145 @@
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { Search, ChevronRight, Upload } from "lucide-react"
-import { useStore } from "@/store/useStore"
-import { Separator } from "@/components/ui/separator"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Label } from "@/components/ui/label"
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useStore } from '@/store/useStore'
+import { AdvancedConfig } from '@/components/AdvancedConfig'
+import { DropZone } from '@/components/DropZone'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw } from 'lucide-react'
 
 export default function Dashboard() {
-    const [arxivId, setArxivId] = useState("")
-    const [isOpen, setIsOpen] = useState(false)
     const navigate = useNavigate()
-    const { startArxivDownload, startTranslation } = useStore()
+    const {
+        taskId, status, config,
+        startArxivDownload, startTranslation
+    } = useStore()
 
-    const [sourceLang, setSourceLang] = useState("en")
-    const [targetLang, setTargetLang] = useState("zh")
-    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [activeTab, setActiveTab] = useState('arxiv')
+    const [isConfigOpen, setIsConfigOpen] = useState(false)
+    const [localArxivId, setLocalArxivId] = useState('')
+    const [isDownloading, setIsDownloading] = useState(false)
 
-    const handleTranslate = async () => {
-        if (!arxivId) return
-        setIsSubmitting(true)
-
-        // 立即跳转到处理页面，不等待API响应
-        navigate("/processing")
-
-        // 在后台执行下载和翻译
+    // Handle ArXiv Load
+    const handleLoadArxiv = async () => {
+        if (!localArxivId.trim()) return
+        setIsDownloading(true)
         try {
-            await startArxivDownload(arxivId)
-            await startTranslation({ source_language: sourceLang, target_language: targetLang })
-        } catch (error) {
-            console.error("Workflow failed", error)
-            // 错误会通过 store 的状态和 toast 显示
+            await startArxivDownload(localArxivId)
+            // Success handled in store
+        } catch (e) {
+            // Error handled in store
+        } finally {
+            setIsDownloading(false)
+        }
+    }
+
+    // Handle Start Translation
+    const handleStart = async () => {
+        if (!taskId) return
+        try {
+            // Build config request
+            const request = {
+                source_language: config.source_language,
+                target_language: config.target_language,
+                advanced_config: config.advanced_config
+            }
+            await startTranslation(request)
+            navigate('/processing')
+        } catch (e) {
+            // Error
         }
     }
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8">
-            {/* Hero Section */}
-            <div className="text-center space-y-4 py-8">
-                <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                    Translate ArXiv Papers Instantly
-                </h1>
-                <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                    Academic-grade translation with dual-model verification and LaTeX source preservation.
+        <div className="container mx-auto max-w-4xl p-6 space-y-8 animate-in fade-in duration-500">
+            <div className="space-y-2">
+                <h1 className="text-3xl font-bold tracking-tight">New Translation</h1>
+                <p className="text-muted-foreground">
+                    Start a new translation task by entering an ArXiv ID or uploading a LaTeX project.
                 </p>
             </div>
 
-            <Card className="border-2 border-indigo-50 dark:border-indigo-900/20 shadow-lg">
-                <CardHeader>
-                    <CardTitle>New Translation Task</CardTitle>
-                    <CardDescription>Enter an ArXiv ID to start.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* ArXiv ID Input */}
-                    <div className="flex gap-4">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Enter ArXiv ID (e.g. 2401.12345)"
-                                className="pl-9 h-12 text-lg"
-                                value={arxivId}
-                                onChange={(e) => setArxivId(e.target.value)}
-                            />
-                        </div>
-                        <Button size="lg" className="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleTranslate} disabled={isSubmitting}>
-                            {isSubmitting ? "Initializing..." : "Translate Now"}
-                        </Button>
-                    </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                    <TabsTrigger value="arxiv">ArXiv ID</TabsTrigger>
+                    <TabsTrigger value="upload">Local Upload</TabsTrigger>
+                </TabsList>
 
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t" />
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-background px-2 text-muted-foreground">
-                                Configuration
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Quick Config */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <Label>Source Language</Label>
-                            <Select defaultValue="en" onValueChange={setSourceLang}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Language" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="en">English (English)</SelectItem>
-                                    <SelectItem value="zh">Chinese (简体中文)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Target Language</Label>
-                            <Select defaultValue="zh" onValueChange={setTargetLang}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Language" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="zh">Chinese (简体中文)</SelectItem>
-                                    <SelectItem value="en">English (English)</SelectItem>
-                                    <SelectItem value="jp">Japanese (日本語)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-
-                    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-2 border rounded-md p-4 bg-slate-50 dark:bg-slate-900">
-                        <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold text-foreground">
-                                Advanced Settings
-                            </h4>
-                            <CollapsibleTrigger asChild>
-                                <Button variant="ghost" size="sm" className="w-9 p-0">
-                                    <ChevronRight className={`h-4 w-4 transition-transform ${isOpen ? "rotate-90" : ""}`} />
-                                    <span className="sr-only">Toggle</span>
+                <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
+                    <CardHeader>
+                        <CardTitle>{activeTab === 'arxiv' ? 'ArXiv Paper' : 'File Upload'}</CardTitle>
+                        <CardDescription>
+                            {activeTab === 'arxiv'
+                                ? 'Enter the ArXiv ID (e.g., 2310.xxxxx) to download source.'
+                                : 'Upload your LaTeX project as a ZIP/RAR archive.'}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <TabsContent value="arxiv" className="mt-0 space-y-4">
+                            <div className="flex gap-4">
+                                <Input
+                                    placeholder="Enter ArXiv ID (e.g., 2301.12345)"
+                                    value={localArxivId}
+                                    onChange={(e) => setLocalArxivId(e.target.value)}
+                                    className="font-mono bg-background"
+                                />
+                                <Button
+                                    onClick={handleLoadArxiv}
+                                    disabled={!localArxivId || isDownloading || (status === 'processing')}
+                                >
+                                    {isDownloading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                                    Load Source
                                 </Button>
-                            </CollapsibleTrigger>
-                        </div>
-                        <CollapsibleContent className="space-y-4 pt-4">
-                            <div className="grid gap-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Translation Model</Label>
-                                        <Select defaultValue="deepseek">
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="deepseek">DeepSeek-V3</SelectItem>
-                                                <SelectItem value="gpt4">GPT-4o</SelectItem>
-                                                <SelectItem value="claude">Claude 3.5 Sonnet</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>API Key (Optional)</Label>
-                                        <Input type="password" placeholder="Use system default" />
-                                    </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="upload" className="mt-0">
+                            <DropZone />
+                        </TabsContent>
+
+                        {/* Task Ready Indicator */}
+                        {taskId && (
+                            <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                                <div className="p-2 rounded-full bg-green-500/20 text-green-600 dark:text-green-400">
+                                    <FileText className="w-5 h-5" />
                                 </div>
-
-                                <Separator className="my-2" />
-
-                                <div className="space-y-2">
-                                    <Label>Glossary (Optional)</Label>
-                                    <div className="flex gap-2">
-                                        <Button variant="outline" className="w-full border-dashed">
-                                            <Upload className="mr-2 h-4 w-4" /> Upload Terminology (.csv)
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>TeX Sources Directory (Optional)</Label>
-                                        <Input placeholder="Auto-detected from ArXiv or Upload" disabled />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Output Directory (Optional)</Label>
-                                        <Input placeholder="./outputs" />
-                                    </div>
+                                <div className="flex-1">
+                                    <p className="font-medium text-green-700 dark:text-green-300">Source Ready</p>
+                                    <p className="text-xs text-green-600/80 dark:text-green-400/80 font-mono">Task ID: {taskId}</p>
                                 </div>
                             </div>
-                        </CollapsibleContent>
-                    </Collapsible>
+                        )}
+                    </CardContent>
+                </Card>
+            </Tabs>
 
-                </CardContent>
-            </Card>
+            <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen} className="space-y-2">
+                <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="flex items-center gap-2 w-full justify-start p-0 hover:bg-transparent hover:text-primary group">
+                        {isConfigOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" /> : <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                        <span className="font-medium text-lg">Advanced Configuration</span>
+                        <span className="text-sm text-muted-foreground ml-2 font-normal">(Optional)</span>
+                    </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 pt-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                    <AdvancedConfig />
+                </CollapsibleContent>
+            </Collapsible>
+
+            <div className="flex justify-end pt-4 pb-12">
+                <Button
+                    size="lg"
+                    onClick={handleStart}
+                    disabled={!taskId || status === 'downloading' || status === 'starting_translation'}
+                    className="w-full md:w-auto min-w-[200px] shadow-lg shadow-primary/20 text-lg py-6"
+                >
+                    <Play className="mr-2 h-5 w-5 fill-current" />
+                    Start Translation
+                </Button>
+            </div>
         </div>
     )
 }

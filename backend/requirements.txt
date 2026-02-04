@@ -24,6 +24,7 @@ lxml==4.9.3
 python-dotenv==1.0.0
 toml==0.10.2
 tqdm==4.66.1
+rarfile>=4.0  # RAR archive extraction support
 
 # Type Hints
 pydantic==2.5.0

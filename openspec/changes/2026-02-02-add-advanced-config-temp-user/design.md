@@ -290,6 +290,27 @@ class SourceType(str, Enum):
 | `app/api/routes/translate.py` | 接收并处理高级配置 |
 | `app/services/task_manager.py` | 任务记录包含 `advanced_config` |
 
+### 阶段 8 补充变更（UX 改进）
+
+#### 前端修改
+
+| 文件 | 变更 |
+|------|------|
+| `src/components/log-viewer.tsx` | 移除时间戳显示，简化日志 |
+| `src/pages/Comparisons.tsx` | 更新 sourceUrl 优先使用后端端点 |
+| `src/store/useStore.ts` | 添加 reset() 调用和 status='ready' |
+| `src/components/DropZone.tsx` | 添加 reset() 清空旧任务状态 |
+| `src/types/config.ts` | 更新默认配置值 |
+
+#### 后端修改
+
+| 文件 | 变更 |
+|------|------|
+| `app/api/routes/download.py` | 添加 `/preview/{task_id}/source-pdf` 端点 |
+| `app/api/routes/arxiv.py` | 下载时传递 arxiv_id 到任务管理器 |
+| `app/services/task_manager.py` | 添加 arxiv_id 字段支持 |
+
+
 ## 未来兼容性
 
 当接入 Supabase 时：

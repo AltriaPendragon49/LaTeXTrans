@@ -15,7 +15,11 @@ export default function ComparisonsPage() {
     const [viewMode, setViewMode] = useState<"split" | "single">("split")
     const { taskId, arxivId } = useStore()
 
-    const sourceUrl = arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null
+    // Source PDF: 优先使用后端接口，ArXiv 论文可直接用 arxiv.org 链接
+    // 后端接口会找到原始 PDF（排除 zh_前缀和翻译版）
+    const sourceUrl = taskId
+        ? `http://localhost:8000/api/preview/${taskId}/source-pdf`
+        : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
     // 使用 preview 端点显示 PDF（inline），download 端点用于实际下载
     const previewUrl = taskId ? `http://localhost:8000/api/preview/${taskId}/pdf` : null
     const downloadUrl = taskId ? `http://localhost:8000/api/download/${taskId}/pdf` : null

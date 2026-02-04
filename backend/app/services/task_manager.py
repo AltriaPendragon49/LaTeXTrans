@@ -8,7 +8,7 @@ Manages task state, progress updates, and status queries.
 import uuid
 import threading
 from datetime import datetime
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Union
 from backend.app.core.config import TaskStatus, CompilationStage
 
 
@@ -21,12 +21,13 @@ class TaskManager:
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
     
-    def create_task(self, source_type: str = "upload") -> str:
+    def create_task(self, source_type: str = "upload", advanced_config: Optional[Dict[str, Any]] = None, arxiv_id: Optional[str] = None) -> str:
         """
         Create a new task and return its ID
         
         Args:
-            source_type: "upload" or "arxiv"
+            source_type: "upload", "arxiv", or "folder_upload"
+            advanced_config: Optional advanced configuration snapshot
         
         Returns:
             Task ID (UUID string)
@@ -47,7 +48,10 @@ class TaskManager:
                 "completed_at": None,
                 "source_type": source_type,
                 "source_path": None,
-                "output_path": None
+                "output_path": None,
+                "advanced_config": advanced_config,
+                "latex_validation": None,
+                "arxiv_id": arxiv_id
             }
         
         return task_id
@@ -63,7 +67,10 @@ class TaskManager:
         warnings: Optional[str] = None,
         source_available: Optional[bool] = None,
         source_path: Optional[str] = None,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        advanced_config: Optional[Dict[str, Any]] = None,
+        latex_validation: Optional[Dict[str, Any]] = None,
+        arxiv_id: Optional[str] = None
     ) -> bool:
         """
         Update task fields
@@ -121,6 +128,15 @@ class TaskManager:
             
             if output_path is not None:
                 task["output_path"] = output_path
+            
+            if advanced_config is not None:
+                task["advanced_config"] = advanced_config
+            
+            if latex_validation is not None:
+                task["latex_validation"] = latex_validation
+            
+            if arxiv_id is not None:
+                task["arxiv_id"] = arxiv_id
             
             return True
     

@@ -198,6 +198,210 @@ async def preview_pdf(task_id: str):
     )
 
 
+@router.get("/preview/{task_id}/source-pdf")
+async def preview_source_pdf(task_id: str):
+    """
+    Preview original source PDF (inline display for iframe)
+    
+    Strategy:
+    1. Check if task has an associated arxiv_id -> redirect to arxiv.org
+    2. Try to extract arxiv ID from directory/file names -> redirect to arxiv.org
+    3. Look for existing original PDF in source directory (not translated)
+    4. Fallback: compile source tex to generate source PDF
+    
+    Args:
+        task_id: Task ID
+    
+    Returns:
+        Original PDF file for inline display, or redirect to arxiv.org
+    
+    Raises:
+        HTTPException: If task not found or source PDF not available
+    """
+    import re
+    import subprocess
+    from fastapi.responses import RedirectResponse
+    
+    logger.info(f"Source PDF preview request for task: {task_id}")
+    
+    # Get task
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task not found: {task_id}"
+        )
+    
+    # ArXiv ID pattern: YYMM.NNNNN or YYMM.NNNNNvN
+    arxiv_pattern = re.compile(r'(\d{4}\.\d{4,5})(v\d+)?')
+    
+    # Strategy 1: Check if task has arxiv_id stored
+    arxiv_id = task.get("arxiv_id")
+    if arxiv_id:
+        # Extract just the ID part (remove any version suffix for PDF URL)
+        match = arxiv_pattern.search(arxiv_id)
+        if match:
+            clean_id = match.group(1)
+            arxiv_pdf_url = f"https://arxiv.org/pdf/{clean_id}.pdf"
+            logger.info(f"Redirecting to arxiv.org PDF: {arxiv_pdf_url}")
+            return RedirectResponse(url=arxiv_pdf_url, status_code=302)
+    
+    # Get source path
+    source_path = task.get("source_path")
+    if not source_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Source path not available for this task"
+        )
+    
+    source_dir = Path(source_path)
+    if not source_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Source directory not found"
+        )
+    
+    # Strategy 2: Try to extract arxiv ID from directory name or file names
+    extracted_arxiv_id = None
+    
+    # Check directory name
+    dir_match = arxiv_pattern.search(source_dir.name)
+    if dir_match:
+        extracted_arxiv_id = dir_match.group(1)
+    
+    # Check parent directory name
+    if not extracted_arxiv_id:
+        parent_match = arxiv_pattern.search(source_dir.parent.name)
+        if parent_match:
+            extracted_arxiv_id = parent_match.group(1)
+    
+    # Check file names in directory
+    if not extracted_arxiv_id:
+        for file_path in source_dir.iterdir():
+            file_match = arxiv_pattern.search(file_path.name)
+            if file_match:
+                extracted_arxiv_id = file_match.group(1)
+                break
+    
+    if extracted_arxiv_id:
+        arxiv_pdf_url = f"https://arxiv.org/pdf/{extracted_arxiv_id}.pdf"
+        logger.info(f"Extracted arxiv ID {extracted_arxiv_id}, redirecting to: {arxiv_pdf_url}")
+        return RedirectResponse(url=arxiv_pdf_url, status_code=302)
+    
+    # Strategy 3: Look for existing original PDF in source directory
+    all_pdfs = list(source_dir.rglob("*.pdf"))
+    
+    # Filter to find original PDF (not translated, not zh prefixed)
+    original_pdfs = [
+        pdf for pdf in all_pdfs 
+        if not pdf.name.startswith("zh_") 
+        and "_translated" not in pdf.name
+        and "zh-" not in pdf.name
+        and not pdf.name.startswith("source_compiled_")  # Our compiled PDFs
+    ]
+    
+    if original_pdfs:
+        pdf_file = original_pdfs[0]
+        if pdf_file.exists() and pdf_file.stat().st_size > 0:
+            logger.info(f"Found original PDF: {pdf_file}")
+            return FileResponse(
+                path=str(pdf_file),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                }
+            )
+    
+    # Strategy 4: Fallback - compile source tex to generate source PDF
+    # Look for main tex file
+    tex_files = list(source_dir.rglob("*.tex"))
+    if not tex_files:
+        raise HTTPException(
+            status_code=404,
+            detail="No source files available for preview. Upload from arxiv for automatic source PDF."
+        )
+    
+    # Find main tex file (look for main.tex or file with \documentclass)
+    main_tex = None
+    for tex_file in tex_files:
+        if tex_file.name.lower() == "main.tex":
+            main_tex = tex_file
+            break
+    
+    if not main_tex:
+        # Search for file with \documentclass
+        for tex_file in tex_files:
+            try:
+                content = tex_file.read_text(encoding='utf-8', errors='ignore')
+                if '\\documentclass' in content:
+                    main_tex = tex_file
+                    break
+            except:
+                pass
+    
+    if not main_tex:
+        main_tex = tex_files[0]  # Fallback to first tex file
+    
+    # Check if we already compiled a source PDF
+    compiled_pdf_path = source_dir / f"source_compiled_{task_id}.pdf"
+    if compiled_pdf_path.exists() and compiled_pdf_path.stat().st_size > 0:
+        logger.info(f"Using cached compiled source PDF: {compiled_pdf_path}")
+        return FileResponse(
+            path=str(compiled_pdf_path),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+            }
+        )
+    
+    # Compile the source tex
+    logger.info(f"Compiling source PDF from: {main_tex}")
+    try:
+        # Use pdflatex for compilation (2 passes for references)
+        for _ in range(2):
+            result = subprocess.run(
+                ["pdflatex", "-interaction=nonstopmode", "-output-directory", str(source_dir), str(main_tex)],
+                cwd=str(source_dir),
+                capture_output=True,
+                timeout=120
+            )
+        
+        # Find generated PDF
+        expected_pdf = main_tex.with_suffix(".pdf")
+        if expected_pdf.exists() and expected_pdf.stat().st_size > 0:
+            # Rename to our standard name
+            shutil.copy(str(expected_pdf), str(compiled_pdf_path))
+            logger.info(f"Compiled and cached source PDF: {compiled_pdf_path}")
+            return FileResponse(
+                path=str(compiled_pdf_path),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                }
+            )
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail="Failed to compile source PDF. Try using arxiv ID for automatic source PDF."
+            )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=503,
+            detail="Source PDF compilation timed out"
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=503,
+            detail="LaTeX compiler not available. Use arxiv ID for automatic source PDF."
+        )
+    except Exception as e:
+        logger.error(f"Failed to compile source PDF: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to compile source PDF: {str(e)}"
+        )
+
+
 @router.get("/download/{task_id}/source")
 async def download_source(task_id: str):
     """

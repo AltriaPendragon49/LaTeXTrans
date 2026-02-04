@@ -2,8 +2,11 @@ import { create } from 'zustand'
 import { toast } from "sonner"
 import { downloadArxiv, startTranslation, getTaskStatus } from '@/lib/api'
 import type { TranslateRequest } from '@/lib/api'
+import type { TranslationConfig, AdvancedConfig, LatexValidation } from '@/types/config'
+import { DEFAULT_CONFIG } from '@/types/config'
 
 interface TranslationState {
+    // Task state
     taskId: string | null
     arxivId: string | null
     status: string
@@ -17,10 +20,20 @@ interface TranslationState {
         translationQuality?: number
     }
 
-    // Actions
+    // Configuration state
+    config: TranslationConfig
+    latexValidation: LatexValidation | null
+
+    // Basic Actions
     setTaskId: (id: string) => void
-    setArxivId: (id: string) => void
+    setArxivId: (id: string | null) => void
     reset: () => void
+
+    // Configuration Actions
+    setConfig: (config: Partial<TranslationConfig>) => void
+    setAdvancedConfig: (config: Partial<AdvancedConfig>) => void
+    resetConfig: () => void
+    setLatexValidation: (validation: LatexValidation | null) => void
 
     // Async Actions
     startArxivDownload: (arxivId: string) => Promise<void>
@@ -29,9 +42,10 @@ interface TranslationState {
     stopPolling: () => void
 }
 
-let pollingInterval: any = null
+let pollingInterval: ReturnType<typeof setInterval> | null = null
 
 export const useStore = create<TranslationState>((set, get) => ({
+    // Task state
     taskId: null,
     arxivId: null,
     status: 'idle',
@@ -42,9 +56,14 @@ export const useStore = create<TranslationState>((set, get) => ({
     isPolling: false,
     outputMetrics: {},
 
+    // Configuration state - reset on page refresh
+    config: { ...DEFAULT_CONFIG },
+    latexValidation: null,
+
     setTaskId: (id) => set({ taskId: id }),
     setArxivId: (id) => set({ arxivId: id }),
 
+    // Reset all state including configuration
     reset: () => {
         if (pollingInterval) clearInterval(pollingInterval)
         set({
@@ -56,18 +75,59 @@ export const useStore = create<TranslationState>((set, get) => ({
             logs: [],
             error: null,
             isPolling: false,
-            outputMetrics: {}
+            outputMetrics: {},
+            config: { ...DEFAULT_CONFIG },
+            latexValidation: null
         })
     },
 
+    // Update configuration (partial update)
+    setConfig: (newConfig) => set((state) => ({
+        config: {
+            ...state.config,
+            ...newConfig,
+            // Deep merge advanced_config if provided
+            advanced_config: newConfig.advanced_config
+                ? { ...state.config.advanced_config, ...newConfig.advanced_config }
+                : state.config.advanced_config
+        }
+    })),
+
+    // Update advanced configuration only
+    setAdvancedConfig: (advancedConfig) => set((state) => ({
+        config: {
+            ...state.config,
+            advanced_config: {
+                ...state.config.advanced_config,
+                ...advancedConfig
+            }
+        }
+    })),
+
+    // Reset configuration to defaults
+    resetConfig: () => set({
+        config: { ...DEFAULT_CONFIG }
+    }),
+
+    // Set LaTeX validation result (from upload)
+    setLatexValidation: (validation) => set({ latexValidation: validation }),
+
     startArxivDownload: async (arxivId) => {
+        // Reset previous task state first (clears logs, previous taskId, etc.)
+        get().reset()
+
         try {
             set({ status: 'downloading', message: 'Downloading ArXiv paper...', error: null, logs: ['Starting ArXiv download...'], arxivId: arxivId })
             const response = await downloadArxiv(arxivId)
-            set({ taskId: response.task_id, message: response.message, logs: [...get().logs, `Task created: ${response.task_id}`, response.message] })
+            set({
+                taskId: response.task_id,
+                status: 'ready',  // <-- Update status to 'ready' so Start button is enabled
+                message: response.message,
+                logs: [...get().logs, `Task created: ${response.task_id}`, response.message]
+            })
             toast.success("ArXiv source downloaded successfully")
-        } catch (error: any) {
-            const msg = error.message || 'Failed to download ArXiv paper'
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Failed to download ArXiv paper'
             set({ error: msg, status: 'failed' })
             toast.error(msg)
             throw error
@@ -87,8 +147,8 @@ export const useStore = create<TranslationState>((set, get) => ({
             set({ message: response.message, logs: [...get().logs, 'Translation started'] })
             toast.success("Translation started")
             get().pollStatus()
-        } catch (error: any) {
-            const msg = error.message || 'Failed to start translation'
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Failed to start translation'
             set({ error: msg, status: 'failed' })
             toast.error(msg)
             throw error

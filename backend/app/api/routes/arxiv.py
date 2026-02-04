@@ -63,8 +63,8 @@ async def download_arxiv(request: ArxivRequest):
     arxiv_id = arxiv_ids[0]
     logger.info(f"Downloading arXiv paper: {arxiv_id}")
     
-    # Create task
-    task_id = task_manager.create_task(source_type="arxiv")
+    # Create task with arxiv_id
+    task_id = task_manager.create_task(source_type="arxiv", arxiv_id=arxiv_id)
     
     # Update task with arXiv ID
     task_manager.update_task(

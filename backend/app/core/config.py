@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     
     # File Upload Settings
     max_upload_size: int = 50 * 1024 * 1024  # 50MB in bytes
-    allowed_extensions: set = {".zip", ".tex", ".tar", ".tar.gz"}
+    allowed_extensions: set = {".zip", ".tex", ".tar", ".tar.gz", ".tgz", ".rar"}
     
     # CORS Settings - Extended for Cloudflare Pages deployment
     # Includes: localhost (dev), Cloudflare Pages default domain, and pattern for custom domains

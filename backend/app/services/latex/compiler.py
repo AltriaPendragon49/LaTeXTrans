@@ -142,9 +142,10 @@ def find_main_tex_file(directory: str) -> Optional[str]:
     """
     Find the main LaTeX file in the given directory.
     
-    Strategy (from prototype system):
-    1. Check for 00README.json config file
+    Strategy (enhanced with subdirectory support):
+    1. Check for 00README.json config file (in top-level and subdirs)
     2. Scan for .tex files containing \\documentclass
+    3. If no .tex in top-level, search subdirectories (for ZIP extraction case)
     
     Args:
         directory: Path to LaTeX project directory
@@ -154,55 +155,100 @@ def find_main_tex_file(directory: str) -> Optional[str]:
     """
     dir_path = Path(directory)
     
-    # Strategy 1: Check 00README.json config
-    readme_path = dir_path / "00README.json"
-    if readme_path.exists():
-        try:
-            with open(readme_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            for source in config.get("sources", []):
-                if source.get("usage") == "toplevel":
-                    main_file_name = source.get("filename")
-                    main_file_path = dir_path / main_file_name
-                    if main_file_path.exists():
-                        logger.info(f"Found main tex from 00README.json: {main_file_name}")
-                        return str(main_file_path)
-        except Exception as e:
-            logger.warning(f"Failed to parse 00README.json: {e}")
+    # Helper function to find main tex in a specific directory
+    def _find_in_dir(search_dir: Path) -> Optional[str]:
+        """Search for main tex file in a single directory."""
+        # Strategy 1: Check 00README.json config
+        readme_path = search_dir / "00README.json"
+        if readme_path.exists():
+            try:
+                with open(readme_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                for source in config.get("sources", []):
+                    if source.get("usage") == "toplevel":
+                        main_file_name = source.get("filename")
+                        main_file_path = search_dir / main_file_name
+                        if main_file_path.exists():
+                            logger.info(f"Found main tex from 00README.json: {main_file_name}")
+                            return str(main_file_path)
+            except Exception as e:
+                logger.warning(f"Failed to parse 00README.json: {e}")
+        
+        # Strategy 2: Scan for .tex files with \documentclass
+        documentclass_pattern = re.compile(r"\\document(class|style)(\[.*?\])?\{.*?\}", re.DOTALL)
+        
+        tex_files = list(search_dir.glob("*.tex"))
+        
+        for tex_file in tex_files:
+            try:
+                with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                
+                # Remove comments before checking
+                content = _remove_comments(content)
+                
+                if documentclass_pattern.search(content):
+                    logger.info(f"Found main tex by documentclass: {tex_file.name}")
+                    return str(tex_file)
+            except Exception as e:
+                logger.warning(f"Failed to read {tex_file}: {e}")
+                continue
+        
+        # Fallback: try common names
+        common_names = ["main.tex", "paper.tex", "article.tex"]
+        for name in common_names:
+            candidate = search_dir / name
+            if candidate.exists():
+                logger.info(f"Found main tex by common name: {name}")
+                return str(candidate)
+        
+        # Last resort: first .tex file
+        if tex_files:
+            logger.warning(f"No main tex found, using first file: {tex_files[0].name}")
+            return str(tex_files[0])
+        
+        return None
     
-    # Strategy 2: Scan for .tex files with \documentclass
+    # First, try to find in the top-level directory
+    result = _find_in_dir(dir_path)
+    if result:
+        return result
+    
+    # If not found in top-level, check subdirectories
+    # This handles ZIP extraction case: task_id/project_name/main.tex
+    logger.info(f"No tex files in top-level, searching subdirectories of {dir_path}")
+    
+    # Get all immediate subdirectories (excluding hidden dirs and common non-project dirs)
+    subdirs = [
+        d for d in dir_path.iterdir() 
+        if d.is_dir() and not d.name.startswith('.') and d.name not in ('__pycache__', '.git')
+    ]
+    
+    # Sort by name to be deterministic
+    subdirs.sort(key=lambda x: x.name)
+    
+    for subdir in subdirs:
+        result = _find_in_dir(subdir)
+        if result:
+            logger.info(f"Found main tex in subdirectory: {subdir.name}")
+            return result
+    
+    # Last resort: recursive search for any .tex file with documentclass
+    logger.warning(f"Searching recursively for any .tex file with documentclass in {dir_path}")
     documentclass_pattern = re.compile(r"\\document(class|style)(\[.*?\])?\{.*?\}", re.DOTALL)
     
-    tex_files = list(dir_path.glob("*.tex"))
-    
-    for tex_file in tex_files:
+    for tex_file in dir_path.rglob("*.tex"):
         try:
             with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-            
-            # Remove comments before checking
             content = _remove_comments(content)
-            
             if documentclass_pattern.search(content):
-                logger.info(f"Found main tex by documentclass: {tex_file.name}")
+                logger.info(f"Found main tex via recursive search: {tex_file}")
                 return str(tex_file)
         except Exception as e:
-            logger.warning(f"Failed to read {tex_file}: {e}")
             continue
     
-    # Fallback: try common names
-    common_names = ["main.tex", "paper.tex", "article.tex"]
-    for name in common_names:
-        candidate = dir_path / name
-        if candidate.exists():
-            logger.info(f"Found main tex by common name: {name}")
-            return str(candidate)
-    
-    # Last resort: first .tex file
-    if tex_files:
-        logger.warning(f"No main tex found, using first file: {tex_files[0].name}")
-        return str(tex_files[0])
-    
+    logger.error(f"No main tex file found in {dir_path} or any subdirectories")
     return None
 
 
