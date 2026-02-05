@@ -56,11 +56,12 @@ sequenceDiagram
 interface TranslationConfig {
   source_language: string;
   target_language: string;
-  translation_mode: 'full' | 'abstract' | 'terminology';
+  translation_mode: 'full' | 'quick_scan';  // full=全文, quick_scan=仅摘要+结论
   compile_strategy: 'pdflatex' | 'xelatex' | 'auto';
   enable_verification: boolean;
   bilingual_output: boolean;
   translation_model: string;
+  generate_terminology_table: boolean;  // 是否生成术语对照表
   // API 配置
   use_author_api: boolean;           // 默认 true - 使用作者友情提供的 API
   custom_base_url?: string;          // 中转站地址，如 https://aicanapi.com
@@ -109,11 +110,12 @@ task_data = {
 ```python
 class AdvancedConfig(BaseModel):
     """高级配置项"""
-    translation_mode: str = Field(default="full", description="full|abstract|terminology")
+    translation_mode: str = Field(default="full", description="full=全文, quick_scan=仅摘要+结论")
     compile_strategy: str = Field(default="auto", description="pdflatex|xelatex|auto")
     enable_verification: bool = Field(default=True, description="启用双模型验证")
     bilingual_output: bool = Field(default=False, description="生成双语对照 PDF")
     translation_model: str = Field(default="deepseek", description="翻译模型")
+    generate_terminology_table: bool = Field(default=False, description="生成术语对照表")
     # API 配置
     use_author_api: bool = Field(default=True, description="使用作者友情提供的 API")
     custom_base_url: Optional[str] = Field(default=None, description="中转站地址，如 https://aicanapi.com")
@@ -192,7 +194,8 @@ def validate_latex_directory(path: Path) -> LatexValidation:
 |---------|-----------|------|
 | `source_language` | `config.source_language` | prompt 初始化语言 |
 | `target_language` | `config.target_language` | prompt 初始化语言 |
-| `translation_mode` | `config.mode` | 0=全文, 1=摘要, 2=术语 |
+| `translation_mode` | `config.mode` | 0=全文, 1=快速筛查(摘要+结论) |
+| `generate_terminology_table` | `config.extract_terms` | 是否生成术语对照表 |
 | `compile_strategy` | `config.latex_engine` | 编译器选择 |
 | `enable_verification` | `config.use_verification_agent` | 是否启用验证 |
 | `bilingual_output` | `config.bilingual_mode` | 双语输出 |

@@ -70,11 +70,11 @@
 |--------|--------|------|--------|------|
 | 源语言 | `source_language` | string | "en" | 论文原始语言 |
 | 目标语言 | `target_language` | string | "zh" | 翻译目标语言 |
-| 翻译模式 | `translation_mode` | enum | "full" | full/abstract/terminology |
+| 翻译模式 | `translation_mode` | enum | "full" | `full`=全文翻译, `quick_scan`=文献快速筛查(仅摘要+结论) |
 | 编译策略 | `compile_strategy` | enum | "auto" | pdflatex/xelatex/auto |
 | 启用验证代理 | `enable_verification` | bool | true | 是否使用双模型验证 |
-| 生成双语 PDF | `bilingual_output` | bool | false | 是否生成双语对照 |
-| 翻译模型 | `translation_model` | string | "deepseek" | 使用的 LLM 模型 |
+| 翻译模型 | `translation_model` | string | "gpt-4.1-mini" | 使用的 LLM 模型 |
+| 生成术语表 | `generate_terminology_table` | bool | true | 是否生成术语对照表（Source Term ↔ Translation） |
 | 使用作者 API | `use_author_api` | bool | true | 默认使用作者友情提供的 API |
 | 自定义 Base URL | `custom_base_url` | string? | null | API 中转站地址（如 https://aicanapi.com），系统自动追加 /v1/chat/completions |
 | 自定义 API Key | `custom_api_key` | string? | null | 可选的自定义 API Key |

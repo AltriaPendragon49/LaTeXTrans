@@ -1,0 +1,13 @@
+{
+  "name": "默认配置",
+  "advanced_config": {
+    "translation_mode": "full",
+    "compile_strategy": "auto",
+    "enable_verification": true,
+    "bilingual_output": false,
+    "translation_model": "deepseek",
+    "use_author_api": true,
+    "custom_base_url": null,
+    "custom_api_key": null
+  }
+}

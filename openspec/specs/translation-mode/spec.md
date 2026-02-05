@@ -1,7 +1,7 @@
 # translation-mode Specification
 
 ## Purpose
-TBD - created by archiving change fix-translation-mode-logic. Update Purpose after archive.
+定义翻译模式规范，包括全文翻译和快速筛查模式的行为。
 ## Requirements
 ### Requirement: Full document translation only
 The system SHALL translate the entire document by default. All sections, captions, and environments are translated.

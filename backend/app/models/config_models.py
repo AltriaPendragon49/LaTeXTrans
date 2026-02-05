@@ -26,22 +26,22 @@ class AdvancedConfig(BaseModel):
     # Translation settings
     translation_mode: str = Field(
         default="full", 
-        description="Translation mode: full|abstract|terminology"
+        description="Translation mode: full|quick_scan (quick_scan translates abstract+conclusion only)"
     )
     compile_strategy: str = Field(
         default="auto", 
-        description="LaTeX compile strategy: pdflatex|xelatex|auto"
+        description="LaTeX compile strategy: pdflatex|xelatex|lualatex|auto"
     )
     enable_verification: bool = Field(
         default=True, 
         description="Enable dual-model verification"
     )
-    bilingual_output: bool = Field(
-        default=False, 
-        description="Generate bilingual PDF output"
+    generate_terminology_table: bool = Field(
+        default=True, 
+        description="Generate terminology reference table (CSV)"
     )
     translation_model: str = Field(
-        default="deepseek", 
+        default="gpt-4.1-mini", 
         description="Translation LLM model name"
     )
     
@@ -87,8 +87,8 @@ class LatexValidation(BaseModel):
 
 
 # Translation mode mapping for agent config
+# NOTE: trans_mode 0/1/2 are existing modes, DO NOT modify their behavior
 TRANSLATION_MODE_MAP = {
-    "full": 0,        # Full document translation
-    "abstract": 1,    # Abstract only
-    "terminology": 2  # Terminology extraction
+    "full": 0,        # Full document translation (existing)
+    "quick_scan": 3,  # Quick scan mode: translate abstract + conclusion only (NEW)
 }

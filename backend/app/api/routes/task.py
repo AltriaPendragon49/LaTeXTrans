@@ -6,7 +6,7 @@ Provides endpoints for querying task status and progress.
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 import logging
 
 from backend.app.services.task_manager import get_task_manager
@@ -28,6 +28,7 @@ class TaskStatusResponse(BaseModel):
     source_available: bool
     created_at: str
     completed_at: Optional[str] = None
+    advanced_config: Optional[Dict[str, Any]] = None
 
 
 @router.get("/task/{task_id}", response_model=TaskStatusResponse)
@@ -65,7 +66,8 @@ async def get_task_status(task_id: str):
         warnings=task.get("warnings"),
         source_available=task["source_available"],
         created_at=task["created_at"],
-        completed_at=task.get("completed_at")
+        completed_at=task.get("completed_at"),
+        advanced_config=task.get("advanced_config")
     )
 
 

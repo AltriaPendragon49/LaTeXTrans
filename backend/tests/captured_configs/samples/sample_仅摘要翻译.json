@@ -1,0 +1,13 @@
+{
+  "name": "仅摘要翻译",
+  "advanced_config": {
+    "translation_mode": "abstract",
+    "compile_strategy": "pdflatex",
+    "enable_verification": false,
+    "bilingual_output": false,
+    "translation_model": "gpt-4.1-mini",
+    "use_author_api": true,
+    "custom_base_url": null,
+    "custom_api_key": null
+  }
+}

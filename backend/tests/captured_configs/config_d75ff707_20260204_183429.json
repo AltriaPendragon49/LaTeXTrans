@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "task_id": "d75ff707-b66f-484b-bdee-45b790325f7f",
+    "captured_at": "2026-02-04T18:34:29.063034",
+    "timestamp": "20260204_183429"
+  },
+  "advanced_config": {
+    "translation_mode": "quick_scan",
+    "compile_strategy": "xelatex",
+    "enable_verification": true,
+    "bilingual_output": true,
+    "translation_model": "gpt-4.1-nano",
+    "use_author_api": true,
+    "custom_base_url": null,
+    "custom_api_key": null
+  },
+  "agent_config": {
+    "sys_name": "LaTeXTrans",
+    "target_language": "zh",
+    "source_language": "en",
+    "mode": 3,
+    "latex_engine": "xelatex",
+    "use_verification_agent": true,
+    "bilingual_mode": true,
+    "llm_config": {
+      "api_key": "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
+      "base_url": "https://aicanapi.com/v1/chat/completions",
+      "model": "gpt-4.1-nano",
+      "timeout": 60
+    }
+  },
+  "llm_config": {
+    "base_url": "https://aicanapi.com/v1/chat/completions",
+    "model": "gpt-4.1-nano",
+    "timeout": 60,
+    "api_key_masked": "********************"
+  },
+  "additional_info": {
+    "target_language": "zh",
+    "source_language": "en",
+    "source_path": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\uploads\\d75ff707-b66f-484b-bdee-45b790325f7f",
+    "output_dir": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\outputs\\d75ff707-b66f-484b-bdee-45b790325f7f"
+  }
+}

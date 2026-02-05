@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
@@ -23,6 +23,7 @@ class TranslatorAgent(BaseToolAgent):
                  project_dir: Optional[str] = None,
                  output_dir: Optional[str] = None,
                  errors_report: Optional[List[Dict]] = None,
+                 generate_terminology: bool = False,
                  on_progress: Optional[Callable[[int, str], None]] = None,
                  ):
         super().__init__(agent_name="TranslatorAgent", config=config, on_progress=on_progress)
@@ -42,6 +43,8 @@ class TranslatorAgent(BaseToolAgent):
         self.have_fail_parts = False
         self.errors_report = errors_report if errors_report is not None else []
         self.trans_mode = trans_mode if trans_mode is not None else 0
+        self.generate_terminology = generate_terminology
+        self.terminology_table = []  # 存储术语对: [(源术语, 译术语), ...]
         self.term_dict = {}
         self.summary = ''
         self.prev_text = ''
@@ -57,6 +60,9 @@ class TranslatorAgent(BaseToolAgent):
         sections = self.read_file(Path(self.output_dir, "sections_map.json"), "json")
         captions = self.read_file(Path(self.output_dir, "captions_map.json"), "json")
         envs = self.read_file(Path(self.output_dir, "envs_map.json"), "json")
+
+        # Debug log for trans_mode
+        logger.info(f"TranslatorAgent executing with trans_mode={self.trans_mode}")
 
         if self.trans_mode == 0 or self.trans_mode == 2:
             logger.info(f"Starting translating for project: {os.path.basename(self.project_dir)}")
@@ -125,6 +131,92 @@ class TranslatorAgent(BaseToolAgent):
                                            session=session)
 
             logger.info("Successfully retranslated error parts!")
+
+        elif self.trans_mode == 3:
+            # Quick scan mode: translate only abstract and conclusion
+            logger.info(f"Starting quick scan mode for project: {os.path.basename(self.project_dir)}")
+            self.update_progress(5, f"Quick scan mode: translating abstract and conclusion only")
+
+            async with aiohttp.ClientSession() as session:
+                sem = asyncio.Semaphore(10)
+
+                # 1. Translate abstract environment (in envs)
+                abstract_translated = False
+                for i, env in enumerate(envs):
+                    if env.get("env_name", "").lower() == "abstract" and env.get("need_trans", False):
+                        logger.info("Translating abstract environment")
+                        self.update_progress(20, "Translating abstract...")
+                        envs[i] = await self._translate_env(env, session)
+                        abstract_translated = True
+                        break
+
+                if not abstract_translated:
+                    logger.warning("No abstract environment found to translate")
+
+                # 2. Find and translate conclusion section(s)
+                conclusion_patterns = [
+                    r'\\section\*?\{[Cc]onclusion[s]?\}',
+                    r'\\section\*?\{[Ss]ummary\}',
+                    r'\\section\*?\{[Cc]oncluding [Rr]emarks?\}',
+                    r'\\section\*?\{[Ff]inal [Rr]emarks?\}',
+                ]
+                
+                conclusion_sections = []
+                for i, sec in enumerate(sections):
+                    content = sec.get("content", "")
+                    for pattern in conclusion_patterns:
+                        if re.search(pattern, content):
+                            conclusion_sections.append(i)
+                            break
+
+                logger.info(f"Found {len(conclusion_sections)} conclusion section(s)")
+                self.update_progress(40, f"Found {len(conclusion_sections)} conclusion section(s)")
+
+                # Translate conclusion sections
+                async def process_conclusion_section(i, sec):
+                    async with sem:
+                        translated = await self.translate(sec, envs, captions, session)
+                        return i, translated
+
+                if conclusion_sections:
+                    tasks = [process_conclusion_section(i, sections[i]) for i in conclusion_sections]
+                    completed = 0
+                    total = len(tasks)
+
+                    for future in asyncio.as_completed(tasks):
+                        i, translated_section = await future
+                        sections[i] = translated_section
+                        completed += 1
+                        progress = int(40 + 50 * completed / total)
+                        self.update_progress(progress, f"Translated {completed}/{total} conclusion sections")
+
+                # 3. For all other sections, copy content to trans_content (skip translation)
+                for i, sec in enumerate(sections):
+                    if i not in conclusion_sections and "trans_content" not in sec:
+                        sec["trans_content"] = sec["content"]
+
+                # For all other envs, copy content to trans_content
+                for env in envs:
+                    if env.get("env_name", "").lower() != "abstract" and "trans_content" not in env:
+                        env["trans_content"] = env["content"]
+
+                # For all captions, copy content to trans_content if not translated
+                for cap in captions:
+                    if "trans_content" not in cap:
+                        cap["trans_content"] = cap["content"]
+
+                # Save results
+                self.save_file(Path(self.output_dir, "sections_map.json"), "json", sections)
+                self.save_file(Path(self.output_dir, "captions_map.json"), "json", captions)
+                self.save_file(Path(self.output_dir, "envs_map.json"), "json", envs)
+
+                logger.info("Quick scan mode completed: abstract and conclusion translated")
+                self.update_progress(100, "Quick scan completed: abstract and conclusion translated")
+        
+        # Save terminology table if enabled
+        if self.generate_terminology and self.terminology_table:
+            self._save_terminology_table()
+            logger.info(f"Terminology table generated with {len(self.terminology_table)} terms")
 
     async def translate(self,
                         section: Dict[str, Any],
@@ -336,6 +428,16 @@ class TranslatorAgent(BaseToolAgent):
             type="sec",
             session=session)
 
+        elif self.trans_mode == 3:
+            # Quick scan mode: translate like mode 0
+            transed_section["trans_content"] = await self._request_llm_for_trans(
+                pm.section_system_prompt,
+                section["content"],
+                fail_part=section_num,
+                type="sec",
+                session=session
+            )
+
         elif self.trans_mode == 2:
             """
             Combined with terminology translation
@@ -371,7 +473,18 @@ class TranslatorAgent(BaseToolAgent):
                     self._updated_term_dict_v2(term_text)
             except Exception as e:
                 return transed_section
-
+        
+        # Extract terminology if enabled (for all modes except mode 2 which does its own extraction)
+        if self.generate_terminology and self.trans_mode != 2:
+            try:
+                src_text = self._extract_text_from_tex(transed_section["content"])
+                tgt_text = self._extract_text_from_tex(transed_section["trans_content"])
+                terms = await self._extract_terminology_from_translation(src_text, tgt_text, session)
+                if terms:
+                    self.terminology_table.extend(terms)
+            except Exception as e:
+                logger.warning(f"Failed to extract terminology from section: {e}")
+        
         return transed_section
 
     async def _translate_caption(self, caption: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
@@ -488,6 +601,17 @@ class TranslatorAgent(BaseToolAgent):
                 except Exception as e:
                     return transed_env
 
+        elif self.trans_mode == 3:
+            # Quick scan mode: translate if needed (same as mode 0)
+            if env["need_trans"]:
+                transed_env["trans_content"] = await self._request_llm_for_trans(pm.env_system_prompt,
+                                                            env["content"], 
+                                                            fail_part=placeholder,
+                                                            type="env",
+                                                            session=session
+                                                            )                
+            else:
+                transed_env["trans_content"] = env["content"]
 
         return transed_env
 
@@ -932,6 +1056,85 @@ class TranslatorAgent(BaseToolAgent):
             if "placeholder" in item:
                 placeholder_list.append(item["placeholder"])
 
+
         for item in placeholder_list:
             self.term_dict[item] = item
+
+    def _save_terminology_table(self) -> None:
+        """
+        Save terminology table to CSV file in output directory.
+        """
+        import csv
+        
+        if not self.terminology_table:
+            logger.warning("Terminology table is empty, skipping save")
+            return
+        
+        # 去重
+        unique_terms = list(dict.fromkeys(self.terminology_table))
+        
+        term_file = Path(self.output_dir) / "terminology_table.csv"
+        try:
+            with open(term_file, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Source Term', 'Translation'])
+                writer.writerows(unique_terms)
+            logger.info(f"Terminology table saved to {term_file} with {len(unique_terms)} unique terms")
+        except Exception as e:
+            logger.error(f"Failed to save terminology table: {e}")
+    
+    async def _extract_terminology_from_translation(
+        self, 
+        src_text: str, 
+        tgt_text: str, 
+        session: aiohttp.ClientSession
+    ) -> List[Tuple[str, str]]:
+        """
+        Extract terminology pairs from source and target text.
+        Returns list of (source_term, target_term) tuples.
+        """
+        if not self.generate_terminology:
+            return []
+        
+        try:
+            # 使用现有的术语提取逻辑
+            term_text = await self._request_llm_for_extract_terms(
+                pm.extract_terminology_system_prompt,
+                src_text,
+                tgt_text,
+                session=session
+            )
+            
+            # 解析返回的术语文本为术语对列表
+            terms = self._parse_terminology_text(term_text)
+            return terms
+        except Exception as e:
+            logger.warning(f"Failed to extract terminology: {e}")
+            return []
+    
+    def _parse_terminology_text(self, term_text: str) -> List[Tuple[str, str]]:
+        """
+        Parse terminology text from LLM response into list of tuples.
+        Expects format like: "term1: translation1\nterm2: translation2"
+        """
+        terms = []
+        if not term_text or term_text == "N/A":
+            return terms
+        
+        lines = term_text.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # 尝试多种分隔符
+            for sep in [':', '：', '|', '-', '->']:
+                if sep in line:
+                    parts = line.split(sep, 1)
+                    if len(parts) == 2:
+                        src = parts[0].strip()
+                        tgt = parts[1].strip()
+                        if src and tgt:
+                            terms.append((src, tgt))
+                        break
+        return terms
 

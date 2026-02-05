@@ -121,20 +121,42 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 **请求:**
 ```json
 {
-  "target_lang": "zh",
-  "config": {
-    "preserve_math": true,
-    "preserve_citations": true
+  "target_language": "zh",
+  "source_language": "en",
+  "advanced_config": {
+    "translation_mode": "full",
+    "compile_strategy": "auto",
+    "enable_verification": true,
+    "translation_model": "gpt-4.1-mini",
+    "generate_terminology_table": true,
+    "use_author_api": true,
+    "custom_base_url": null,
+    "custom_api_key": null
   }
 }
 ```
+
+**高级配置说明：**
+- `translation_mode`: 翻译模式
+  - `"full"`: 全文翻译
+  - `"quick_scan"`: 快速筛查（仅摘要和结论）
+- `compile_strategy`: PDF 编译策略
+  - `"auto"`: 自动选择（默认）
+  - `"pdflatex"`: 使用 pdflatex
+  - `"xelatex"`: 使用 xelatex
+- `enable_verification`: 是否启用翻译质量验证
+- `translation_model`: LLM 模型名称
+- `generate_terminology_table`: 是否生成术语对照表
+- `use_author_api`: 是否使用默认 API (false 时使用自定义 API)
+- `custom_base_url`: 自定义 API 端点（可选）
+- `custom_api_key`: 自定义 API 密钥（可选）
 
 **响应:**
 ```json
 {
   "task_id": "abc123...",
-  "status": "processing",
-  "message": "Translation started"
+  "status": "started",
+  "message": "Translation started in background"
 }
 ```
 
@@ -179,6 +201,13 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 下载编译日志
 
 **响应:** 日志文件
+
+#### `GET /download/{task_id}/terminology`
+下载术语对照表（CSV 格式）
+
+**响应:** CSV 文件流
+
+**说明:** 仅在翻译时启用 `generate_terminology_table` 时可用
 
 #### `GET /tasks`
 列出所有任务(调试用)
@@ -300,26 +329,29 @@ backend/
 │   ├── core/
 │   │   ├── config.py              # 配置管理
 │   │   └── enums.py               # 枚举定义(TaskStatus等)
+│   ├── models/                    # 数据模型
+│   │   └── config_models.py       # 高级配置模型 (New)
 │   ├── api/
 │   │   └── routes/
 │   │       ├── arxiv.py           # arXiv下载端点
-│   │       ├── upload.py          # 文件上传端点
-│   │       ├── translate.py       # 翻译端点
+│   │       ├── upload.py          # 文件上传端点 (支持文件夹)
+│   │       ├── translate.py       # 翻译端点 (支持高级配置)
 │   │       ├── task.py            # 任务状态端点
-│   │       └── download.py        # 下载端点
+│   │       └── download.py        # 下载端点 (包含术语表)
 │   └── services/
-│       ├── task_manager.py        # 任务管理器(内存存储)
+│       ├── task_manager.py        # 任务管理器 (支持配置持久化)
+│       ├── latex_validator.py     # LaTeX目录校验器 (New)
 │       ├── agents/                # 代理系统
 │       │   ├── coordinator_agent.py
 │       │   ├── parser_agent.py
-│       │   ├── translator_agent.py
+│       │   ├── translator_agent.py  # (支持术语提取和快速筛查)
 │       │   ├── generator_agent.py
 │       │   └── validator_agent.py
 │       └── latex/                 # LaTeX处理
 │           ├── parser.py          # AST解析器
 │           ├── compiler.py        # 智能编译器(pdflatex/xelatex)
 │           ├── utils.py           # 工具函数(arXiv下载等)
-│           ├── prompts.py         # LLM提示词
+│           ├── prompts.py         # LLM提示词 (优化术语提取)
 │           └── reconstruct.py     # 代码重构器
 ├── data/                          # 数据目录
 │   ├── uploads/                   # 上传文件
@@ -480,7 +512,7 @@ python backend/test_api_comprehensive.py
 
 测试覆盖:
 - ✅ 错误处理(无效ID、文件缺失)
-- ✅ 编译器回退机制(pdflatex -> xelatex)
+- ✅ 编译器智能机制
 - ✅ 错误对比与选择
 - ✅ CLI兼容性
 

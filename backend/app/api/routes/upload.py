@@ -161,9 +161,22 @@ async def upload_file(file: UploadFile = File(...)):
         
         elif file_ext in [".tar", ".tar.gz", ".tgz"]:
             logger.info(f"Extracting TAR file: {file_path}")
-            with tarfile.open(file_path, 'r:*') as tar_ref:
-                tar_ref.extractall(task_dir)
-            logger.info("TAR extraction complete")
+            try:
+                # Use 'r:*' to auto-detect compression format
+                with tarfile.open(file_path, mode='r:*') as tar_ref:
+                    # Filter for security - avoid absolute paths and path traversal
+                    for member in tar_ref.getmembers():
+                        if member.name.startswith('/') or '..' in member.name:
+                            logger.warning(f"Skipping potentially unsafe path: {member.name}")
+                            continue
+                        tar_ref.extract(member, path=task_dir)
+                logger.info("TAR extraction complete")
+            except tarfile.ReadError as e:
+                logger.error(f"Invalid tar file format: {e}")
+                raise ValueError(f"TAR 文件格式无效或已损坏: {e}")
+            except tarfile.TarError as e:
+                logger.error(f"TAR extraction error: {e}")
+                raise ValueError(f"TAR 文件解压失败: {e}")
         
         elif file_ext == ".rar":
             logger.info(f"Extracting RAR file: {file_path}")
@@ -244,6 +257,20 @@ async def upload_file(file: UploadFile = File(...)):
     except HTTPException:
         # Re-raise HTTP exceptions without wrapping
         raise
+    
+    except ValueError as e:
+        # Extraction format errors (TAR/RAR issues) - 422 Unprocessable Entity
+        err_msg = str(e)
+        logger.error(f"Extraction failed due to format issue: {e}")
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            error=err_msg
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=err_msg
+        )
     
     except Exception as e:
         err_msg = f"文件上传失败: {str(e)}"

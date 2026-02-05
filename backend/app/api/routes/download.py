@@ -526,3 +526,65 @@ async def download_logs(task_id: str):
         media_type="text/plain",
         filename=f"compilation_log_{task_id}.log"
     )
+
+
+@router.get("/download/{task_id}/terminology")
+async def download_terminology(task_id: str):
+    """
+    Download terminology table CSV
+    
+    Args:
+        task_id: Task ID
+    
+    Returns:
+        CSV file as download attachment
+    
+    Raises:
+        HTTPException: If task not found or terminology table not available
+    """
+    logger.info(f"Terminology table download request for task: {task_id}")
+    
+    # Get task
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task not found: {task_id}"
+        )
+    
+    # Check if task is completed
+    if task["status"] not in [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_WITH_WARNINGS.value]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Translation not completed. Current status: {task['status']}"
+        )
+    
+    # Get output directory
+    output_dir = Path(task.get("output_path", ""))
+    if not output_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Output directory not found"
+        )
+    
+    # Look for terminology table CSV
+    terminology_file = output_dir / "terminology_table.csv"
+    
+    # Try to find it in subdirectories as well
+    if not terminology_file.exists():
+        found_files = list(output_dir.rglob("terminology_table.csv"))
+        if found_files:
+            terminology_file = found_files[0]
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Terminology table not found. Make sure 'Generate Terminology Table' was enabled during translation."
+            )
+    
+    logger.info(f"Returning terminology table: {terminology_file}")
+    
+    return FileResponse(
+        path=str(terminology_file),
+        media_type="text/csv",
+        filename=f"terminology_{task_id}.csv"
+    )

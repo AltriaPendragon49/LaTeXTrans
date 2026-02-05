@@ -5,8 +5,8 @@
  * All configuration options are optional - users can translate without configuring anything.
  */
 
-/** Translation mode options */
-export type TranslationMode = 'full' | 'abstract' | 'terminology'
+/** Translation mode options - 只保留全文翻译和快速筛查 */
+export type TranslationMode = 'full' | 'quick_scan'
 
 /** LaTeX compile strategy options */
 export type CompileStrategy = 'pdflatex' | 'xelatex' | 'lualatex' | 'auto'
@@ -18,14 +18,14 @@ export type CompileStrategy = 'pdflatex' | 'xelatex' | 'lualatex' | 'auto'
  * All fields have sensible defaults.
  */
 export interface AdvancedConfig {
-    /** Translation mode: full document, abstract only, or terminology extraction */
+    /** Translation mode: full document or quick_scan (abstract + conclusion only) */
     translation_mode: TranslationMode
     /** LaTeX compile strategy */
     compile_strategy: CompileStrategy
     /** Enable dual-model verification for quality */
     enable_verification: boolean
-    /** Generate bilingual PDF output */
-    bilingual_output: boolean
+    /** Generate terminology reference table (CSV) */
+    generate_terminology_table: boolean
     /** Translation LLM model name */
     translation_model: string
     /** Use author's API (default). When true, custom settings are ignored */
@@ -56,7 +56,7 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
     translation_mode: 'full',
     compile_strategy: 'auto',
     enable_verification: true,
-    bilingual_output: true,
+    generate_terminology_table: true,  // 默认启用术语表生成
     translation_model: 'gpt-4.1-mini',
     use_author_api: true,
     custom_base_url: undefined,

@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useStore } from "@/store/useStore"
+import { TerminologyTable } from "@/components/TerminologyTable"
 
 export default function ComparisonsPage() {
     // const [scale, setScale] = useState<number>(1.0) // Scale not needed for iframe
@@ -67,7 +68,8 @@ export default function ComparisonsPage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
-                    <Button variant="default" size="sm" className="ml-4" onClick={handleDownload} disabled={!downloadUrl}>
+                    <TerminologyTable taskId={taskId} />
+                    <Button variant="default" size="sm" className="ml-2" onClick={handleDownload} disabled={!downloadUrl}>
                         <Download className="mr-2 h-4 w-4" /> Download PDF
                     </Button>
                 </div>

@@ -11,7 +11,7 @@ Adapted from prototype system with:
 from typing import Dict, Any, Optional, Callable
 from .base_tool_agent import BaseToolAgent
 from backend.app.services.latex.reconstruct import LatexConstructor
-from backend.app.services.latex.compiler import compile_with_fallback, find_main_tex_file
+from backend.app.services.latex.compiler import compile_with_intelligent_fallback, find_main_tex_file
 from pathlib import Path
 import os
 import shutil
@@ -31,6 +31,7 @@ class GeneratorAgent(BaseToolAgent):
         self.config = config
         self.project_dir = project_dir
         self.output_dir = output_dir
+        self.latex_engine = config.get("latex_engine", "auto")
 
     def execute(self) -> Optional[str]:
         """
@@ -85,10 +86,21 @@ class GeneratorAgent(BaseToolAgent):
         
         logger.info(f"Compiling {Path(main_tex).name}...")
         
+        # Build engine order based on user configuration
+        preferred_order = None
+        if self.latex_engine and self.latex_engine != "auto":
+            # User selected specific engine - prioritize it
+            all_engines = ["pdflatex", "xelatex", "lualatex"]
+            if self.latex_engine in all_engines:
+                all_engines.remove(self.latex_engine)
+                preferred_order = [self.latex_engine] + all_engines
+                logger.info(f"Using user-specified engine order: {preferred_order}")
+        
         # Use new intelligent compiler with fallback
-        result = compile_with_fallback(
+        result = compile_with_intelligent_fallback(
             tex_file=str(main_tex),
-            output_dir=transed_latex_dir
+            output_dir=transed_latex_dir,
+            preferred_order=preferred_order
         )
 
         pdf_file = result.get("pdf_path")

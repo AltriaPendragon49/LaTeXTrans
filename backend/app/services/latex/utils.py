@@ -803,17 +803,44 @@ def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
         os.makedirs(extract_dir, exist_ok=True)
         
         try:
-            with tarfile.open(file_path, 'r:gz') as tar:
-                tar.extractall(path=extract_dir)
+            # Use 'r:*' to auto-detect compression format (supports gz, bz2, xz, or plain tar)
+            # This is crucial because arXiv files may have .tar.gz extension but use different compression
+            with tarfile.open(file_path, mode='r:*') as tar:
+                # Filter for security - avoid absolute paths and path traversal
+                for member in tar.getmembers():
+                    if member.name.startswith('/') or '..' in member.name:
+                        logger.warning(f"Skipping potentially unsafe path: {member.name}")
+                        continue
+                    tar.extract(member, path=extract_dir)
             logger.info(f"[SUCCESS] {arxiv_id} extracted to {extract_dir}")
             
             # Remove the tar.gz file after extraction
             os.remove(file_path)
             logger.debug(f"Removed tar.gz file: {file_path}")
             
+        except tarfile.ReadError as e:
+            # Sometimes arXiv returns a single TeX file without tar wrapper
+            logger.warning(f"[WARN] {file_path} is not a valid tar archive, trying as gzip: {e}")
+            try:
+                import gzip
+                # Try to decompress as plain gzip file
+                with gzip.open(file_path, 'rb') as gz_file:
+                    content = gz_file.read()
+                    # Check if it's a single TeX file
+                    if content.startswith(b'%') or b'\\documentclass' in content[:1024]:
+                        tex_file_path = os.path.join(extract_dir, f"{arxiv_id}.tex")
+                        with open(tex_file_path, 'wb') as f:
+                            f.write(content)
+                        logger.info(f"[SUCCESS] Single TeX file extracted to {tex_file_path}")
+                        os.remove(file_path)
+                    else:
+                        logger.error(f"[FAIL] Unknown file format for {file_path}")
+                        return None
+            except Exception as inner_e:
+                logger.error(f"[FAIL] Failed to extract {file_path} as gzip: {inner_e}")
+                return None
         except tarfile.TarError as e:
             logger.error(f"[FAIL] Failed to extract {file_path}: {e}")
-            # Return None to indicate failure
             return None
         
         return extract_dir

@@ -1,4 +1,4 @@
-import { Settings2, Info, Languages } from 'lucide-react'
+import { Settings2, Info, Languages, BookText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 import {
@@ -150,8 +150,7 @@ export const AdvancedConfig = () => {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="full">全文翻译</SelectItem>
-                            <SelectItem value="abstract">仅摘要</SelectItem>
-                            <SelectItem value="terminology">术语提取</SelectItem>
+                            <SelectItem value="quick_scan">文献快速筛查 (仅摘要+结论)</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -220,14 +219,17 @@ export const AdvancedConfig = () => {
 
                         <div className="flex items-center justify-between space-x-4 p-3 rounded-lg border bg-card/30 flex-1">
                             <div className="space-y-0.5">
-                                <Label className="text-base">双语 PDF</Label>
+                                <div className="flex items-center gap-2">
+                                    <BookText className="w-4 h-4 text-muted-foreground" />
+                                    <Label className="text-base">生成术语表</Label>
+                                </div>
                                 <p className="text-xs text-muted-foreground">
-                                    输出包含原文和译文对照
+                                    输出原文/译文术语对照表
                                 </p>
                             </div>
                             <SimpleSwitch
-                                checked={advanced_config.bilingual_output}
-                                onCheckedChange={(v) => updateConfig('bilingual_output', v)}
+                                checked={advanced_config.generate_terminology_table}
+                                onCheckedChange={(v) => updateConfig('generate_terminology_table', v)}
                             />
                         </div>
                     </div>

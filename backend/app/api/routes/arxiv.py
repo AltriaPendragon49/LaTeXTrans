@@ -23,6 +23,17 @@ settings = get_settings()
 task_manager = get_task_manager()
 
 
+# Custom exceptions for better error handling
+class ArxivNoSourceError(Exception):
+    """arXiv paper has no TeX source available"""
+    pass
+
+
+class ArxivExtractionError(Exception):
+    """Failed to extract arXiv source archive"""
+    pass
+
+
 class ArxivRequest(BaseModel):
     """arXiv download request"""
     arxiv_id: str = Field(..., description="arXiv paper ID (e.g., '2508.18791' or URL)")
@@ -81,7 +92,7 @@ async def download_arxiv(request: ArxivRequest):
         )
         
         if not source_dirs:
-            raise Exception(f"Failed to download arXiv paper {arxiv_id}")
+            raise ArxivNoSourceError(f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码")
         
         source_path = source_dirs[0]
         
@@ -105,6 +116,34 @@ async def download_arxiv(request: ArxivRequest):
             source_path=source_path
         )
     
+    except ArxivNoSourceError as e:
+        # 404 - No TeX source available for this paper
+        logger.warning(f"No TeX source for arXiv {arxiv_id}: {e}")
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            error=str(e),
+            message=f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码"
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=str(e)
+        )
+    
+    except ArxivExtractionError as e:
+        # 422 - Extraction failed (unprocessable)
+        logger.error(f"Failed to extract arXiv {arxiv_id}: {e}")
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            error=str(e),
+            message=f"arXiv 论文 {arxiv_id} 解压失败"
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
+        )
+    
     except Exception as e:
         logger.error(f"Failed to download arXiv {arxiv_id}: {e}")
         
@@ -118,7 +157,7 @@ async def download_arxiv(request: ArxivRequest):
         
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to download arXiv paper: {str(e)}"
+            detail=f"arXiv 论文下载失败: {str(e)}"
         )
 
 

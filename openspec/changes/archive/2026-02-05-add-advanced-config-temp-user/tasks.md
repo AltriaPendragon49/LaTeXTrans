@@ -18,11 +18,12 @@
 
 ### 2.1 高级配置组件
 - [x] 创建 `src/components/AdvancedConfig.tsx` 组件
-  - [x] 翻译模式选择（全文/摘要/术语优先）
+  - [x] 翻译模式选择（全文/文献快速筛查）
   - [x] 编译策略选择（pdflatex/xelatex/自动）
   - [x] 启用验证代理开关
   - [x] 生成双语 PDF 开关
   - [x] 翻译模型选择
+  - [ ] 生成术语对照表开关（新增）
   - [x] 自定义 API Key 输入（可选）
 - [x] 组件使用 zustand store 管理状态
 
@@ -98,18 +99,14 @@
 ## 阶段 7: 验证与文档
 
 ### 7.1 功能验证
-- [ ] 高级配置所有选项真实影响翻译行为
+- [x] 高级配置所有选项真实影响翻译行为
 - [x] 拖拽上传 LaTeX 目录 → 校验 → 翻译 → 下载
 - [x] 拖拽上传 ZIP → 解压 → 校验 → 翻译 → 下载
 - [x] 无效目录（无 .tex 文件）返回明确错误
 
 ### 7.2 配置持久化验证
 - [x] 刷新页面后配置重置为默认值
-- [ ] 任务记录中保留创建时的配置快照
-
-### 7.3 文档更新
-- [ ] 更新 frontend/README.md
-- [ ] 更新 backend/README.md
+- [x] 任务记录中保留创建时的配置快照
 
 ---
 
@@ -137,6 +134,45 @@
 - [x] 下载成功后设置 `status: 'ready'` 使 Start 按钮可用
 - [x] `DropZone.processFile` 开始时调用 `reset()`
 
+---
+
+## 阶段 9: 翻译模式重构与术语表功能
+
+> 来源：配置问题修复讨论
+
+### 9.1 翻译模式更新
+- [x] 将 `abstract` 模式重命名为 `quick_scan`（文献快速筛查）
+- [x] 更新前端 UI 选项文案：`全文翻译` → `文献快速筛查`
+- [x] 后端 `TranslatorAgent` 实现快速筛查逻辑：
+  - [x] 仅翻译 `abstract` 环境内容
+  - [x] 仅翻译 `conclusion` 或 `conclusions` 环境/章节内容
+  - [x] 其他内容直接复制（跳过翻译）
+- [x] 更新 `TRANSLATION_MODE_MAP` 映射
+- [x] 更新 `config_models.py` 中的枚举定义
+
+### 9.2 术语表生成功能
+- [x] 添加 `generate_terminology_table` 配置项（前后端）
+- [x] 后端 `TranslatorAgent` 支持术语提取并生成 CSV 术语表
+- [x] 将术语表保存到输出目录（`terminology_table.csv`）
+- [x] 前端结果页新增"术语对照表"按钮：
+  - [x] 点击显示/隐藏术语表（Sheet 组件）
+  - [x] 支持单独下载术语表文件
+
+### 9.3 配置问题修复
+- [x] 修复 `translation_model` 配置未生效问题
+  - [x] 更新 `build_llm_config()` 在使用作者 API 时也应用用户指定的模型
+
+---
+
+## 阶段 10: 文档更新
+
+### 10.1 前端文档
+- [x] 更新 `frontend/README.md` 添加高级配置和拖拽上传说明
+
+### 10.2 后端文档
+- [x] 更新 `backend/README.md` 添加新增接口和配置说明
+
+---
 
 ## 依赖关系
 

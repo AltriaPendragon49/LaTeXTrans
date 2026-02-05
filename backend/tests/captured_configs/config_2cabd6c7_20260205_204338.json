@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "task_id": "2cabd6c7-a8ff-4c33-af1d-b9b13a4817c3",
+    "captured_at": "2026-02-05T20:43:38.638783",
+    "timestamp": "20260205_204338"
+  },
+  "advanced_config": {
+    "translation_mode": "quick_scan",
+    "compile_strategy": "auto",
+    "enable_verification": true,
+    "bilingual_output": true,
+    "translation_model": "gpt-4.1-mini",
+    "use_author_api": false,
+    "custom_base_url": "https://wzw.pp.ua",
+    "custom_api_key": "sk-6PhQS1TndBCSqvR48gUZV3gpvfwkrwURGZ0o39aTEdzqSTp1"
+  },
+  "agent_config": {
+    "sys_name": "LaTeXTrans",
+    "target_language": "zh",
+    "source_language": "en",
+    "mode": 3,
+    "latex_engine": "auto",
+    "use_verification_agent": true,
+    "bilingual_mode": true,
+    "llm_config": {
+      "base_url": "https://wzw.pp.ua/v1/chat/completions",
+      "api_key": "sk-6PhQS1TndBCSqvR48gUZV3gpvfwkrwURGZ0o39aTEdzqSTp1",
+      "model": "gpt-4.1-mini",
+      "timeout": 60
+    }
+  },
+  "llm_config": {
+    "base_url": "https://wzw.pp.ua/v1/chat/completions",
+    "model": "gpt-4.1-mini",
+    "timeout": 60,
+    "api_key_masked": "********************"
+  },
+  "additional_info": {
+    "target_language": "zh",
+    "source_language": "en",
+    "source_path": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\uploads\\2cabd6c7-a8ff-4c33-af1d-b9b13a4817c3",
+    "output_dir": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\outputs\\2cabd6c7-a8ff-4c33-af1d-b9b13a4817c3"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "task_id": "bb829bca-e836-48bc-9abd-3220509b4ebf",
+    "captured_at": "2026-02-05T21:25:20.569188",
+    "timestamp": "20260205_212520"
+  },
+  "advanced_config": {
+    "translation_mode": "full",
+    "compile_strategy": "auto",
+    "enable_verification": true,
+    "generate_terminology_table": true,
+    "translation_model": "gpt-4.1-mini",
+    "use_author_api": true,
+    "custom_base_url": null,
+    "custom_api_key": null
+  },
+  "agent_config": {
+    "sys_name": "LaTeXTrans",
+    "target_language": "zh",
+    "source_language": "en",
+    "mode": 0,
+    "latex_engine": "auto",
+    "use_verification_agent": true,
+    "generate_terminology": true,
+    "llm_config": {
+      "api_key": "sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
+      "base_url": "https://aicanapi.com/v1/chat/completions",
+      "model": "gpt-4.1-mini",
+      "timeout": 60
+    }
+  },
+  "llm_config": {
+    "base_url": "https://aicanapi.com/v1/chat/completions",
+    "model": "gpt-4.1-mini",
+    "timeout": 60,
+    "api_key_masked": "********************"
+  },
+  "additional_info": {
+    "target_language": "zh",
+    "source_language": "en",
+    "source_path": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\uploads\\bb829bca-e836-48bc-9abd-3220509b4ebf\\2602.03513",
+    "output_dir": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\outputs\\bb829bca-e836-48bc-9abd-3220509b4ebf"
+  }
+}

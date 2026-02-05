@@ -81,6 +81,7 @@ class CoordinatorAgent:
             project_dir=self.project_dir,
             output_dir=transed_project_dir,
             trans_mode=self.mode,
+            generate_terminology=self.config.get("generate_terminology", False),
             on_progress=lambda s, p, m: self.update_progress(10 + int(p * 0.6), m)
         )
         await translator_agent.execute()
@@ -99,20 +100,29 @@ class CoordinatorAgent:
         errors_report = validator_agent.execute()
         
         # Step 4: Retry if needed (75% - 85% total progress)
+        # NOTE: Quick scan mode (mode == 3) skips repair to preserve semantic boundary
         MAX_RETRIES = 3
         retry_count = 0
-        if errors_report:
-            translator_agent.trans_mode = 1
+        
+        if self.mode == 3:
+            # Quick scan mode: skip repair to preserve semantic boundary
+            logger.info("Quick scan mode: skipping error repair to preserve translation boundary")
+            if errors_report:
+                logger.warning(f"Quick scan mode detected {len(errors_report)} validation errors, but repair is disabled")
+        else:
+            # Normal modes: perform repair if errors exist
+            if errors_report:
+                translator_agent.trans_mode = 1
 
-        while errors_report and retry_count < MAX_RETRIES:
-            logger.info(f"Retrying translation for errors, attempt {retry_count + 1}/{MAX_RETRIES}")
-            self.update_progress(75 + int((retry_count / MAX_RETRIES) * 10), 
-                               f"Retrying errors (attempt {retry_count + 1}/{MAX_RETRIES})")
-            
-            translator_agent.errors_report = errors_report
-            await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
-            errors_report = validator_agent.execute(errors_report)
-            retry_count += 1
+            while errors_report and retry_count < MAX_RETRIES:
+                logger.info(f"Retrying translation for errors, attempt {retry_count + 1}/{MAX_RETRIES}")
+                self.update_progress(75 + int((retry_count / MAX_RETRIES) * 10), 
+                                   f"Retrying errors (attempt {retry_count + 1}/{MAX_RETRIES})")
+                
+                translator_agent.errors_report = errors_report
+                await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
+                errors_report = validator_agent.execute(errors_report)
+                retry_count += 1
         
         self.update_progress(85, "Validation completed")
 

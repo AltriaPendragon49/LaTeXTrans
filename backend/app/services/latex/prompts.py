@@ -273,50 +273,83 @@ def init_prompts(source_lang: str, target_lang: str):
     """
 
     extract_terminology_system_prompt = f"""
-    You are an en-zh bilingual expert. Given an {source_lang} source sentence and its corresponding {target_lang} translation, your task is to extract all domain-specific terms from the {source_lang} sentence, along with their exact translations as they appear in the {target_lang} sentence.
-    
-    These include:
-    - Technical terms and expressions
-    - Abbreviations or acronyms (e.g. RL, LM)
-    - Named entities or model names (e.g. COMET)
-    - Concept-specific noun phrases (e.g. optimization objective, long-term reward)
-    
-    The translation **must match exactly** how it appears in the {target_lang} sentence. Do not invent or guess new translations.
-    
-    Output the result as a list of aligned term pairs in the following format:
-    
+    You are an en-zh bilingual expert assisting an academic LaTeX translation system.
+
+    You are given:
+    - One {source_lang} source sentence
+    - Its corresponding {target_lang} translation
+
+    Your task is to extract ONLY high-value domain-specific terminology that is important for maintaining translation consistency across a scientific document.
+
+    ---
+
+    ### What counts as a valid term
+
+    ONLY extract terms that satisfy ALL of the following:
+
+    1. The term represents a **technical or domain-specific concept**, such as:
+    - Mathematical, scientific, or technical concepts
+    - Named theorems, methods, models, or constructions
+    - Established terminology in the field
+    2. The term is **likely to reappear** in later sections of the document.
+    3. Inconsistent translation of this term would **harm readability or correctness**.
+    4. The term appears as a **meaningful noun phrase**, not a fragment.
+
+    ---
+
+    ### Do NOT extract the following
+
+    Do NOT extract any of these, even if they appear aligned:
+
+    - Section titles or structural text (e.g., ACKNOWLEDGEMENTS, PROOF, Lemma, Theorem)
+    - Author names or personal names
+    - Single-letter symbols or pure mathematical variables (e.g., E, K, X, p)
+    - LaTeX commands, environments, or expressions
+    - Obvious or generic words with trivial translations (e.g., code, author, proof, group, number)
+    - Terms that appear only once and are not clearly domain-specific
+
+    ---
+
+    ### Translation alignment rule
+
+    - The {target_lang} translation MUST match **exactly** how the term appears in the provided translation.
+    - Do NOT invent, normalize, or improve translations.
+    - If the translation is unclear or implicit, do NOT extract the term.
+
+    ---
+
+    ### Output format
+
+    Output a list of aligned term pairs in the following format:
+
     "<{source_lang} Term>" - "<{target_lang} Translation>"
-    
-    If there are no such terms, output: `N/A`.
-    
-    Here are some examples of English translation into Chinese:
-    
-    Example 1:
-    <en source> Model Architecture Our evaluation model architecture follows COMET <cit.>, which employs the LM as an encoder and the feed-forward network as a regressor.
-    <zh translation> 模型架构 我们的评估模型架构遵循 COMET <cit.>，该架构采用语言模型（LM）作为编码器，前馈网络作为回归器。
-    <Proper nouns>
-    "Model Architecture" - "模型架构"
-    "evaluation model architecture" - "评估模型架构"
-    "COMET" - "COMET"
-    "LM" - "语言模型（LM）"
-    "encoder" - "编码器"
-    "feed-forward network" - "前馈网络"
-    "regressor" - "回归器"
-    
-    Example 2:
-    <en source> Reinforcement Learning The optimization objective of RL for sequence generation models is to maximize the long-term reward.
-    <zh translation> 强化学习 序列生成模型的强化学习优化目标是最大化长期奖励，
-    <Proper nouns>
-    "Reinforcement Learning" - "强化学习"
-    "sequence generation models" - "序列生成模型"
-    "RL" - "强化学习"
-    "optimization objective" - "优化目标"
-    "long-term reward" - "长期奖励"
-    
-    Now annotate all domain-specific term pairs in the following sentence:
+
+    - Extract **at most 10 terms**.
+    - If no valid terms exist, output exactly: `N/A`
+    - Do NOT include explanations, comments, or extra text.
+
+    ---
+
+    ### Example
+
+    <en source>
+    The gonality of a curve over a number field plays a key role in arithmetic geometry.
+
+    <zh translation>
+    曲线在数域上的丛度在算术几何中起着关键作用。
+
+    <Output>
+    "gonality" - "丛度"
+    "number field" - "数域"
+    "arithmetic geometry" - "算术几何"
+
+    ---
+
+    Now extract all valid terminology from the following:
+
     <source> {{src}}
     <translation> {{tgt}}
-    <Proper nouns>
+
     """
 
     get_summary_system_prompt = f"""

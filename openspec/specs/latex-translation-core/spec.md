@@ -1,7 +1,7 @@
 # latex-translation-core Specification
 
 ## Purpose
-TBD - created by archiving change add-web-mvp-platform. Update Purpose after archive.
+定义 LaTeX 翻译核心引擎规范，包括解析、翻译、编译流程及智能回退策略。
 ## Requirements
 ### Requirement: LaTeX Parsing and Translation
 The system SHALL parse LaTeX source files into an Abstract Syntax Tree (AST), translate extracted text content while preserving structure, and reconstruct valid LaTeX output.

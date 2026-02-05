@@ -143,7 +143,7 @@ async def run_translation(
             "mode": TRANSLATION_MODE_MAP.get(advanced_config.translation_mode, 0),
             "latex_engine": advanced_config.compile_strategy,
             "use_verification_agent": advanced_config.enable_verification,
-            "bilingual_mode": advanced_config.bilingual_output,
+            "generate_terminology": advanced_config.generate_terminology_table,
             "llm_config": llm_config
         }
         
