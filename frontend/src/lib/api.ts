@@ -33,6 +33,7 @@ export interface TaskStatusResponse {
     task_id: string
     status: string
     progress: number
+    stage?: string  // 当前阶段 (downloading, extracting, downloading_pdf, validating 等)
     message: string
     warnings?: string
     error?: string

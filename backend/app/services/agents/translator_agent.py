@@ -218,6 +218,26 @@ class TranslatorAgent(BaseToolAgent):
             self._save_terminology_table()
             logger.info(f"Terminology table generated with {len(self.terminology_table)} terms")
 
+    def _section_has_translatable_content(self, content: str) -> bool:
+        """
+        Check if a section (especially section 0) contains translatable text.
+        Returns True if there's meaningful text content after \begin{document}.
+        """
+        # Remove placeholders to check for actual text
+        text = re.sub(r'<PLACEHOLDER_[A-Z]+_\d+>', '', content)
+        # Remove LaTeX commands that don't contain translatable text
+        text = re.sub(r'\\(documentclass|usepackage|author|affiliation|email|date|maketitle|newpage|setcounter|makeatletter|makeatother|label|ref|eqref|cite|bibliography|bibliographystyle)\b[^\n]*', '', text)
+        # Remove begin/end document
+        text = re.sub(r'\\(begin|end)\{document\}', '', text)
+        # Remove comments
+        text = re.sub(r'%[^\n]*', '', text)
+        # Remove excessive whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Check if there's substantial text content (more than just LaTeX markup)
+        # Look for actual words (at least 50 characters of text content)
+        return len(text) > 50
+
     async def translate(self,
                         section: Dict[str, Any],
                         envs: List[Dict[str, Any]],
@@ -231,9 +251,16 @@ class TranslatorAgent(BaseToolAgent):
         placeholders_cap = re.findall(placeholder_pattern_cap, section["content"])
         placeholders_env = re.findall(placeholder_pattern_env, section["content"])
 
-
-        if(section["section"] == "-1" or section["section"] == "0"):
-            section = section
+        # Section -1 is LaTeX preamble, never translate
+        # Section 0 may contain main body text, translate if it has translatable content
+        if section["section"] == "-1":
+            section = section  # Skip preamble
+        elif section["section"] == "0":
+            if self._section_has_translatable_content(section["content"]):
+                logger.info(f"Section 0 contains translatable content, translating...")
+                section = await self._translate_section(section, session)
+            else:
+                section = section  # Skip if no translatable content
         else:
             section = await self._translate_section(section, session)  
 
@@ -295,7 +322,11 @@ class TranslatorAgent(BaseToolAgent):
         if sec_nums:
             self.log(f"Retranslating for {sec_nums}")
             for sec_num in sec_nums:
-                if sec_num == "-1" or sec_num == "0":
+                # Section -1 is preamble, always skip
+                # Section 0 should be translated if it has translatable content
+                if sec_num == "-1":
+                    continue
+                if sec_num == "0" and not self._section_has_translatable_content(secs[sec_dict.get(sec_num, 0)]["content"]):
                     continue
                 if sec_num in sec_dict:
                     i = sec_dict[sec_num]

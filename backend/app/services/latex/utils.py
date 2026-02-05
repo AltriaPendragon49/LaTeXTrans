@@ -770,9 +770,69 @@ def is_already_downloaded(arxiv_id: str, save_dir: str) -> bool:
     return os.path.exists(tar_path) or os.path.isdir(extracted_dir)
 
 
-def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
+class DownloadProgressCallback:
+    """进度回调类，用于在下载过程中更新任务进度"""
+    
+    def __init__(self, task_manager=None, task_id: str = None, stage: str = "downloading"):
+        """
+        Args:
+            task_manager: TaskManager 实例
+            task_id: 任务 ID
+            stage: 当前阶段名称 (downloading, extracting, downloading_pdf, validating)
+        """
+        self.task_manager = task_manager
+        self.task_id = task_id
+        self.stage = stage
+        # 定义各阶段的进度范围
+        self.stage_ranges = {
+            "downloading": (0, 30),      # 下载 TeX 源码 0-30%
+            "extracting": (30, 60),       # 解压文件 30-60%
+            "downloading_pdf": (60, 80),  # 下载 PDF 60-80%
+            "validating": (80, 100)       # 验证文件 80-100%
+        }
+    
+    def update(self, current: int, total: int):
+        """
+        更新进度
+        
+        Args:
+            current: 当前进度
+            total: 总量
+        """
+        if not self.task_manager or not self.task_id:
+            return
+        
+        start, end = self.stage_ranges.get(self.stage, (0, 100))
+        stage_progress = (current / total) if total > 0 else 0
+        overall_progress = int(start + (end - start) * stage_progress)
+        
+        # 获取阶段描述
+        stage_descriptions = {
+            "downloading": "正在下载 TeX 源码",
+            "extracting": "正在解压文件",
+            "downloading_pdf": "正在下载 PDF",
+            "validating": "正在验证文件"
+        }
+        message = f"{stage_descriptions.get(self.stage, self.stage)}: {int(stage_progress * 100)}%"
+        
+        self.task_manager.update_task(
+            task_id=self.task_id,
+            progress=overall_progress,
+            stage=self.stage,
+            message=message
+        )
+
+
+def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict, progress_callback=None):
     """
-    Download TeX source .tar.gz file (Streamlit removed)
+    Download TeX source .tar.gz file with progress tracking
+    
+    Args:
+        arxiv_id: arXiv paper ID
+        tex_url: URL to TeX source
+        save_dir: Directory to save files
+        headers: HTTP headers
+        progress_callback: Optional DownloadProgressCallback instance
     """
     # Ensure save directory exists
     os.makedirs(save_dir, exist_ok=True)
@@ -783,20 +843,23 @@ def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
         with requests.get(tex_url, headers=headers, stream=True, timeout=20) as r:
             r.raise_for_status()
             total_size = int(r.headers.get("Content-Length", 0))
+            downloaded = 0
 
-            with open(file_path, "wb") as f, tqdm(
-                desc=f"Download: {arxiv_id}",
-                total=total_size,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as bar:
+            with open(file_path, "wb") as f:
                 for chunk in r.iter_content(8192):
                     if chunk:
                         f.write(chunk)
-                        bar.update(len(chunk))
+                        downloaded += len(chunk)
+                        # 使用回调更新进度
+                        if progress_callback:
+                            progress_callback.update(downloaded, total_size)
         
         logger.info(f"[SUCCESS] {arxiv_id} successfully downloaded to {file_path}.")
+        
+        # 更新进度到解压阶段
+        if progress_callback:
+            progress_callback.stage = "extracting"
+            progress_callback.update(0, 1)
         
         # Extract the tar.gz file
         extract_dir = os.path.join(save_dir, arxiv_id)
@@ -806,12 +869,17 @@ def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
             # Use 'r:*' to auto-detect compression format (supports gz, bz2, xz, or plain tar)
             # This is crucial because arXiv files may have .tar.gz extension but use different compression
             with tarfile.open(file_path, mode='r:*') as tar:
+                members = tar.getmembers()
+                total_members = len(members)
                 # Filter for security - avoid absolute paths and path traversal
-                for member in tar.getmembers():
+                for i, member in enumerate(members):
                     if member.name.startswith('/') or '..' in member.name:
                         logger.warning(f"Skipping potentially unsafe path: {member.name}")
                         continue
                     tar.extract(member, path=extract_dir)
+                    # 每解压一个文件更新一次进度
+                    if progress_callback and total_members > 0:
+                        progress_callback.update(i + 1, total_members)
             logger.info(f"[SUCCESS] {arxiv_id} extracted to {extract_dir}")
             
             # Remove the tar.gz file after extraction
@@ -850,9 +918,20 @@ def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict):
         return None
 
 
-def batch_download_arxiv_tex(arxiv_ids: List[str], save_dir: str = "./tex_sources"):
+def batch_download_arxiv_tex(
+    arxiv_ids: List[str], 
+    save_dir: str = "./tex_sources",
+    task_manager=None,
+    task_id: str = None
+):
     """
-    Batch download multiple arXiv paper TeX sources (Streamlit removed)
+    Batch download multiple arXiv paper TeX sources with progress tracking
+    
+    Args:
+        arxiv_ids: List of arXiv IDs to download
+        save_dir: Directory to save sources
+        task_manager: Optional TaskManager instance for progress updates
+        task_id: Optional task ID for tracking
     """
     source_dirs = []
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -864,7 +943,14 @@ def batch_download_arxiv_tex(arxiv_ids: List[str], save_dir: str = "./tex_source
 
         tex_url = get_tex_url(arxiv_id, headers)
         if tex_url:
-            dir = download_tex(arxiv_id, tex_url, save_dir, headers)
+            # 创建下载阶段的进度回调
+            download_callback = DownloadProgressCallback(
+                task_manager=task_manager,
+                task_id=task_id,
+                stage="downloading"
+            ) if task_manager and task_id else None
+            
+            dir = download_tex(arxiv_id, tex_url, save_dir, headers, download_callback)
             if dir:  # Only add if download and extraction succeeded
                 source_dirs.append(dir)
             else:
@@ -874,19 +960,60 @@ def batch_download_arxiv_tex(arxiv_ids: List[str], save_dir: str = "./tex_source
             logger.warning(f"[SKIP] No TeX source found for {arxiv_id}. Please check the arXiv ID or the availability of the source.")
             continue
 
+        # 更新进度到 PDF 下载阶段
+        if task_manager and task_id:
+            pdf_callback = DownloadProgressCallback(
+                task_manager=task_manager,
+                task_id=task_id,
+                stage="downloading_pdf"
+            )
+            pdf_callback.update(0, 1)
+        
         # Download PDF file
         pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
         pdf_path = os.path.join(save_dir, arxiv_id, f"{arxiv_id}.pdf")
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
 
         try:
-            response = requests.get(pdf_url, headers=headers)
-            response.raise_for_status()
-            with open(pdf_path, 'wb') as f:
-                f.write(response.content)
+            # 使用流式下载以支持进度更新
+            with requests.get(pdf_url, headers=headers, stream=True, timeout=30) as response:
+                response.raise_for_status()
+                total_size = int(response.headers.get('Content-Length', 0))
+                downloaded = 0
+                
+                with open(pdf_path, 'wb') as f:
+                    for chunk in response.iter_content(8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            # 更新 PDF 下载进度
+                            if task_manager and task_id and total_size > 0:
+                                pdf_callback.update(downloaded, total_size)
+            
             logger.info(f"[SUCCESS] Downloaded PDF for {arxiv_id}")
+            
+            # PDF 下载完成，确保进度到达 100%
+            if task_manager and task_id:
+                pdf_callback.update(1, 1)
         except Exception as e:
             logger.error(f"[ERROR] Failed to download PDF for {arxiv_id}: {str(e)}")
+        
+        # 验证阶段
+        if task_manager and task_id:
+            validating_callback = DownloadProgressCallback(
+                task_manager=task_manager,
+                task_id=task_id,
+                stage="validating"
+            )
+            validating_callback.update(0, 1)
+            
+            # 验证 .tex 文件是否存在
+            tex_files = find_tex_files(dir) if dir else []
+            if tex_files:
+                logger.info(f"[SUCCESS] Validated {len(tex_files)} .tex files for {arxiv_id}")
+            
+            # 验证完成
+            validating_callback.update(1, 1)
 
     return source_dirs
 
