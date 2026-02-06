@@ -561,7 +561,7 @@ def get_captionof_pattern():
 
 
 def add_ctex_package(latex_code):
-    """Add ctex package for Chinese support"""
+    """Add ctex package for Chinese support and handle XeLaTeX compatibility"""
     if "\\usepackage[UTF8]{ctex}" not in latex_code:
         ctex_package = "\\usepackage[UTF8]{ctex}"
         documentclass = r'documentclass'
@@ -570,7 +570,53 @@ def add_ctex_package(latex_code):
         if match:
             position = match.end()
             latex_code = latex_code[:position] + "\n" + ctex_package + "\n" + latex_code[position:]
+    
+    # Comment out pdfLaTeX-specific commands for XeLaTeX compatibility
+    latex_code = _comment_out_pdflatex_commands(latex_code)
+    
     return latex_code
+
+
+def _comment_out_pdflatex_commands(latex_code: str) -> str:
+    """
+    Comment out pdfLaTeX-specific commands that are incompatible with XeLaTeX.
+    
+    This addresses the issue where commands like \\pdfoutput=1 cause compilation
+    errors when using XeLaTeX (needed for CJK support), resulting in blank first pages.
+    
+    Args:
+        latex_code: The LaTeX source code
+        
+    Returns:
+        Modified LaTeX code with pdfLaTeX-specific commands commented out
+    """
+    lines = latex_code.splitlines()
+    modified_lines = []
+    
+    # Commands that need to be commented out for XeLaTeX compatibility
+    pdflatex_patterns = [
+        r'\\pdfoutput\s*=\s*\d+',  # \pdfoutput=1 or \pdfoutput = 1
+    ]
+    
+    import re
+    combined_pattern = re.compile('|'.join(pdflatex_patterns))
+    
+    for line in lines:
+        stripped = line.lstrip()
+        # Skip already commented lines
+        if stripped.startswith('%'):
+            modified_lines.append(line)
+            continue
+            
+        # Check if line matches any pdfLaTeX-specific pattern
+        if combined_pattern.search(line):
+            # Comment out the line with explanation
+            modified_lines.append(f'% {line.lstrip()}  % Commented for XeLaTeX compatibility')
+            logger.debug(f"Commented out pdfLaTeX command: {line.strip()}")
+        else:
+            modified_lines.append(line)
+    
+    return '\n'.join(modified_lines)
 
 
 def add_ja_package(latex_code):

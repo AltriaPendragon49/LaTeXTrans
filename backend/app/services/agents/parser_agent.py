@@ -24,6 +24,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 不需要 LLM 判断的环境类型列表
+# 这些环境类型的翻译需求是确定的，无需调用 LLM
+SKIP_LLM_JUDGMENT_ENVS = [
+    # 文本类 - 通常需要翻译，但已在父级处理
+    'abstract', 'itemize', 'enumerate', 'description',
+    # 定理类 - 结构化内容，标题翻译在父级处理，内容由翻译器统一处理
+    'theorem', 'lemma', 'proposition', 'corollary', 'remark', 'proof',
+    'definition', 'example', 'exercise', 'problem', 'solution', 'note',
+    # 引用类 - 通常需要翻译
+    'quotation', 'quote', 'verse',
+]
+
 
 class ParserAgent(BaseToolAgent):
     def __init__(self, 
@@ -56,14 +68,33 @@ class ParserAgent(BaseToolAgent):
         latex_parser.parse(on_progress=self.on_progress)
 
         env_need_trans = []
+        skipped_by_type = 0
+        skipped_by_length = 0
+        
         if latex_parser.envs_json:
             for env in latex_parser.envs_json:
-                if env["need_trans"] and env["env_name"] not in ['abstract', 'itemize']:
-                    env_need_trans.append(env)
+                if not env["need_trans"]:
+                    continue
+                # 跳过已知不需要 LLM 判断的环境类型
+                if env["env_name"] in SKIP_LLM_JUDGMENT_ENVS:
+                    skipped_by_type += 1
+                    continue
+                # 跳过内容太短的环境（通常是占位符或无意义内容）
+                content = env.get("content", "")
+                if len(content.strip()) <= 20:
+                    skipped_by_length += 1
+                    continue
+                env_need_trans.append(env)
+        
+        total_envs = len(latex_parser.envs_json) if latex_parser.envs_json else 0
+        self.log(f"Environment filter stats: total={total_envs}, "
+                 f"need_llm_check={len(env_need_trans)}, "
+                 f"skipped_by_type={skipped_by_type}, "
+                 f"skipped_by_length={skipped_by_length}")
 
         if env_need_trans:
             self.log(f"Setting need_trans for {len(env_need_trans)} environments (parallel)")
-            self.update_progress(70, "Determining translation requirements for environments")
+            self.update_progress(70, f"Determining translation for {len(env_need_trans)} environments")
 
             placeholder_to_index = {
                 env["placeholder"]: i for i, env in enumerate(latex_parser.envs_json)
@@ -192,9 +223,11 @@ class ParserAgent(BaseToolAgent):
     ) -> None:
         """
         Parallel execution for environment translation judgment.
-        Uses asyncio.gather for concurrent LLM calls.
+        Uses asyncio.gather for concurrent LLM calls with progress tracking.
         """
         semaphore = asyncio.Semaphore(5)  # Limit concurrent calls to avoid rate limiting
+        total_envs = len(env_need_trans)
+        completed_count = [0]  # Use list for mutable reference in closure
         
         async with aiohttp.ClientSession() as session:
             async def judge_single_env(env: Dict) -> tuple:
@@ -205,6 +238,14 @@ class ParserAgent(BaseToolAgent):
                     session,
                     semaphore
                 )
+                # Update progress counter and report periodically
+                completed_count[0] += 1
+                if completed_count[0] % 5 == 0 or completed_count[0] == total_envs:
+                    progress = 70 + int(20 * completed_count[0] / total_envs)
+                    self.update_progress(
+                        progress, 
+                        f"Judging environments: {completed_count[0]}/{total_envs}"
+                    )
                 return (env["placeholder"], result)
             
             # Execute all judgments in parallel

@@ -173,13 +173,13 @@ export const useStore = create<TranslationState>((set, get) => ({
 
             const response = await downloadArxiv(arxivId)
 
-            //设置 task_id 并开始轮询下载进度
+            //设置 task_id 并开始 SSE 监听下载进度
             set({
                 taskId: response.task_id,
                 logs: [...get().logs, `Task created: ${response.task_id}`, response.message]
             })
 
-            // 启动专门的下载进度轮询
+            // 使用 SSE 替代轮询监听下载进度
             get().pollDownloadProgress()
 
         } catch (error: unknown) {
@@ -196,64 +196,182 @@ export const useStore = create<TranslationState>((set, get) => ({
     },
 
     pollDownloadProgress: () => {
-        if (downloadPollingInterval) return // 避免重复轮询
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+        const { taskId } = get()
+        if (!taskId) return
 
-        downloadPollingInterval = setInterval(async () => {
-            const { taskId } = get()
-            if (!taskId) {
-                if (downloadPollingInterval) clearInterval(downloadPollingInterval)
-                downloadPollingInterval = null
-                return
-            }
+        // 尝试建立 SSE 连接
+        let eventSource: EventSource | null = null
+        let sseRetryCount = 0
+        const MAX_SSE_RETRIES = 3
+
+        const connectSSE = () => {
+            if (downloadPollingInterval) return // 已降级为轮询
 
             try {
-                const statusData = await getTaskStatus(taskId)
+                const url = `${API_BASE_URL}/task/${taskId}/stream`
+                console.log('[Download SSE] Connecting to:', url)
 
-                // 更新下载进度和状态
-                set({
-                    downloadProgress: statusData.progress,
-                    downloadStage: statusData.stage || 'downloading',
-                    message: statusData.message
-                })
+                eventSource = new EventSource(url)
 
-                // 检查是否下载完成（status 为 pending 表示准备好翻译）
-                if (statusData.status.toLowerCase() === 'pending' && statusData.progress === 100) {
-                    // 下载完成 - 先清除轮询，避免重复
-                    if (downloadPollingInterval) {
-                        clearInterval(downloadPollingInterval)
-                        downloadPollingInterval = null
-                    }
-
-                    // 只在当前状态不是 ready 时更新状态，避免重复更新
-                    if (get().status !== 'ready') {
-                        set({
-                            status: 'ready',
-                            isDownloading: false,
-                            downloadProgress: 100,
-                            message: 'ArXiv source downloaded successfully',
-                            logs: [...get().logs, 'Download completed']
-                        })
-                        toast.success("ArXiv source downloaded successfully")
-                    }
-                    return // 退出本次轮询回调
-                } else if (statusData.status.toLowerCase() === 'failed') {
-                    // 下载失败
-                    if (downloadPollingInterval) clearInterval(downloadPollingInterval)
-                    downloadPollingInterval = null
-
-                    set({
-                        status: 'failed',
-                        isDownloading: false,
-                        error: statusData.error || 'Download failed',
-                        message: statusData.message
-                    })
-                    toast.error(statusData.error || 'Download failed')
+                eventSource.onopen = () => {
+                    console.log('[Download SSE] Connection opened')
+                    sseRetryCount = 0
                 }
 
-            } catch (error) {
-                console.error("Download polling error", error)
+                eventSource.addEventListener('update', (event) => {
+                    try {
+                        const data = JSON.parse(event.data)
+                        console.log('[Download SSE] Update:', data)
+
+                        set({
+                            downloadProgress: data.progress,
+                            downloadStage: data.stage || 'downloading',
+                            message: data.message
+                        })
+
+                        // 检查下载完成
+                        if (data.status?.toLowerCase() === 'pending' && data.progress === 100) {
+                            if (get().status !== 'ready') {
+                                set({
+                                    status: 'ready',
+                                    isDownloading: false,
+                                    downloadProgress: 100,
+                                    message: 'ArXiv source downloaded successfully',
+                                    logs: [...get().logs, 'Download completed']
+                                })
+                                toast.success("ArXiv source downloaded successfully")
+                            }
+                            eventSource?.close()
+                            eventSource = null
+                        }
+                    } catch (err) {
+                        console.error('[Download SSE] Parse error:', err)
+                    }
+                })
+
+                eventSource.addEventListener('complete', (event) => {
+                    try {
+                        const data = JSON.parse(event.data)
+                        console.log('[Download SSE] Complete:', data)
+
+                        if (get().status !== 'ready') {
+                            set({
+                                status: 'ready',
+                                isDownloading: false,
+                                downloadProgress: 100,
+                                message: 'ArXiv source downloaded successfully',
+                                logs: [...get().logs, 'Download completed']
+                            })
+                            toast.success("ArXiv source downloaded successfully")
+                        }
+                        eventSource?.close()
+                        eventSource = null
+                    } catch (err) {
+                        console.error('[Download SSE] Parse error:', err)
+                    }
+                })
+
+                eventSource.addEventListener('error', (event) => {
+                    try {
+                        const data = JSON.parse((event as MessageEvent).data)
+                        console.error('[Download SSE] Server error:', data)
+                        set({
+                            status: 'failed',
+                            isDownloading: false,
+                            error: data.message || 'Download failed',
+                            message: data.message
+                        })
+                        toast.error(data.message || 'Download failed')
+                        eventSource?.close()
+                        eventSource = null
+                    } catch {
+                        // 连接错误由 onerror 处理
+                    }
+                })
+
+                eventSource.onerror = () => {
+                    console.error('[Download SSE] Connection error')
+                    eventSource?.close()
+                    eventSource = null
+
+                    if (sseRetryCount < MAX_SSE_RETRIES) {
+                        sseRetryCount++
+                        console.log(`[Download SSE] Retry ${sseRetryCount}/${MAX_SSE_RETRIES}`)
+                        setTimeout(connectSSE, 1000 * sseRetryCount)
+                    } else {
+                        // 降级为轮询
+                        console.log('[Download SSE] Falling back to polling')
+                        startPollingFallback()
+                    }
+                }
+            } catch (err) {
+                console.error('[Download SSE] Setup error:', err)
+                startPollingFallback()
             }
-        }, 200) // 每200ms轮询一次，确保能捕获到中间进度
+        }
+
+        // 轮询降级策略
+        const startPollingFallback = () => {
+            if (downloadPollingInterval) return // 避免重复
+
+            console.log('[Download] Starting polling fallback (2s interval)')
+
+            downloadPollingInterval = setInterval(async () => {
+                const { taskId } = get()
+                if (!taskId) {
+                    if (downloadPollingInterval) clearInterval(downloadPollingInterval)
+                    downloadPollingInterval = null
+                    return
+                }
+
+                try {
+                    const statusData = await getTaskStatus(taskId)
+
+                    set({
+                        downloadProgress: statusData.progress,
+                        downloadStage: statusData.stage || 'downloading',
+                        message: statusData.message
+                    })
+
+                    if (statusData.status.toLowerCase() === 'pending' && statusData.progress === 100) {
+                        if (downloadPollingInterval) {
+                            clearInterval(downloadPollingInterval)
+                            downloadPollingInterval = null
+                        }
+
+                        if (get().status !== 'ready') {
+                            set({
+                                status: 'ready',
+                                isDownloading: false,
+                                downloadProgress: 100,
+                                message: 'ArXiv source downloaded successfully',
+                                logs: [...get().logs, 'Download completed']
+                            })
+                            toast.success("ArXiv source downloaded successfully")
+                        }
+                        return
+                    } else if (statusData.status.toLowerCase() === 'failed') {
+                        if (downloadPollingInterval) clearInterval(downloadPollingInterval)
+                        downloadPollingInterval = null
+
+                        set({
+                            status: 'failed',
+                            isDownloading: false,
+                            error: statusData.error || 'Download failed',
+                            message: statusData.message
+                        })
+                        toast.error(statusData.error || 'Download failed')
+                    }
+
+                } catch (error) {
+                    console.error("Download polling error", error)
+                }
+            }, 2000) // 降级为 2s 轮询
+        }
+
+        // 启动 SSE 连接
+        connectSSE()
     },
 
     startTranslation: async (config) => {

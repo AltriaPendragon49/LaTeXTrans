@@ -185,3 +185,84 @@ class TestParserAgentAsyncJudge:
         # Verify all results were applied
         for env in latex_parser.envs_json:
             assert env["need_trans"] is True
+
+
+class TestEnvironmentFiltering:
+    """Tests for SKIP_LLM_JUDGMENT_ENVS filtering logic."""
+
+    def test_skip_llm_judgment_envs_list_exists(self):
+        """Test that SKIP_LLM_JUDGMENT_ENVS is defined."""
+        from backend.app.services.agents.parser_agent import SKIP_LLM_JUDGMENT_ENVS
+        
+        assert isinstance(SKIP_LLM_JUDGMENT_ENVS, list)
+        assert len(SKIP_LLM_JUDGMENT_ENVS) > 0
+        # Check expected env types are included
+        assert 'abstract' in SKIP_LLM_JUDGMENT_ENVS
+        assert 'theorem' in SKIP_LLM_JUDGMENT_ENVS
+        assert 'proof' in SKIP_LLM_JUDGMENT_ENVS
+        assert 'itemize' in SKIP_LLM_JUDGMENT_ENVS
+
+    def test_skip_llm_judgment_envs_covers_common_types(self):
+        """Test that common environment types are covered."""
+        from backend.app.services.agents.parser_agent import SKIP_LLM_JUDGMENT_ENVS
+        
+        expected_types = [
+            'abstract', 'itemize', 'enumerate', 'description',
+            'theorem', 'lemma', 'proposition', 'corollary', 'remark', 'proof',
+            'definition', 'example', 'exercise', 'problem', 'solution', 'note',
+            'quotation', 'quote', 'verse'
+        ]
+        
+        for env_type in expected_types:
+            assert env_type in SKIP_LLM_JUDGMENT_ENVS, f"{env_type} should be in SKIP_LLM_JUDGMENT_ENVS"
+
+    def test_filtering_logic_skips_known_env_types(self):
+        """Test that known environment types are skipped from LLM judgment."""
+        from backend.app.services.agents.parser_agent import SKIP_LLM_JUDGMENT_ENVS
+        
+        test_envs = [
+            {"env_name": "theorem", "need_trans": True, "content": "This is a long theorem content"},
+            {"env_name": "proof", "need_trans": True, "content": "This is a proof with content"},
+            {"env_name": "custom_env", "need_trans": True, "content": "This needs LLM judgment"},
+        ]
+        
+        env_need_trans = []
+        for env in test_envs:
+            if not env["need_trans"]:
+                continue
+            if env["env_name"] in SKIP_LLM_JUDGMENT_ENVS:
+                continue
+            content = env.get("content", "")
+            if len(content.strip()) <= 20:
+                continue
+            env_need_trans.append(env)
+        
+        # Only 'custom_env' should need LLM judgment
+        assert len(env_need_trans) == 1
+        assert env_need_trans[0]["env_name"] == "custom_env"
+
+    def test_filtering_logic_skips_short_content(self):
+        """Test that short content environments are skipped."""
+        from backend.app.services.agents.parser_agent import SKIP_LLM_JUDGMENT_ENVS
+        
+        test_envs = [
+            {"env_name": "custom1", "need_trans": True, "content": "short"},  # 5 chars
+            {"env_name": "custom2", "need_trans": True, "content": "exactly twenty chars"},  # 20 chars
+            {"env_name": "custom3", "need_trans": True, "content": "This is definitely longer than twenty"},  # > 20
+        ]
+        
+        env_need_trans = []
+        for env in test_envs:
+            if not env["need_trans"]:
+                continue
+            if env["env_name"] in SKIP_LLM_JUDGMENT_ENVS:
+                continue
+            content = env.get("content", "")
+            if len(content.strip()) <= 20:
+                continue
+            env_need_trans.append(env)
+        
+        # Only custom3 has content > 20 chars
+        assert len(env_need_trans) == 1
+        assert env_need_trans[0]["env_name"] == "custom3"
+

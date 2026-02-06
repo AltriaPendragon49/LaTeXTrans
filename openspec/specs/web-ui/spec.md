@@ -168,3 +168,16 @@ The system SHALL use Server-Sent Events for real-time status updates.
 - **THEN** frontend falls back to `setInterval` polling at 2-second intervals
 - **AND** user experience remains consistent
 
+### Requirement: Reduced API Request Volume
+The frontend MUST NOT generate more than 2 status queries per second during download operations.
+
+#### Scenario: Request rate under normal SSE
+- **WHEN** SSE connection is active
+- **THEN** no polling requests SHALL be made
+- **AND** API request rate SHALL be zero for status queries
+
+#### Scenario: Request rate under fallback polling
+- **WHEN** using fallback polling mode
+- **THEN** polling interval SHALL be at least 2000ms
+- **AND** API request rate SHALL NOT exceed 0.5 requests per second
+

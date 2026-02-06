@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Progress } from '@/components/ui/progress'
-import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info } from 'lucide-react'
 
 export default function Dashboard() {
     const navigate = useNavigate()
@@ -95,6 +95,14 @@ export default function Dashboard() {
                                     {isDownloading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                                     Load Source
                                 </Button>
+                            </div>
+
+                            {/* Info tip about load time */}
+                            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3 border border-border/50">
+                                <Info className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
+                                <p>
+                                    <span className="font-medium text-foreground/80">Tip:</span> Loading typically takes over 70% of total task time. Please wait patiently, then configure your translation settings below.
+                                </p>
                             </div>
 
                             {/* Download Progress Bar */}
