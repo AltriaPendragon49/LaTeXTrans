@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Download, Columns, Smartphone } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { Download, Columns, Smartphone, Plus } from "lucide-react"
 
 import {
     ResizableHandle,
@@ -14,7 +15,13 @@ import { TerminologyTable } from "@/components/TerminologyTable"
 export default function ComparisonsPage() {
     // const [scale, setScale] = useState<number>(1.0) // Scale not needed for iframe
     const [viewMode, setViewMode] = useState<"split" | "single">("split")
-    const { taskId, arxivId } = useStore()
+    const { taskId, arxivId, resetTranslationState } = useStore()
+    const navigate = useNavigate()
+
+    const handleNewTranslation = () => {
+        resetTranslationState()
+        navigate('/')
+    }
 
     // Source PDF: 优先使用后端接口，ArXiv 论文可直接用 arxiv.org 链接
     // 后端接口会找到原始 PDF（排除 zh_前缀和翻译版）
@@ -71,6 +78,9 @@ export default function ComparisonsPage() {
                     <TerminologyTable taskId={taskId} />
                     <Button variant="default" size="sm" className="ml-2" onClick={handleDownload} disabled={!downloadUrl}>
                         <Download className="mr-2 h-4 w-4" /> Download PDF
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleNewTranslation}>
+                        <Plus className="mr-2 h-4 w-4" /> New Translation
                     </Button>
                 </div>
             </div>

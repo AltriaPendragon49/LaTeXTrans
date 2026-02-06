@@ -69,7 +69,7 @@ class CoordinatorAgent:
             output_dir=transed_project_dir,
             on_progress=lambda s, p, m: self.update_progress(5 + int(p * 0.05), m)
         )
-        parser_agent.execute()
+        await parser_agent.execute()
         self.update_progress(10, "Parsing completed")
 
         # Step 2: Translate (10% - 70% total progress)

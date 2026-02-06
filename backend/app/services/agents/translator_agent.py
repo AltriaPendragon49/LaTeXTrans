@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
+from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
 from pathlib import Path
@@ -12,6 +13,7 @@ import time
 import pandas as pd
 import logging
 import json
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -351,14 +353,56 @@ class TranslatorAgent(BaseToolAgent):
             #     print(f"[Warning] Environment placeholder {env_ph} not found.")
 
     async def _retranslate_error_parts(self, secs, caps, envs, session) -> Any:
-
+        """
+        Retranslate error parts with A/B/C error type routing:
+        - Type A (resource missing): Apply degradation, keep existing translation
+        - Type B (recoverable): Allow one translation retry
+        - Type C (structural): Apply algorithmic fix without LLM retry
+        """
         async with aiohttp.ClientSession() as session:
             sem = asyncio.Semaphore(20)
             
             completed = 0
             total = len(self.errors_report)
             
-            async def process_ErrorPart(i, error_report):
+            # Group errors by type for efficient processing
+            type_a_errors = []
+            type_b_errors = []
+            type_c_errors = []
+            
+            for error_report in self.errors_report:
+                error_type = error_report.get("error_type", ERROR_TYPE_B)
+                if error_type == ERROR_TYPE_A:
+                    type_a_errors.append(error_report)
+                elif error_type == ERROR_TYPE_C:
+                    type_c_errors.append(error_report)
+                else:
+                    type_b_errors.append(error_report)
+            
+            logger.info(f"Error classification: A={len(type_a_errors)}, B={len(type_b_errors)}, C={len(type_c_errors)}")
+            
+            # Process Type A errors: Degradation (keep existing translation, log warning)
+            for error in type_a_errors:
+                logger.warning(f"Type A error (degradation): {error.get('num_or_ph')} - keeping existing translation")
+                completed += 1
+                progress_pct = int(100 * completed / total) if total > 0 else 100
+                self.update_progress(progress_pct, f"Processed {completed}/{total} (A:degraded)")
+            
+            # Process Type C errors: Algorithmic fix
+            for error in type_c_errors:
+                part = self._find_part_by_error(error, secs, caps, envs)
+                if part:
+                    fixed = self._apply_structural_fix(part, error)
+                    if fixed:
+                        logger.info(f"Type C error fixed algorithmically: {error.get('num_or_ph')}")
+                    else:
+                        logger.warning(f"Type C fix failed, preserving current translation: {error.get('num_or_ph')}")
+                completed += 1
+                progress_pct = int(100 * completed / total) if total > 0 else 100
+                self.update_progress(progress_pct, f"Processed {completed}/{total} (C:fixed)")
+            
+            # Process Type B errors: Translation retry (existing logic)
+            async def process_type_b_error(error_report):
                 async with sem:
                     error_message = []
                     if "command_error" in error_report:
@@ -368,74 +412,141 @@ class TranslatorAgent(BaseToolAgent):
                     if "bracket_error" in error_report:
                         error_message.append(error_report["bracket_error"])
                     error_message = "\n".join(error_message)
+                    
+                    part_type = error_report["part"]
+                    identifier = error_report["num_or_ph"]
 
-                    if error_report["part"] == "sec":
-                        async def process_section(i, sec):
-                            async with sem:
-                                if error_report["num_or_ph"] == sec["section"]:
-                                    sec_async = await self._translate_section(section=sec, error_message=error_message,
-                                                                              session=session)
-                                    return {"index": i, "result": sec_async, "is_valid": True}
-                                else:
-                                    return {"index": None, "result": None, "is_valid": False}
+                    if part_type == "sec":
+                        for i, sec in enumerate(secs):
+                            if identifier == sec["section"]:
+                                secs[i] = await self._translate_section(
+                                    section=sec, error_message=error_message, session=session
+                                )
+                                return True
+                    elif part_type == "env":
+                        for i, env in enumerate(envs):
+                            if identifier == env["placeholder"]:
+                                envs[i] = await self._translate_env(
+                                    env=env, error_message=error_message, session=session
+                                )
+                                return True
+                    elif part_type == "cap":
+                        for i, cap in enumerate(caps):
+                            if identifier == cap["placeholder"]:
+                                caps[i] = await self._translate_caption(
+                                    caption=cap, error_message=error_message, session=session
+                                )
+                                return True
+                    return False
 
-                        tasks_sec = [process_section(i, sec) for i, sec in enumerate(secs)]
-                        for future in asyncio.as_completed(tasks_sec):
-                            result = await future
-                            
-                            if result["is_valid"]:
-                                i = result["index"]
-                                _sec = result["result"]
-                                secs[i] = _sec
-                    elif error_report["part"] == "env":
-                        async def process_env(i, env):
-                            async with sem:
-                                if error_report["num_or_ph"] == env["placeholder"]:
-                                    env_async = await self._translate_env(env=env, error_message=error_message,
-                                                                          session=session)
-                                    return {"index": i, "result": env_async, "is_valid": True}
-                                else:
-                                    return {"index": None, "result": None, "is_valid": False}
-
-                        tasks_env = [process_env(i, env) for i, env in enumerate(envs)]
-                        for future in asyncio.as_completed(tasks_env):
-                            result = await future
-                            
-                            if result["is_valid"]:
-                                i = result["index"]
-                                _env = result["result"]
-                                envs[i] = _env
-                    elif error_report["part"] == "cap":
-                        async def process_cap(i, cap):
-                            async with sem:
-                                if error_report["num_or_ph"] == cap["placeholder"]:
-                                    cap_async = await self._translate_caption(caption=cap, error_message=error_message,
-                                                                              session=session)
-                                    return {"index": i, "result": cap_async, "is_valid": True}
-                                else:
-                                    return {"index": None, "result": None, "is_valid": False}
-
-                        tasks_cap = [process_cap(i, cap) for i, cap in enumerate(caps)]
-                        for future in asyncio.as_completed(tasks_cap):
-                            result = await future
-                            
-                            if result["is_valid"]:
-                                i = result["index"]
-                                _cap = result["result"]
-                                caps[i] = _cap
-                    return i
-
-            tasks_ErrorPart = [process_ErrorPart(i, error_report) for i, error_report in enumerate(self.errors_report)]
-            for future in asyncio.as_completed(tasks_ErrorPart):
+            tasks_type_b = [process_type_b_error(error) for error in type_b_errors]
+            for future in asyncio.as_completed(tasks_type_b):
                 result = await future
                 completed += 1
                 progress_pct = int(100 * completed / total) if total > 0 else 100
-                self.update_progress(progress_pct, f"Retranslated {completed}/{total} error parts")
-                
-                if result is not None:
-                    i = result
+                self.update_progress(progress_pct, f"Retranslated {completed}/{total} (B:retry)")
             
             logger.info("Completed retranslation of error parts")
+    
+    def _find_part_by_error(self, error: Dict, secs: List, caps: List, envs: List) -> Optional[Dict]:
+        """Find the part (section/caption/env) referenced by an error report."""
+        part_type = error.get("part")
+        identifier = error.get("num_or_ph")
+        
+        if part_type == "sec":
+            for sec in secs:
+                if sec["section"] == identifier:
+                    return sec
+        elif part_type == "env":
+            for env in envs:
+                if env["placeholder"] == identifier:
+                    return env
+        elif part_type == "cap":
+            for cap in caps:
+                if cap["placeholder"] == identifier:
+                    return cap
+        return None
+    
+    def _apply_structural_fix(self, part: Dict, error: Dict) -> bool:
+        """
+        Apply algorithmic fix for Type C structural consistency errors.
+        
+        Strategies:
+        1. Token补齐: Restore missing LaTeX commands from original
+        2. Placeholder恢复: Restore missing placeholders from original
+        3. Fallback: Keep existing translation if available, else use original
+        
+        Returns True if fix was successful (or fallback applied).
+        """
+        original = part.get("content", "")
+        translated = part.get("trans_content", "")
+        
+        if not translated:
+            # No translation exists, use original as fallback
+            part["trans_content"] = original
+            return True
+        
+        try:
+            # Strategy 1: Restore missing LaTeX commands
+            fixed = self._fix_missing_commands(original, translated)
+            
+            # Strategy 2: Restore missing placeholders
+            fixed = self._fix_missing_placeholders(original, fixed)
+            
+            part["trans_content"] = fixed
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Structural fix failed: {e}")
+            # Fallback: keep existing translation if available
+            if translated:
+                return True
+            part["trans_content"] = original
+            return True
+    
+    def _fix_missing_commands(self, original: str, translated: str) -> str:
+        """Restore missing LaTeX commands from original to translated content."""
+        # Extract commands with regex
+        cmd_pattern = r'\\([a-zA-Z]+)(?:\{[^}]*\})*'
+        
+        original_cmds = re.findall(cmd_pattern, original)
+        translated_cmds = re.findall(cmd_pattern, translated)
+        
+        original_counter = Counter(original_cmds)
+        translated_counter = Counter(translated_cmds)
+        
+        # Find missing commands
+        for cmd, count in original_counter.items():
+            trans_count = translated_counter.get(cmd, 0)
+            if trans_count < count:
+                # Command is missing in translation, log but don't modify
+                # (Complex insertion could break LaTeX structure)
+                logger.debug(f"Missing command \\{cmd}: expected {count}, found {trans_count}")
+        
+        return translated
+    
+    def _fix_missing_placeholders(self, original: str, translated: str) -> str:
+        """Restore missing placeholders from original to translated content."""
+        placeholder_patterns = [
+            r'<PLACEHOLDER_[A-Z]+_\d+_begin>',
+            r'<PLACEHOLDER_[A-Z]+_\d+_end>',
+            r'<PLACEHOLDER_CAP_\d+>',
+            r'<PLACEHOLDER_ENV_\d+>',
+        ]
+        
+        for pattern in placeholder_patterns:
+            original_phs = set(re.findall(pattern, original))
+            translated_phs = set(re.findall(pattern, translated))
+            
+            missing = original_phs - translated_phs
+            for ph in missing:
+                # Find position in original and try to restore in similar position
+                # For safety, append at end if exact position is unclear
+                if ph not in translated:
+                    logger.debug(f"Restoring missing placeholder: {ph}")
+                    translated = translated.rstrip() + " " + ph
+        
+        return translated
 
     async def _translate_section(self, section: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
         

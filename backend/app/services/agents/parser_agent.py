@@ -8,7 +8,7 @@ Adapted from prototype system with:
 - LLM config from backend.app.core.config
 """
 
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 from .base_tool_agent import BaseToolAgent
 from backend.app.services.latex import prompts as pm
 from backend.app.services.latex.parser import LatexParser
@@ -16,6 +16,8 @@ from backend.app.core.config import get_settings
 from pathlib import Path
 import os
 import requests
+import aiohttp
+import asyncio
 import time
 from tqdm import tqdm
 import logging
@@ -42,8 +44,8 @@ class ParserAgent(BaseToolAgent):
         self.base_url = config.get("llm_config", {}).get("base_url", llm_config["base_url"])
         self.API_KEY = config.get("llm_config", {}).get("api_key", llm_config["api_key"])
 
-    def execute(self) -> Any:
-        """Execute parsing task"""
+    async def execute(self) -> Any:
+        """Execute parsing task (async version with parallel LLM calls)"""
         pm.init_prompts(self.config.get("source_language", "en"), 
                        self.config.get("target_language", "ch"))
         
@@ -60,20 +62,15 @@ class ParserAgent(BaseToolAgent):
                     env_need_trans.append(env)
 
         if env_need_trans:
-            self.log(f"Setting need_trans for {len(env_need_trans)} environments")
+            self.log(f"Setting need_trans for {len(env_need_trans)} environments (parallel)")
             self.update_progress(70, "Determining translation requirements for environments")
 
             placeholder_to_index = {
                 env["placeholder"]: i for i, env in enumerate(latex_parser.envs_json)
             }
             
-            for env in tqdm(env_need_trans, desc=f"Setting need trans", total=len(env_need_trans), unit="env"):
-                i = placeholder_to_index.get(env["placeholder"])
-                if i is not None:
-                    latex_parser.envs_json[i]["need_trans"] = self._request_llm_for_judge(
-                        pm.set_need_trans_for_envs_system_prompt,
-                        env["content"]
-                    )
+            # Use parallel LLM calls for environment judgment
+            await self._judge_envs_parallel(env_need_trans, latex_parser, placeholder_to_index)
 
         self.update_progress(90, "Saving parsed data to JSON files")
         
@@ -132,3 +129,95 @@ class ParserAgent(BaseToolAgent):
                 else:
                     logger.error(f"Failed to determine translation need, defaulting to True")
                     return True
+
+    async def _request_llm_for_judge_async(
+        self, 
+        system_prompt: str, 
+        text: str, 
+        session: aiohttp.ClientSession,
+        semaphore: asyncio.Semaphore
+    ) -> bool:
+        """
+        Async version: Request LLM API to determine if environment needs translation.
+        Uses aiohttp and semaphore for concurrent control.
+        """
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
+            ],
+            "temperature": 0,
+            "max_tokens": 50
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {self.API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        async with semaphore:
+            for attempt in range(1, 4):
+                try:
+                    async with session.post(
+                        self.base_url, 
+                        json=payload, 
+                        headers=headers, 
+                        timeout=aiohttp.ClientTimeout(total=100)
+                    ) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        output = result["choices"][0]["message"]["content"].strip()
+                        
+                        if output.lower() == "true":
+                            return True
+                        elif output.lower() == "false":
+                            return False
+                        else:
+                            return True
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt < 3:
+                        logger.warning(f"Async LLM request failed (attempt {attempt}): {e}")
+                        await asyncio.sleep(3 * attempt)  # Exponential backoff
+                    else:
+                        logger.error(f"Failed to determine translation need, defaulting to True")
+                        return True
+        return True
+
+    async def _judge_envs_parallel(
+        self, 
+        env_need_trans: List[Dict], 
+        latex_parser: 'LatexParser',
+        placeholder_to_index: Dict[str, int]
+    ) -> None:
+        """
+        Parallel execution for environment translation judgment.
+        Uses asyncio.gather for concurrent LLM calls.
+        """
+        semaphore = asyncio.Semaphore(5)  # Limit concurrent calls to avoid rate limiting
+        
+        async with aiohttp.ClientSession() as session:
+            async def judge_single_env(env: Dict) -> tuple:
+                """Judge a single environment and return (placeholder, result)"""
+                result = await self._request_llm_for_judge_async(
+                    pm.set_need_trans_for_envs_system_prompt,
+                    env["content"],
+                    session,
+                    semaphore
+                )
+                return (env["placeholder"], result)
+            
+            # Execute all judgments in parallel
+            tasks = [judge_single_env(env) for env in env_need_trans]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Apply results to latex_parser
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Parallel env judgment failed: {result}")
+                    continue
+                placeholder, need_trans = result
+                idx = placeholder_to_index.get(placeholder)
+                if idx is not None:
+                    latex_parser.envs_json[idx]["need_trans"] = need_trans
+

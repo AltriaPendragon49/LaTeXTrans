@@ -19,6 +19,52 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Error type constants
+ERROR_TYPE_A = "A"  # Resource/config missing - handle with degradation
+ERROR_TYPE_B = "B"  # Recoverable syntax errors - allow one retry
+ERROR_TYPE_C = "C"  # Structural consistency errors - algorithmic fix required
+
+
+def classify_error(error_report: Dict[str, Any]) -> str:
+    """
+    Classify validation error into A/B/C types.
+    
+    Type A: Resource/config missing (e.g., files not found)
+           → Handle with degradation, don't interrupt flow
+    Type B: Recoverable syntax errors (e.g., unescaped special chars)
+           → Allow one translation retry
+    Type C: Structural consistency errors (e.g., 'expected X, found Y')
+           → Requires algorithmic fix, LLM retry won't help
+    
+    Args:
+        error_report: Error report dictionary with command_error, ph_error, bracket_error
+        
+    Returns:
+        Error type string: "A", "B", or "C"
+    """
+    command_error = str(error_report.get("command_error", ""))
+    ph_error = str(error_report.get("ph_error", ""))
+    bracket_error = str(error_report.get("bracket_error", ""))
+    
+    all_errors = command_error + ph_error + bracket_error
+    
+    # Type A: Resource/configuration missing
+    if "not found" in all_errors.lower():
+        return ERROR_TYPE_A
+    
+    # Type C: Structural consistency errors (expected X, found Y pattern)
+    # These are token count mismatches that can't be fixed by LLM retry
+    if re.search(r"expected \d+, found \d+", all_errors):
+        return ERROR_TYPE_C
+    
+    # Type C: Missing placeholders (structural issue)
+    if "Missing placeholders:" in ph_error:
+        return ERROR_TYPE_C
+    
+    # Type B: Default - recoverable errors (bracket issues, extra placeholders, etc.)
+    return ERROR_TYPE_B
+
+
 
 class ValidatorAgent(BaseToolAgent):
     def __init__(self, 
@@ -106,6 +152,9 @@ class ValidatorAgent(BaseToolAgent):
                 error_report["ph_error"] = ph_error
             if bracket_error:
                 error_report["bracket_error"] = bracket_error
+            
+            # Add error classification (A/B/C) for targeted handling
+            error_report["error_type"] = classify_error(error_report)
 
         return error_report
 

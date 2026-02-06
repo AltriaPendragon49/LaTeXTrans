@@ -33,6 +33,7 @@ interface TranslationState {
     setTaskId: (id: string) => void
     setArxivId: (id: string | null) => void
     reset: () => void
+    resetTranslationState: () => void  // Reset task state only, preserve config
 
     // Configuration Actions
     setConfig: (config: Partial<TranslationConfig>) => void
@@ -96,6 +97,30 @@ export const useStore = create<TranslationState>((set, get) => ({
             isDownloading: false,
             downloadProgress: 0,
             downloadStage: ''
+        })
+    },
+
+    // Reset translation/task state only, preserve configuration
+    resetTranslationState: () => {
+        if (pollingInterval) clearInterval(pollingInterval)
+        if (downloadPollingInterval) clearInterval(downloadPollingInterval)
+        pollingInterval = null
+        downloadPollingInterval = null
+        set({
+            taskId: null,
+            arxivId: null,
+            status: 'idle',
+            progress: 0,
+            message: '',
+            logs: [],
+            error: null,
+            isPolling: false,
+            outputMetrics: {},
+            latexValidation: null,
+            isDownloading: false,
+            downloadProgress: 0,
+            downloadStage: ''
+            // Note: config is preserved, not reset
         })
     },
 
