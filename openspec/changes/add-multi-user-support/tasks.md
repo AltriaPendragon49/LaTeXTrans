@@ -3,113 +3,153 @@
 ## 阶段 1: Supabase 基础设施
 
 ### 1.1 数据库表创建
-- [ ] 创建 `user_settings` 表
-- [ ] 创建 `translation_tasks` 表
-- [ ] 配置 RLS 策略
+- [x] 创建 `user_settings` 表（含完整配置字段）
+- [x] 创建 `translation_tasks` 表（含配置快照字段）
+- [x] 配置 RLS 策略
 - [ ] 验证表结构和权限
 
 ### 1.2 后端 Supabase 集成
-- [ ] 安装 supabase-py 依赖
-- [ ] 创建 supabase_client.py 配置模块
-- [ ] 实现可选 JWT 验证中间件（支持访客模式）
-- [ ] 测试认证流程
+- [x] 安装 supabase-py 依赖
+- [x] 创建 `app/core/supabase_client.py` 配置模块
+- [x] 添加 Supabase 环境变量配置
+- [ ] 测试 Supabase 连接
 
 ---
 
 ## 阶段 2: 用户认证
 
 ### 2.1 后端认证
-- [ ] 创建 auth 路由模块（/api/auth/*）
-- [ ] 实现可选 JWT 验证依赖注入（get_optional_user）
-- [ ] 区分登录用户和访客用户
+- [x] 创建 `app/core/auth.py` 可选 JWT 验证依赖
+- [x] 实现 `get_optional_user()` 函数（支持访客模式）
+- [x] **重构为纯 RLS 模式**（2026-02-08）
+  - [x] 删除 `auth.get_user()` 调用，解决 Invalid API key 问题
+  - [x] 实现 `create_supabase_client_with_token()` token 透传
+  - [x] 更新 `settings.py` 使用纯 RLS
+  - [x] 更新 `history.py` 使用纯 RLS
+  - [x] 添加数据库迁移：`user_id DEFAULT auth.uid()`
+  - [x] 添加 `supabase_anon_key` 配置
+  - [ ] 验证依赖兼容性（supabase/httpx 版本）
 - [ ] 更新 CORS 配置支持 credentials
 
-### 2.2 前端认证（仅邮箱密码）
-- [ ] 安装 @supabase/supabase-js
-- [ ] 创建 supabase client 配置
-- [ ] 创建 AuthContext 和 useAuth hook
-- [ ] 创建登录/注册页面 (/login)
-  - [ ] 邮箱密码登录表单
-  - [ ] 邮箱密码注册表单
-  - [ ] 登录/注册切换
-- [ ] 更新侧边栏显示登录状态
-- [ ] 更新 API 客户端携带 JWT（如已登录）
 
-### 2.3 用户资料页面（简化版）
-- [ ] 创建 Profile 页面组件 (/profile)
-- [ ] 显示当前登录邮箱
-- [ ] 登出按钮
-- [ ] 更新侧边栏 User Profile 按钮
+### 2.2 前端认证
+- [x] 安装 @supabase/supabase-js
+- [x] 创建 `src/lib/supabase.ts` 客户端配置
+- [x] 创建 `src/contexts/AuthContext.tsx`
+- [x] 创建 `src/hooks/useAuth.ts`（集成在 AuthContext 中）
+- [x] 创建登录/注册页面 `/login`
+  - [x] 邮箱密码登录表单
+  - [x] 邮箱密码注册表单
+  - [x] 登录/注册切换
+- [x] 更新 `src/lib/api.ts` 可选携带 JWT
+
+### 2.3 用户资料页面
+- [x] 创建 `src/pages/Profile.tsx`
+- [x] 显示当前登录邮箱（不可编辑）
+- [x] 登出按钮
+- [x] 退出登录 toast 反馈（修复于 2026-02-08）
+- [x] 更新侧边栏 User Profile 链接
 
 ---
 
-## 阶段 3: 翻译历史
+## 阶段 3: 系统设置
 
-### 3.1 后端任务持久化
-- [ ] 重构 TaskManager 支持双层存储
+### 3.1 后端设置 API
+- [x] 创建 `app/api/routes/settings.py`
+- [x] GET /api/settings - 获取用户设置（需认证）
+- [x] PUT /api/settings - 更新用户设置（需认证）
+- [x] 首次访问时自动创建默认设置
+
+### 3.2 前端设置页面
+- [x] 创建 `src/pages/Settings.tsx`
+- [x] 未登录时显示"请登录"提示
+- [x] 已登录时显示设置表单
+  - [x] 源语言 / 目标语言选择
+  - [x] 翻译模式选择（全文翻译 / 快速筛查）
+  - [x] 编译策略选择（自动 / PDFLaTex / XeLaTex / LuaLaTex）
+  - [x] 翻译模型选择
+  - [x] 验证代理开关（默认开启）
+  - [x] 生成术语表开关（默认开启）
+  - [x] 使用作者默认 API 开关（默认开启）
+  - [x] 自定义 Base URL 输入框（关闭默认 API 时显示）
+  - [x] 自定义 API Key 输入框（关闭默认 API 时显示）
+- [x] 保存按钮触发 API 更新
+- [x] Toast 反馈保存结果
+
+---
+
+## 阶段 4: 翻译历史
+
+### 4.1 后端任务持久化
+- [ ] 重构 `TaskManager` 支持双层存储
   - 内存缓存用于所有任务（含访客）
   - Supabase 持久化仅用于登录用户
-- [ ] 更新 create_task 方法：
-  - 已登录：绑定 user_id，持久化到 Supabase
+- [ ] 更新 `create_task` 方法：
+  - 接收完整配置参数
+  - 已登录：保存配置快照到 Supabase
   - 未登录：仅内存存储
-- [ ] 更新 update_task 方法同步到 Supabase
-- [ ] 新增 get_user_tasks API 端点（需认证）
+- [ ] 更新 `update_task` 方法同步到 Supabase
+- [x] 创建 `app/api/routes/history.py`
+- [x] GET /api/history - 获取用户任务列表（需认证、分页）
+- [x] GET /api/history/{task_id} - 获取任务详情（需认证）
 
-### 3.2 前端历史记录页面
-- [ ] 创建完整的 History 页面组件 (/history)
-- [ ] 未登录时显示"请登录"提示
-- [ ] 已登录时显示任务列表
-- [ ] 实现分页、状态筛选
-- [ ] 支持下载历史任务的 PDF/源文件
-
----
-
-## 阶段 4: 新建翻译页面增强
-
-### 4.1 拖拽上传功能
-- [ ] 在 Dashboard 添加拖拽上传区域
-- [ ] 实现拖拽进入/离开视觉反馈
-- [ ] 支持拖拽文件夹
-- [ ] 支持拖拽 .tex 文件和 .zip 文件
-- [ ] 上传进度显示
-
-### 4.2 语言参数完善
-- [ ] 确保 Dashboard 语言选择 UI 工作正常
-- [ ] 上传文件时传递语言参数
-- [ ] 已登录用户：从设置读取默认语言
-- [ ] 未登录用户：使用系统默认语言
+### 4.2 前端历史记录页面
+- [x] 创建 `src/pages/History.tsx`
+- [x] 未登录时显示"请登录"提示
+- [x] 已登录时显示任务列表
+  - [x] 显示 arXiv ID / 上传文件标识
+  - [x] 显示翻译模式、状态、创建时间
+  - [x] 分页加载
+  - [ ] 状态筛选（可选）
+- [ ] 任务详情弹窗/页面
+  - [ ] 显示配置快照
+  - [ ] 预览/下载译文 PDF
+  - [ ] 下载源 PDF（如有）
 
 ---
 
-## 阶段 5: 系统设置
+## 阶段 5: 配置继承
 
-### 5.1 后端设置 API
-- [ ] 创建 settings 路由模块（/api/settings）
-- [ ] GET /settings - 获取用户设置（需认证）
-- [ ] PUT /settings - 更新用户设置（需认证）
-- [ ] 首次访问时自动创建默认设置
+### 5.1 前端配置加载
+- [x] 更新 Dashboard 页面加载逻辑
+  - [x] 已登录用户：从 /api/settings 读取默认配置
+  - [x] 未登录用户：使用系统默认值
+- [x] 高级配置 UI 预填充用户默认值
+- [x] 新建翻译时配置同步（修复于 2026-02-08）
+- [x] Settings 页面添加"刷新页面后生效"提示（修复于 2026-02-09）
+- [x] 翻译时自动读取用户加密 API Key（修复于 2026-02-09）
+- [x] 高级配置 API Key 输入框添加已配置提示（修复于 2026-02-09）
 
-### 5.2 前端设置页面
-- [ ] 创建完整的 Settings 页面组件 (/settings)
-- [ ] 未登录时显示"请登录"提示
-- [ ] 已登录时显示设置表单
-- [ ] 保存按钮触发 API 更新
-- [ ] Toast 反馈保存结果
+### 5.2 UX 交互改进（2026-02-10）
+- [x] Load Source 按钮即时反馈
+  - [x] 添加本地 loading 状态（`isLoadingSource`）
+  - [x] 点击时立即显示 Toast 提示
+  - [x] 添加按钮缩放动画（`active:scale-95`）
+- [x] 登录后自动加载配置
+  - [x] AuthContext.signIn 成功后调用 loadUserSettings
+  - [x] useStore.loadUserSettings 支持 forceReload 参数
+  - [x] 显示 Toast 通知用户配置已加载
+
+### 5.2 后端配置传递
+- [x] 确保翻译请求正确接收完整配置
+- [ ] 配置快照保存到 translation_tasks 表（TaskManager 重构待完成）
 
 ---
 
 ## 阶段 6: 验证与文档
 
 ### 6.1 集成验证
-- [ ] 访客模式测试：未登录创建翻译 → 成功执行
-- [ ] 注册流程测试：邮箱注册 → 确认邮件 → 登录
-- [ ] 登录流程测试：邮箱登录 → 查看历史
+- [x] 访客模式测试：未登录创建翻译 → 成功执行 → 刷新页面后任务丢失
+- [x] 注册流程测试：邮箱注册 → 确认邮件 → 登录
+- [x] 登录流程测试：邮箱登录 → 查看历史
+- [x] 设置保存测试：修改设置 → 新建翻译时自动填充（2026-02-09 验证通过）
 - [ ] 持久化测试：服务器重启后登录用户任务保留
-- [ ] 拖拽上传功能验证
+- [ ] 下载权限测试：用户只能下载自己的任务文件
+- [ ] 退出登录反馈测试：点击退出 → toast 提示 → 跳转首页
 
 ### 6.2 文档更新
-- [ ] 更新 backend/README.md
-- [ ] 更新 frontend/README.md
+- [ ] 更新 backend/README.md（Supabase 配置说明）
+- [ ] 更新 frontend/README.md（认证流程说明）
 - [ ] 创建部署指南（环境变量配置）
 
 ---
@@ -120,29 +160,29 @@
 graph TD
     A[1.1 数据库表] --> B[1.2 后端集成]
     B --> C[2.1 后端认证]
-    B --> D[3.1 任务持久化]
-    C --> E[2.2 前端认证]
-    E --> F[2.3 用户资料]
-    D --> G[3.2 历史记录]
-    E --> G
-    D --> H[4.2 语言参数]
-    E --> I[4.1 拖拽上传]
-    H --> J[5.1 设置 API]
-    J --> K[5.2 设置页面]
-    G --> L[6.1 验证]
-    K --> L
+    C --> D[2.2 前端认证]
+    D --> E[2.3 用户资料]
+    C --> F[3.1 设置 API]
+    F --> G[3.2 设置页面]
+    B --> H[4.1 任务持久化]
+    D --> I[4.2 历史记录页面]
+    H --> I
+    G --> J[5.1 前端配置加载]
+    J --> K[5.2 后端配置传递]
+    E --> L[6.1 验证]
     I --> L
-    F --> L
+    K --> L
 ```
 
 ## 访客模式与登录用户对比
 
 | 功能 | 访客用户 | 登录用户 |
 |------|----------|----------|
-| 新建翻译（ArXiv/上传） | ✅ | ✅ |
+| 新建翻译（ArXiv / 拖拽上传） | ✅ | ✅ |
+| 高级配置调整 | ✅ | ✅ |
 | 翻译执行与预览 | ✅ | ✅ |
-| 下载 PDF/源文件 | ✅ | ✅ |
-| 翻译历史 | ❌ | ✅ |
-| 系统设置 | ❌ | ✅ |
+| 下载 PDF / 源文件 | ✅ | ✅ |
+| 翻译历史记录 | ❌ | ✅ |
+| 系统设置保存 | ❌ | ✅ |
+| 配置自动填充 | ❌ | ✅ |
 | 任务持久化 | ❌ | ✅ |
-| 默认语言配置 | ❌ | ✅ |

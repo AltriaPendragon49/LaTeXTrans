@@ -24,13 +24,20 @@ lxml==4.9.3
 python-dotenv==1.0.0
 toml==0.10.2
 tqdm==4.66.1
-rarfile>=4.0  # RAR archive extraction support
+rarfile>=4.0
 
 # Type Hints
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
-# Testing (optional for development)
+# Supabase - 使用新版稳定组合
+# supabase 2.x 拆分了 auth/functions 等子包，需要对应版本的 httpx
+supabase>=2.0.0
+httpx>=0.25.0
+
+# Encryption
+cryptography>=41.0.0
+
+# Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2

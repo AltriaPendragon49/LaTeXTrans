@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store/useStore'
 import { AdvancedConfig } from '@/components/AdvancedConfig'
@@ -10,31 +10,39 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Progress } from '@/components/ui/progress'
 import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info } from 'lucide-react'
+import { toast } from 'sonner'
 
 export default function Dashboard() {
     const navigate = useNavigate()
     const {
         taskId, status, config,
         downloadProgress, downloadStage, isDownloading,
-        startArxivDownload, startTranslation
+        startArxivDownload, startTranslation, loadUserSettings
     } = useStore()
 
     const [activeTab, setActiveTab] = useState('arxiv')
     const [isConfigOpen, setIsConfigOpen] = useState(false)
     const [localArxivId, setLocalArxivId] = useState('')
+    const [isLoadingSource, setIsLoadingSource] = useState(false)
     // const [isDownloading, setIsDownloading] = useState(false) // Removed local state in favor of store state
+
+    // Load user settings on mount (if authenticated)
+    useEffect(() => {
+        loadUserSettings()
+    }, [loadUserSettings])
 
     // Handle ArXiv Load
     const handleLoadArxiv = async () => {
         if (!localArxivId.trim()) return
-        // setIsDownloading(true) // Handled by store
+        setIsLoadingSource(true)
+        toast.info('正在加载源文件，请稍候...')
         try {
             await startArxivDownload(localArxivId)
             // Success handled in store
         } catch (e) {
             // Error handled in store
         } finally {
-            // setIsDownloading(false) // Handled by store
+            setIsLoadingSource(false)
         }
     }
 
@@ -90,9 +98,10 @@ export default function Dashboard() {
                                 />
                                 <Button
                                     onClick={handleLoadArxiv}
-                                    disabled={!localArxivId || isDownloading || (status === 'processing')}
+                                    disabled={!localArxivId || isLoadingSource || isDownloading || (status === 'processing')}
+                                    className="transition-all duration-150 active:scale-95"
                                 >
-                                    {isDownloading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                                    {(isLoadingSource || isDownloading) ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                                     Load Source
                                 </Button>
                             </div>

@@ -61,6 +61,19 @@ const api = axios.create({
     },
 })
 
+// Request interceptor to add auth token
+api.interceptors.request.use(async (config) => {
+    // Dynamically import to avoid circular dependencies
+    const { getAccessToken } = await import('./supabase')
+    const token = await getAccessToken()
+
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+    }
+
+    return config
+})
+
 export const downloadArxiv = async (arxivId: string): Promise<ArxivResponse> => {
     const response = await api.post<ArxivResponse>("/arxiv", { arxiv_id: arxivId })
     return response.data

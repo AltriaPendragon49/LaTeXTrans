@@ -63,6 +63,30 @@ class Settings(BaseSettings):
     target_language: str = "ch"
     source_language: str = "en"
     
+    # Supabase Configuration
+    supabase_url: Optional[str] = Field(
+        default=None,
+        env="SUPABASE_URL"
+    )
+    supabase_anon_key: Optional[str] = Field(
+        default=None,
+        env="SUPABASE_ANON_KEY",
+        description="Anon key for user operations (RLS enforced)"
+    )
+    supabase_service_role_key: Optional[str] = Field(
+        default=None,
+        env="SUPABASE_SERVICE_ROLE_KEY",
+        description="Service Role Key for admin operations (bypasses RLS)"
+    )
+
+    
+    # Encryption Configuration
+    encryption_key: Optional[str] = Field(
+        default=None,
+        env="ENCRYPTION_KEY",
+        description="Key for encrypting sensitive data like API keys"
+    )
+    
     # LaTeX Compiler Settings
     latex_bin_dir: Optional[str] = Field(
         default=None,

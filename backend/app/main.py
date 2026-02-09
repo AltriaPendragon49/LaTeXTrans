@@ -87,13 +87,16 @@ async def root():
 
 
 # Import and include API routes
-from backend.app.api.routes import arxiv, upload, task, translate, download
+from backend.app.api.routes import arxiv, upload, task, translate, download, history
+from backend.app.api.routes import settings as settings_routes
 
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(arxiv.router, prefix="/api", tags=["arxiv"])
 app.include_router(translate.router, prefix="/api", tags=["translate"])
 app.include_router(task.router, prefix="/api", tags=["task"])
 app.include_router(download.router, prefix="/api", tags=["download"])
+app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
+app.include_router(history.router, prefix="/api", tags=["history"])
 
 
 if __name__ == "__main__":

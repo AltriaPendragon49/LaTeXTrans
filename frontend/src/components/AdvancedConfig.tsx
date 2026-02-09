@@ -1,4 +1,4 @@
-import { Settings2, Info, Languages, BookText } from 'lucide-react'
+import { Settings2, Info, Languages, BookText, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 import {
@@ -60,7 +60,7 @@ const LANGUAGES = [
 ]
 
 export const AdvancedConfig = () => {
-    const { config, setConfig, setAdvancedConfig } = useStore()
+    const { config, setConfig, setAdvancedConfig, hasSystemApiKey } = useStore()
     const { advanced_config, source_language, target_language } = config
 
     // Local handlers
@@ -250,25 +250,38 @@ export const AdvancedConfig = () => {
                     </div>
 
                     {!advanced_config.use_author_api && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="space-y-2">
-                                <Label htmlFor="base-url">自定义 Base URL</Label>
-                                <Input
-                                    id="base-url"
-                                    placeholder="https://api.example.com/v1"
-                                    value={advanced_config.custom_base_url || ''}
-                                    onChange={(e) => updateConfig('custom_base_url', e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="api-key">自定义 API Key</Label>
-                                <Input
-                                    id="api-key"
-                                    type="password"
-                                    placeholder="sk-..."
-                                    value={advanced_config.custom_api_key || ''}
-                                    onChange={(e) => updateConfig('custom_api_key', e.target.value)}
-                                />
+                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-md">
+                                ⓘ 如果您已在「系统设置」中配置了 API，此处无需重复填写，系统将自动使用保存的配置
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="base-url">自定义 Base URL（可选）</Label>
+                                    <Input
+                                        id="base-url"
+                                        placeholder="https://api.example.com/v1"
+                                        value={advanced_config.custom_base_url || ''}
+                                        onChange={(e) => updateConfig('custom_base_url', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Label htmlFor="api-key">自定义 API Key（可选）</Label>
+                                        {hasSystemApiKey && (
+                                            <div className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                                <span>已在系统设置中配置</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <Input
+                                        id="api-key"
+                                        type="password"
+                                        placeholder={hasSystemApiKey ? "留空将使用系统设置中的密钥" : "请输入 API Key (sk-...)"}
+                                        value={advanced_config.custom_api_key || ''}
+                                        onChange={(e) => updateConfig('custom_api_key', e.target.value)}
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}

@@ -28,6 +28,8 @@ interface TranslationState {
     // Configuration state
     config: TranslationConfig
     latexValidation: LatexValidation | null
+    userSettingsLoaded: boolean  // Track if user settings have been loaded
+    hasSystemApiKey: boolean  // Track if user has custom API key in system settings
 
     // Basic Actions
     setTaskId: (id: string) => void
@@ -40,6 +42,8 @@ interface TranslationState {
     setAdvancedConfig: (config: Partial<AdvancedConfig>) => void
     resetConfig: () => void
     setLatexValidation: (validation: LatexValidation | null) => void
+    loadUserSettings: (forceReload?: boolean) => Promise<void>  // Load user settings from API
+    invalidateUserSettings: () => void  // Mark settings as stale to force reload
 
     // Async Actions
     startArxivDownload: (arxivId: string) => Promise<void>
@@ -72,6 +76,8 @@ export const useStore = create<TranslationState>((set, get) => ({
     // Configuration state - reset on page refresh
     config: { ...DEFAULT_CONFIG },
     latexValidation: null,
+    userSettingsLoaded: false,
+    hasSystemApiKey: false,
 
     setTaskId: (id) => set({ taskId: id }),
     setArxivId: (id) => set({ arxivId: id }),
@@ -96,7 +102,9 @@ export const useStore = create<TranslationState>((set, get) => ({
             latexValidation: null,
             isDownloading: false,
             downloadProgress: 0,
-            downloadStage: ''
+            downloadStage: '',
+            userSettingsLoaded: false,
+            hasSystemApiKey: false
         })
     },
 
@@ -155,9 +163,96 @@ export const useStore = create<TranslationState>((set, get) => ({
     // Set LaTeX validation result (from upload)
     setLatexValidation: (validation) => set({ latexValidation: validation }),
 
+    // Load user settings from API and apply to config
+    loadUserSettings: async (forceReload = false) => {
+        // Skip if already loaded (unless force reload)
+        if (get().userSettingsLoaded && !forceReload) return
+
+        try {
+            const { getAccessToken, isSupabaseConfigured } = await import('@/lib/supabase')
+
+            // Skip if not configured or not authenticated
+            if (!isSupabaseConfigured()) {
+                set({ userSettingsLoaded: true })
+                return
+            }
+
+            const token = await getAccessToken()
+            if (!token) {
+                set({ userSettingsLoaded: true })
+                return
+            }
+
+            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+            const response = await fetch(`${API_BASE_URL}/settings`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            })
+
+            if (!response.ok) {
+                console.warn('[Settings] Failed to load user settings:', response.status)
+                set({ userSettingsLoaded: true })
+                return
+            }
+
+            const settings = await response.json()
+            console.log('[Settings] Loaded user settings:', settings)
+
+            // Save system API key configuration status
+            const hasSystemApiKey = settings.has_custom_api_key || false
+            console.log('[Settings] Has system API key:', hasSystemApiKey)
+
+            // Map API settings to config format
+            const newConfig: Partial<TranslationConfig> = {
+                source_language: settings.default_source_language || 'en',
+                target_language: settings.default_target_language || 'zh',
+                advanced_config: {
+                    translation_mode: settings.translation_mode || 'full',
+                    compile_strategy: settings.compile_strategy || 'auto',
+                    enable_verification: settings.enable_verification ?? true,
+                    generate_terminology_table: settings.generate_glossary ?? true,
+                    translation_model: settings.translation_model || 'gpt-4.1-mini',
+                    use_author_api: settings.use_author_api ?? true,
+                    custom_base_url: settings.custom_base_url || undefined,
+                    // Note: API key is not returned for security
+                }
+            }
+
+            set((state) => ({
+                config: {
+                    ...state.config,
+                    ...newConfig,
+                    advanced_config: {
+                        ...state.config.advanced_config,
+                        ...newConfig.advanced_config,
+                    }
+                },
+                userSettingsLoaded: true,
+                hasSystemApiKey: hasSystemApiKey
+            }))
+
+            console.log('[Settings] Applied user settings to config')
+        } catch (error) {
+            console.error('[Settings] Error loading user settings:', error)
+            set({ userSettingsLoaded: true })
+        }
+    },
+
+    // Invalidate user settings to force reload on next loadUserSettings call
+    invalidateUserSettings: () => {
+        set({ userSettingsLoaded: false })
+        console.log('[Settings] User settings invalidated, will reload on next access')
+    },
+
     startArxivDownload: async (arxivId) => {
-        // Reset previous task state first
-        get().reset()
+        // Reset previous task state only, preserve user configuration
+        get().resetTranslationState()
+
+        // Force reload user settings to ensure latest config
+        set({ userSettingsLoaded: false })
+        await get().loadUserSettings()
 
         try {
             set({
