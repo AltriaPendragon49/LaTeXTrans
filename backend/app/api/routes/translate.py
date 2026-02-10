@@ -187,6 +187,11 @@ async def run_translation(
                 f"user_id={user_id}")
     
     try:
+        # Check if task was cancelled before starting
+        if task_manager.is_cancelled(task_id):
+            logger.info(f"Task {task_id} was cancelled before translation started, aborting")
+            return
+        
         # Get task info
         task = task_manager.get_task(task_id)
         if not task:
@@ -218,7 +223,8 @@ async def run_translation(
             task_id=task_id,
             status=TaskStatus.PROCESSING.value,
             progress=0,
-            message="Initializing translation..."
+            message="Initializing translation...",
+            user_id=user_id
         )
         
         # Create progress callback
@@ -295,7 +301,8 @@ async def run_translation(
                 status=TaskStatus.COMPLETED.value,
                 progress=100,
                 message="Translation completed successfully",
-                output_path=str(output_dir)
+                output_path=str(output_dir),
+                user_id=user_id
             )
             logger.info(f"Translation completed: {task_id}")
         else:
@@ -307,7 +314,8 @@ async def run_translation(
                 progress=100,
                 message="Translation completed but PDF generation may have issues",
                 warnings="No PDF file found in output directory",
-                output_path=str(output_dir)
+                output_path=str(output_dir),
+                user_id=user_id
             )
             logger.warning(f"Translation completed with warnings: {task_id}")
     
@@ -317,7 +325,8 @@ async def run_translation(
             task_id=task_id,
             status=TaskStatus.FAILED.value,
             error=str(e),
-            message=f"Translation error: {str(e)}"
+            message=f"Translation error: {str(e)}",
+            user_id=user_id
         )
 
 
@@ -385,7 +394,8 @@ async def start_translation(
     # Store advanced config in task record
     task_manager.update_task(
         task_id=task_id,
-        advanced_config=request.advanced_config.model_dump()
+        advanced_config=request.advanced_config.model_dump(),
+        user_id=user_id
     )
     
     # Start background translation using asyncio

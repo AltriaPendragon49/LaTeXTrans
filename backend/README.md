@@ -235,6 +235,48 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 }
 ```
 
+### 用户认证与设置端点
+
+#### `GET /api/settings`
+获取当前登录用户的系统设置（需 JWT 认证）
+
+**Headers:** `Authorization: Bearer <jwt_token>`
+
+**响应:**
+```json
+{
+  "default_source_language": "en",
+  "default_target_language": "zh",
+  "translation_mode": "full",
+  "compile_strategy": "auto",
+  "translation_model": "gpt-4.1-mini",
+  "enable_verification": true,
+  "generate_glossary": true,
+  "use_author_api": true
+}
+```
+
+#### `PUT /api/settings`
+更新当前登录用户的系统设置（需 JWT 认证）
+
+**Headers:** `Authorization: Bearer <jwt_token>`
+
+#### `GET /api/history`
+获取当前登录用户的翻译历史（需 JWT 认证，支持分页）
+
+**Headers:** `Authorization: Bearer <jwt_token>`
+
+**Query 参数:** `?page=1&page_size=10`
+
+#### `GET /api/history/{task_id}`
+获取翻译任务详情（需 JWT 认证）
+
+#### `DELETE /api/history/{task_id}`
+删除单条翻译历史（需 JWT 认证，支持取消处理中任务）
+
+#### `DELETE /api/history`
+批量删除翻译历史（需 JWT 认证，Body 传入 task_id 列表）
+
 ## 📝 使用示例
 
 ### 示例1: arXiv论文翻译(完整流程)
@@ -328,35 +370,39 @@ backend/
 │   ├── main.py                    # FastAPI应用入口
 │   ├── core/
 │   │   ├── config.py              # 配置管理
+│   │   ├── auth.py                # JWT 认证依赖（可选认证）
+│   │   ├── supabase_client.py     # Supabase 客户端配置
 │   │   └── enums.py               # 枚举定义(TaskStatus等)
 │   ├── models/                    # 数据模型
-│   │   └── config_models.py       # 高级配置模型 (New)
+│   │   └── config_models.py       # 高级配置模型
 │   ├── api/
 │   │   └── routes/
-│   │       ├── arxiv.py           # arXiv下载端点
-│   │       ├── upload.py          # 文件上传端点 (支持文件夹)
-│   │       ├── translate.py       # 翻译端点 (支持高级配置)
+│   │       ├── arxiv.py           # arXiv下载端点（含可选JWT）
+│   │       ├── upload.py          # 文件上传端点（含可选JWT）
+│   │       ├── translate.py       # 翻译端点（支持高级配置）
 │   │       ├── task.py            # 任务状态端点
-│   │       └── download.py        # 下载端点 (包含术语表)
+│   │       ├── download.py        # 下载端点（包含术语表）
+│   │       ├── settings.py        # 用户设置 CRUD（需JWT）
+│   │       └── history.py         # 翻译历史查询/删除（需JWT）
 │   └── services/
-│       ├── task_manager.py        # 任务管理器 (支持配置持久化)
-│       ├── latex_validator.py     # LaTeX目录校验器 (New)
+│       ├── task_manager.py        # 任务管理器（双层存储：内存+Supabase）
+│       ├── latex_validator.py     # LaTeX目录校验器
 │       ├── agents/                # 代理系统
 │       │   ├── coordinator_agent.py
 │       │   ├── parser_agent.py
-│       │   ├── translator_agent.py  # (支持术语提取和快速筛查)
+│       │   ├── translator_agent.py
 │       │   ├── generator_agent.py
 │       │   └── validator_agent.py
 │       └── latex/                 # LaTeX处理
 │           ├── parser.py          # AST解析器
 │           ├── compiler.py        # 智能编译器(pdflatex/xelatex)
 │           ├── utils.py           # 工具函数(arXiv下载等)
-│           ├── prompts.py         # LLM提示词 (优化术语提取)
+│           ├── prompts.py         # LLM提示词
 │           └── reconstruct.py     # 代码重构器
 ├── data/                          # 数据目录
-│   ├── uploads/                   # 上传文件
-│   ├── outputs/                   # 翻译输出
-│   └── terms/                     # 术语词典
+│   ├── uploads/                   # 上传文件（按 task_id 隔离）
+│   ├── outputs/                   # 翻译输出（按 task_id 隔离）
+│   └── terms/                     # 术语词典（按 task_id 隔离）
 ├── requirements.txt               # 依赖列表
 ├── start.bat                      # Windows启动脚本
 ├── start.sh                       # Linux/Mac启动脚本
@@ -376,12 +422,20 @@ export LLM_BASE_URL="https://aicanapi.com/v1/chat/completions"
 export LLM_MODEL="gpt-4.1-mini"
 export LLM_TIMEOUT="60"
 
+# Supabase 配置（多用户功能必需）
+export SUPABASE_URL="https://your-project.supabase.co"
+export SUPABASE_ANON_KEY="your-anon-key"       # 用于用户操作（RLS 生效）
+export SUPABASE_SERVICE_ROLE_KEY="your-key"     # 用于管理员操作（绕过 RLS）
+export ENCRYPTION_KEY="your-32-byte-key"        # 用于加密用户 API Key
+
 # LaTeX工具路径(可选,如果不在PATH中)
 export LATEX_BIN_DIR="/usr/local/texlive/2024/bin/x86_64-linux"
 
 # 数据目录(可选)
 export DATA_DIR="/path/to/data"
 ```
+
+> **注意**: 未配置 Supabase 环境变量时，系统仍可运行但多用户功能不可用（用户设置不持久化、无翻译历史记录）。
 
 ### 配置文件
 
@@ -497,8 +551,8 @@ app = FastAPI(
 ## 📚 更多资源
 
 - **API文档**: http://localhost:8000/docs (启动服务后访问)
-- **开发进度**: `openspec/changes/add-web-mvp-platform/PROGRESS.md`
-- **测试脚本**: `backend/test_api_comprehensive.py`
+- **前端文档**: `frontend/README.md`
+- **OpenSpec 变更记录**: `openspec/changes/archive/`
 - **CLI版本**: `python prototype_system/main.py --help`
 
 ## 🧪 测试

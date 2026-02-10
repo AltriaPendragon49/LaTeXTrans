@@ -5,6 +5,7 @@
  * Redirects to login if not authenticated.
  */
 
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -15,12 +16,15 @@ import { toast } from 'sonner'
 export default function ProfilePage() {
     const navigate = useNavigate()
     const { user, isAuthenticated, loading, signOut } = useAuth()
+    const [isLoggingOut, setIsLoggingOut] = useState(false)
 
     // Handle logout
     const handleLogout = async () => {
+        setIsLoggingOut(true)
         await signOut()
         toast.success('已退出登录')
         navigate('/')
+        // Note: setIsLoggingOut(false) 不需要，因为会导航离开页面
     }
 
     // Loading state
@@ -95,11 +99,21 @@ export default function ProfilePage() {
 
                         <Button
                             variant="destructive"
-                            className="w-full justify-start"
+                            className="w-full justify-start transition-all duration-200 active:scale-[0.98]"
                             onClick={handleLogout}
+                            disabled={isLoggingOut}
                         >
-                            <LogOut className="mr-2 h-4 w-4" />
-                            退出登录
+                            {isLoggingOut ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    正在退出...
+                                </>
+                            ) : (
+                                <>
+                                    <LogOut className="mr-2 h-4 w-4" />
+                                    退出登录
+                                </>
+                            )}
                         </Button>
                     </div>
                 </CardContent>

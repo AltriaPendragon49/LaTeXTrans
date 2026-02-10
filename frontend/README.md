@@ -1,6 +1,6 @@
 # LaTeXTrans 前端应用
 
-LaTeX论文自动翻译系统的Web前端,基于 React + TypeScript + Vite 构建。
+LaTeX论文自动翻译系统的Web前端,基于 React + TypeScript + Vite 构建。支持用户注册登录、翻译历史管理、系统设置持久化和访客模式。
 
 ## 🚀 快速开始
 
@@ -83,6 +83,26 @@ npm run preview
 - 查看翻译进度和详细日志
 - 实时更新翻译状态
 
+### 🔐 用户认证
+
+- **邮箱注册/登录**: 基于 Supabase Auth
+- **访客模式**: 未登录用户可使用临时翻译（不持久化）
+- **自动配置加载**: 登录后自动应用用户保存的默认配置
+- **会话管理**: JWT 自动刷新，支持登出
+
+### 📋 翻译历史
+
+- 查看所有翻译任务记录及配置快照
+- 点击历史任务直接预览 PDF 或查看进度
+- 支持单条删除（含处理中任务中断）和批量删除
+- 可折叠配置详情展示
+
+### ⚙️ 系统设置
+
+- 保存个人默认翻译配置（语言、模型、编译策略等）
+- 新建翻译时自动填充已保存的配置
+- 支持自定义 API Key（AES-256 加密存储）
+
 ### 💾 下载选项
 - **译文 PDF**: 翻译后的完整 PDF
 - **译文源码**: 翻译后的 LaTeX 源文件（ZIP 压缩包）
@@ -103,13 +123,20 @@ frontend/
 │   ├── pages/               # 页面组件
 │   │   ├── Dashboard.tsx         # 主页面（输入+配置）
 │   │   ├── Processing.tsx        # 处理中页面（进度+日志）
-│   │   └── Comparisons.tsx       # 结果页面（PDF对比+下载）
+│   │   ├── Comparisons.tsx       # 结果页面（PDF对比+下载）
+│   │   ├── Login.tsx             # 登录/注册页面
+│   │   ├── Profile.tsx           # 用户资料页面
+│   │   ├── Settings.tsx          # 系统设置页面
+│   │   └── History.tsx           # 翻译历史页面
+│   ├── contexts/            # React Context
+│   │   └── AuthContext.tsx       # 认证上下文（Supabase Auth）
 │   ├── store/               # 状态管理 (zustand)
-│   │   └── useStore.ts           # 全局状态
+│   │   └── useStore.ts           # 全局状态（含用户配置加载）
 │   ├── types/               # TypeScript 类型定义
 │   │   └── config.ts             # 配置相关类型
 │   ├── lib/
-│   │   ├── api.ts                # API 调用封装
+│   │   ├── api.ts                # API 调用封装（含可选JWT）
+│   │   ├── supabase.ts           # Supabase 客户端配置
 │   │   └── utils.ts              # 工具函数
 │   ├── App.tsx              # 应用入口
 │   └── main.tsx             # Vite 入口
@@ -126,18 +153,23 @@ frontend/
 - **UI 组件**: shadcn/ui + Radix UI
 - **样式**: Tailwind CSS 4.x
 - **图标**: Lucide React
+- **认证**: Supabase Auth (@supabase/supabase-js)
 
 ## 🔗 API 集成
 
 前端通过 `src/lib/api.ts` 与后端通信，主要端点：
 
-- `POST /api/arxiv` - 下载 arXiv 论文
-- `POST /api/upload` - 上传本地文件
+- `POST /api/arxiv` - 下载 arXiv 论文（可选JWT）
+- `POST /api/upload` - 上传本地文件（可选JWT）
 - `POST /api/translate/{task_id}` - 启动翻译
 - `GET /api/task/{task_id}` - 查询进度
 - `GET /api/download/{task_id}/pdf` - 下载译文 PDF
 - `GET /api/download/{task_id}/terminology` - 下载术语表
 - `GET /api/preview/{task_id}/source-pdf` - 预览原文 PDF
+- `GET /api/settings` - 获取用户设置（需JWT）
+- `PUT /api/settings` - 更新用户设置（需JWT）
+- `GET /api/history` - 获取翻译历史（需JWT）
+- `DELETE /api/history/{task_id}` - 删除历史记录（需JWT）
 
 ## 📝 配置说明
 
@@ -147,7 +179,11 @@ frontend/
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
+
+> **注意**: Supabase 环境变量为多用户功能必需。未配置时认证相关功能不可用。
 
 ### 高级配置默认值
 
@@ -196,5 +232,6 @@ app.add_middleware(
 ## 📚 更多资源
 
 - **后端文档**: `backend/README.md`
-- **开发进度**: `openspec/changes/add-advanced-config-temp-user/`
+- **OpenSpec 变更记录**: `openspec/changes/archive/`
 - **UI 组件文档**: https://ui.shadcn.com/
+- **Supabase 文档**: https://supabase.com/docs

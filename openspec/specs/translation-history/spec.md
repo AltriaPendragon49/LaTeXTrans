@@ -1,10 +1,8 @@
-# translation-history Specification Delta
+# translation-history Specification
 
 ## Purpose
-新增用户级翻译历史能力，支持任务元数据持久化和用户隔离。
-
-## ADDED Requirements
-
+TBD - created by archiving change add-multi-user-support. Update Purpose after archive.
+## Requirements
 ### Requirement: Task Metadata Persistence
 系统 SHALL 将翻译任务元数据持久化存储在 Supabase Postgres。
 
@@ -50,7 +48,38 @@
 - **WHEN** 用户点击某任务条目
 - **THEN** 系统显示任务详情，包括完整进度和错误信息
 
-## Cross-References
-- 依赖: user-auth (用户身份)
-- 依赖: file-management (文件下载)
-- 关联: web-api (任务状态 API)
+### Requirement: Task Deletion
+系统 SHALL 支持用户删除自己的翻译任务记录及关联文件。
+
+#### Scenario: 单条删除已完成任务
+- **WHEN** 用户在历史记录页面点击某任务的删除按钮
+- **AND** 用户在确认弹窗中点击「确认删除」
+- **THEN** 系统删除 Supabase 中该任务记录
+- **AND** 系统删除本地 `uploads/{task_id}/`、`outputs/{task_id}/`、`terms/{task_id}/` 目录
+- **AND** 前端显示「任务已删除」Toast 通知
+- **AND** 任务从列表中移除
+
+#### Scenario: 批量删除任务
+- **WHEN** 用户在选择模式下勾选多个任务
+- **AND** 点击「删除选中」按钮
+- **THEN** 系统批量删除所有选中任务的 Supabase 记录和本地文件
+- **AND** 前端显示删除结果 Toast 通知
+
+#### Scenario: 删除处理中任务
+- **WHEN** 用户删除状态为 processing 的任务
+- **THEN** 系统先标记该任务为 cancelled
+- **AND** 等待翻译协程检测到取消标记后退出
+- **THEN** 再执行 Supabase 记录删除和本地文件删除
+
+#### Scenario: 删除他人任务被拒绝
+- **WHEN** 用户尝试删除不属于自己的任务
+- **THEN** 系统返回 HTTP 404 错误（RLS 过滤）
+
+### Requirement: Task Cancellation Support
+系统 SHALL 支持取消正在执行的翻译任务。
+
+#### Scenario: 取消运行中的翻译
+- **WHEN** 翻译任务被标记为 cancelled
+- **AND** `run_translation()` 函数在入口处检测到取消标记
+- **THEN** 翻译函数立即返回，不继续处理
+

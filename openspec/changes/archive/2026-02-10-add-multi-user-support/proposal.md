@@ -41,6 +41,7 @@
 | 翻译执行与预览 | ✅ | ✅ |
 | 下载 PDF / 源文件 | ✅ | ✅ |
 | 翻译历史记录 | ❌ | ✅ |
+| 删除历史记录（单条/批量） | ❌ | ✅ |
 | 系统设置保存 | ❌ | ✅ |
 | 配置自动填充 | ❌ | ✅ |
 
@@ -79,6 +80,20 @@
 
 > [!IMPORTANT]
 > PDF 文件存储在后端硬盘（`data/outputs/{task_id}/`），不存入 Supabase 数据库。Supabase 仅存储元数据和路径引用。
+
+### 历史记录删除
+
+登录用户可删除自己的翻译任务（单条或批量），删除操作包括：
+
+| 删除内容 | 说明 |
+|----------|------|
+| Supabase 记录 | 从 `translation_tasks` 表中删除 |
+| 源文件 | 删除 `data/uploads/{task_id}/` 目录 |
+| 翻译输出 | 删除 `data/outputs/{task_id}/` 目录 |
+| 术语表 | 删除 `data/terms/{task_id}/` 目录 |
+
+> [!IMPORTANT]
+> 对于正在处理中的任务，系统先标记为 cancelled 中断翻译，再执行删除。
 
 ### 用户资料页面
 
@@ -173,13 +188,15 @@ CREATE POLICY "Users can insert own settings" ON public.user_settings
 CREATE POLICY "Users can update own settings" ON public.user_settings
     FOR UPDATE USING (auth.uid() = user_id);
 
--- translation_tasks: 用户只能访问自己的任务
+-- translation_tasks: 用户只能 CRUD 自己的任务
 CREATE POLICY "Users can view own tasks" ON public.translation_tasks
     FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own tasks" ON public.translation_tasks
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own tasks" ON public.translation_tasks
     FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own tasks" ON public.translation_tasks
+    FOR DELETE USING (auth.uid() = user_id);
 ```
 
 ## 安全设计

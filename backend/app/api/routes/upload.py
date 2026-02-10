@@ -5,13 +5,16 @@ Provides endpoints for uploading .zip, .tar.gz, .rar or .tex files.
 Supports automatic extraction and LaTeX project validation.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List
 import logging
 import shutil
 import zipfile
 import tarfile
+import base64
+import json
 from pathlib import Path
 
 from backend.app.services.task_manager import get_task_manager
@@ -23,6 +26,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
+
+# Allow missing Authorization header (guest mode)
+security = HTTPBearer(auto_error=False)
 
 
 class LatexValidationResponse(BaseModel):
@@ -96,7 +102,10 @@ def get_file_extension(filename: str) -> str:
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+):
     """
     Upload .zip, .tar.gz, .rar or .tex file
     
@@ -129,9 +138,26 @@ async def upload_file(file: UploadFile = File(...)):
     
     logger.info(f"Uploading file: {file.filename} ({file_ext})")
     
+    # Get user_id from token if authenticated
+    user_id = None
+    if credentials:
+        try:
+            # Parse JWT to get user_id (sub claim)
+            token = credentials.credentials
+            # Decode JWT payload (no verification, just reading claims)
+            payload_b64 = token.split('.')[1]
+            # Add padding if needed
+            payload_b64 += '=' * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            user_id = payload.get('sub')
+            if user_id:
+                logger.info(f"Authenticated user uploading file: {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to parse user_id from token: {e}")
+    
     # Create task with folder_upload source type for archives
     source_type = "folder_upload" if file_ext != ".tex" else "upload"
-    task_id = task_manager.create_task(source_type=source_type)
+    task_id = task_manager.create_task(source_type=source_type, user_id=user_id)
     
     # Create task directory
     task_dir = settings.uploads_dir / task_id
@@ -141,7 +167,8 @@ async def upload_file(file: UploadFile = File(...)):
     task_manager.update_task(
         task_id=task_id,
         status=TaskStatus.PROCESSING.value,
-        message=f"Uploading {file.filename}..."
+        message=f"Uploading {file.filename}...",
+        user_id=user_id
     )
     
     try:
@@ -204,7 +231,8 @@ async def upload_file(file: UploadFile = File(...)):
                 message=f"File {file.filename} uploaded and validated successfully",
                 source_path=str(task_dir),
                 source_available=True,
-                latex_validation=validation.model_dump()
+                latex_validation=validation.model_dump(),
+                user_id=user_id
             )
             logger.info(f"Upload successful: {task_id}, main_file={validation.main_file}")
             
@@ -221,7 +249,8 @@ async def upload_file(file: UploadFile = File(...)):
                 task_id=task_id,
                 status=TaskStatus.FAILED.value,
                 error="; ".join(validation.errors),
-                latex_validation=validation.model_dump()
+                latex_validation=validation.model_dump(),
+                user_id=user_id
             )
             
             raise HTTPException(
@@ -234,7 +263,8 @@ async def upload_file(file: UploadFile = File(...)):
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.FAILED.value,
-            error="ZIP 文件损坏或无效"
+            error="ZIP 文件损坏或无效",
+            user_id=user_id
         )
         raise HTTPException(
             status_code=400,
@@ -247,7 +277,8 @@ async def upload_file(file: UploadFile = File(...)):
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.FAILED.value,
-            error=err_msg
+            error=err_msg,
+            user_id=user_id
         )
         raise HTTPException(
             status_code=500,
@@ -265,7 +296,8 @@ async def upload_file(file: UploadFile = File(...)):
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.FAILED.value,
-            error=err_msg
+            error=err_msg,
+            user_id=user_id
         )
         raise HTTPException(
             status_code=422,
@@ -278,7 +310,8 @@ async def upload_file(file: UploadFile = File(...)):
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.FAILED.value,
-            error=err_msg
+            error=err_msg,
+            user_id=user_id
         )
         raise HTTPException(
             status_code=500,

@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 export const DropZone = () => {
-    const { setTaskId, setLatexValidation, setArxivId, reset } = useStore()
+    const { setTaskId, setLatexValidation, setArxivId, resetTranslationState } = useStore()
     const [isDragActive, setIsDragActive] = useState(false)
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
     const [progress, setProgress] = useState(0)
@@ -39,8 +39,8 @@ export const DropZone = () => {
             return
         }
 
-        // Reset previous task state first (clears logs, previous taskId, etc.)
-        reset()
+        // Reset previous task state only, preserve user configuration
+        resetTranslationState()
 
         setFileName(file.name)
         setUploadStatus('uploading')
@@ -62,6 +62,7 @@ export const DropZone = () => {
             setUploadStatus('success')
 
             setTaskId(response.task_id)
+
             if (response.latex_validation) {
                 setLatexValidation(response.latex_validation)
                 if (response.latex_validation.is_valid) {

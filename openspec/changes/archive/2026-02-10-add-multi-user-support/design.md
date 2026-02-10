@@ -734,3 +734,361 @@ const handleLoadArxiv = async () => {
 | 登录后新建翻译 | 使用默认配置，需手动刷新 | 自动应用保存的配置 + Toast 确认 |
 | 按钮点击体验 | 静态无动画 | 缩放动画（`active:scale-95`）|
 
+---
+
+## 任务恢复功能 (2026-02-10)
+
+### 问题背景
+
+用户从历史记录页面点击任务进入预览页面时，出现 "Task not found" 错误。但任务的输出文件确实存在于 `backend/data/outputs/{task_id}` 目录。
+
+### 根因分析
+
+`TaskManager` 使用内存存储（`Dict[str, Dict]`），后端服务重启后所有任务状态丢失。原有的 `get_task()` 仅从内存中查找：
+
+```python
+def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    with self._lock:
+        return self._tasks.get(task_id, None).copy() if task_id in self._tasks else None
+```
+
+而任务数据持久化在两个地方：
+1. **Supabase 数据库** - `translation_tasks` 表（登录用户）
+2. **本地文件系统** - `data/outputs/{task_id}` 目录
+
+### 解决方案
+
+扩展 `get_task()` 方法，增加从持久化层恢复任务的逻辑：
+
+```python
+def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get task by ID
+    
+    First checks in-memory cache, then attempts recovery from:
+    1. Supabase database (for authenticated users' tasks)
+    2. Local filesystem (for guest tasks or when Supabase unavailable)
+    """
+    with self._lock:
+        if task_id in self._tasks:
+            return self._tasks.get(task_id, None).copy()
+    
+    # Task not in memory, try to recover from persistent storage
+    recovered_task = self._recover_task_from_storage(task_id)
+    if recovered_task:
+        # Cache the recovered task
+        with self._lock:
+            self._tasks[task_id] = recovered_task
+        logger.info(f"[TaskManager] Recovered task {task_id} from persistent storage")
+        return recovered_task.copy()
+    
+    return None
+```
+
+### 新增方法
+
+#### `_recover_task_from_storage(task_id)`
+
+统一入口，按优先级尝试恢复：
+1. 先尝试 Supabase（数据更完整）
+2. 回退到本地文件系统
+
+#### `_recover_from_supabase(task_id)`
+
+从 Supabase `translation_tasks` 表恢复任务：
+
+```python
+def _recover_from_supabase(self, task_id: str) -> Optional[Dict[str, Any]]:
+    client = get_supabase_admin_client()
+    result = client.table("translation_tasks").select("*").eq("task_id", task_id).execute()
+    
+    if result.data:
+        db_task = result.data[0]
+        # 转换数据库记录为内部任务格式
+        task = {
+            "task_id": db_task.get("task_id"),
+            "status": db_task.get("status", "completed"),
+            "progress": db_task.get("progress", 100),
+            "output_path": db_task.get("output_path"),
+            # ... 其他字段
+        }
+        # 如果路径未存储，尝试从文件系统推断
+        if not task["output_path"]:
+            self._infer_paths_from_filesystem(task)
+        return task
+```
+
+#### `_recover_from_filesystem(task_id)`
+
+从本地文件系统恢复任务：
+
+```python
+def _recover_from_filesystem(self, task_id: str) -> Optional[Dict[str, Any]]:
+    output_base = Path(settings.OUTPUT_DIR)
+    task_output_dir = output_base / task_id
+    
+    if task_output_dir.exists() and task_output_dir.is_dir():
+        # 目录存在，假设任务已完成
+        task = {
+            "task_id": task_id,
+            "status": TaskStatus.COMPLETED.value,
+            "progress": 100,
+            "output_path": str(task_output_dir),
+            "created_at": datetime.fromtimestamp(task_output_dir.stat().st_ctime).isoformat(),
+            # ...
+        }
+        # 尝试推断 arXiv ID
+        self._infer_arxiv_id(task, task_output_dir)
+        return task
+```
+
+#### `_infer_paths_from_filesystem(task)`
+
+根据 task_id 自动推断路径：
+
+```python
+def _infer_paths_from_filesystem(self, task: Dict[str, Any]):
+    task_id = task["task_id"]
+    
+    if not task.get("output_path"):
+        output_dir = Path(settings.OUTPUT_DIR) / task_id
+        if output_dir.exists():
+            task["output_path"] = str(output_dir)
+    
+    if not task.get("source_path"):
+        source_dir = Path(settings.SOURCE_DIR) / task_id
+        if source_dir.exists():
+            task["source_path"] = str(source_dir)
+```
+
+#### `_infer_arxiv_id(task, directory)`
+
+从目录名或文件名提取 arXiv ID：
+
+```python
+def _infer_arxiv_id(self, task: Dict[str, Any], directory: Path):
+    arxiv_pattern = re.compile(r'(\d{4}\.\d{4,5})(v\d+)?')
+    
+    # 检查目录名
+    match = arxiv_pattern.search(directory.name)
+    if match:
+        task["arxiv_id"] = match.group(1)
+        task["source_type"] = "arxiv"
+        return
+    
+    # 检查文件名
+    for file_path in directory.iterdir():
+        match = arxiv_pattern.search(file_path.name)
+        if match:
+            task["arxiv_id"] = match.group(1)
+            task["source_type"] = "arxiv"
+            return
+```
+
+### 恢复优先级
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. 内存缓存                                                  │
+│    - 最快，实时状态                                          │
+│    - 适用于当前会话创建的任务                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓ 未找到
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Supabase 数据库                                          │
+│    - 登录用户任务的完整配置快照                               │
+│    - 包含翻译配置、用户信息等                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓ 未找到或不可用
+┌─────────────────────────────────────────────────────────────┐
+│ 3. 本地文件系统                                              │
+│    - 根据目录存在推断任务状态                                 │
+│    - 自动推断路径和 arXiv ID                                 │
+│    - 最小信息恢复（基本够用于预览）                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 文件变更
+
+| 文件 | 变更内容 |
+|------|----------|
+| `backend/app/services/task_manager.py` | 扩展 `get_task()` 添加恢复逻辑 |
+| `backend/app/services/task_manager.py` | 新增 `_recover_task_from_storage()` |
+| `backend/app/services/task_manager.py` | 新增 `_recover_from_supabase()` |
+| `backend/app/services/task_manager.py` | 新增 `_recover_from_filesystem()` |
+| `backend/app/services/task_manager.py` | 新增 `_infer_paths_from_filesystem()` |
+| `backend/app/services/task_manager.py` | 新增 `_infer_arxiv_id()` |
+
+---
+
+## 退出登录与历史配置 UI 改进 (2026-02-10)
+
+### 问题背景
+
+用户反馈了两个 UI 交互问题：
+
+1. **退出登录按钮无反馈**: 点击后等待几秒才跳转，用户不确定是否点击成功
+2. **历史记录缺少配置详情**: 无法看到每个任务使用的翻译配置
+
+### 解决方案
+
+#### 1. 退出登录按钮优化
+
+**代码变更** - [`Profile.tsx`](file:///d:/future/antigravity/LaTexTrans/frontend/src/pages/Profile.tsx):
+
+```diff
++ import { Loader2, LogOut } from 'lucide-react'
+
+  export default function Profile() {
++     const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+      const handleLogout = async () => {
++         setIsLoggingOut(true)
+          await signOut()
+          toast.success('已退出登录')
+          navigate('/')
+      }
+
+      return (
+          <Button
+              variant="destructive"
+              onClick={handleLogout}
++             disabled={isLoggingOut}
++             className="active:scale-[0.98] transition-all duration-200"
+          >
+-             <LogOut className="mr-2 h-4 w-4" />
+-             退出登录
++             {isLoggingOut ? (
++                 <>
++                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
++                     正在退出...
++                 </>
++             ) : (
++                 <>
++                     <LogOut className="mr-2 h-4 w-4" />
++                     退出登录
++                 </>
++             )}
+          </Button>
+      )
+  }
+```
+
+#### 2. 历史记录配置详情展示
+
+**后端变更** - [`history.py`](file:///d:/future/antigravity/LaTexTrans/backend/app/api/routes/history.py):
+
+扩展 `TaskHistoryItem` 模型：
+
+```python
+class TaskHistoryItem(BaseModel):
+    task_id: str
+    source_type: str
+    arxiv_id: Optional[str] = None
+    translation_mode: str
+    status: str
+    progress: int
+    created_at: str
+    completed_at: Optional[str] = None
+    # 新增配置快照字段
+    source_language: str
+    target_language: str
+    compile_strategy: str
+    translation_model: Optional[str] = None
+    enable_verification: bool
+    generate_glossary: bool
+    use_author_api: bool
+```
+
+**前端变更** - [`History.tsx`](file:///d:/future/antigravity/LaTexTrans/frontend/src/pages/History.tsx):
+
+使用 `Collapsible` 组件实现可折叠配置区域：
+
+```tsx
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Settings2, ChevronDown, Languages, Wrench, Sparkles, CheckCircle2, XCircle } from "lucide-react"
+
+// 状态管理
+const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
+
+const toggleExpand = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation()  // 防止触发导航
+    setExpandedTasks(prev => {
+        const next = new Set(prev)
+        if (next.has(taskId)) {
+            next.delete(taskId)
+        } else {
+            next.add(taskId)
+        }
+        return next
+    })
+}
+
+// UI 渲染
+<Collapsible open={expandedTasks.has(task.task_id)}>
+    <Card>
+        {/* 任务基本信息 */}
+        <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={(e) => toggleExpand(e, task.task_id)}>
+                <Settings2 className="h-4 w-4" />
+                <ChevronDown className={cn("h-3 w-3 transition-transform duration-200",
+                    expandedTasks.has(task.task_id) && "rotate-180"
+                )} />
+            </Button>
+        </CollapsibleTrigger>
+    </Card>
+    
+    <CollapsibleContent className="animate-in slide-in-from-top-2 fade-in duration-200">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* 语言设置 */}
+            <div className="flex items-center gap-2">
+                <Languages className="h-4 w-4 text-blue-500" />
+                {task.source_language} → {task.target_language}
+            </div>
+            
+            {/* 编译策略 */}
+            <div className="flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-orange-500" />
+                {task.compile_strategy}
+            </div>
+            
+            {/* 翻译模型 */}
+            {task.translation_model && (
+                <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-500" />
+                    {task.translation_model}
+                </div>
+            )}
+            
+            {/* 高级选项开关 */}
+            <div className="flex flex-wrap gap-2">
+                <Badge variant={task.enable_verification ? "default" : "secondary"}>
+                    {task.enable_verification ? <CheckCircle2 /> : <XCircle />}
+                    翻译验证
+                </Badge>
+                {/* ... 其他开关 */}
+            </div>
+        </div>
+    </CollapsibleContent>
+</Collapsible>
+```
+
+### 文件变更
+
+| 文件 | 变更内容 |
+|------|----------|
+| `frontend/src/pages/Profile.tsx` | 添加 `isLoggingOut` 状态、loading 动画、按压反馈 |
+| `backend/app/api/routes/history.py` | 扩展 `TaskHistoryItem` 模型添加配置字段 |
+| `backend/app/api/routes/history.py` | 更新查询语句包含新字段 |
+| `frontend/src/pages/History.tsx` | 添加 `Collapsible` 配置详情展示 |
+| `frontend/src/pages/History.tsx` | 添加 `expandedTasks` 状态管理 |
+
+### 用户体验提升
+
+| 场景 | 改进前 | 改进后 |
+|------|--------|--------|
+| 点击退出登录 | 无反馈，等待跳转 | 立即显示 loading 动画 + 按钮禁用 |
+| 查看历史任务配置 | 需进入详情页 | 点击设置按钮展开/收起配置 |
+| 配置信息可读性 | 不可用 | 图标颜色编码 + 状态标签 |
+
+

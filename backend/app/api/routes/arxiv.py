@@ -4,11 +4,14 @@ arXiv API Routes
 Provides endpoints for downloading arXiv papers.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 import logging
 import asyncio
+import base64
+import json
 
 from backend.app.services.latex.utils import (
     batch_download_arxiv_tex,
@@ -22,6 +25,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
+
+# Allow missing Authorization header (guest mode)
+security = HTTPBearer(auto_error=False)
 
 
 # Custom exceptions for better error handling
@@ -118,7 +124,10 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
 
 
 @router.post("/arxiv", response_model=ArxivResponse)
-async def download_arxiv(request: ArxivRequest):
+async def download_arxiv(
+    request: ArxivRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+):
     """
     Download arXiv paper source (asynchronous)
     
@@ -146,8 +155,29 @@ async def download_arxiv(request: ArxivRequest):
     arxiv_id = arxiv_ids[0]
     logger.info(f"Starting download for arXiv paper: {arxiv_id}")
     
+    # Get user_id from token if authenticated
+    user_id = None
+    if credentials:
+        try:
+            # Parse JWT to get user_id (sub claim)
+            token = credentials.credentials
+            # Decode JWT payload (no verification, just reading claims)
+            payload_b64 = token.split('.')[1]
+            # Add padding if needed
+            payload_b64 += '=' * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            user_id = payload.get('sub')
+            if user_id:
+                logger.info(f"Authenticated user creating arXiv task: {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to parse user_id from token: {e}")
+    
     # Create a new task
-    task_id = task_manager.create_task(source_type="arxiv", arxiv_id=arxiv_id)
+    task_id = task_manager.create_task(
+        source_type="arxiv", 
+        arxiv_id=arxiv_id,
+        user_id=user_id
+    )
 
     # 设置初始进度状态，确保前端第一次轮询就能看到进度
     task_manager.update_task(

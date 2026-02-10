@@ -147,4 +147,43 @@ export const getPreviewUrl = (taskId: string): string => {
     return `${API_BASE_URL}/preview/${taskId}`
 }
 
+/**
+ * Delete a single task from history.
+ * 
+ * @param taskId - Task ID to delete
+ * @returns Deletion result with deleted directories and errors
+ */
+export const deleteTask = async (taskId: string): Promise<{
+    message: string
+    task_id: string
+    deleted_dirs: string[]
+    errors: string[]
+}> => {
+    const response = await api.delete(`/history/${taskId}`)
+    return response.data
+}
+
+/**
+ * Delete multiple tasks in batch.
+ * 
+ * @param taskIds - Array of task IDs to delete
+ * @returns Batch deletion results
+ */
+export const deleteTasksBatch = async (taskIds: string[]): Promise<{
+    message: string
+    results: Array<{
+        task_id: string
+        success: boolean
+        deleted_dirs?: string[]
+        errors?: string[]
+        error?: string
+    }>
+}> => {
+    const response = await api.delete(`/history`, {
+        data: { task_ids: taskIds }
+    })
+    return response.data
+}
+
 export default api
+

@@ -6,13 +6,13 @@
 - [x] 创建 `user_settings` 表（含完整配置字段）
 - [x] 创建 `translation_tasks` 表（含配置快照字段）
 - [x] 配置 RLS 策略
-- [ ] 验证表结构和权限
+- [x] 验证表结构和权限
 
 ### 1.2 后端 Supabase 集成
 - [x] 安装 supabase-py 依赖
 - [x] 创建 `app/core/supabase_client.py` 配置模块
 - [x] 添加 Supabase 环境变量配置
-- [ ] 测试 Supabase 连接
+- [x] 测试 Supabase 连接
 
 ---
 
@@ -28,8 +28,8 @@
   - [x] 更新 `history.py` 使用纯 RLS
   - [x] 添加数据库迁移：`user_id DEFAULT auth.uid()`
   - [x] 添加 `supabase_anon_key` 配置
-  - [ ] 验证依赖兼容性（supabase/httpx 版本）
-- [ ] 更新 CORS 配置支持 credentials
+  - [x] 验证依赖兼容性（supabase/httpx 版本）
+- [x] 更新 CORS 配置支持 credentials（`allow_credentials=True` 已在 `main.py` 配置）
 
 
 ### 2.2 前端认证
@@ -49,6 +49,10 @@
 - [x] 登出按钮
 - [x] 退出登录 toast 反馈（修复于 2026-02-08）
 - [x] 更新侧边栏 User Profile 链接
+- [x] 退出登录按钮交互优化（2026-02-10）
+  - [x] 添加 loading 状态（Loader2 旋转动画）
+  - [x] 添加按压反馈效果（`active:scale-[0.98]`）
+  - [x] 禁用按钮防止重复点击
 
 ---
 
@@ -80,15 +84,20 @@
 
 ## 阶段 4: 翻译历史
 
-### 4.1 后端任务持久化
-- [ ] 重构 `TaskManager` 支持双层存储
-  - 内存缓存用于所有任务（含访客）
-  - Supabase 持久化仅用于登录用户
-- [ ] 更新 `create_task` 方法：
-  - 接收完整配置参数
-  - 已登录：保存配置快照到 Supabase
-  - 未登录：仅内存存储
-- [ ] 更新 `update_task` 方法同步到 Supabase
+### 4.1 后端任务持久化（2026-02-10 完成）
+- [x] 重构 `TaskManager` 支持双层存储
+  - [x] 内存缓存用于所有任务（含访客）
+  - [x] Supabase 持久化仅用于登录用户
+  - [x] 添加 `_persist_task_create()` 和 `_persist_task_update()` 私有方法
+- [x] 更新 `create_task` 方法
+  - [x] 新增 `user_id`、`source_language`、`target_language` 参数
+  - [x] 已登录：保存配置快照到 Supabase `translation_tasks` 表
+  - [x] 未登录：仅内存存储
+- [x] 更新 `update_task` 方法同步到 Supabase
+  - [x] 新增 `user_id` 参数
+  - [x] 状态变更时自动同步到数据库
+- [x] 更新 `arxiv.py` 解析 JWT 并传递 `user_id`
+- [x] 更新 `translate.py` 传递 `user_id` 到所有 `update_task()` 调用
 - [x] 创建 `app/api/routes/history.py`
 - [x] GET /api/history - 获取用户任务列表（需认证、分页）
 - [x] GET /api/history/{task_id} - 获取任务详情（需认证）
@@ -100,11 +109,44 @@
   - [x] 显示 arXiv ID / 上传文件标识
   - [x] 显示翻译模式、状态、创建时间
   - [x] 分页加载
-  - [ ] 状态筛选（可选）
-- [ ] 任务详情弹窗/页面
-  - [ ] 显示配置快照
-  - [ ] 预览/下载译文 PDF
-  - [ ] 下载源 PDF（如有）
+  - [ ] ~~状态筛选~~（延后至后续迭代）
+- [x] 配置详情展示功能（2026-02-10）
+  - [x] 添加 `Collapsible` 可折叠配置区域
+  - [x] 显示语言设置、编译策略、翻译模型
+  - [x] 显示高级选项开关状态（验证/术语表/作者API）
+  - [x] 设置按钮旋转动画效果
+
+### 4.3 历史任务导航修复（2026-02-10）
+- [x] 点击历史任务时根据状态导航到正确页面
+  - [x] 已完成任务 → `/preview`（PDF 预览/下载）
+  - [x] 处理中任务 → `/processing`（进度监控）
+- [x] 点击时设置 `taskId` 和 `arxivId` 到 zustand store
+- [x] 修复预览页面能正确显示历史任务的 PDF
+
+### 4.4 任务恢复功能（2026-02-10）
+- [x] TaskManager 增加持久化恢复逻辑
+  - [x] `get_task()` 内存找不到时自动从持久化层恢复
+  - [x] `_recover_from_supabase()` 从数据库恢复任务
+  - [x] `_recover_from_filesystem()` 从本地文件系统恢复任务
+  - [x] `_infer_paths_from_filesystem()` 自动推断文件路径
+  - [x] `_infer_arxiv_id()` 从文件名提取 arXiv ID
+- [x] 解决后端重启后历史任务无法预览的问题
+
+### 4.5 历史记录删除功能（2026-02-11）
+- [x] 后端 TaskManager 增强
+  - [x] 新增 `_cancelled_tasks` 集合 + `is_cancelled()` / `cancel_task()` 方法
+  - [x] 新增 `delete_task_full()` 完整删除（uploads/outputs/terms 目录 + 内存清理）
+- [x] 翻译中断支持
+  - [x] `translate.py` 的 `run_translation()` 入口添加取消检查点
+- [x] History API 删除接口
+  - [x] `DELETE /api/history/{task_id}` 单条删除（含 processing 任务中断）
+  - [x] `DELETE /api/history` 批量删除
+- [x] Supabase DELETE RLS 策略
+  - [x] 新增 `Users can delete own tasks` 策略
+- [x] 前端删除 UI
+  - [x] 单条删除：Trash2 按钮 + AlertDialog 确认 + Toast 反馈
+  - [x] 批量删除：选择模式 + Checkbox + 全选/删除选中
+  - [x] 确认式更新（API 成功后再移除列表项）
 
 ---
 
@@ -130,9 +172,23 @@
   - [x] useStore.loadUserSettings 支持 forceReload 参数
   - [x] 显示 Toast 通知用户配置已加载
 
-### 5.2 后端配置传递
+### 5.3 后端配置传递
 - [x] 确保翻译请求正确接收完整配置
-- [ ] 配置快照保存到 translation_tasks 表（TaskManager 重构待完成）
+- [x] 配置快照保存到 translation_tasks 表（2026-02-10 完成）
+
+### 5.4 上传翻译功能修复（2026-02-11）
+- [x] Bug 1：上传后配置重置为默认值
+  - [x] 根因：`DropZone.tsx` 调用 `reset()` 全量重置（含用户配置）
+  - [x] 修复：改用 `resetTranslationState()` 只重置任务状态
+  - [x] 对齐 ArXiv 下载流程的行为
+- [x] Bug 2：上传任务不持久化到 Supabase
+  - [x] 根因：`upload.py` 未传递 `user_id` 到 `create_task()`
+  - [x] 修复：添加 JWT 解析逻辑（复用 `arxiv.py` 实现）
+  - [x] 所有 `update_task()` 调用添加 `user_id` 参数
+  - [x] 数据库修复：扩展 `source_type` CHECK 约束
+    - [x] 允许 `folder_upload` 类型（原仅支持 `upload` 和 `arxiv`）
+    - [x] 创建 migration: `add_folder_upload_source_type`
+- [x] 创建 spec delta: `specs/upload-translation-fix/spec.md`
 
 ---
 
@@ -143,14 +199,17 @@
 - [x] 注册流程测试：邮箱注册 → 确认邮件 → 登录
 - [x] 登录流程测试：邮箱登录 → 查看历史
 - [x] 设置保存测试：修改设置 → 新建翻译时自动填充（2026-02-09 验证通过）
-- [ ] 持久化测试：服务器重启后登录用户任务保留
-- [ ] 下载权限测试：用户只能下载自己的任务文件
-- [ ] 退出登录反馈测试：点击退出 → toast 提示 → 跳转首页
+- [x] 持久化测试：登录用户任务写入 Supabase 并在历史页面显示（2026-02-10 验证通过）
+- [x] 下载权限测试：用户只能下载自己的任务文件（RLS 自动隔离，2026-02-11 确认通过）
+- [x] 退出登录反馈测试：点击退出 → toast 提示 → 跳转首页
+- [x] 上传翻译修复验证（2026-02-11 验证通过）
+  - [x] 配置不重置：上传文件后 Advanced Configuration 保留用户配置
+  - [x] 任务持久化：上传翻译任务正确保存到 Supabase 和 History 页面
 
 ### 6.2 文档更新
-- [ ] 更新 backend/README.md（Supabase 配置说明）
-- [ ] 更新 frontend/README.md（认证流程说明）
-- [ ] 创建部署指南（环境变量配置）
+- [x] 更新 backend/README.md（Supabase 配置说明、认证相关 API 端点）
+- [x] 更新 frontend/README.md（认证流程、新增页面说明）
+- [x] 创建部署指南（环境变量配置，集成在 backend/README.md 中）
 
 ---
 

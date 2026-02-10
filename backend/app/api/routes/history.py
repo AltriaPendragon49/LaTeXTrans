@@ -30,6 +30,14 @@ class TaskHistoryItem(BaseModel):
     progress: int
     created_at: str
     completed_at: Optional[str] = None
+    # Config snapshot
+    source_language: str
+    target_language: str
+    compile_strategy: str
+    translation_model: Optional[str] = None
+    enable_verification: bool
+    generate_glossary: bool
+    use_author_api: bool
 
 
 class TaskHistoryResponse(BaseModel):
@@ -91,7 +99,10 @@ async def get_user_history(
     try:
         # RLS 自动过滤：只返回当前用户的任务
         query = supabase.table("translation_tasks").select(
-            "task_id, source_type, arxiv_id, translation_mode, status, progress, created_at, completed_at",
+            """task_id, source_type, arxiv_id, translation_mode, status, progress, 
+               created_at, completed_at, source_language, target_language, 
+               compile_strategy, translation_model, enable_verification, 
+               generate_glossary, use_author_api""",
             count="exact"
         )
         
@@ -114,6 +125,13 @@ async def get_user_history(
                 progress=task.get("progress", 0),
                 created_at=task["created_at"],
                 completed_at=task.get("completed_at"),
+                source_language=task.get("source_language", "en"),
+                target_language=task.get("target_language", "zh"),
+                compile_strategy=task.get("compile_strategy", "auto"),
+                translation_model=task.get("translation_model"),
+                enable_verification=task.get("enable_verification", True),
+                generate_glossary=task.get("generate_glossary", True),
+                use_author_api=task.get("use_author_api", True),
             )
             for task in result.data
         ]
@@ -208,3 +226,164 @@ async def get_task_detail(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get task detail: {str(e)}"
         )
+
+
+@router.delete("/history/{task_id}")
+async def delete_task_history(
+    task_id: str,
+    supabase: Optional[Client] = Depends(get_supabase_client_from_request)
+):
+    """
+    Delete a single task from history.
+    
+    纯 RLS 模式：RLS 确保只能删除自己的任务。
+    
+    处理流程：
+    1. 检查任务是否存在（RLS 过滤）
+    2. 如果是 processing 状态，先标记为 cancelled 并等待 0.5s
+    3. 删除 Supabase 记录
+    4. 删除本地文件系统（uploads/outputs/terms）
+    """
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    from backend.app.services.task_manager import get_task_manager
+    import asyncio
+    
+    task_manager = get_task_manager()
+    
+    try:
+        # 1. Check if task exists (RLS filtering)
+        result = supabase.table("translation_tasks").select("status").eq(
+            "task_id", task_id
+        ).execute()
+        
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found"
+            )
+        
+        current_status = result.data[0].get("status")
+        
+        # 2. If task is processing, cancel it first
+        if current_status == "processing":
+            task_manager.cancel_task(task_id)
+            # Wait briefly for the task to detect cancellation
+            await asyncio.sleep(0.5)
+        
+        # 3. Delete from Supabase (RLS ensures only own tasks)
+        delete_result = supabase.table("translation_tasks").delete().eq(
+            "task_id", task_id
+        ).execute()
+        
+        # 4. Delete local files
+        deletion_result = task_manager.delete_task_full(task_id)
+        
+        return {
+            "message": "Task deleted successfully",
+            "task_id": task_id,
+            "deleted_dirs": deletion_result["deleted_dirs"],
+            "errors": deletion_result["errors"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "JWT" in str(e) or "token" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete task: {str(e)}"
+        )
+
+
+class BatchDeleteRequest(BaseModel):
+    """Batch delete request"""
+    task_ids: List[str]
+
+
+@router.delete("/history")
+async def delete_tasks_batch(
+    request: BatchDeleteRequest,
+    supabase: Optional[Client] = Depends(get_supabase_client_from_request)
+):
+    """
+    Delete multiple tasks in batch.
+    
+    纯 RLS 模式：RLS 确保只能删除自己的任务。
+    
+    Returns summary of deletion results for each task.
+    """
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    from backend.app.services.task_manager import get_task_manager
+    import asyncio
+    
+    task_manager = get_task_manager()
+    results = []
+    
+    for task_id in request.task_ids:
+        try:
+            # Check task exists
+            result = supabase.table("translation_tasks").select("status").eq(
+                "task_id", task_id
+            ).execute()
+            
+            if not result.data or len(result.data) == 0:
+                results.append({
+                    "task_id": task_id,
+                    "success": False,
+                    "error": "Task not found"
+                })
+                continue
+            
+            current_status = result.data[0].get("status")
+            
+            # Cancel if processing
+            if current_status == "processing":
+                task_manager.cancel_task(task_id)
+                await asyncio.sleep(0.3)  # Shorter wait in batch mode
+            
+            # Delete from Supabase
+            supabase.table("translation_tasks").delete().eq(
+                "task_id", task_id
+            ).execute()
+            
+            # Delete local files
+            deletion_result = task_manager.delete_task_full(task_id)
+            
+            results.append({
+                "task_id": task_id,
+                "success": deletion_result["success"],
+                "deleted_dirs": deletion_result["deleted_dirs"],
+                "errors": deletion_result["errors"]
+            })
+            
+        except Exception as e:
+            results.append({
+                "task_id": task_id,
+                "success": False,
+                "error": str(e)
+            })
+    
+    success_count = sum(1 for r in results if r["success"])
+    
+    return {
+        "message": f"Deleted {success_count}/{len(request.task_ids)} tasks",
+        "results": results
+    }
+

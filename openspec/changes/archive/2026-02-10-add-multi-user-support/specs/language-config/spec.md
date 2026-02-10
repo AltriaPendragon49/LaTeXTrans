@@ -3,9 +3,9 @@
 ## Purpose
 增强语言参数配置能力，使语言设置作为一等公民贯穿整个翻译流程。
 
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Translation Task Initiation (from web-api)
+### Requirement: Translation Task Language Persistence
 系统 SHALL 在创建翻译任务时持久化语言配置，并将其传递给 Agent。
 
 #### Scenario: 创建任务时保存语言配置
@@ -23,8 +23,6 @@
 - **THEN** 系统从任务记录中读取 source_language 和 target_language
 - **AND** 将语言参数注入到 CoordinatorAgent 配置中
 - **AND** Agent 不硬编码语言设置
-
-## ADDED Requirements
 
 ### Requirement: Language Selection UI
 前端 SHALL 在新建翻译页面提供语言选择 UI。
