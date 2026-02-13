@@ -340,7 +340,13 @@ export default function SettingsPage() {
                                     placeholder="留空使用系统默认"
                                     value={settings.translation_model || ''}
                                     onChange={(e) => setSettings(s => ({ ...s, translation_model: e.target.value || null }))}
+                                    disabled={settings.use_author_api}
                                 />
+                                {settings.use_author_api && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                        🔒 使用作者 API 时模型已锁定,无需配置
+                                    </p>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

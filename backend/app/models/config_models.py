@@ -41,7 +41,7 @@ class AdvancedConfig(BaseModel):
         description="Generate terminology reference table (CSV)"
     )
     translation_model: str = Field(
-        default="gpt-4.1-mini", 
+        default="qwen/qwen3-235b-a22b", 
         description="Translation LLM model name"
     )
     

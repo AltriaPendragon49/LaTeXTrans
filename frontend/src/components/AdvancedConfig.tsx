@@ -195,10 +195,17 @@ export const AdvancedConfig = () => {
                         value={advanced_config.translation_model}
                         onChange={(e) => updateConfig('translation_model', e.target.value)}
                         className="font-mono"
+                        disabled={advanced_config.use_author_api}
                     />
-                    <p className="text-xs text-muted-foreground">
-                        提示：不同 API 中转服务的模型名称可能不同，如报错请检查名称是否正确
-                    </p>
+                    {advanced_config.use_author_api ? (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                            🔒 使用作者 API 时模型已锁定为系统默认，关闭作者 API 后可自定义
+                        </p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">
+                            提示：不同 API 中转服务的模型名称可能不同，如报错请检查名称是否正确
+                        </p>
+                    )}
                 </div>
 
                 {/* Toggles */}

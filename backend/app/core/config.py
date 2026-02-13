@@ -43,15 +43,15 @@ class Settings(BaseSettings):
     
     # LLM API Configuration
     llm_api_key: str = Field(
-        default="sk-SVd4dIKfuIwhQ9kUlgCr9ZMpoIWp7PEzZxpVStjSRqeqNBLu",
+        default="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",
         env="LLM_API_KEY"
     )
     llm_base_url: str = Field(
-        default="https://aicanapi.com/v1/chat/completions",
+        default="https://integrate.api.nvidia.com/v1/chat/completions",
         env="LLM_BASE_URL"
     )
     llm_model: str = Field(
-        default="gpt-4.1-mini",
+        default="qwen/qwen3-235b-a22b",
         env="LLM_MODEL"
     )
     llm_timeout: int = Field(

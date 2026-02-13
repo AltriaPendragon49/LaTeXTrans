@@ -57,7 +57,7 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
     compile_strategy: 'auto',
     enable_verification: true,
     generate_terminology_table: true,  // 默认启用术语表生成
-    translation_model: 'gpt-4.1-mini',
+    translation_model: 'qwen/qwen3-235b-a22b',
     use_author_api: true,
     custom_base_url: undefined,
     custom_api_key: undefined
