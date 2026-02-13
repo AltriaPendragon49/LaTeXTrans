@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import asyncio
 import logging
+import hashlib
+import json
+import shutil
 from pathlib import Path
 
 from backend.app.services.task_manager import get_task_manager
@@ -163,6 +166,108 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
     return settings.get_llm_config()
 
 
+def compute_config_hash(
+    arxiv_id: Optional[str],
+    source_language: str,
+    target_language: str,
+    translation_mode: str,
+    compile_strategy: str,
+    enable_verification: bool
+) -> str:
+    """
+    生成翻译配置签名,用于快速匹配已有结果
+    
+    Args:
+        arxiv_id: arXiv 论文 ID (or None for uploaded files)
+        source_language: 源语言
+        target_language: 目标语言
+        translation_mode: 翻译模式
+        compile_strategy: 编译策略
+        enable_verification: 是否启用验证
+    
+    Returns:
+        MD5 hash 字符串
+    """
+    config = {
+        "arxiv_id": arxiv_id or "",
+        "source_language": source_language,
+        "target_language": target_language,
+        "translation_mode": translation_mode,
+        "compile_strategy": compile_strategy,
+        "enable_verification": enable_verification
+    }
+    return hashlib.md5(
+        json.dumps(config, sort_keys=True).encode()
+    ).hexdigest()
+
+
+async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
+    """
+    查询是否有配置完全一致的已完成任务可复用
+    
+    使用 admin client 绕过 RLS (跨用户查询)
+    排除当前任务自身
+    
+    Args:
+        config_hash: 配置签名
+        task_id: 当前任务 ID (排除自身)
+    
+    Returns:
+        已完成任务的 output_path,若无则返回 None
+    """
+    try:
+        client = get_supabase_admin_client()
+        if not client:
+            logger.warning("Supabase admin client not available for output reuse")
+            return None
+        
+        result = client.table("translation_tasks").select(
+            "output_path"
+        ).eq(
+            "config_hash", config_hash
+        ).eq(
+            "status", "completed"
+        ).neq(
+            "task_id", task_id
+        ).limit(1).execute()
+        
+        if result.data and result.data[0].get("output_path"):
+            output_path = Path(result.data[0]["output_path"])
+            if output_path.exists():
+                logger.info(f"Found reusable output: {output_path}")
+                return str(output_path)
+            else:
+                logger.warning(f"Reusable output path exists in DB but not on filesystem: {output_path}")
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Error searching for reusable output: {e}")
+        return None
+
+
+async def copy_output(source_output: str, task_id: str) -> str:
+    """
+    深拷贝已有 output 到新任务目录
+    
+    Args:
+        source_output: 源 output 目录路径
+        task_id: 新任务 ID
+    
+    Returns:
+        新的 output 目录路径
+    """
+    dest = settings.outputs_dir / task_id
+    if dest.exists():
+        shutil.rmtree(dest)
+    
+    logger.info(f"Copying output from {source_output} to {dest}")
+    shutil.copytree(source_output, dest)
+    logger.info(f"Output copy completed: {dest}")
+    
+    return str(dest)
+
+
 async def run_translation(
     task_id: str, 
     target_language: str, 
@@ -218,6 +323,48 @@ async def run_translation(
         output_dir = settings.outputs_dir / task_id
         output_dir.mkdir(parents=True, exist_ok=True)
         
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.PROCESSING.value,
+            progress=0,
+            message="Checking for reusable output...",
+            user_id=user_id
+        )
+        
+        # 计算配置签名
+        config_hash = compute_config_hash(
+            arxiv_id=task.get("arxiv_id"),
+            source_language=source_language,
+            target_language=target_language,
+            translation_mode=advanced_config.translation_mode,
+            compile_strategy=advanced_config.compile_strategy,
+            enable_verification=advanced_config.enable_verification
+        )
+        logger.info(f"Config hash for task {task_id}: {config_hash}")
+        
+        # 尝试找到可复用的 output
+        reusable_output = await find_reusable_output(config_hash, task_id)
+        if reusable_output:
+            logger.info(f"🎉 Found reusable output for task {task_id}, skipping translation")
+            
+            # 深拷贝 output
+            new_output_path = await copy_output(reusable_output, task_id)
+            
+            # 更新任务状态为完成
+            task_manager.update_task(
+                task_id=task_id,
+                status=TaskStatus.COMPLETED.value,
+                progress=100,
+                message="Translation completed (reused existing output)",
+                output_path=new_output_path,
+                user_id=user_id
+            )
+            logger.info(f"Task {task_id} completed via output reuse")
+            return
+        
+        # 没有找到可复用的,继续正常翻译
+        logger.info("No reusable output found, proceeding with translation")
+        
         # Update task status
         task_manager.update_task(
             task_id=task_id,
@@ -249,24 +396,7 @@ async def run_translation(
                     f"engine={agent_config['latex_engine']}, "
                     f"verify={agent_config['use_verification_agent']}")
 
-        # ========== 配置拦截代码 - 开始 ==========
-        from backend.tests.test_config_interceptor import ConfigInterceptor
-        
-        interceptor = ConfigInterceptor()
-        config_file = interceptor.capture_config(
-            task_id=task_id,
-            advanced_config=advanced_config.model_dump(),
-            agent_config=agent_config,
-            llm_config=llm_config,
-            additional_info={
-                "target_language": target_language,
-                "source_language": source_language,
-                "source_path": str(source_path),
-                "output_dir": str(output_dir)
-            }
-        )
-        logger.info(f"🔍 配置已拦截并保存到: {config_file}")
-        # ========== 配置拦截代码 - 结束 ==========
+      
         
         # Create coordinator agent
         coordinator = CoordinatorAgent(
@@ -391,12 +521,39 @@ async def start_translation(
             detail="Task is already being processed"
         )
     
-    # Store advanced config in task record
+    # ✅ 首次持久化到数据库(延迟创建,避免上传/下载失败留下垃圾记录)
+    if not task_manager.persist_task_if_needed(task_id):
+        logger.warning(f"Failed to persist task {task_id}, but continuing with translation")
+    
+    # Calculate and store config_hash for future reuse
+    config_hash = compute_config_hash(
+        arxiv_id=task.get("arxiv_id"),
+        source_language=request.source_language,
+        target_language=request.target_language,
+        translation_mode=request.advanced_config.translation_mode,
+        compile_strategy=request.advanced_config.compile_strategy,
+        enable_verification=request.advanced_config.enable_verification
+    )
+    logger.info(f"Computed config_hash for task {task_id}: {config_hash}")
+    
+    # Store advanced config and config_hash in task record
     task_manager.update_task(
         task_id=task_id,
         advanced_config=request.advanced_config.model_dump(),
         user_id=user_id
     )
+    
+    # Store config_hash in database directly (not in in-memory task)
+    if user_id:
+        try:
+            client = get_supabase_admin_client()
+            if client:
+                client.table("translation_tasks").update({
+                    "config_hash": config_hash
+                }).eq("task_id", task_id).execute()
+                logger.info(f"Stored config_hash in database for task {task_id}")
+        except Exception as e:
+            logger.warning(f"Failed to store config_hash: {e}")
     
     # Start background translation using asyncio
     asyncio.create_task(

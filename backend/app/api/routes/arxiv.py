@@ -66,10 +66,11 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
     try:
         # 使用 to_thread 在线程池中执行同步阻塞函数，避免阻塞事件循环
         # 这样 API 可以立即返回，前端可以开始轮询进度
+        # 修改下载路径为 arxiv_id-based,实现跨任务共享
         source_dirs = await asyncio.to_thread(
             batch_download_arxiv_tex,
             [arxiv_id],
-            str(settings.uploads_dir / task_id),
+            str(settings.uploads_dir / f"arxiv_{arxiv_id}"),
             task_manager,
             task_id
         )
@@ -176,7 +177,8 @@ async def download_arxiv(
     task_id = task_manager.create_task(
         source_type="arxiv", 
         arxiv_id=arxiv_id,
-        user_id=user_id
+        user_id=user_id,
+        persist_to_db=False  # 延迟到翻译时才持久化
     )
 
     # 设置初始进度状态，确保前端第一次轮询就能看到进度

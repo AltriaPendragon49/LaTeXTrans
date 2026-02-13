@@ -37,7 +37,8 @@ class TaskManager:
         arxiv_id: Optional[str] = None,
         user_id: Optional[str] = None,
         source_language: str = "en",
-        target_language: str = "zh"
+        target_language: str = "zh",
+        persist_to_db: bool = False
     ) -> str:
         """
         Create a new task and return its ID
@@ -49,6 +50,7 @@ class TaskManager:
             user_id: User ID for authenticated users (enables persistence)
             source_language: Source language code
             target_language: Target language code
+            persist_to_db: Whether to immediately persist to database (default: False)
         
         Returns:
             Task ID (UUID string)
@@ -79,8 +81,8 @@ class TaskManager:
                 "target_language": target_language
             }
         
-        # 2. Persist to Supabase (only for authenticated users)
-        if user_id:
+        # 2. Persist to Supabase (only if persist_to_db=True and user is authenticated)
+        if persist_to_db and user_id:
             self._persist_task_create(task_id, user_id, source_type, arxiv_id, 
                                       source_language, target_language, advanced_config)
         
@@ -205,6 +207,44 @@ class TaskManager:
         
         return True
     
+    def persist_task_if_needed(self, task_id: str) -> bool:
+        """
+        如果任务还未持久化到数据库,则首次持久化
+        用于延迟任务创建:上传/下载时只创建内存任务,翻译时才持久化
+        
+        Args:
+            task_id: Task ID
+            
+        Returns:
+            True if persisted (or already persisted), False if failed
+        """
+        task = self.get_task(task_id)
+        if not task:
+            logger.warning(f"[TaskManager] Cannot persist non-existent task: {task_id}")
+            return False
+        
+        user_id = task.get("user_id")
+        if not user_id:
+            # Guest task, no need to persist
+            return True
+        
+        # 调用持久化方法(会自动处理已存在的情况)
+        try:
+            self._persist_task_create(
+                task_id=task_id,
+                user_id=user_id,
+                source_type=task.get("source_type", "upload"),
+                arxiv_id=task.get("arxiv_id"),
+                source_language=task.get("source_language", "en"),
+                target_language=task.get("target_language", "zh"),
+                advanced_config=task.get("advanced_config")
+            )
+            logger.info(f"[TaskManager] Persisted task {task_id} to database")
+            return True
+        except Exception as e:
+            logger.error(f"[TaskManager] Failed to persist task {task_id}: {e}")
+            return False
+    
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
         Get task by ID
@@ -323,8 +363,8 @@ class TaskManager:
         errors = []
         
         # Define directories to delete
+        # NOTE: uploads/ is now shared across tasks (arxiv_id-based), do not delete
         dirs_to_delete = [
-            settings.uploads_dir / task_id,
             settings.outputs_dir / task_id,
             Path(settings.outputs_dir).parent / "terms" / task_id,  # data/terms/{task_id}
         ]

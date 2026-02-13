@@ -15,6 +15,7 @@ import zipfile
 import tarfile
 import base64
 import json
+import re
 from pathlib import Path
 
 from backend.app.services.task_manager import get_task_manager
@@ -157,7 +158,11 @@ async def upload_file(
     
     # Create task with folder_upload source type for archives
     source_type = "folder_upload" if file_ext != ".tex" else "upload"
-    task_id = task_manager.create_task(source_type=source_type, user_id=user_id)
+    task_id = task_manager.create_task(
+        source_type=source_type, 
+        user_id=user_id,
+        persist_to_db=False  # 延迟到翻译时才持久化
+    )
     
     # Create task directory
     task_dir = settings.uploads_dir / task_id
@@ -170,6 +175,9 @@ async def upload_file(
         message=f"Uploading {file.filename}...",
         user_id=user_id
     )
+    
+    # 标记上传是否成功,用于失败时清理临时目录
+    upload_success = False
     
     try:
         # Save uploaded file
@@ -210,9 +218,48 @@ async def upload_file(
             extract_rar(file_path, task_dir)
             logger.info("RAR extraction complete")
         
+        # Try to infer arxiv_id and deduplicate
+        arxiv_pattern = re.compile(r'(\d{4}\.\d{4,5})(v\d+)?')
+        inferred_arxiv_id = None
+        
+        # Check uploaded file name
+        match = arxiv_pattern.search(file.filename)
+        if match:
+            inferred_arxiv_id = match.group(1)
+        
+        # Check directory contents if not found
+        if not inferred_arxiv_id:
+            for item in task_dir.iterdir():
+                match = arxiv_pattern.search(item.name)
+                if match:
+                    inferred_arxiv_id = match.group(1)
+                    break
+        
+        # If arxiv_id inferred and shared upload exists, use it
+        final_source_path = task_dir
+        if inferred_arxiv_id:
+            shared_upload_dir = settings.uploads_dir / f"arxiv_{inferred_arxiv_id}"
+            if shared_upload_dir.exists() and shared_upload_dir != task_dir:
+                logger.info(f"Found existing upload for arxiv_id {inferred_arxiv_id}, reusing: {shared_upload_dir}")
+                # Clean up the newly uploaded directory
+                shutil.rmtree(task_dir)
+                final_source_path = shared_upload_dir
+                # Update task metadata for rxiv reuse
+                task = task_manager.get_task(task_id)
+                if task:
+                    task["arxiv_id"] = inferred_arxiv_id
+                    task["source_type"] = "arxiv"
+                    # Update source_path and arxiv_id in DB
+                    task_manager.update_task(
+                        task_id=task_id,
+                        source_path=str(final_source_path),
+                        arxiv_id=inferred_arxiv_id,
+                        user_id=user_id
+                    )
+        
         # Validate LaTeX directory
-        logger.info(f"Validating LaTeX directory: {task_dir}")
-        validation = validate_latex_directory(task_dir)
+        logger.info(f"Validating LaTeX directory: {final_source_path}")
+        validation = validate_latex_directory(final_source_path)
         
         validation_response = LatexValidationResponse(
             is_valid=validation.is_valid,
@@ -229,18 +276,19 @@ async def upload_file(
                 status=TaskStatus.PENDING.value,
                 progress=100,
                 message=f"File {file.filename} uploaded and validated successfully",
-                source_path=str(task_dir),
+                source_path=str(final_source_path),
                 source_available=True,
                 latex_validation=validation.model_dump(),
                 user_id=user_id
             )
-            logger.info(f"Upload successful: {task_id}, main_file={validation.main_file}")
+            
+            upload_success = True  # 标记上传成功
             
             return UploadResponse(
                 task_id=task_id,
                 status="success",
                 message=f"File {file.filename} uploaded successfully. Main file: {validation.main_file}",
-                source_path=str(task_dir),
+                source_path=str(final_source_path),
                 latex_validation=validation_response
             )
         else:
@@ -317,3 +365,12 @@ async def upload_file(
             status_code=500,
             detail=err_msg
         )
+    
+    finally:
+        # 如果上传失败,清理临时目录(避免垃圾缓存)
+        if not upload_success and task_dir.exists():
+            try:
+                shutil.rmtree(task_dir)
+                logger.info(f"Cleaned up failed upload directory: {task_dir}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up directory {task_dir}: {cleanup_error}")

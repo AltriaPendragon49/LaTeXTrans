@@ -343,7 +343,8 @@ async def preview_source_pdf(task_id: str):
         main_tex = tex_files[0]  # Fallback to first tex file
     
     # Check if we already compiled a source PDF
-    compiled_pdf_path = source_dir / f"source_compiled_{task_id}.pdf"
+    # Use fixed name for shared uploads (no task_id dependency)
+    compiled_pdf_path = source_dir / "source_compiled.pdf"
     if compiled_pdf_path.exists() and compiled_pdf_path.stat().st_size > 0:
         logger.info(f"Using cached compiled source PDF: {compiled_pdf_path}")
         return FileResponse(
