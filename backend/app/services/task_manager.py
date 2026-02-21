@@ -10,10 +10,11 @@ Supports dual-layer storage:
 """
 
 import uuid
+import asyncio
 import threading
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional, Callable, Union
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, Callable, Union, List
 from backend.app.core.config import TaskStatus, CompilationStage
 from backend.app.core.supabase_client import get_supabase_admin_client
 
@@ -81,7 +82,11 @@ class TaskManager:
                 "target_language": target_language
             }
         
-        # 2. Persist to Supabase (only if persist_to_db=True and user is authenticated)
+        # 2. Register guest tasks for TTL tracking
+        if not user_id:
+            guest_tracker.register(task_id)
+        
+        # 3. Persist to Supabase (only if persist_to_db=True and user is authenticated)
         if persist_to_db and user_id:
             self._persist_task_create(task_id, user_id, source_type, arxiv_id, 
                                       source_language, target_language, advanced_config)
@@ -244,7 +249,57 @@ class TaskManager:
         except Exception as e:
             logger.error(f"[TaskManager] Failed to persist task {task_id}: {e}")
             return False
-    
+
+    async def persist_task_with_retry(
+        self,
+        task_id: str,
+        retries: int = 2,
+        delay: float = 5.0
+    ) -> bool:
+        """
+        Async version of persist_task_if_needed with automatic retry.
+
+        On all retries exhausted:
+        - Registers the task into guest_tracker for automatic TTL cleanup
+        - Sets persist_failed=True in memory so the frontend can show a warning
+
+        Args:
+            task_id: Task ID to persist
+            retries: Number of retry attempts after the first failure (default: 2)
+            delay: Seconds to wait between retries (default: 5.0)
+
+        Returns:
+            True if persisted successfully, False if all attempts failed
+        """
+        for attempt in range(retries + 1):
+            success = self.persist_task_if_needed(task_id)
+            if success:
+                logger.info(
+                    f"[TaskManager] persist_task_with_retry: task {task_id} "
+                    f"persisted on attempt {attempt + 1}"
+                )
+                return True
+            if attempt < retries:
+                logger.warning(
+                    f"[TaskManager] persist_task_with_retry: attempt {attempt + 1} "
+                    f"failed for task {task_id}, retrying in {delay}s..."
+                )
+                await asyncio.sleep(delay)
+
+        # All attempts exhausted — degrade gracefully
+        logger.error(
+            f"[TaskManager] persist_task_with_retry: all {retries + 1} attempts "
+            f"failed for task {task_id}. Registering as temporary task for auto-cleanup."
+        )
+        # Register into guest_tracker so periodic_cleanup will delete files later
+        guest_tracker.register(task_id)
+        # Set in-memory flag so frontend can detect and warn user
+        with self._lock:
+            if task_id in self._tasks:
+                self._tasks[task_id]["persist_failed"] = True
+        return False
+
+
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
         Get task by ID
@@ -721,3 +776,171 @@ task_manager = TaskManager()
 def get_task_manager() -> TaskManager:
     """Get the global task manager instance"""
     return task_manager
+
+
+class GuestTaskTracker:
+    """
+    Tracks guest (unauthenticated) task IDs with TTL for automatic cleanup.
+    Thread-safe in-memory tracker.
+    """
+
+    def __init__(self):
+        self._guest_tasks: Dict[str, datetime] = {}  # task_id -> expires_at
+        self._lock = threading.Lock()
+
+    def register(self, task_id: str, ttl_hours: Optional[int] = None):
+        """
+        Register a guest task with TTL.
+
+        Args:
+            task_id: Task ID to register
+            ttl_hours: TTL in hours (defaults to settings.guest_task_ttl_hours)
+        """
+        from backend.app.core.config import get_settings
+        if ttl_hours is None:
+            ttl_hours = get_settings().guest_task_ttl_hours
+        expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+        with self._lock:
+            self._guest_tasks[task_id] = expires_at
+        logger.debug(f"[GuestTracker] Registered guest task {task_id}, expires at {expires_at}")
+
+    def get_expired_task_ids(self) -> List[str]:
+        """Return list of expired guest task IDs."""
+        now = datetime.utcnow()
+        with self._lock:
+            return [tid for tid, exp in self._guest_tasks.items() if exp <= now]
+
+    def remove(self, task_id: str):
+        """Remove a guest task from tracker."""
+        with self._lock:
+            self._guest_tasks.pop(task_id, None)
+
+    def get_all(self) -> Dict[str, datetime]:
+        """Return copy of all tracked guest tasks."""
+        with self._lock:
+            return dict(self._guest_tasks)
+
+
+class TaskQueue:
+    """
+    Asyncio-native FIFO task queue with global concurrency limit and per-user quota.
+    Must be initialized in an async context via initialize().
+    """
+
+    def __init__(self, max_concurrent: int = 3):
+        self._max_concurrent = max_concurrent
+        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._queue: Optional[asyncio.Queue] = None
+        self._active_tasks: Dict[str, asyncio.Task] = {}
+        self._user_task_count: Dict[str, int] = {}  # user_id -> active task count
+        self._worker_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+
+    async def initialize(self):
+        """Initialize the queue and start the background worker."""
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        self._queue = asyncio.Queue()
+        self._worker_task = asyncio.create_task(self._worker())
+        logger.info(f"[TaskQueue] Initialized with max_concurrent={self._max_concurrent}")
+
+    async def enqueue(
+        self,
+        task_id: str,
+        coro_factory,  # Callable that returns a coroutine
+        user_id: Optional[str] = None
+    ):
+        """
+        Enqueue a translation task.
+
+        Args:
+            task_id: Task ID
+            coro_factory: Async callable (no args) that runs the translation
+            user_id: Optional user ID for quota tracking
+        """
+        # Update task status to QUEUED
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.QUEUED.value,
+            message="Task queued, waiting for available slot",
+            user_id=user_id
+        )
+
+        # Increment user quota counter
+        if user_id:
+            async with self._lock:
+                self._user_task_count[user_id] = self._user_task_count.get(user_id, 0) + 1
+
+        # Put into queue
+        await self._queue.put((task_id, coro_factory, user_id))
+        logger.info(f"[TaskQueue] Enqueued task {task_id} (user={user_id}, queue_size={self._queue.qsize()})")
+
+    def get_user_active_count(self, user_id: str) -> int:
+        """Get the number of active (queued + running) tasks for a user."""
+        return self._user_task_count.get(user_id, 0)
+
+    def get_status(self) -> Dict[str, Any]:
+        """Return current queue status."""
+        active_count = len(self._active_tasks)
+        queue_size = self._queue.qsize() if self._queue else 0
+        return {
+            "active_count": active_count,
+            "queue_size": queue_size,
+            "max_concurrent": self._max_concurrent,
+            "total_pending": active_count + queue_size,
+        }
+
+    async def _worker(self):
+        """Background worker that consumes the queue and runs translations."""
+        logger.info("[TaskQueue] Worker started")
+        while True:
+            try:
+                task_id, coro_factory, user_id = await self._queue.get()
+                logger.info(f"[TaskQueue] Worker picked up task {task_id}")
+
+                # Acquire semaphore (blocks if max_concurrent reached)
+                await self._semaphore.acquire()
+
+                # Run translation as asyncio task
+                async def run_and_release(tid, factory, uid):
+                    try:
+                        await factory()
+                    except Exception as e:
+                        logger.error(f"[TaskQueue] Task {tid} raised exception: {e}", exc_info=True)
+                    finally:
+                        self._semaphore.release()
+                        # Decrement user quota
+                        if uid:
+                            async with self._lock:
+                                count = self._user_task_count.get(uid, 1)
+                                if count <= 1:
+                                    self._user_task_count.pop(uid, None)
+                                else:
+                                    self._user_task_count[uid] = count - 1
+                        # Remove from active tasks
+                        self._active_tasks.pop(tid, None)
+                        logger.info(f"[TaskQueue] Task {tid} completed, semaphore released")
+
+                t = asyncio.create_task(run_and_release(task_id, coro_factory, user_id))
+                self._active_tasks[task_id] = t
+                self._queue.task_done()
+
+            except asyncio.CancelledError:
+                logger.info("[TaskQueue] Worker cancelled")
+                break
+            except Exception as e:
+                logger.error(f"[TaskQueue] Worker error: {e}", exc_info=True)
+
+
+# Global instances
+guest_tracker = GuestTaskTracker()
+task_queue: Optional[TaskQueue] = None  # Initialized in main.py startup
+
+
+def get_guest_tracker() -> GuestTaskTracker:
+    """Get the global guest task tracker instance."""
+    return guest_tracker
+
+
+def get_task_queue() -> Optional[TaskQueue]:
+    """Get the global task queue instance."""
+    return task_queue

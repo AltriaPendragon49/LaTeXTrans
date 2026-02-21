@@ -41,6 +41,7 @@ export interface TaskStatusResponse {
     logs?: string[]
     advanced_config?: AdvancedConfig
     latex_validation?: LatexValidation
+    persist_failed?: boolean  // 持久化失败标志：Supabase 写入全部重试失败时为 true
 }
 
 /**
@@ -182,6 +183,47 @@ export const deleteTasksBatch = async (taskIds: string[]): Promise<{
     const response = await api.delete(`/history`, {
         data: { task_ids: taskIds }
     })
+    return response.data
+}
+
+export interface BatchTranslateRequest {
+    arxiv_ids: string[]
+    target_language: string
+    source_language: string
+    advanced_config?: AdvancedConfig
+}
+
+export interface BatchTranslateResponse {
+    batch_id: string
+    task_ids: string[]
+    message: string
+    queued_count: number
+}
+
+export interface QueueStatusResponse {
+    active_count: number
+    queue_size: number
+    max_concurrent: number
+    total_pending: number
+    user_quota_used: number
+    user_quota_max: number
+}
+
+/**
+ * Start batch translation for multiple arXiv IDs (authenticated users only).
+ */
+export const startBatchTranslation = async (
+    request: BatchTranslateRequest
+): Promise<BatchTranslateResponse> => {
+    const response = await api.post<BatchTranslateResponse>('/batch-translate', request)
+    return response.data
+}
+
+/**
+ * Get current task queue status.
+ */
+export const getQueueStatus = async (): Promise<QueueStatusResponse> => {
+    const response = await api.get<QueueStatusResponse>('/queue/status')
     return response.data
 }
 

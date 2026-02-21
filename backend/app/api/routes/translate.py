@@ -22,6 +22,7 @@ from backend.app.core.config import get_settings, TaskStatus
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.core.supabase_client import get_supabase_admin_client
+from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,6 +45,22 @@ class TranslateResponse(BaseModel):
     task_id: str
     status: str
     message: str
+
+
+class BatchTranslateRequest(BaseModel):
+    """Batch translation request (authenticated users only)"""
+    arxiv_ids: list = Field(..., description="List of arXiv IDs (max 9)")
+    target_language: str = Field(default="ch")
+    source_language: str = Field(default="en")
+    advanced_config: AdvancedConfig = Field(default_factory=AdvancedConfig)
+
+
+class BatchTranslateResponse(BaseModel):
+    """Batch translation response"""
+    batch_id: str
+    task_ids: list
+    message: str
+    queued_count: int
 
 
 def get_user_api_config(user_id: str) -> dict:
@@ -172,7 +189,8 @@ def compute_config_hash(
     target_language: str,
     translation_mode: str,
     compile_strategy: str,
-    enable_verification: bool
+    enable_verification: bool,
+    source_path: Optional[str] = None
 ) -> str:
     """
     生成翻译配置签名,用于快速匹配已有结果
@@ -184,12 +202,17 @@ def compute_config_hash(
         translation_mode: 翻译模式
         compile_strategy: 编译策略
         enable_verification: 是否启用验证
+        source_path: 源文件路径 (用于区分不同上传内容)
     
     Returns:
         MD5 hash 字符串
     """
+    # For arxiv tasks, arxiv_id uniquely identifies the paper.
+    # For uploaded files, arxiv_id is None so we MUST include
+    # source_path to prevent different papers from sharing a hash.
+    content_key = arxiv_id or source_path or ""
     config = {
-        "arxiv_id": arxiv_id or "",
+        "content_key": content_key,
         "source_language": source_language,
         "target_language": target_language,
         "translation_mode": translation_mode,
@@ -303,9 +326,50 @@ async def run_translation(
             logger.error(f"Task not found: {task_id}")
             return
         
-        source_path = Path(task["source_path"])
-        if not source_path.exists():
-            raise Exception(f"Source path not found: {source_path}")
+        raw_source_path = task.get("source_path")
+        arxiv_id = task.get("arxiv_id")
+
+        # Helper: re-download arXiv source if path is missing or path doesn't exist
+        async def _ensure_source_path() -> Path:
+            nonlocal raw_source_path
+            if raw_source_path:
+                p = Path(raw_source_path)
+                if p.exists():
+                    return p
+                logger.warning(f"Source path on disk not found: {p}")
+            else:
+                logger.warning(f"Task {task_id} has no source_path recorded")
+
+            if arxiv_id and task.get("source_type") == "arxiv":
+                logger.info(f"Re-downloading arXiv source for {arxiv_id}...")
+                task_manager.update_task(
+                    task_id=task_id,
+                    message=f"源文件缺失，正在重新下载 arXiv {arxiv_id}...",
+                    user_id=user_id
+                )
+                save_dir = str(settings.uploads_dir / f"arxiv_{arxiv_id}")
+                source_dirs = await asyncio.to_thread(
+                    batch_download_arxiv_tex,
+                    [arxiv_id],
+                    save_dir,
+                    task_manager,
+                    task_id,
+                )
+                if not source_dirs:
+                    raise Exception(f"Re-download failed for arXiv {arxiv_id}: no source returned")
+                new_path = Path(source_dirs[0])
+                task_manager.update_task(
+                    task_id=task_id,
+                    source_path=str(new_path),
+                    source_available=True,
+                    user_id=user_id
+                )
+                logger.info(f"Re-download succeeded, source_path updated to: {new_path}")
+                return new_path
+
+            raise Exception(f"Source path not found: {raw_source_path}")
+
+        source_path = await _ensure_source_path()
         
         # Find main .tex file using validator
         main_tex_file = find_main_tex_file(source_path)
@@ -338,7 +402,8 @@ async def run_translation(
             target_language=target_language,
             translation_mode=advanced_config.translation_mode,
             compile_strategy=advanced_config.compile_strategy,
-            enable_verification=advanced_config.enable_verification
+            enable_verification=advanced_config.enable_verification,
+            source_path=str(source_path)
         )
         logger.info(f"Config hash for task {task_id}: {config_hash}")
         
@@ -468,38 +533,35 @@ async def start_translation(
 ):
     """
     Start translation for a task
-    
+
     Args:
         task_id: Task ID from upload or arxiv endpoint
         request: Translation configuration with advanced options
         credentials: Optional bearer token for authenticated users
-    
+
     Returns:
         Translation start confirmation
-    
+
     Raises:
         HTTPException: If task not found or not ready for translation
     """
     logger.info(f"Translation request for task: {task_id}")
-    
+
     # Get user_id from token if authenticated
     user_id = None
     if credentials:
         try:
-            # Parse JWT to get user_id (sub claim)
             import base64
             import json
             token = credentials.credentials
-            # Decode JWT payload (no verification, just reading claims)
             payload_b64 = token.split('.')[1]
-            # Add padding if needed
             payload_b64 += '=' * (4 - len(payload_b64) % 4)
             payload = json.loads(base64.urlsafe_b64decode(payload_b64))
             user_id = payload.get('sub')
             logger.info(f"Authenticated user: {user_id}")
         except Exception as e:
             logger.warning(f"Failed to parse user_id from token: {e}")
-    
+
     # Validate task exists
     task = task_manager.get_task(task_id)
     if not task:
@@ -507,24 +569,35 @@ async def start_translation(
             status_code=404,
             detail=f"Task not found: {task_id}"
         )
-    
+
     # Validate task is ready for translation
     if not task["source_available"]:
         raise HTTPException(
             status_code=400,
             detail="Task source not available. Please upload file or download arXiv paper first."
         )
-    
-    if task["status"] == TaskStatus.PROCESSING.value:
+
+    if task["status"] in [TaskStatus.PROCESSING.value, TaskStatus.QUEUED.value]:
         raise HTTPException(
             status_code=400,
-            detail="Task is already being processed"
+            detail="Task is already being processed or queued"
         )
-    
-    # ✅ 首次持久化到数据库(延迟创建,避免上传/下载失败留下垃圾记录)
+
+    # Check user quota (authenticated users only)
+    from backend.app.services.task_manager import get_task_queue
+    tq = get_task_queue()
+    if user_id and tq:
+        user_active = tq.get_user_active_count(user_id)
+        if user_active >= settings.max_user_active_tasks:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many active tasks. You have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete."
+            )
+
+    # ✅ Persist to database (delayed creation)
     if not task_manager.persist_task_if_needed(task_id):
         logger.warning(f"Failed to persist task {task_id}, but continuing with translation")
-    
+
     # Calculate and store config_hash for future reuse
     config_hash = compute_config_hash(
         arxiv_id=task.get("arxiv_id"),
@@ -532,18 +605,19 @@ async def start_translation(
         target_language=request.target_language,
         translation_mode=request.advanced_config.translation_mode,
         compile_strategy=request.advanced_config.compile_strategy,
-        enable_verification=request.advanced_config.enable_verification
+        enable_verification=request.advanced_config.enable_verification,
+        source_path=task.get("source_path")
     )
     logger.info(f"Computed config_hash for task {task_id}: {config_hash}")
-    
-    # Store advanced config and config_hash in task record
+
+    # Store advanced config in task record
     task_manager.update_task(
         task_id=task_id,
         advanced_config=request.advanced_config.model_dump(),
         user_id=user_id
     )
-    
-    # Store config_hash in database directly (not in in-memory task)
+
+    # Store config_hash in database
     if user_id:
         try:
             client = get_supabase_admin_client()
@@ -554,22 +628,313 @@ async def start_translation(
                 logger.info(f"Stored config_hash in database for task {task_id}")
         except Exception as e:
             logger.warning(f"Failed to store config_hash: {e}")
-    
-    # Start background translation using asyncio
-    asyncio.create_task(
-        run_translation(
-            task_id=task_id,
-            target_language=request.target_language,
-            source_language=request.source_language,
-            advanced_config=request.advanced_config,
-            user_id=user_id
+
+    # Enqueue translation via TaskQueue
+    if tq:
+        async def translation_factory():
+            await run_translation(
+                task_id=task_id,
+                target_language=request.target_language,
+                source_language=request.source_language,
+                advanced_config=request.advanced_config,
+                user_id=user_id
+            )
+
+        await tq.enqueue(task_id, translation_factory, user_id)
+        logger.info(f"Task {task_id} enqueued via TaskQueue")
+    else:
+        # Fallback: direct asyncio.create_task (TaskQueue not initialized)
+        logger.warning("TaskQueue not initialized, falling back to direct asyncio.create_task")
+        asyncio.create_task(
+            run_translation(
+                task_id=task_id,
+                target_language=request.target_language,
+                source_language=request.source_language,
+                advanced_config=request.advanced_config,
+                user_id=user_id
+            )
         )
-    )
-    
-    logger.info(f"Translation started in background for task: {task_id}")
-    
+
     return TranslateResponse(
         task_id=task_id,
-        status="started",
-        message="Translation started in background"
+        status="queued",
+        message="Translation queued successfully"
     )
+
+
+@router.get("/queue/status")
+async def get_queue_status(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+):
+    """
+    Get current task queue status.
+
+    Returns:
+        Queue status including active count, queue size, and max concurrent
+    """
+    from backend.app.services.task_manager import get_task_queue
+    tq = get_task_queue()
+
+    if not tq:
+        return {
+            "active_count": 0,
+            "queue_size": 0,
+            "max_concurrent": settings.max_concurrent_translations,
+            "total_pending": 0,
+            "user_quota_used": 0
+        }
+
+    status = tq.get_status()
+
+    # Add user quota info if authenticated
+    user_id = None
+    if credentials:
+        try:
+            import base64
+            import json
+            token = credentials.credentials
+            payload_b64 = token.split('.')[1]
+            payload_b64 += '=' * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            user_id = payload.get('sub')
+        except Exception:
+            pass
+
+    status["user_quota_used"] = tq.get_user_active_count(user_id) if user_id else 0
+    status["user_quota_max"] = settings.max_user_active_tasks
+    return status
+
+
+@router.post("/batch-translate", response_model=BatchTranslateResponse)
+async def batch_translate(
+    request: BatchTranslateRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=True))
+):
+    """
+    Batch translation for authenticated users only.
+    Accepts up to 9 arXiv IDs and creates independent translation tasks.
+
+    The endpoint returns immediately after creating tasks in memory and persisting
+    them to the database. The actual arXiv download and translation enqueue happen
+    in background coroutines (asyncio.create_task), so the HTTP request is not
+    blocked by potentially slow network downloads.
+
+    Args:
+        request: Batch translation request with arXiv IDs and config
+        credentials: Required bearer token (401 if missing)
+
+    Returns:
+        Batch ID and list of task IDs
+    """
+    # Parse user_id from JWT
+    user_id = None
+    try:
+        import base64
+        import json
+        token = credentials.credentials
+        payload_b64 = token.split('.')[1]
+        payload_b64 += '=' * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        user_id = payload.get('sub')
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required for batch translation")
+
+    # Validate arxiv_ids count
+    arxiv_ids = request.arxiv_ids
+    if not arxiv_ids:
+        raise HTTPException(status_code=400, detail="No arXiv IDs provided")
+    if len(arxiv_ids) > 9:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Batch limit exceeded: maximum 9 arXiv IDs per request, got {len(arxiv_ids)}"
+        )
+
+    # Check user quota
+    from backend.app.services.task_manager import get_task_queue
+    tq = get_task_queue()
+    if tq:
+        user_active = tq.get_user_active_count(user_id)
+        remaining = settings.max_user_active_tasks - user_active
+        if remaining <= 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Quota exceeded: you have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete."
+            )
+        if len(arxiv_ids) > remaining:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Quota exceeded: you can submit at most {remaining} more tasks (currently {user_active}/{settings.max_user_active_tasks} active)."
+            )
+
+    import uuid
+    batch_id = str(uuid.uuid4())
+    task_ids = []
+    errors = []
+
+    for raw_id in arxiv_ids:
+        # Normalize arXiv ID (strip URL prefix etc.)
+        normalized = extract_arxiv_ids([raw_id])
+        if not normalized:
+            errors.append(f"{raw_id}: invalid arXiv ID format")
+            continue
+        arxiv_id = normalized[0]
+
+        try:
+            # Create task in memory only (no DB yet)
+            task_id = task_manager.create_task(
+                source_type="arxiv",
+                arxiv_id=arxiv_id,
+                user_id=user_id,
+                persist_to_db=False
+            )
+
+            # ✅ Persist to DB immediately (synchronous fast attempt).
+            # If Supabase is unreachable, silently retry in background (2x, 5s apart).
+            # On total failure: task is registered for auto-cleanup and persist_failed=True
+            # is set in memory so the frontend can warn the user.
+            persisted = task_manager.persist_task_if_needed(task_id)
+            if not persisted:
+                logger.warning(
+                    f"[BatchTranslate] Initial persist failed for {task_id}, "
+                    f"scheduling background retry"
+                )
+                asyncio.create_task(
+                    task_manager.persist_task_with_retry(task_id, retries=2, delay=5.0)
+                )
+
+            task_ids.append(task_id)
+
+            # ✅ Launch download + enqueue in background (non-blocking).
+            # This prevents the HTTP request from blocking for minutes while
+            # downloading arXiv source packages over the network.
+            asyncio.create_task(
+                _download_and_enqueue(
+                    task_id=task_id,
+                    arxiv_id=arxiv_id,
+                    user_id=user_id,
+                    source_language=request.source_language,
+                    target_language=request.target_language,
+                    advanced_config=request.advanced_config,
+                    tq=tq,
+                )
+            )
+            logger.info(f"[BatchTranslate] Created task {task_id} for arxiv_id={arxiv_id}, download started in background")
+
+        except Exception as e:
+            logger.error(f"[BatchTranslate] Failed to process arxiv_id={arxiv_id}: {e}")
+            errors.append(f"{arxiv_id}: {str(e)}")
+
+    if not task_ids:
+        raise HTTPException(
+            status_code=500,
+            detail=f"All batch tasks failed: {'; '.join(errors)}"
+        )
+
+    return BatchTranslateResponse(
+        batch_id=batch_id,
+        task_ids=task_ids,
+        message=f"Batch translation started: {len(task_ids)} tasks queued" + (
+            f" ({len(errors)} failed)" if errors else ""
+        ),
+        queued_count=len(task_ids)
+    )
+
+
+async def _download_and_enqueue(
+    task_id: str,
+    arxiv_id: str,
+    user_id: str,
+    source_language: str,
+    target_language: str,
+    advanced_config,
+    tq,
+):
+    """
+    Background coroutine: download arXiv source and enqueue translation.
+
+    Runs outside the HTTP request lifecycle so it does NOT block batch_translate.
+    Progress is visible via GET /api/tasks/{task_id}.
+
+    Flow:
+        1. Update task status → processing (downloading)
+        2. Download arXiv source in thread pool (blocking I/O)
+        3. Update task status → pending (source available)
+        4. Enqueue translation via TaskQueue
+    """
+    logger.info(f"[BatchDownload] Starting background download for task {task_id}, arxiv_id={arxiv_id}")
+    try:
+        # Step 1: Mark as downloading
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.PROCESSING.value,
+            progress=0,
+            stage="downloading",
+            message=f"正在下载 arXiv 论文 {arxiv_id}...",
+            user_id=user_id,
+        )
+
+        # Step 2: Download arXiv source in thread pool (blocking network I/O)
+        source_dirs = await asyncio.to_thread(
+            batch_download_arxiv_tex,
+            [arxiv_id],
+            str(settings.uploads_dir / f"arxiv_{arxiv_id}"),
+            task_manager,
+            task_id,
+        )
+
+        if not source_dirs:
+            raise ValueError(f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码")
+
+        source_path = source_dirs[0]
+
+        # Step 3: Mark source as available
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.PENDING.value,
+            progress=100,
+            message=f"arXiv 论文 {arxiv_id} 下载完成，等待翻译",
+            source_path=source_path,
+            source_available=True,
+            user_id=user_id,
+        )
+
+        # Step 4: Enqueue translation
+        if tq:
+            async def make_factory(tid, uid, src, tgt, cfg):
+                async def factory():
+                    await run_translation(
+                        task_id=tid,
+                        target_language=tgt,
+                        source_language=src,
+                        advanced_config=cfg,
+                        user_id=uid,
+                    )
+                return factory
+
+            factory = await make_factory(task_id, user_id, source_language, target_language, advanced_config)
+            await tq.enqueue(task_id, factory, user_id)
+        else:
+            asyncio.create_task(
+                run_translation(
+                    task_id=task_id,
+                    target_language=target_language,
+                    source_language=source_language,
+                    advanced_config=advanced_config,
+                    user_id=user_id,
+                )
+            )
+
+        logger.info(f"[BatchDownload] Task {task_id} enqueued for arxiv_id={arxiv_id}")
+
+    except Exception as e:
+        logger.error(f"[BatchDownload] Failed for task {task_id} (arxiv_id={arxiv_id}): {e}", exc_info=True)
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            error=str(e),
+            message=f"下载失败: {str(e)}",
+            user_id=user_id,
+        )

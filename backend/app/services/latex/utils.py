@@ -581,8 +581,11 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
     """
     Comment out pdfLaTeX-specific commands that are incompatible with XeLaTeX.
     
-    This addresses the issue where commands like \\pdfoutput=1 cause compilation
-    errors when using XeLaTeX (needed for CJK support), resulting in blank first pages.
+    This addresses the issue where commands like \\pdfoutput=1 or \\pdfinfo{...}
+    cause compilation errors when using XeLaTeX (needed for CJK support),
+    resulting in blank first pages.
+    
+    Handles both single-line commands and multi-line block commands like \\pdfinfo{...}.
     
     Args:
         latex_code: The LaTeX source code
@@ -590,16 +593,65 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
     Returns:
         Modified LaTeX code with pdfLaTeX-specific commands commented out
     """
+    import re
+    
+    # --- Step 1: Handle multi-line block commands (e.g. \pdfinfo{ ... }) ---
+    # These span multiple lines and need to be handled before line-by-line processing.
+    block_command_patterns = [
+        r'\\pdfinfo\s*\{',           # \pdfinfo{...}
+        r'\\pdfcatalog\s*\{',        # \pdfcatalog{...}
+        r'\\pdftrailer\s*\{',        # \pdftrailer{...}
+    ]
+    
+    for block_pattern in block_command_patterns:
+        start_re = re.compile(block_pattern)
+        result = start_re.search(latex_code)
+        while result:
+            start = result.start()
+            # Find the matching closing brace by counting brace depth
+            depth = 0
+            end = result.start()
+            for i in range(result.start(), len(latex_code)):
+                if latex_code[i] == '{':
+                    depth += 1
+                elif latex_code[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            
+            if end > result.start():
+                block_content = latex_code[start:end]
+                # Comment out each line of the block
+                commented_lines = []
+                for line in block_content.splitlines():
+                    if line.lstrip().startswith('%'):
+                        commented_lines.append(line)
+                    else:
+                        commented_lines.append(f'% {line}  % Commented for XeLaTeX compatibility' if line.strip() else line)
+                commented_block = '\n'.join(commented_lines)
+                latex_code = latex_code[:start] + commented_block + latex_code[end:]
+                logger.debug(f"Commented out pdfLaTeX block command: {block_content[:50].strip()}...")
+                # Search again from after the replaced block
+                result = start_re.search(latex_code, start + len(commented_block))
+            else:
+                break
+    
+    # --- Step 2: Handle single-line pdfLaTeX-specific commands ---
     lines = latex_code.splitlines()
     modified_lines = []
     
-    # Commands that need to be commented out for XeLaTeX compatibility
-    pdflatex_patterns = [
-        r'\\pdfoutput\s*=\s*\d+',  # \pdfoutput=1 or \pdfoutput = 1
+    # Single-line commands that need to be commented out for XeLaTeX compatibility
+    pdflatex_single_patterns = [
+        r'\\pdfoutput\s*=\s*\d+',          # \pdfoutput=1
+        r'\\pdfcompresslevel\s*=\s*\d+',   # \pdfcompresslevel=9
+        r'\\pdfobjcompresslevel\s*=\s*\d+', # \pdfobjcompresslevel=2
+        r'\\pdfminorversion\s*=\s*\d+',    # \pdfminorversion=7
+        r'\\pdfpagewidth\s*=',             # \pdfpagewidth=...
+        r'\\pdfpageheight\s*=',            # \pdfpageheight=...
     ]
     
-    import re
-    combined_pattern = re.compile('|'.join(pdflatex_patterns))
+    combined_pattern = re.compile('|'.join(pdflatex_single_patterns))
     
     for line in lines:
         stripped = line.lstrip()
@@ -608,7 +660,7 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
             modified_lines.append(line)
             continue
             
-        # Check if line matches any pdfLaTeX-specific pattern
+        # Check if line matches any pdfLaTeX-specific single-line pattern
         if combined_pattern.search(line):
             # Comment out the line with explanation
             modified_lines.append(f'% {line.lstrip()}  % Commented for XeLaTeX compatibility')
@@ -810,10 +862,21 @@ def get_tex_url(arxiv_id: str, headers: dict) -> str:
 
 
 def is_already_downloaded(arxiv_id: str, save_dir: str) -> bool:
-    """Check if tar.gz file or extracted directory already exists"""
-    tar_path = os.path.join(save_dir, f"{arxiv_id}.tar.gz")
+    """
+    Check if arxiv paper source is already fully downloaded and extracted.
+
+    Returns True only when the extracted subdirectory exists AND contains at
+    least one .tex file, which proves the tar.gz was fully extracted.
+
+    A bare .tar.gz (from a previous interrupted download/extract) or an empty
+    extracted directory are treated as NOT downloaded so the pipeline can
+    restart the download cleanly.
+    """
     extracted_dir = os.path.join(save_dir, arxiv_id)
-    return os.path.exists(tar_path) or os.path.isdir(extracted_dir)
+    if not os.path.isdir(extracted_dir):
+        return False
+    tex_files = find_tex_files(extracted_dir)
+    return len(tex_files) > 0
 
 
 class DownloadProgressCallback:

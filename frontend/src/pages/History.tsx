@@ -319,7 +319,8 @@ export default function HistoryPage() {
         if (task.status === 'completed' || task.status === 'completed_with_warnings') {
             navigate('/preview')
         } else {
-            navigate('/processing')
+            // 直接将 taskId 放入 URL 参数，避免依赖 store 异步更新
+            navigate(`/processing?taskId=${task.task_id}`)
         }
     }
 

@@ -1,10 +1,11 @@
 import { useEffect } from "react"
-import { useNavigate } from "react-router-dom"
-import { CheckCircle2, RotateCw, Download, Code } from "lucide-react"
+import { useNavigate, useSearchParams } from "react-router-dom"
+import { CheckCircle2, RotateCw, Download, Code, LogIn, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { LogViewer } from "@/components/log-viewer"
 import { useStore } from "@/store/useStore"
+import { useAuth } from "@/contexts/AuthContext"
 
 const steps = [
     { id: "download", label: "Downloading Source" },
@@ -14,16 +15,30 @@ const steps = [
 ]
 
 export default function ProcessingPage() {
-    const { taskId, status, logs, pollStatus, stopPolling } = useStore()
+    const { taskId: storeTaskId, status, logs, pollStatus, stopPolling, setTaskId } = useStore()
+    const [searchParams] = useSearchParams()
     const navigate = useNavigate()
+    const { user } = useAuth()
+    const isGuest = !user
+
+    // URL 参数优先，兼容 store（单论文翻译流程）
+    const urlTaskId = searchParams.get('taskId')
+    const effectiveTaskId = urlTaskId || storeTaskId
+
+    // 若 URL 有 taskId 但 store 没有，同步到 store（确保 pollStatus 等方法能读到）
+    useEffect(() => {
+        if (urlTaskId && urlTaskId !== storeTaskId) {
+            setTaskId(urlTaskId)
+        }
+    }, [urlTaskId])
 
     useEffect(() => {
-        // 只有在有 taskId 时才开始轮询，没有时保持等待状态
-        if (taskId) {
+        // 只有在有 effectiveTaskId 时才开始轮询
+        if (effectiveTaskId) {
             pollStatus()
         }
         return () => stopPolling()
-    }, [taskId])
+    }, [effectiveTaskId])
 
     // Derive current step from status message or status enum
     // For MVP, simplistic mapping:
@@ -34,8 +49,29 @@ export default function ProcessingPage() {
 
     const isComplete = currentStepIndex >= 4
 
+    // 使用 effectiveTaskId 替代 taskId 用于下载链接
+    const activeTaskId = effectiveTaskId
+
     return (
         <div className="max-w-5xl mx-auto space-y-6">
+            {/* Guest warning banner */}
+            {isGuest && (
+                <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                    <p className="flex-1 text-sm text-amber-300">
+                        <span className="font-semibold">访客模式：</span>
+                        离开此页面后将无法重新访问翻译结果。
+                        <button
+                            onClick={() => navigate('/login')}
+                            className="ml-2 inline-flex items-center gap-1 underline underline-offset-2 hover:text-amber-200"
+                        >
+                            <LogIn className="h-3 w-3" />
+                            登录以保存到历史记录
+                        </button>
+                    </p>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Translation in Progress</h1>
@@ -43,7 +79,7 @@ export default function ProcessingPage() {
                 </div>
                 {isComplete ? (
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => window.open(`http://localhost:8000/api/download/${taskId}/source`, '_blank')}>
+                        <Button variant="outline" onClick={() => window.open(`http://localhost:8000/api/download/${activeTaskId}/source`, '_blank')}>
                             <Download className="mr-2 h-4 w-4" /> Download Source
                         </Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>View Result</Button>

@@ -235,7 +235,7 @@ async def upload_file(
                     inferred_arxiv_id = match.group(1)
                     break
         
-        # If arxiv_id inferred and shared upload exists, use it
+        # If arxiv_id inferred, try to use/create the shared arxiv_ directory
         final_source_path = task_dir
         if inferred_arxiv_id:
             shared_upload_dir = settings.uploads_dir / f"arxiv_{inferred_arxiv_id}"
@@ -244,7 +244,7 @@ async def upload_file(
                 # Clean up the newly uploaded directory
                 shutil.rmtree(task_dir)
                 final_source_path = shared_upload_dir
-                # Update task metadata for rxiv reuse
+                # Update task metadata for arxiv reuse
                 task = task_manager.get_task(task_id)
                 if task:
                     task["arxiv_id"] = inferred_arxiv_id
@@ -256,6 +256,30 @@ async def upload_file(
                         arxiv_id=inferred_arxiv_id,
                         user_id=user_id
                     )
+            else:
+                # Shared directory doesn't exist yet — rename UUID dir to standard arxiv_ format
+                logger.info(f"Renaming upload directory {task_dir.name} → arxiv_{inferred_arxiv_id}")
+                try:
+                    shutil.move(str(task_dir), str(shared_upload_dir))
+                    final_source_path = shared_upload_dir
+                    # Update task metadata to reflect the arxiv identity
+                    task = task_manager.get_task(task_id)
+                    if task:
+                        task["arxiv_id"] = inferred_arxiv_id
+                        task["source_type"] = "arxiv"
+                        task_manager.update_task(
+                            task_id=task_id,
+                            source_path=str(final_source_path),
+                            arxiv_id=inferred_arxiv_id,
+                            user_id=user_id
+                        )
+                    logger.info(f"Successfully renamed to: {shared_upload_dir}")
+                except Exception as rename_err:
+                    logger.warning(
+                        f"Failed to rename upload dir to arxiv_ format: {rename_err}. "
+                        f"Keeping UUID directory name: {task_dir.name}"
+                    )
+                    # Rename failure is non-fatal; keep UUID dir and continue
         
         # Validate LaTeX directory
         logger.info(f"Validating LaTeX directory: {final_source_path}")

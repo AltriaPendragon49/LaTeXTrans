@@ -1,488 +1,135 @@
-ask: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:42,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:44,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:1. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')
-2026-02-13 23:11:46,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:48,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:50,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:52,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:54,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-13 23:11:56,500 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_CAP_1>']
-2026-02-13 23:11:56,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:11:58,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:00,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:02,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:04,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:06,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:12:07,093 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_ENV_1>', '<PLACEHOLDER_ENV_9>', '<PLACEHOLDER_ENV_5>', '<PLACEHOLDER_ENV_4>', '<PLACEHOLDER_ENV_6>', '<PLACEHOLDER_ENV_13>', '<PLACEHOLDER_ENV_7>', '<PLACEHOLDER_ENV_14>', '<PLACEHOLDER_ENV_8>', '<PLACEHOLDER_ENV_16>', '<PLACEHOLDER_ENV_17>']
-2026-02-13 23:12:08,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:10,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:12,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:14,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:16,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:12:18,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:20,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:22,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:24,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:26,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_9>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:12:28,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:30,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:32,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:34,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:36,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:38,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_5>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:12:40,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:42,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:44,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:46,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:48,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_4>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:12:50,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:52,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:54,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:56,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:12:58,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_6>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:13:00,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:02,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:04,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:06,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:08,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_13>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:13:10,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:12,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:14,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:16,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:18,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:20,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_7>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:13:22,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:24,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:26,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:28,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:30,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_14>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:13:32,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:34,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:36,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:38,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:40,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_8>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:13:42,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:44,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:46,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:48,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:51,579 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_16>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:13:53,314 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:54,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:56,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:13:58,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:00,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:02,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_17>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:14:03,271 - backend.app.services.agents.translator_agent - INFO - Retranslating fail parts: ['2', '3', '4', '1', '<PLACEHOLDER_CAP_1>', '<PLACEHOLDER_ENV_1>', '<PLACEHOLDER_ENV_9>', '<PLACEHOLDER_ENV_5>', '<PLACEHOLDER_ENV_4>', '<PLACEHOLDER_ENV_6>', '<PLACEHOLDER_ENV_13>', '<PLACEHOLDER_ENV_7>', '<PLACEHOLDER_ENV_14>', '<PLACEHOLDER_ENV_8>', '<PLACEHOLDER_ENV_16>', '<PLACEHOLDER_ENV_17>'], attempt 3/3
-2026-02-13 23:14:03,271 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['2', '3', '4', '1']
-2026-02-13 23:14:04,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:06,718 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:08,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:10,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:12,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:2. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')
-2026-02-13 23:14:14,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:16,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:18,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:20,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:22,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-13 23:14:24,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:26,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:28,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:30,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:32,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:34,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:3. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')
-2026-02-13 23:14:36,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:38,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:40,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:42,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:44,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-13 23:14:46,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:48,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:50,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:52,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:54,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:4. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')
-2026-02-13 23:14:56,135 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(5,0)
-2026-02-13 23:14:56,136 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(5,0)
-2026-02-13 23:14:56,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:14:58,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:00,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:02,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:04,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-13 23:15:06,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:08,718 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:10,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:12,719 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:14,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:16,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:1. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')
-2026-02-13 23:15:18,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:20,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:22,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:24,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:26,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-13 23:15:27,805 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_CAP_1>']
-2026-02-13 23:15:28,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:30,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:32,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:34,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:62882 - "OPTIONS /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:36,728 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:15:38,351 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_ENV_1>', '<PLACEHOLDER_ENV_9>', '<PLACEHOLDER_ENV_5>', '<PLACEHOLDER_ENV_4>', '<PLACEHOLDER_ENV_6>', '<PLACEHOLDER_ENV_13>', '<PLACEHOLDER_ENV_7>', '<PLACEHOLDER_ENV_14>', '<PLACEHOLDER_ENV_8>', '<PLACEHOLDER_ENV_16>', '<PLACEHOLDER_ENV_17>']
-2026-02-13 23:15:38,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:40,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:42,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:44,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:46,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:48,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:15:50,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:52,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:54,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:56,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:15:58,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_9>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:16:00,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:02,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:04,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:06,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:08,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_5>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:16:10,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:62882 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:13,028 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:14,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:16,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:18,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_4>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:16:20,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:22,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:24,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:26,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:28,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:30,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_6>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:16:32,725 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:34,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:36,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:38,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:40,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_13>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:16:42,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:44,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:46,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:48,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:50,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_7>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:16:52,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:54,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:56,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:16:58,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:00,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:02,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_14>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:17:04,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:06,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:08,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:10,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:12,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_8>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions')  
-2026-02-13 23:17:14,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:16,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:50279 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:19,036 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:20,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:22,722 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_16>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:17:24,721 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:26,724 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:28,720 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:30,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:17:32,723 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_17>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1/chat/completions') 
-2026-02-13 23:17:34,466 - backend.app.services.agents.translator_agent - INFO - Successfully translated sections!
-2026-02-13 23:17:35,828 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:36,945 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:36,946 - backend.app.services.agents.coordinator_agent - INFO - Validating translation
-2026-02-13 23:17:37,231 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:37,232 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2602.03513
-2026-02-13 23:17:37,513 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:37,905 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:38,205 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:38,484 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:38,629 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(5,0)
-2026-02-13 23:17:38,631 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(5,0)
-2026-02-13 23:17:38,955 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:39,495 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:39,497 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2602.03513, remaining errors: 0
-2026-02-13 23:17:39,798 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:39,799 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
-2026-02-13 23:17:40,074 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:40,075 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 2602.03513
-2026-02-13 23:17:40,374 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:40,651 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:40,951 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:41,230 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:41,519 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:41,797 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:42,523 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:42,810 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:42,817 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\2602.03513       
-2026-02-13 23:17:43,099 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:43,099 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
-2026-02-13 23:17:43,378 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:43,655 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:44,594 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:44,874 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:45,164 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:45,165 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\2602.03513\main.tex
-2026-02-13 23:17:45,883 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:45,884 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
-2026-02-13 23:17:46,156 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:17:46,157 - backend.app.services.latex.compiler - INFO - Found main tex from 00README.json: main.tex
-2026-02-13 23:17:46,157 - backend.app.services.agents.generator_agent - INFO - Compiling main.tex...
-2026-02-13 23:17:46,158 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\2602.03513\main.tex    
-2026-02-13 23:17:46,161 - backend.app.services.latex.compiler - INFO - Detected Latin document, using engine order: ['pdflatex', 'xelatex', 'lualatex']
-2026-02-13 23:17:46,161 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with pdflatex...
-2026-02-13 23:17:46,162 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (pdflatex)...
-2026-02-13 23:17:59,640 - backend.app.services.latex.compiler - INFO - latexmk (pdflatex) completed with exit code 0
-2026-02-13 23:17:59,647 - backend.app.services.latex.compiler - INFO - latexmk (pdflatex) result: PDF=✓, Errors=0, Exit Code=0
-2026-02-13 23:17:59,649 - backend.app.services.latex.compiler - INFO - ✅ pdflatex produced perfect compilation (zero errors)
-2026-02-13 23:18:01,569 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:18:01,571 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Successfully generated PDF: D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\2602.03513\main.pdf 
-2026-02-13 23:18:01,572 - backend.app.services.latex.compiler - INFO - PDF verified ready: D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\zh_2602.03513.pdf (284732 bytes)
-2026-02-13 23:18:01,573 - backend.app.services.agents.coordinator_agent - INFO - PDF verified ready: D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\zh_2602.03513.pdf
-2026-02-13 23:18:01,854 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:18:02,140 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 "HTTP/2 200 OK"
-2026-02-13 23:18:02,142 - backend.app.api.routes.translate - INFO - Translation completed: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-2026-02-13 23:18:02,143 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,144 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:51105 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,145 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:60536 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,146 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:53560 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,149 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,149 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:53560 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,151 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,152 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:53560 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,154 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,158 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:53560 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,160 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,162 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:53560 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,164 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:55908 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:18:02,165 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:53560 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
-2026-02-13 23:20:32,770 - backend.app.api.routes.download - INFO - Source PDF preview request for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-2026-02-13 23:20:32,774 - backend.app.api.routes.download - INFO - Redirecting to arxiv.org PDF: https://arxiv.org/pdf/2602.03513.pdf
-INFO:     127.0.0.1:54381 - "GET /api/preview/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1/source-pdf HTTP/1.1" 302 Found
-2026-02-13 23:20:32,775 - backend.app.api.routes.download - INFO - PDF preview request for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-2026-02-13 23:20:32,778 - backend.app.api.routes.download - INFO - Returning PDF for preview: D:\future\antigravity\LaTexTrans\backend\data\outputs\4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1\zh_2602.03513\zh_2602.03513.pdf
-INFO:     127.0.0.1:62954 - "GET /api/preview/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1/pdf HTTP/1.1" 200 OK
-2026-02-13 23:20:37,648 - backend.app.api.routes.task - INFO - Getting status for task: 4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1
-INFO:     127.0.0.1:51106 - "GET /api/task/4dc639cf-7a5a-4f7b-abf6-ee6b8f13a3a1 HTTP/1.1" 200 OK
+2 200 OK"
+INFO:     127.0.0.1:54500 - "POST /api/upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54500 - "OPTIONS /api/translate/a687ed03-0c8e-4045-8eaf-d1d2d61dd49e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61906 - "OPTIONS /api/task/640c59a3-6a52-441d-8be0-19d07cf472e8 HTTP/1.1" 200 OK
+2026-02-18 14:34:26,630 - backend.app.api.routes.translate - INFO - Translation request for task: a687ed03-0c8e-4045-8eaf-d1d2d61dd49e
+2026-02-18 14:34:26,631 - backend.app.api.routes.translate - INFO - Authenticated user: 95639bc0-e1bb-4cb2-8323-37ed9b85e7ed
+2026-02-18 14:34:26,937 - httpx - INFO - HTTP Request: POST https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks "HTTP/2 201 Created"
+2026-02-18 14:34:26,941 - backend.app.services.task_manager - INFO - [TaskManager] ✅ Persisted task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e to Supabase for user 95639bc0-e1bb-4cb2-8323-37ed9b85e7ed
+2026-02-18 14:34:26,941 - backend.app.services.task_manager - INFO - [TaskManager] Persisted task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e to database
+2026-02-18 14:34:26,942 - backend.app.api.routes.translate - INFO - Computed config_hash for task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e: 25fbfc7fef24669151e294560e4d28c7
+2026-02-18 14:34:27,250 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:34:27,557 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:34:27,561 - backend.app.api.routes.translate - INFO - Stored config_hash in database for task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e
+2026-02-18 14:34:28,595 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:34:28,598 - backend.app.services.task_manager - INFO - [TaskQueue] Enqueued task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e (user=95639bc0-e1bb-4cb2-8323-37ed9b85e7ed, queue_size=1)
+2026-02-18 14:34:28,598 - backend.app.api.routes.translate - INFO - Task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e enqueued via TaskQueue
+INFO:     127.0.0.1:61906 - "POST /api/translate/a687ed03-0c8e-4045-8eaf-d1d2d61dd49e HTTP/1.1" 200 OK
+2026-02-18 14:34:28,602 - backend.app.services.task_manager - INFO - [TaskQueue] Worker picked up task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e
+2026-02-18 14:34:28,606 - backend.app.api.routes.task - INFO - Getting status for task: 640c59a3-6a52-441d-8be0-19d07cf472e8
+INFO:     127.0.0.1:54500 - "GET /api/task/640c59a3-6a52-441d-8be0-19d07cf472e8 HTTP/1.1" 200 OK
+2026-02-18 14:34:28,612 - backend.app.api.routes.translate - INFO - Starting translation for task: a687ed03-0c8e-4045-8eaf-d1d2d61dd49e
+2026-02-18 14:34:28,613 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, verify=True, user_id=95639bc0-e1bb-4cb2-8323-37ed9b85e7ed
+2026-02-18 14:34:28,616 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.03513
+2026-02-18 14:34:28,620 - backend.app.services.latex_validator - INFO - Found 1 .tex files
+2026-02-18 14:34:28,623 - backend.app.services.latex_validator - INFO - Found main file by name: 2602.03513\main.tex
+2026-02-18 14:34:28,625 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=2602.03513\main.tex
+2026-02-18 14:34:28,625 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.03513\2602.03513\main.tex
+2026-02-18 14:34:28,941 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:34:28,946 - backend.app.api.routes.translate - INFO - Config hash for task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e: 25fbfc7fef24669151e294560e4d28c7
+2026-02-18 14:34:29,733 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.25fbfc7fef24669151e294560e4d28c7&status=eq.completed&task_id=neq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e&limit=1 "HTTP/2 200 OK"
+2026-02-18 14:34:29,738 - backend.app.api.routes.translate - INFO - Found reusable output: D:\future\antigravity\LaTexTrans\backend\data\outputs\a87a739f-bb5b-4c68-990b-9dedd44d7bf4 
+2026-02-18 14:34:29,739 - backend.app.api.routes.translate - INFO - 🎉 Found reusable output for task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e, skipping translation
+2026-02-18 14:34:29,741 - backend.app.api.routes.translate - INFO - Copying output from D:\future\antigravity\LaTexTrans\backend\data\outputs\a87a739f-bb5b-4c68-990b-9dedd44d7bf4 to D:\future\antigravity\LaTexTrans\backend\data\outputs\a687ed03-0c8e-4045-8eaf-d1d2d61dd49e 
+2026-02-18 14:34:29,902 - backend.app.api.routes.translate - INFO - Output copy completed: D:\future\antigravity\LaTexTrans\backend\data\outputs\a687ed03-0c8e-4045-8eaf-d1d2d61dd49e 
+2026-02-18 14:34:30,216 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:34:30,220 - backend.app.api.routes.translate - INFO - Task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e completed via output reuse
+2026-02-18 14:34:30,221 - backend.app.services.task_manager - INFO - [TaskQueue] Task a687ed03-0c8e-4045-8eaf-d1d2d61dd49e completed, semaphore released
+INFO:     127.0.0.1:54500 - "OPTIONS /api/task/a687ed03-0c8e-4045-8eaf-d1d2d61dd49e HTTP/1.1" 200 OK
+2026-02-18 14:34:31,633 - backend.app.api.routes.task - INFO - Getting status for task: a687ed03-0c8e-4045-8eaf-d1d2d61dd49e
+INFO:     127.0.0.1:54500 - "GET /api/task/a687ed03-0c8e-4045-8eaf-d1d2d61dd49e HTTP/1.1" 200 OK
+2026-02-18 14:35:09,037 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-18 14:35:13,843 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=task_id%2Csource_type%2Carxiv_id%2Ctranslation_mode%2Cstatus%2Cprogress%2Ccreated_at%2Ccompleted_at%2Csource_language%2Ctarget_language%2Ccompile_strategy%2Ctranslation_model%2Cenable_verification%2Cgenerate_glossary%2Cuse_author_api&order=created_at.desc&offset=0&limit=10 "HTTP/2 200 OK"
+INFO:     127.0.0.1:57267 - "GET /api/history?page=1&page_size=10 HTTP/1.1" 200 OK
+2026-02-18 14:35:18,831 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-18 14:35:21,878 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=task_id%2Csource_type%2Carxiv_id%2Ctranslation_mode%2Cstatus%2Cprogress%2Ccreated_at%2Ccompleted_at%2Csource_language%2Ctarget_language%2Ccompile_strategy%2Ctranslation_model%2Cenable_verification%2Cgenerate_glossary%2Cuse_author_api&order=created_at.desc&offset=0&limit=10 "HTTP/2 200 OK"
+INFO:     127.0.0.1:52900 - "GET /api/history?page=1&page_size=10 HTTP/1.1" 200 OK
+2026-02-18 14:35:23,031 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-18 14:35:28,401 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:35:29,425 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.a687ed03-0c8e-4045-8eaf-d1d2d61dd49e "HTTP/2 200 OK"
+2026-02-18 14:35:29,431 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\a687ed03-0c8e-4045-8eaf-d1d2d61dd49e
+2026-02-18 14:35:29,738 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.640c59a3-6a52-441d-8be0-19d07cf472e8 "HTTP/2 200 OK"
+2026-02-18 14:35:30,045 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.640c59a3-6a52-441d-8be0-19d07cf472e8 "HTTP/2 200 OK"
+2026-02-18 14:35:30,056 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\640c59a3-6a52-441d-8be0-19d07cf472e8
+INFO:     127.0.0.1:57267 - "DELETE /api/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49212 - "OPTIONS /api/batch-translate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49212 - "POST /api/batch-translate HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\cors.py", line 146, in simple_response
+    await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\routing.py", line 191, in run_endpoint_function
+    return await dependant.call(**values)
+  File "D:\future\antigravity\LaTexTrans\backend\app\api\routes\translate.py", line 718, in batch_translate
+    from backend.app.api.routes.arxiv import download_arxiv_source
+ImportError: cannot import name 'download_arxiv_source' from 'backend.app.api.routes.arxiv' (D:\future\antigravity\LaTexTrans\backend\app\api\routes\arxiv.py)
+INFO:     127.0.0.1:64031 - "POST /api/batch-translate HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\cors.py", line 146, in simple_response
+    await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+  File "D:\apps\Anaconda3\envs\latex_rag_agent\lib\site-packages\fastapi\routing.py", line 191, in run_endpoint_function
+    return await dependant.call(**values)
+  File "D:\future\antigravity\LaTexTrans\backend\app\api\routes\translate.py", line 718, in batch_translate
+    from backend.app.api.routes.arxiv import download_arxiv_source
+ImportError: cannot import name 'd.ownload_arxiv_source' from 'backend.app.api.routes.arxiv' (D:\future\antigravity\LaTexTrans\backend\app\api\routes\arxiv.py)

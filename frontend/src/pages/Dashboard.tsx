@@ -1,19 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store/useStore'
 import { AdvancedConfig } from '@/components/AdvancedConfig'
 import { DropZone } from '@/components/DropZone'
+import { BatchTranslation, type BatchTranslationHandle, type BatchTranslationState } from '@/components/BatchTranslation'
+import { LoginPrompt } from '@/components/LoginPrompt'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { useAuth } from '@/contexts/AuthContext'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Progress } from '@/components/ui/progress'
-import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function Dashboard() {
     const navigate = useNavigate()
+    const { user } = useAuth()
+    const isAuthenticated = !!user
     const {
         taskId, status, config,
         downloadProgress, downloadStage, isDownloading,
@@ -24,6 +29,12 @@ export default function Dashboard() {
     const [isConfigOpen, setIsConfigOpen] = useState(false)
     const [localArxivId, setLocalArxivId] = useState('')
     const [isLoadingSource, setIsLoadingSource] = useState(false)
+    const batchRef = useRef<BatchTranslationHandle>(null)
+    const [batchState, setBatchState] = useState<BatchTranslationState>({
+        isSubmitting: false,
+        activeTab: 'arxiv',
+        canSubmit: false,
+    })
     // const [isDownloading, setIsDownloading] = useState(false) // Removed local state in favor of store state
 
     // Load user settings on mount (if authenticated)
@@ -73,20 +84,23 @@ export default function Dashboard() {
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                <TabsList className="grid w-full grid-cols-3 lg:w-[520px]">
                     <TabsTrigger value="arxiv">ArXiv ID</TabsTrigger>
                     <TabsTrigger value="upload">Local Upload</TabsTrigger>
+                    <TabsTrigger value="batch">Batch</TabsTrigger>
                 </TabsList>
 
                 <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
-                    <CardHeader>
-                        <CardTitle>{activeTab === 'arxiv' ? 'ArXiv Paper' : 'File Upload'}</CardTitle>
-                        <CardDescription>
-                            {activeTab === 'arxiv'
-                                ? 'Enter the ArXiv ID (e.g., 2310.xxxxx) to download source.'
-                                : 'Upload your LaTeX project as a ZIP/RAR archive.'}
-                        </CardDescription>
-                    </CardHeader>
+                    {activeTab !== 'batch' && (
+                        <CardHeader>
+                            <CardTitle>{activeTab === 'arxiv' ? 'ArXiv Paper' : 'File Upload'}</CardTitle>
+                            <CardDescription>
+                                {activeTab === 'arxiv'
+                                    ? 'Enter the ArXiv ID (e.g., 2310.xxxxx) to download source.'
+                                    : 'Upload your LaTeX project as a ZIP/RAR archive.'}
+                            </CardDescription>
+                        </CardHeader>
+                    )}
                     <CardContent className="space-y-6">
                         <TabsContent value="arxiv" className="mt-0 space-y-4">
                             <div className="flex gap-4">
@@ -130,6 +144,23 @@ export default function Dashboard() {
                             <DropZone />
                         </TabsContent>
 
+                        <TabsContent value="batch" className="mt-0">
+                            {isAuthenticated ? (
+                                <BatchTranslation
+                                    ref={batchRef}
+                                    advancedConfig={config.advanced_config}
+                                    targetLanguage={config.target_language}
+                                    sourceLanguage={config.source_language}
+                                    onStateChange={setBatchState}
+                                />
+                            ) : (
+                                <LoginPrompt
+                                    message="请登录以使用批量翻译"
+                                    description="批量翻译功能仅对登录用户开放，支持一次提交最多 9 篇 arXiv 论文。"
+                                />
+                            )}
+                        </TabsContent>
+
                         {/* Task Ready Indicator - 只在下载完成后显示 */}
                         {taskId && status === 'ready' && (
                             <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
@@ -146,6 +177,7 @@ export default function Dashboard() {
                 </Card>
             </Tabs>
 
+            {/* Advanced Configuration - 对所有 Tab 均可用，配置共享给单论文和批量翻译 */}
             <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen} className="space-y-2">
                 <CollapsibleTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2 w-full justify-start p-0 hover:bg-transparent hover:text-primary group">
@@ -159,16 +191,39 @@ export default function Dashboard() {
                 </CollapsibleContent>
             </Collapsible>
 
+            {/* 底部按鈕：根据 Tab 动态切换 */}
             <div className="flex justify-end pt-4 pb-12">
-                <Button
-                    size="lg"
-                    onClick={handleStart}
-                    disabled={!taskId || status === 'downloading' || status === 'starting_translation'}
-                    className="w-full md:w-auto min-w-[200px] shadow-lg shadow-primary/20 text-lg py-6"
-                >
-                    <Play className="mr-2 h-5 w-5 fill-current" />
-                    Start Translation
-                </Button>
+                {activeTab === 'batch' ? (
+                    // Batch Tab: 显示批量提交按鈕
+                    <Button
+                        size="lg"
+                        onClick={() => batchRef.current?.submitCurrent()}
+                        disabled={!batchState.canSubmit}
+                        className="w-full md:w-auto min-w-[200px] shadow-lg shadow-primary/20 text-lg py-6"
+                    >
+                        {batchState.isSubmitting ? (
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        ) : (
+                            <Play className="mr-2 h-5 w-5 fill-current" />
+                        )}
+                        {batchState.isSubmitting
+                            ? '提交中…'
+                            : batchState.activeTab === 'upload'
+                                ? '开始批量上传翻译'
+                                : '开始批量翻译'}
+                    </Button>
+                ) : (
+                    // ArXiv / Upload Tab: 单论文翻译按鈕
+                    <Button
+                        size="lg"
+                        onClick={handleStart}
+                        disabled={!taskId || status === 'downloading' || status === 'starting_translation'}
+                        className="w-full md:w-auto min-w-[200px] shadow-lg shadow-primary/20 text-lg py-6"
+                    >
+                        <Play className="mr-2 h-5 w-5 fill-current" />
+                        Start Translation
+                    </Button>
+                )}
             </div>
         </div>
     )

@@ -17,6 +17,7 @@ import toml
 class TaskStatus(str, Enum):
     """Task status enumeration"""
     PENDING = "pending"
+    QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
     COMPLETED_WITH_WARNINGS = "completed_with_warnings"
@@ -116,6 +117,20 @@ class Settings(BaseSettings):
         "https://latextrans.pages.dev",
     ]
     
+    # Task Queue Settings
+    max_concurrent_translations: int = Field(
+        default=3,
+        env="MAX_CONCURRENT_TRANSLATIONS"
+    )
+    max_user_active_tasks: int = Field(
+        default=9,
+        env="MAX_USER_ACTIVE_TASKS"
+    )
+    guest_task_ttl_hours: int = Field(
+        default=2,
+        env="GUEST_TASK_TTL_HOURS"
+    )
+
     # Server Settings
     host: str = "0.0.0.0"
     port: int = 8000
