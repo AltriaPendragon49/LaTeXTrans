@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useAuth } from '@/contexts/AuthContext'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Progress } from '@/components/ui/progress'
-import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function Dashboard() {
@@ -35,6 +35,8 @@ export default function Dashboard() {
         activeTab: 'arxiv',
         canSubmit: false,
     })
+    const [showArxivTip, setShowArxivTip] = useState(true)
+    const [showApiWarning, setShowApiWarning] = useState(true)
     // const [isDownloading, setIsDownloading] = useState(false) // Removed local state in favor of store state
 
     // Load user settings on mount (if authenticated)
@@ -121,12 +123,18 @@ export default function Dashboard() {
                             </div>
 
                             {/* Info tip about load time */}
-                            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3 border border-border/50">
-                                <Info className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
-                                <p>
-                                    <span className="font-medium text-foreground/80">Tip:</span> Loading typically takes over 70% of total task time. Please wait patiently, then configure your translation settings below.
-                                </p>
-                            </div>
+                            {showArxivTip && (
+                                <div
+                                    className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3 border border-border/50 relative group cursor-pointer hover:bg-muted/80 transition-colors animate-in fade-in zoom-in-95 duration-200"
+                                    onClick={() => setShowArxivTip(false)}
+                                >
+                                    <Info className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
+                                    <p className="pr-6">
+                                        <span className="font-medium text-foreground/80">Tip:</span> Since the download is via the official arXiv channel, downloading oversized papers will take up most of the time. Please be patient.
+                                    </p>
+                                    <X className="h-4 w-4 absolute right-2 top-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                            )}
 
                             {/* Download Progress Bar */}
                             {isDownloading && (
@@ -179,13 +187,28 @@ export default function Dashboard() {
 
             {/* Advanced Configuration - 对所有 Tab 均可用，配置共享给单论文和批量翻译 */}
             <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen} className="space-y-2">
-                <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="flex items-center gap-2 w-full justify-start p-0 hover:bg-transparent hover:text-primary group">
-                        {isConfigOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" /> : <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
-                        <span className="font-medium text-lg">Advanced Configuration</span>
-                        <span className="text-sm text-muted-foreground ml-2 font-normal">(Optional)</span>
-                    </Button>
-                </CollapsibleTrigger>
+                <div className="flex flex-col md:flex-row md:items-center justify-between w-full gap-3">
+                    <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="flex items-center gap-2 w-fit justify-start p-0 hover:bg-transparent hover:text-primary group">
+                            {isConfigOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0" />}
+                            <span className="font-medium text-lg whitespace-nowrap">Advanced Configuration</span>
+                            <span className="text-sm text-muted-foreground ml-1 font-normal whitespace-nowrap">(Optional)</span>
+                        </Button>
+                    </CollapsibleTrigger>
+
+                    {showApiWarning && (
+                        <div
+                            className="flex items-center gap-1.5 text-[11px] sm:text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1.5 rounded-md border border-amber-500/20 sm:w-fit cursor-pointer hover:bg-amber-500/20 transition-colors group animate-in fade-in zoom-in-95 duration-200"
+                            onClick={() => setShowApiWarning(false)}
+                        >
+                            <Info className="w-3.5 h-3.5 shrink-0" />
+                            <span className="leading-tight mr-1">
+                                Default API uses Nvidia's free tier, affecting translation quality and speed. Custom API configuration is recommended.
+                            </span>
+                            <X className="w-3.5 h-3.5 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                    )}
+                </div>
                 <CollapsibleContent className="space-y-4 pt-2 animate-in slide-in-from-top-2 fade-in duration-200">
                     <AdvancedConfig />
                 </CollapsibleContent>

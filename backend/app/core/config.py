@@ -42,17 +42,13 @@ class Settings(BaseSettings):
     app_name: str = "LaTeXTrans Backend"
     version: str = "0.1.0"
     
-    # LLM API Configuration
     llm_api_key: str = Field(
-        default="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",
         env="LLM_API_KEY"
     )
     llm_base_url: str = Field(
-        default="https://integrate.api.nvidia.com/v1/chat/completions",
         env="LLM_BASE_URL"
     )
     llm_model: str = Field(
-        default="qwen/qwen3-235b-a22b",
         env="LLM_MODEL"
     )
     llm_timeout: int = Field(

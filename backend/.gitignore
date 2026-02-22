@@ -194,3 +194,7 @@ credentials.json
 client_secret.json
 auth.json
 *.ovpn
+# Start Scripts
+start.bat
+start.ps1
+start.sh

@@ -112,6 +112,34 @@ def get_user_api_config(user_id: str) -> dict:
         return {}
 
 
+def normalize_base_url(url: str) -> str:
+    """
+    Normalize API base URL.
+    
+    Since the code POSTs directly to base_url (not via OpenAI SDK),
+    all APIs need the full /v1/chat/completions path.
+    
+    - If URL already ends with /chat/completions, return as-is
+    - Otherwise, auto-append /v1/chat/completions
+    
+    Args:
+        url: Raw base URL string
+    
+    Returns:
+        Normalized URL ready for API calls
+    """
+    if not url:
+        return url
+    url = url.rstrip('/')
+    
+    # Already has the full path
+    if url.endswith('/chat/completions'):
+        return url
+    
+    # Auto-append full path for all APIs
+    return f"{url}/v1/chat/completions"
+
+
 def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Dict[str, Any]:
     """
     Build LLM configuration from advanced config.
@@ -143,9 +171,9 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
         
         if user_api_config.get("api_key"):
             # 系统设置中有 API key，优先使用
-            base_url = (user_api_config.get("base_url") or "").rstrip('/')
-            if base_url and not base_url.endswith('/v1/chat/completions'):
-                base_url = f"{base_url}/v1/chat/completions"
+            base_url = user_api_config.get("base_url") or ""
+            if base_url:
+                base_url = normalize_base_url(base_url)
             
             logger.info(f"✅ Using user's stored API config from system settings")
             logger.info(f"   Base URL: {base_url[:50] if base_url else 'default'}...")
@@ -164,9 +192,9 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
     if advanced_config.custom_api_key:
         logger.info("Using API key from request (frontend advanced config)")
         
-        base_url = (advanced_config.custom_base_url or "").rstrip('/')
-        if base_url and not base_url.endswith('/v1/chat/completions'):
-            base_url = f"{base_url}/v1/chat/completions"
+        base_url = advanced_config.custom_base_url or ""
+        if base_url:
+            base_url = normalize_base_url(base_url)
         
         logger.info(f"   Base URL: {base_url[:50] if base_url else 'default'}...")
         logger.info(f"   API Key: {advanced_config.custom_api_key[:8]}...***")
@@ -445,6 +473,18 @@ async def run_translation(
         # Build LLM config from advanced settings (with user's stored API key if available)
         llm_config = build_llm_config(advanced_config, user_id)
         
+        # Sync actual model back to advanced_config so DB records the real model used
+        actual_model = llm_config.get("model", advanced_config.translation_model)
+        if actual_model != advanced_config.translation_model:
+            logger.info(f"Syncing translation_model: {advanced_config.translation_model} -> {actual_model}")
+            advanced_config.translation_model = actual_model
+            # Update the DB record with the real model
+            task_manager.update_task(
+                task_id=task_id,
+                advanced_config=advanced_config.model_dump(),
+                user_id=user_id
+            )
+        
         # Build config dict for CoordinatorAgent with all advanced settings
         agent_config = {
             "sys_name": "LaTeXTrans",
@@ -460,6 +500,25 @@ async def run_translation(
         logger.info(f"Agent config: mode={agent_config['mode']}, "
                     f"engine={agent_config['latex_engine']}, "
                     f"verify={agent_config['use_verification_agent']}")
+
+        # ========== 配置拦截代码 - 开始 ==========
+        from backend.tests.test_config_interceptor import ConfigInterceptor
+        
+        interceptor = ConfigInterceptor()
+        config_file = interceptor.capture_config(
+            task_id=task_id,
+            advanced_config=advanced_config.model_dump(),
+            agent_config=agent_config,
+            llm_config=llm_config,
+            additional_info={
+                "target_language": target_language,
+                "source_language": source_language,
+                "source_path": str(source_path),
+                "output_dir": str(output_dir)
+            }
+        )
+        logger.info(f"🔍 配置已拦截并保存到: {config_file}")
+        # ========== 配置拦截代码 - 结束 ==========
 
       
         

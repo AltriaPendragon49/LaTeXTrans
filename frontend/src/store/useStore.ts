@@ -213,7 +213,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     compile_strategy: settings.compile_strategy || 'auto',
                     enable_verification: settings.enable_verification ?? true,
                     generate_terminology_table: settings.generate_glossary ?? true,
-                    translation_model: settings.translation_model || 'gpt-4.1-mini',
+                    translation_model: settings.translation_model || 'qwen/qwen3-235b-a22b',
                     use_author_api: settings.use_author_api ?? true,
                     custom_base_url: settings.custom_base_url || undefined,
                     // Note: API key is not returned for security
@@ -513,11 +513,14 @@ export const useStore = create<TranslationState>((set, get) => ({
                 }))
 
                 if (['completed', 'failed', 'completed_with_warnings'].includes(statusData.status.toLowerCase())) {
+                    const wasPolling = get().isPolling
                     stopPolling()
-                    if (statusData.status.toLowerCase() === 'completed') {
-                        toast.success("Task completed successfully")
-                    } else if (statusData.status.toLowerCase() === 'failed') {
-                        toast.error("Task failed")
+                    if (wasPolling) {
+                        if (statusData.status.toLowerCase() === 'completed') {
+                            toast.success("Task completed successfully", { id: `task-completed-${taskId}` })
+                        } else if (statusData.status.toLowerCase() === 'failed') {
+                            toast.error("Task failed", { id: `task-failed-${taskId}` })
+                        }
                     }
                 }
 
