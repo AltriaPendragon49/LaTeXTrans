@@ -64,13 +64,15 @@ class GeneratorAgent(BaseToolAgent):
         self.log(f"Created translation directory: {transed_latex_dir}")
 
         self.update_progress(70, "Reconstructing LaTeX document")
+        target_language = self.config.get("target_language", "en")
         latex_constructor = LatexConstructor(
             sections=sections,
             captions=captions,
             envs=envs,
             inputs=inputs,
             newcommands=newcommands,
-            output_latex_dir=transed_latex_dir
+            output_latex_dir=transed_latex_dir,
+            target_language=target_language
         )
         latex_constructor.construct(on_progress=self.on_progress)
 

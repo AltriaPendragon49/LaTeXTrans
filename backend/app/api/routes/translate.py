@@ -594,6 +594,14 @@ async def start_translation(
                 detail=f"Too many active tasks. You have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete."
             )
 
+    # ✅ Update source/target language in memory BEFORE persisting,
+    # so the DB record captures the real translation config.
+    task_manager.update_task(
+        task_id=task_id,
+        source_language=request.source_language,
+        target_language=request.target_language,
+    )
+
     # ✅ Persist to database (delayed creation)
     if not task_manager.persist_task_if_needed(task_id):
         logger.warning(f"Failed to persist task {task_id}, but continuing with translation")
@@ -789,6 +797,15 @@ async def batch_translate(
                 arxiv_id=arxiv_id,
                 user_id=user_id,
                 persist_to_db=False
+            )
+
+            # ✅ Update source/target language and config in memory BEFORE persisting,
+            # so the DB record captures actual translation config instead of defaults.
+            task_manager.update_task(
+                task_id=task_id,
+                source_language=request.source_language,
+                target_language=request.target_language,
+                advanced_config=request.advanced_config.model_dump(),
             )
 
             # ✅ Persist to DB immediately (synchronous fast attempt).

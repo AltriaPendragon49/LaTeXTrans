@@ -23,7 +23,8 @@ class LatexConstructor:
                  envs: List[Dict[str, Any]],
                  inputs: List[Dict[str, Any]],
                  newcommands: List[Dict[str, Any]],
-                 output_latex_dir: str
+                 output_latex_dir: str,
+                 target_language: str = "en"
                  ):
         self.sections = sections
         self.captions = captions
@@ -31,6 +32,7 @@ class LatexConstructor:
         self.inputs = inputs
         self.newcommands = newcommands
         self.output_latex_dir = output_latex_dir
+        self.target_language = target_language
 
     def construct(self, on_progress: Optional[Callable[[str, int, str], None]] = None):
         """
@@ -174,9 +176,8 @@ class LatexConstructor:
             print(f"⚠️ Warning: Residual placeholders found and removed: {residual_matches}")
             tex = re.sub(r"<PLACEHOLDER_[^>]*>", "", tex)
 
-        # Add language-specific packages
-        tex = add_ctex_package(tex)  # Chinese support
-        # tex = add_ja_package(tex)  # Japanese support
+        # Add language-specific packages based on target language
+        tex = add_cjk_package(tex, self.target_language)
 
         main_file_path = find_main_tex_file(self.output_latex_dir)
         if os.path.exists(main_file_path):

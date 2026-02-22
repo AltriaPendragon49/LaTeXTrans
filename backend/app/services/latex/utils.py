@@ -684,6 +684,184 @@ def add_ja_package(latex_code):
     return latex_code
 
 
+def add_cyrillic_font_support(latex_code: str, target_language: str = "ru") -> str:
+    """
+    Add Cyrillic font support for languages like Russian, Ukrainian, Bulgarian, etc.
+    Requires XeLaTeX (the compiler will fallback to xelatex after pdflatex fails).
+
+    Strategy:
+    1. Comment out pdfLaTeX-only encoding packages (T1, T2A fontenc; utf8 inputenc; times; lmodern)
+       that conflict with XeLaTeX's fontspec approach.
+    2. Inject fontspec + CMU Serif (Computer Modern Unicode), which is bundled with
+       TeX Live / MiKTeX and natively supports Cyrillic characters.
+    """
+    # Step 1: Comment out packages incompatible with XeLaTeX Cyrillic rendering
+    packages_to_comment = [
+        r'\usepackage[T1]{fontenc}',
+        r'\usepackage[T2A]{fontenc}',
+        r'\usepackage[utf8]{inputenc}',
+        r'\usepackage[utf8x]{inputenc}',
+        r'\usepackage{times}',
+        r'\usepackage{mathptmx}',
+        r'\usepackage{lmodern}',
+    ]
+
+    lines = latex_code.splitlines()
+    modified_lines = []
+    for line in lines:
+        stripped = line.strip()
+        commented = False
+        if not stripped.startswith('%'):
+            for pkg in packages_to_comment:
+                if stripped.startswith(pkg):
+                    modified_lines.append(
+                        f'% {line.lstrip()}  % Commented for XeLaTeX Cyrillic compatibility'
+                    )
+                    logger.debug(f"Commented out for Cyrillic support: {line.strip()}")
+                    commented = True
+                    break
+        if not commented:
+            modified_lines.append(line)
+    latex_code = '\n'.join(modified_lines)
+
+    # Step 2: Comment out pdfLaTeX primitive commands (\pdfoutput, \pdfinfo, etc.)
+    latex_code = _comment_out_pdflatex_commands(latex_code)
+
+    # Step 3: Inject fontspec + CMU Serif after \documentclass
+    # CMU Serif (Computer Modern Unicode) is bundled with TeX Live / MiKTeX
+    # and fully supports Cyrillic characters out of the box.
+    cyrillic_font_block = (
+        "\n\\usepackage{fontspec}\n"
+        "\\setmainfont{CMU Serif}"
+        "[BoldFont={CMU Serif Bold},"
+        "ItalicFont={CMU Serif Italic},"
+        "BoldItalicFont={CMU Serif Bold Italic}]\n"
+        "\\setsansfont{CMU Sans Serif}\n"
+        "\\setmonofont{CMU Typewriter Text}\n"
+    )
+
+    if "\\usepackage{fontspec}" not in latex_code:
+        documentclass_pattern = get_command_pattern(r'documentclass')
+        match = documentclass_pattern.search(latex_code)
+        if match:
+            position = match.end()
+            latex_code = latex_code[:position] + cyrillic_font_block + latex_code[position:]
+            logger.info(
+                f"Injected fontspec + CMU Serif for Cyrillic support (language={target_language})"
+            )
+        else:
+            logger.warning("Could not find \\documentclass to inject Cyrillic font support")
+    else:
+        logger.info(f"fontspec already present, skipping Cyrillic font injection for: {target_language}")
+
+    return latex_code
+
+
+def add_cjk_package(latex_code: str, target_language: str = "en") -> str:
+    """
+    Dynamically inject the appropriate font/language package based on target language.
+
+    Language categories and their handling:
+    - Chinese (zh/ch): inject ctex with UTF8, comment out pdfLaTeX-specific commands.
+    - Japanese (ja) / Korean (ko): inject xeCJK, comment out pdfLaTeX-specific commands.
+    - Russian (ru) / other Cyrillic (uk, bg, sr, mk, be):
+        inject fontspec + CMU Serif, comment out conflicting encodings and pdfLaTeX commands.
+    - Latin-extended (de, fr, es, pt, it, nl, pl, ...):
+        comment out pdfLaTeX-specific primitive commands only, so XeLaTeX fallback works.
+        Font/encoding (T1+inputenc) left intact since pdflatex handles them natively;
+        if pdflatex fails, xelatex will use its own Unicode handling.
+    - English / other (en, ...): comment out pdfLaTeX commands for XeLaTeX fallback safety.
+    """
+    lang = target_language.lower()
+    if lang in ("zh", "ch"):
+        # Chinese: use ctex package
+        return add_ctex_package(latex_code)
+    elif lang == "ko":
+        # Korean: use xeCJK with Korean-capable fonts
+        # UnBatang/UnDotum are bundled with TeX Live (un-core package)
+        # IMPORTANT: Inject font setup regardless of whether xeCJK is already present.
+        # The original document may already have \usepackage{xeCJK} but no Korean font.
+        ko_font_lines = (
+            "\\setCJKmainfont{UnBatang}[FallbackFonts={Noto Serif CJK KR}]\n"
+            "\\setCJKsansfont{UnDotum}[FallbackFonts={Noto Sans CJK KR}]\n"
+            "\\setCJKmonofont{UnDotum}\n"
+            "\\xeCJKsetup{CJKmath=true}\n"
+        )
+        if "\\usepackage{xeCJK}" not in latex_code:
+            # xeCJK not present: inject the full block (package + fonts)
+            ko_full_block = (
+                "\n\\usepackage{xeCJK}\n"
+                "\\usepackage{fontspec}\n"
+                + ko_font_lines
+            )
+            documentclass_pattern = get_command_pattern(r'documentclass')
+            match = documentclass_pattern.search(latex_code)
+            if match:
+                position = match.end()
+                latex_code = latex_code[:position] + ko_full_block + latex_code[position:]
+                logger.info("Injected xeCJK + UnBatang for Korean")
+        else:
+            # xeCJK already present but may not have Korean font set:
+            # Inject font setup after existing \usepackage{xeCJK} line
+            if "\\setCJKmainfont" not in latex_code:
+                latex_code = latex_code.replace(
+                    "\\usepackage{xeCJK}",
+                    "\\usepackage{xeCJK}\n" + ko_font_lines,
+                    1  # only replace first occurrence
+                )
+                logger.info("Added Korean font setup to existing xeCJK for Korean")
+        latex_code = _comment_out_pdflatex_commands(latex_code)
+        return latex_code
+    elif lang == "ja":
+        # Japanese: use xeCJK with Japanese-capable fonts
+        # IPAexMincho/IPAexGothic are bundled with TeX Live (ipaex package)
+        # IMPORTANT: Inject font setup regardless of whether xeCJK is already present.
+        ja_font_lines = (
+            "\\setCJKmainfont{IPAexMincho}[FallbackFonts={Noto Serif CJK JP}]\n"
+            "\\setCJKsansfont{IPAexGothic}[FallbackFonts={Noto Sans CJK JP}]\n"
+            "\\setCJKmonofont{IPAexGothic}\n"
+            "\\xeCJKsetup{CJKmath=true}\n"
+        )
+        if "\\usepackage{xeCJK}" not in latex_code:
+            # xeCJK not present: inject the full block (package + fonts)
+            ja_full_block = (
+                "\n\\usepackage{xeCJK}\n"
+                "\\usepackage{fontspec}\n"
+                + ja_font_lines
+            )
+            documentclass_pattern = get_command_pattern(r'documentclass')
+            match = documentclass_pattern.search(latex_code)
+            if match:
+                position = match.end()
+                latex_code = latex_code[:position] + ja_full_block + latex_code[position:]
+                logger.info("Injected xeCJK + IPAexMincho for Japanese")
+        else:
+            # xeCJK already present but may not have Japanese font set:
+            # Inject font setup after existing \usepackage{xeCJK} line
+            if "\\setCJKmainfont" not in latex_code:
+                latex_code = latex_code.replace(
+                    "\\usepackage{xeCJK}",
+                    "\\usepackage{xeCJK}\n" + ja_font_lines,
+                    1  # only replace first occurrence
+                )
+                logger.info("Added Japanese font setup to existing xeCJK for Japanese")
+        latex_code = _comment_out_pdflatex_commands(latex_code)
+        return latex_code
+    elif lang in ("ru", "uk", "bg", "sr", "mk", "be"):
+        # Cyrillic languages: use fontspec + CMU Serif for proper Cyrillic rendering
+        return add_cyrillic_font_support(latex_code, target_language)
+    else:
+        # Latin-script languages (en, de, fr, es, pt, it, nl, pl, etc.):
+        # T1+inputenc works fine for pdflatex. For xelatex fallback, only need to
+        # remove pdflatex-specific primitive commands that cause xelatex errors.
+        # Do NOT remove T1/inputenc (xelatex ignores them harmlessly) or font packages.
+        latex_code = _comment_out_pdflatex_commands(latex_code)
+        logger.debug(f"Cleaned pdfLaTeX primitives for Latin-script language: {target_language}")
+        return latex_code
+
+
+
+
 def find_main_tex_file(dir):
     """
     Find the main LaTeX file in the given directory.

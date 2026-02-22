@@ -38,10 +38,19 @@ def init_prompts(source_lang: str, target_lang: str):
         get_summary_system_prompt, refine_summary_system_prompt, section_system_prompt_with_sum, caption_system_prompt_with_sum, env_system_prompt_with_sum, \
         section_system_prompt_with_terms_sum, section_system_prompt_with_prev, section_system_prompt_with_terms_prev
 
-    if(source_lang == "en"):
-        source_lang = "English"
-    if(target_lang == "ch"):
-        target_lang = "Chinese"
+    lang_map = {
+        "en": "English",
+        "ch": "Chinese",
+        "zh": "Chinese",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "de": "German",
+        "fr": "French",
+        "es": "Spanish",
+        "ru": "Russian",
+    }
+    source_lang = lang_map.get(source_lang, source_lang)
+    target_lang = lang_map.get(target_lang, target_lang)
 
 
     caption_system_prompt = f"""

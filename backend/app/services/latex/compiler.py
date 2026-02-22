@@ -29,13 +29,15 @@ def detect_document_language_from_content(content: str) -> str:
     """
     Detect document language from text content.
     
-    Checks for CJK (Chinese, Japanese, Korean) characters.
+    Checks for CJK (Chinese, Japanese, Korean) and Cyrillic characters.
     
     Args:
         content: Text content to analyze
         
     Returns:
-        "cjk" if CJK characters exceed threshold, otherwise "latin"
+        "cjk" if CJK characters exceed threshold,
+        "cyrillic" if Cyrillic characters exceed threshold,
+        otherwise "latin"
     """
     import re
     
@@ -46,11 +48,17 @@ def detect_document_language_from_content(content: str) -> str:
     # - Korean Hangul: \uac00-\ud7af
     cjk_pattern = re.compile(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]')
     
-    cjk_chars = cjk_pattern.findall(content)
-    cjk_count = len(cjk_chars)
+    # Cyrillic character ranges:
+    # - Basic Cyrillic: \u0400-\u04ff (Russian, Ukrainian, Bulgarian, Serbian, etc.)
+    cyrillic_pattern = re.compile(r'[\u0400-\u04ff]')
+    
+    cjk_count = len(cjk_pattern.findall(content))
+    cyrillic_count = len(cyrillic_pattern.findall(content))
     
     if cjk_count > CJK_THRESHOLD:
         return "cjk"
+    if cyrillic_count > 50:  # Lower threshold: even sparse Cyrillic needs XeLaTeX
+        return "cyrillic"
     return "latin"
 
 
@@ -61,13 +69,14 @@ def detect_document_language(tex_file: str) -> str:
     Strategy:
     1. Read the .tex file content (up to 100KB)
     2. Count CJK characters (Chinese, Japanese, Korean)
-    3. If CJK chars exceed threshold (100), classify as CJK document
+    3. Count Cyrillic characters (Russian, Ukrainian, Bulgarian, etc.)
+    4. Classify as "cjk", "cyrillic", or "latin"
     
     Args:
         tex_file: Path to .tex file
         
     Returns:
-        "cjk" or "latin"
+        "cjk", "cyrillic", or "latin"
     """
     try:
         with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -570,6 +579,9 @@ def compile_with_intelligent_fallback(
         if language == "cjk":
             engines = ["xelatex", "lualatex", "pdflatex"]
             logger.info(f"Detected CJK document, using engine order: {engines}")
+        elif language == "cyrillic":
+            engines = ["xelatex", "lualatex", "pdflatex"]
+            logger.info(f"Detected Cyrillic document, using engine order: {engines}")
         else:
             engines = ["pdflatex", "xelatex", "lualatex"]
             logger.info(f"Detected Latin document, using engine order: {engines}")

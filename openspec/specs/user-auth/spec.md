@@ -10,16 +10,8 @@ TBD - created by archiving change add-multi-user-support. Update Purpose after a
 - **WHEN** 用户在注册页面输入有效邮箱和密码
 - **AND** 点击注册按钮
 - **THEN** 系统调用 Supabase Auth signUp()
-- **AND** 发送确认邮件到用户邮箱
+- **AND** 通过自定义 SMTP 服务发送确认邮件到用户邮箱（无需绕过 VPN 限制即可稳定触发）
 - **AND** 显示"请查收确认邮件"提示
-
-#### Scenario: 用户注册失败（邮箱已存在）
-- **WHEN** 用户输入已注册的邮箱
-- **THEN** 系统显示"该邮箱已被注册"错误信息
-
-#### Scenario: 用户注册失败（密码不符合要求）
-- **WHEN** 用户输入不符合安全要求的密码
-- **THEN** 系统显示密码要求提示
 
 ### Requirement: Email Password Authentication
 系统 SHALL 支持已注册用户通过邮箱密码进行登录。

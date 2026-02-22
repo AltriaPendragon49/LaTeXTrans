@@ -108,7 +108,9 @@ class TaskManager:
         advanced_config: Optional[Dict[str, Any]] = None,
         latex_validation: Optional[Dict[str, Any]] = None,
         arxiv_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        source_language: Optional[str] = None,
+        target_language: Optional[str] = None
     ) -> bool:
         """
         Update task fields
@@ -201,6 +203,14 @@ class TaskManager:
             if arxiv_id is not None:
                 task["arxiv_id"] = arxiv_id
                 db_updates["arxiv_id"] = arxiv_id
+            
+            if source_language is not None:
+                task["source_language"] = source_language
+                db_updates["source_language"] = source_language
+            
+            if target_language is not None:
+                task["target_language"] = target_language
+                db_updates["target_language"] = target_language
             
             # Get user_id from task if not provided
             if user_id is None:
