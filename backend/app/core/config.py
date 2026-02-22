@@ -115,6 +115,8 @@ class Settings(BaseSettings):
         # Cloudflare Pages default domain pattern
         # Note: For production, add your specific *.pages.dev subdomain
         "https://latextrans.pages.dev",
+        # Custom domain for persistent deployment
+        "https://latextrans.online",
     ]
     
     # Task Queue Settings

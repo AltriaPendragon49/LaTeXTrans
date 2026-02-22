@@ -1,7 +1,7 @@
 # translation-mode Specification
 
 ## Purpose
-定义翻译模式规范，包括全文翻译和快速筛查模式的行为。
+定义系统所支持的不同翻译模式的具体行为和技术规范。该规范目前主要覆盖了系统处理整篇论文全面翻译时的所有相关执行准则，其中包括确保所有章节标题、段落正文、图表说明和列表项都被有效且结构完整地进行翻译。同时明确了翻译流程在遇到 API 超时或 LaTeX 语法异常时的错误自动修复重试机制，以确保复杂科学文献和报告经过翻译后依然能够不损失信息并顺利无报错编译输出为最终的可读 PDF 格式文件。
 ## Requirements
 ### Requirement: Full document translation only
 The system SHALL translate the entire document by default. All sections, captions, and environments are translated.

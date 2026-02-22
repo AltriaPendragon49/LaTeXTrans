@@ -1,7 +1,7 @@
 # latex-translation-core Specification
 
 ## Purpose
-定义 LaTeX 翻译核心引擎规范，包括解析、翻译、编译流程及智能回退策略。
+定义 LaTeX 翻译核心引擎的技术和行为规范。本规范深入描述了从原始 LaTeX 结构化文档的内容解析到多 Agent（如 ParserAgent、TranslatorAgent、GeneratorAgent）协同处理的过程；涉及了大语言模型（LLM）对具体文本环境化内容的智能判定及重翻译逻辑；并详细规定了最终生成目标 PDF 时的编译流程、包括基于字符出现频率的智能排版引擎（XeLaTeX、LuaLaTeX、pdfLaTeX）切换和回退重试策略。
 ## Requirements
 ### Requirement: LaTeX Parsing and Translation
 
@@ -58,39 +58,12 @@ The system SHALL download LaTeX source code from arXiv.org given a valid paper I
 
 The system SHALL compile translated LaTeX files into PDF using a multi-stage compilation strategy with **intelligent language detection**, **three-engine fallback**, and error-based output selection.
 
-#### Scenario: Language-aware engine prioritization (NEW)
+#### Scenario: Language-aware engine prioritization
 - **WHEN** `compile_with_intelligent_fallback()` is called without explicit engine order
-- **THEN** the system detects document language by scanning for CJK characters (Chinese, Japanese, Korean)
+- **THEN** the system detects document language by scanning for CJK characters and Cyrillic characters
 - **AND** if CJK character count > 100, uses order: `XeLaTeX → LuaLaTeX → PDFLaTeX`
-- **AND** if CJK character count ≤ 100, uses order: `PDFLaTeX → XeLaTeX → LuaLaTeX`
-
-#### Scenario: LuaLaTeX compilation support (NEW)
-- **WHEN** compilation falls back to LuaLaTeX (or LuaLaTeX is prioritized for CJK documents)
-- **THEN** the system invokes `latexmk -lualatex` via subprocess
-- **AND** captures the `.log` file for error analysis
-- **AND** follows the same error counting logic as pdflatex/xelatex
-
-#### Scenario: Primary engine compilation attempt (MODIFIED)
-- **WHEN** `GeneratorAgent.execute()` is called with translated `.tex` files
-- **THEN** the system first detects document language to determine engine priority
-- **THEN** attempts compilation using the first engine in the priority list via `subprocess`, captures the `.log` file, and records the exit code and error count
-
-#### Scenario: Fallback to secondary engine on primary failure (MODIFIED)
-- **WHEN** the primary engine compilation fails (non-zero exit code) or produces errors
-- **THEN** the system attempts compilation using the second engine in the priority list
-- **AND** if the second engine also fails or produces errors, attempts the third engine
-
-#### Scenario: Perfect compilation (zero errors) - early exit (UNCHANGED)
-- **WHEN** any engine produces a PDF with zero errors in the `.log` file
-- **THEN** the system immediately returns that PDF as the final output and marks task status as "completed"
-
-#### Scenario: Selecting best output from three-engine attempts (MODIFIED)
-- **WHEN** multiple engines produce PDFs but all have errors in their `.log` files
-- **THEN** the system compares error counts across all attempted engines and selects the PDF with the fewest errors, marking task status as "completed_with_warnings"
-
-#### Scenario: Total compilation failure with source preservation (UNCHANGED)
-- **WHEN** all three engines (pdflatex, xelatex, lualatex) fail to produce any PDF output
-- **THEN** the system preserves the translated `.tex` source files, marks task status as "failed_compilation", stores combined error details from all `.log` files in the task error field, and makes the source files available for download via the `/download/{task_id}/source` endpoint
+- **AND** if Cyrillic character count > 50, uses order: `XeLaTeX → LuaLaTeX → PDFLaTeX`
+- **AND** if neither exceeds their threshold, uses order: `PDFLaTeX → XeLaTeX → LuaLaTeX`
 
 ### Requirement: PDF Generation Readiness Verification
 
@@ -160,4 +133,27 @@ The system SHALL route errors to appropriate handlers based on classification.
 - **THEN** the system prioritizes preserving existing translated content if available
 - **AND** falls back to original content only when translation is completely missing
 - **AND** logs the failure with detailed mismatch information
+
+### Requirement: Language-Specific Font and Package Injection
+The system SHALL dynamically configure LaTeX packages and fonts based on the selected target translation language to ensure accurate PDF rendering.
+
+#### Scenario: Chinese document compilation
+- **WHEN** the target language is `zh` or `ch`
+- **THEN** the system injects the `ctex` package with UTF-8 encoding
+- **AND** comments out pdfLaTeX-specific primitive commands
+
+#### Scenario: Japanese or Korean document compilation
+- **WHEN** the target language is `ja` or `ko`
+- **THEN** the system injects the `xeCJK` package and explicitly configures its fonts (`UnBatang` for Korean, `IPAexMincho` for Japanese) regardless of `xeCJK`'s prior presence in the document
+- **AND** comments out pdfLaTeX-specific primitive commands
+
+#### Scenario: Cyrillic document compilation
+- **WHEN** the target language uses Cyrillic script (`ru`, `uk`, `bg`, `sr`, `mk`, `be`)
+- **THEN** the system injects `fontspec` and configures it to use the `CMU Serif` font
+- **AND** comments out conflicting pdfLaTeX-specific encoding packages (e.g., `fontenc[T1]`, `inputenc[utf8]`, `times`) and primitive commands
+
+#### Scenario: Latin-extended document compilation
+- **WHEN** the target language uses extended Latin script (`de`, `fr`, `es`, etc.)
+- **THEN** the system preserves native pdfLaTeX encoding packages (`fontenc`, `inputenc`)
+- **AND** exclusively comments out pdfLaTeX-specific primitive commands to safely allow `XeLaTeX` fallback compilation
 

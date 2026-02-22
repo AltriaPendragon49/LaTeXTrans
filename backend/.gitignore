@@ -177,3 +177,20 @@ downloads/
 data/
 
 backend\app\services\agents\__pycache__
+
+# API Keys and Secrets
+*.key
+*.pem
+*.cert
+*.crt
+*.p12
+*.pfx
+*.jks
+*secret*
+*credential*
+*token*
+service-account.json
+credentials.json
+client_secret.json
+auth.json
+*.ovpn

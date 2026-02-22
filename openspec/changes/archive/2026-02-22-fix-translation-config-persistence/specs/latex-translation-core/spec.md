@@ -1,15 +1,19 @@
-# latex-translation-core Specification
+# latex-translation-core
 
+## MODIFIED Requirements
 ### Requirement: LaTeX Compilation with Intelligent Fallback
 
-#### Scenario: Language-aware engine prioritization (MODIFIED)
+The system SHALL compile translated LaTeX files into PDF using a multi-stage compilation strategy with **intelligent language detection**, **three-engine fallback**, and error-based output selection.
+
+#### Scenario: Language-aware engine prioritization
 - **WHEN** `compile_with_intelligent_fallback()` is called without explicit engine order
 - **THEN** the system detects document language by scanning for CJK characters and Cyrillic characters
 - **AND** if CJK character count > 100, uses order: `XeLaTeX → LuaLaTeX → PDFLaTeX`
 - **AND** if Cyrillic character count > 50, uses order: `XeLaTeX → LuaLaTeX → PDFLaTeX`
 - **AND** if neither exceeds their threshold, uses order: `PDFLaTeX → XeLaTeX → LuaLaTeX`
 
-### Requirement: Language-Specific Font and Package Injection (NEW)
+## ADDED Requirements
+### Requirement: Language-Specific Font and Package Injection
 The system SHALL dynamically configure LaTeX packages and fonts based on the selected target translation language to ensure accurate PDF rendering.
 
 #### Scenario: Chinese document compilation

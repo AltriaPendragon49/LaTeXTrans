@@ -23,14 +23,16 @@ export default function ComparisonsPage() {
         navigate('/')
     }
 
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+
     // Source PDF: 优先使用后端接口，ArXiv 论文可直接用 arxiv.org 链接
     // 后端接口会找到原始 PDF（排除 zh_前缀和翻译版）
     const sourceUrl = taskId
-        ? `http://localhost:8000/api/preview/${taskId}/source-pdf`
+        ? `${API_BASE_URL}/preview/${taskId}/source-pdf`
         : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
     // 使用 preview 端点显示 PDF（inline），download 端点用于实际下载
-    const previewUrl = taskId ? `http://localhost:8000/api/preview/${taskId}/pdf` : null
-    const downloadUrl = taskId ? `http://localhost:8000/api/download/${taskId}/pdf` : null
+    const previewUrl = taskId ? `${API_BASE_URL}/preview/${taskId}/pdf` : null
+    const downloadUrl = taskId ? `${API_BASE_URL}/download/${taskId}/pdf` : null
 
     const handleDownload = () => {
         if (downloadUrl) {

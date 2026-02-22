@@ -12,7 +12,7 @@
  * - Loading states for async operations
  */
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
@@ -21,14 +21,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, Mail, Lock, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Loader2, Mail, Lock, AlertCircle, KeySquare } from 'lucide-react'
 
 type AuthMode = 'login' | 'register'
 
 export default function Login() {
     const navigate = useNavigate()
     const location = useLocation()
-    const { signIn, signUp, error, clearError, isSupabaseAvailable, loading: authLoading } = useAuth()
+    const { signIn, signUp, verifyOtp, error, clearError, isSupabaseAvailable, loading: authLoading } = useAuth()
 
     const [mode, setMode] = useState<AuthMode>('login')
     const [email, setEmail] = useState('')
@@ -38,8 +38,72 @@ export default function Login() {
     const [emailSent, setEmailSent] = useState(false)
     const [localError, setLocalError] = useState<string | null>(null)
 
+    // OTP state
+    const [otpValue, setOtpValue] = useState('')
+    const [otpLoading, setOtpLoading] = useState(false)
+    const [otpError, setOtpError] = useState<string | null>(null)
+    const [resendCountdown, setResendCountdown] = useState(0)
+    const otpInputRef = useRef<HTMLInputElement | null>(null)
+
     // Get redirect path from location state or default to home
     const from = (location.state as { from?: string })?.from || '/'
+
+    // Start countdown timer when emailSent becomes true
+    useEffect(() => {
+        if (!emailSent) return
+        setResendCountdown(60)
+        const timer = setInterval(() => {
+            setResendCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer)
+                    return 0
+                }
+                return prev - 1
+            })
+        }, 1000)
+        return () => clearInterval(timer)
+    }, [emailSent])
+
+    // OTP: handle input change
+    const handleOtpChange = useCallback((value: string) => {
+        const digits = value.replace(/\D/g, '').slice(0, 8)
+        setOtpValue(digits)
+    }, [])
+
+    // OTP: verify token
+    const handleOtpVerify = async () => {
+        if (otpValue.length !== 8) {
+            setOtpError('请输入完整的 8 位验证码')
+            return
+        }
+        setOtpError(null)
+        setOtpLoading(true)
+        try {
+            const { error: verifyError } = await verifyOtp(email, otpValue)
+            if (!verifyError) {
+                navigate(from, { replace: true })
+            } else {
+                setOtpError('验证码错误或已过期，请重新尝试')
+                setOtpValue('')
+                otpInputRef.current?.focus()
+            }
+        } finally {
+            setOtpLoading(false)
+        }
+    }
+
+    // OTP: resend verification code
+    const handleResend = async () => {
+        if (resendCountdown > 0) return
+        setOtpError(null)
+        setOtpValue('')
+        setLoading(true)
+        try {
+            await signUp(email, password)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     // Form validation
     const validateForm = (): boolean => {
@@ -144,50 +208,136 @@ export default function Login() {
         )
     }
 
-    // Show email confirmation message
+    // Show OTP verification screen
     if (emailSent) {
         return (
             <div className="container mx-auto max-w-md p-6 flex flex-col items-center justify-center min-h-[60vh]">
                 <Card className="w-full border-border/50 bg-card/80 backdrop-blur-sm shadow-xl">
                     <CardHeader className="text-center space-y-2">
-                        <div className="mx-auto p-3 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 w-fit">
-                            <CheckCircle2 className="h-8 w-8" />
+                        <div className="mx-auto p-3 rounded-full bg-primary/10 text-primary w-fit">
+                            <KeySquare className="h-8 w-8" />
                         </div>
-                        <CardTitle className="text-2xl">验证邮件已发送</CardTitle>
+                        <CardTitle className="text-2xl">输入验证码</CardTitle>
                         <CardDescription>
-                            请检查您的邮箱 <span className="font-medium text-foreground">{email}</span> 并点击验证链接完成注册。
+                            已向 <span className="font-medium text-foreground">{email}</span> 发送了 8 位验证码，请查收邮件并输入。
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <Alert className="border-blue-500/30 bg-blue-500/10">
-                            <Mail className="h-4 w-4 text-blue-500" />
-                            <AlertDescription className="text-blue-700 dark:text-blue-300">
-                                验证链接有效期为 24 小时。如未收到邮件，请检查垃圾邮件文件夹。
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                    <CardFooter className="flex flex-col gap-2">
+                    <CardContent className="space-y-5">
+                        {/* OTP error */}
+                        {otpError && (
+                            <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{otpError}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* OTP input grid - single input overlaid on visual cells */}
+                        <div
+                            className="relative h-14 flex gap-1.5 cursor-text"
+                            onClick={() => otpInputRef.current?.focus()}
+                        >
+                            {/* Visual cells (pointer-events-none) */}
+                            {Array.from({ length: 8 }).map((_, i) => {
+                                const char = otpValue[i] ?? ''
+                                const isFocused = otpValue.length === i
+                                const isFilled = !!char
+                                return (
+                                    <div
+                                        key={i}
+                                        className={[
+                                            'flex-1 flex items-center justify-center',
+                                            'rounded-lg border-2 text-xl font-bold font-mono',
+                                            'transition-all duration-150 select-none',
+                                            isFilled
+                                                ? 'border-primary bg-primary/5 text-foreground'
+                                                : isFocused
+                                                    ? 'border-primary bg-background shadow-[0_0_0_3px_hsl(var(--primary)/0.15)]'
+                                                    : 'border-border bg-background text-muted-foreground',
+                                            otpLoading ? 'opacity-50' : '',
+                                        ].join(' ')}
+                                    >
+                                        {char || (isFocused ? <span className="w-0.5 h-5 bg-primary animate-pulse rounded" /> : '')}
+                                    </div>
+                                )
+                            })}
+
+                            {/* Invisible real input stretched over cells */}
+                            <input
+                                ref={otpInputRef}
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                autoFocus
+                                value={otpValue}
+                                maxLength={8}
+                                disabled={otpLoading}
+                                onChange={e => handleOtpChange(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && otpValue.length === 8) handleOtpVerify()
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-text"
+                                aria-label="输入8位验证码"
+                            />
+                        </div>
+
+                        {/* Verify button */}
                         <Button
-                            className="w-full"
+                            className="w-full h-11 text-base shadow-lg shadow-primary/20"
+                            onClick={handleOtpVerify}
+                            disabled={otpLoading || otpValue.length !== 8}
+                        >
+                            {otpLoading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    验证中...
+                                </>
+                            ) : '确认验证码'}
+                        </Button>
+
+                        {/* Resend */}
+                        <div className="text-center text-sm text-muted-foreground">
+                            没有收到验证码？{' '}
+                            <button
+                                type="button"
+                                onClick={handleResend}
+                                disabled={resendCountdown > 0 || loading}
+                                className="text-primary hover:underline font-medium disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed cursor-pointer transition-colors duration-150"
+                            >
+                                {resendCountdown > 0
+                                    ? `重新发送 (${resendCountdown}s)`
+                                    : loading ? '发送中...' : '重新发送'}
+                            </button>
+                        </div>
+                    </CardContent>
+                    <CardFooter>
+                        <Button
+                            variant="ghost"
+                            className="w-full cursor-pointer"
                             onClick={() => {
                                 setEmailSent(false)
                                 setMode('login')
+                                setOtpValue('')
+                                setOtpError(null)
                             }}
                         >
                             返回登录
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className="w-full"
-                            onClick={() => navigate('/')}
-                        >
-                            继续使用访客模式
                         </Button>
                     </CardFooter>
                 </Card>
             </div>
         )
     }
+
+    {/* OTP error */ }
+    {
+        otpError && (
+            <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{otpError}</AlertDescription>
+            </Alert>
+        )
+    }
+
 
     // Loading state
     if (authLoading) {

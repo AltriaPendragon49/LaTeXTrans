@@ -1,12 +1,18 @@
-# Start Cloudflare Tunnel for local backend
-# This script starts a temporary tunnel to expose the local FastAPI backend to the internet
+# Start Cloudflare Named Tunnel for local backend
+# This script starts the named tunnel to expose the local FastAPI backend to the internet
+# via a fixed domain: api.latextrans.online
 # 
+# Prerequisites:
+#   1. cloudflared installed (winget install Cloudflare.cloudflared)
+#   2. cloudflared tunnel login (one-time)
+#   3. cloudflared tunnel create latextrans-api (one-time)
+#   4. cloudflared tunnel route dns latextrans-api api.latextrans.online (one-time)
+#   5. ~/.cloudflared/config.yml configured (one-time)
+#
 # Usage: .\scripts\start-tunnel.ps1
-# The script will output a public URL (e.g., https://xxx-xxx.trycloudflare.com)
-# Use this URL as your VITE_API_URL when deploying the frontend
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  LaTeXTrans - Cloudflare Tunnel Starter" -ForegroundColor Cyan
+Write-Host "  LaTeXTrans - Cloudflare Named Tunnel" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -22,14 +28,13 @@ if (-not $cloudflared) {
     exit 1
 }
 
-Write-Host "[INFO] Starting Cloudflare Tunnel for localhost:8000..." -ForegroundColor Green
+Write-Host "[INFO] Starting Named Tunnel 'latextrans-api'..." -ForegroundColor Green
 Write-Host ""
-Write-Host "IMPORTANT:" -ForegroundColor Yellow
-Write-Host "  1. Copy the public URL from the output below"
-Write-Host "  2. Use it as VITE_API_URL when deploying frontend"
-Write-Host "  3. Keep this terminal open while testing"
+Write-Host "Backend will be accessible at:" -ForegroundColor Yellow
+Write-Host "  https://api.latextrans.online" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "Make sure the backend is running on localhost:8000" -ForegroundColor Yellow
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# Start the tunnel
-cloudflared tunnel --url http://localhost:8000
+# Start the named tunnel
+cloudflared tunnel run latextrans-api

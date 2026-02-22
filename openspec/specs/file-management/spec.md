@@ -1,7 +1,7 @@
 # file-management Specification
 
 ## Purpose
-定义文件管理规范，包括上传、下载、arXiv 源码获取及多格式压缩包支持。
+定义文件管理核心规范。该规范涵盖了系统处理文件的各个生命周期阶段，包括从本地客户端上传 LaTeX 源码及相关依赖文件（如图片、样式表等）、通过 arXiv API 自动下载并提取指定论文的 `.tar.gz` 源码压缩包、支持 `zip`、`tar.gz` 及 `rar` 等多种压缩格式的解析与存储、在编译翻译流程结束后提供目标 PDF 和处理后源码及关联文件的下载，并在云端进行安全和结构化的文件缓存与调度，以保证高效的后续任务复用与存储。
 ## Requirements
 ### Requirement: File Upload Handling
 The system SHALL accept LaTeX source files via HTTP upload for translation processing.

@@ -27,7 +27,8 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
     const [error, setError] = useState<string | null>(null)
     const [isOpen, setIsOpen] = useState(false)
 
-    const downloadUrl = taskId ? `http://localhost:8000/api/download/${taskId}/terminology` : null
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+    const downloadUrl = taskId ? `${API_BASE_URL}/download/${taskId}/terminology` : null
 
     useEffect(() => {
         if (isOpen && taskId) {

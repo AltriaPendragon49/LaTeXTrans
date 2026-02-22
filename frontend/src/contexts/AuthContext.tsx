@@ -25,6 +25,7 @@ interface AuthState {
 interface AuthMethods {
     signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
     signUp: (email: string, password: string) => Promise<{ error: AuthError | null, needsEmailConfirmation?: boolean }>
+    verifyOtp: (email: string, token: string) => Promise<{ error: AuthError | null }>
     signOut: () => Promise<void>
     clearError: () => void
 }
@@ -42,6 +43,7 @@ const defaultContext: AuthContextType = {
     isSupabaseAvailable: false,
     signIn: async () => ({ error: null }),
     signUp: async () => ({ error: null }),
+    verifyOtp: async () => ({ error: null }),
     signOut: async () => { },
     clearError: () => { },
 }
@@ -132,6 +134,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const { error, data } = await supabase.auth.signUp({
             email,
             password,
+            options: {
+                emailRedirectTo: window.location.origin,
+            },
         })
 
         if (error) {
@@ -143,6 +148,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const needsEmailConfirmation = !data.session && !!data.user
 
         return { error: null, needsEmailConfirmation }
+    }
+
+    // Verify OTP for email confirmation
+    const verifyOtp = async (email: string, token: string) => {
+        if (!supabase) {
+            return { error: { message: 'Authentication not available' } as AuthError }
+        }
+
+        setError(null)
+        const { error } = await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: 'email',
+        })
+
+        if (error) {
+            setError(error.message)
+        } else {
+            // OTP verified - trigger settings reload
+            try {
+                const { useStore } = await import('@/store/useStore')
+                useStore.getState().invalidateUserSettings()
+                await useStore.getState().loadUserSettings(true)
+                toast.success('注册成功', {
+                    description: '欢迎加入！您的账户已激活。',
+                    duration: 4000,
+                })
+            } catch (e) {
+                console.warn('[Auth] Failed to load user settings after OTP verification:', e)
+            }
+        }
+
+        return { error }
     }
 
     // Sign out
@@ -167,6 +205,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isSupabaseAvailable,
         signIn,
         signUp,
+        verifyOtp,
         signOut,
         clearError,
     }

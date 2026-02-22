@@ -1,3 +1,5 @@
+# translation-history
+
 ## MODIFIED Requirements
 ### Requirement: Task Metadata Persistence
 系统 SHALL 将翻译任务元数据持久化存储在 Supabase Postgres。为了保证历史记录显示的准确性，持久化的元数据必须包含用户实际选择的精确配置，而不能仅仅是默认值。
