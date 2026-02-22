@@ -1,407 +1,437 @@
-2026-02-22 22:12:04,395 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:04,654 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:04,915 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:05,177 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:05,438 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:05,700 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:05,966 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:06,225 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:06,487 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:06,748 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:07,010 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:07,276 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:07,542 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:07,802 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:08,065 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:08,747 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:09,019 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:09,281 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:09,538 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:09,800 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:10,753 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:11,009 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:11,276 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:11,540 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:11,808 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:12,077 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:12,342 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:12,599 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:12,862 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:13,119 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:13,383 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:13,646 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:13,906 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:14,167 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:14,439 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:14,707 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:14,974 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:15,233 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:15,493 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:15,756 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:16,027 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:16,288 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:16,549 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:16,809 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:17,066 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:17,324 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:17,592 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:18,287 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:18,545 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:18,809 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:19,078 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:19,338 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:19,597 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:19,857 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:20,124 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:20,399 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:20,665 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:20,931 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:21,904 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:22,170 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:22,433 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:23,118 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:23,656 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:24,772 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:25,034 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:25,293 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:25,554 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:25,812 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:26,100 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:26,376 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:27,129 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:27,404 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:27,681 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:27,947 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:28,220 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:28,907 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:29,170 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:29,433 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:29,699 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:30,402 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:30,664 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:30,923 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:31,184 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:31,445 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:31,797 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:32,064 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:32,333 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:32,597 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:32,858 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:33,127 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:33,392 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:33,652 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:33,917 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:34,179 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:34,867 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:35,131 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:35,397 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:35,399 - backend.app.services.latex.utils - INFO - [SUCCESS] 2602.17666 successfully downloaded to D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.17666\2602.17666.tar.gz.
-2026-02-22 22:12:36,083 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:36,800 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:37,764 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:38,049 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:38,742 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:39,015 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:39,018 - backend.app.services.latex.utils - INFO - [SUCCESS] 2602.17666 extracted to D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.17666\2602.17666
-2026-02-22 22:12:39,288 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:41,138 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:41,400 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:41,663 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:41,943 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:42,423 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:42,684 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:43,795 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:44,061 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:44,330 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:44,592 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:44,867 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:45,135 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:45,400 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:45,663 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:45,924 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:46,189 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:46,456 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:46,720 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:46,989 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:47,250 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:47,525 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:47,790 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:48,062 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:48,755 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:49,446 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:49,706 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:50,652 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:50,917 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:51,180 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:51,445 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:51,711 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:51,984 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:52,245 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:52,942 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:53,203 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:53,478 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:53,758 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:54,027 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:54,289 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:54,552 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:55,244 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:55,510 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:55,778 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:56,046 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:56,529 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:56,796 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:56,800 - backend.app.services.latex.utils - INFO - [SUCCESS] Downloaded PDF for 2602.17666
-2026-02-22 22:12:57,071 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:57,354 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:57,360 - backend.app.services.latex.utils - INFO - [SUCCESS] Validated 1 .tex files for 2602.17666
-2026-02-22 22:12:57,626 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:57,893 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:12:57,894 - backend.app.api.routes.arxiv - INFO - Successfully downloaded arXiv 2602.17666 to D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.17666\2602.17666
-2026-02-22 22:12:58,335 - backend.app.api.routes.task - INFO - SSE stream cancelled for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/translate/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:07,320 - backend.app.api.routes.translate - INFO - Translation request for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-2026-02-22 22:13:07,321 - backend.app.api.routes.translate - INFO - Authenticated user: 65e62c60-1662-4be8-8690-1433c6017257
-2026-02-22 22:13:09,377 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:09,666 - httpx - INFO - HTTP Request: POST https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks "HTTP/2 201 Created"
-2026-02-22 22:13:09,668 - backend.app.services.task_manager - INFO - [TaskManager]  ✅ Persisted task 0391639e-b143-48a3-a8e1-b562ff5ba535 to Supabase for user 65e62c60-1662-4be8-8690-1433c6017257
-2026-02-22 22:13:09,668 - backend.app.services.task_manager - INFO - [TaskManager] Persisted task 0391639e-b143-48a3-a8e1-b562ff5ba535 to database
-2026-02-22 22:13:09,669 - backend.app.api.routes.translate - INFO - Computed config_hash for task 0391639e-b143-48a3-a8e1-b562ff5ba535: 1da60a5efd01b725af4764072503acc2
-2026-02-22 22:13:09,951 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:10,231 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:10,234 - backend.app.api.routes.translate - INFO - Stored config_hash in database for task 0391639e-b143-48a3-a8e1-b562ff5ba535
-2026-02-22 22:13:10,515 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:10,531 - backend.app.services.task_manager - INFO - [TaskQueue] Enqueued task 0391639e-b143-48a3-a8e1-b562ff5ba535 (user=65e62c60-1662-4be8-8690-1433c6017257, queue_size=1)
-2026-02-22 22:13:10,531 - backend.app.api.routes.translate - INFO - Task 0391639e-b143-48a3-a8e1-b562ff5ba535 enqueued via TaskQueue
-INFO:     2604:4300:a:224::68:35c8:0 - "POST /api/translate/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:10,539 - backend.app.services.task_manager - INFO - [TaskQueue] Worker picked up task 0391639e-b143-48a3-a8e1-b562ff5ba535
-2026-02-22 22:13:10,540 - backend.app.api.routes.translate - INFO - Starting translation for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-2026-02-22 22:13:10,541 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, verify=True, user_id=65e62c60-1662-4be8-8690-1433c6017257 
-2026-02-22 22:13:10,545 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.17666\2602.17666
-2026-02-22 22:13:10,559 - backend.app.services.latex_validator - INFO - Found 1 .tex files
-2026-02-22 22:13:10,564 - backend.app.services.latex_validator - INFO - Found main file by \documentclass: gWSM-Coulomb-arxiv.tex
-2026-02-22 22:13:10,573 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=gWSM-Coulomb-arxiv.tex
-2026-02-22 22:13:10,575 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.17666\2602.17666\gWSM-Coulomb-arxiv.tex
-2026-02-22 22:13:10,870 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:10,870 - backend.app.api.routes.translate - INFO - Config hash for task 0391639e-b143-48a3-a8e1-b562ff5ba535: 1da60a5efd01b725af4764072503acc2
-2026-02-22 22:13:11,153 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.1da60a5efd01b725af4764072503acc2&status=eq.completed&task_id=neq.0391639e-b143-48a3-a8e1-b562ff5ba535&limit=1 "HTTP/2 200 OK"
-2026-02-22 22:13:11,154 - backend.app.api.routes.translate - INFO - No reusable output found, proceeding with translation
-2026-02-22 22:13:11,434 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:11,437 - backend.app.api.routes.translate - INFO - Using author's API configuration (use_author_api=True)
-2026-02-22 22:13:11,437 - backend.app.api.routes.translate - INFO - Agent config: mode=0, engine=auto, verify=True
-2026-02-22 22:13:11,451 - backend.tests.test_config_interceptor - INFO - ✅ 配置已捕获: D:\future\antigravity\LaTexTrans\backend\tests\captured_configs\config_0391639e_20260222_221311.json
-2026-02-22 22:13:11,451 - backend.tests.test_config_interceptor - INFO - 📋 配置摘要:
-2026-02-22 22:13:11,452 - backend.tests.test_config_interceptor - INFO -    - 翻译模式: full
-2026-02-22 22:13:11,453 - backend.tests.test_config_interceptor - INFO -    - 编译策略: auto
-2026-02-22 22:13:11,453 - backend.tests.test_config_interceptor - INFO -    - 验证代理: True
-2026-02-22 22:13:11,455 - backend.tests.test_config_interceptor - INFO -    - 双语输出: N/A
-2026-02-22 22:13:11,455 - backend.tests.test_config_interceptor - INFO -    - 翻译模型: qwen/qwen3-235b-a22b
-2026-02-22 22:13:11,455 - backend.tests.test_config_interceptor - INFO -    - Agent 模式: 0
-2026-02-22 22:13:11,455 - backend.tests.test_config_interceptor - INFO -    - LaTeX 引擎: auto
-2026-02-22 22:13:11,456 - backend.app.api.routes.translate - INFO - 🔍 配置已拦截并 保存到: D:\future\antigravity\LaTexTrans\backend\tests\captured_configs\config_0391639e_20260222_221311.json
-2026-02-22 22:13:11,459 - backend.app.api.routes.translate - INFO - Running translation workflow for D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.17666\2602.17666\gWSM-Coulomb-arxiv.tex
-2026-02-22 22:13:11,460 - backend.app.services.agents.coordinator_agent - INFO - Starting LaTeX parsing for 2602.17666
-2026-02-22 22:13:11,743 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:11,744 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Starting parsing for project: 2602.17666
-2026-02-22 22:13:12,023 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:12,905 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:12,905 - backend.app.services.latex.parser - INFO - Starting LaTeX document parsing
-2026-02-22 22:13:13,187 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:13,939 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:13,950 - backend.app.services.latex.parser - INFO - No sections found in document
-There is no section in the full tex.
-2026-02-22 22:13:14,775 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:15,521 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:17,250 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:17,583 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:17,583 - backend.app.services.latex.parser - INFO - Parsing complete: 2 sections processed
-2026-02-22 22:13:17,583 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Environment filter stats: total=18, need_llm_check=0, skipped_by_type=1, skipped_by_length=0
-2026-02-22 22:13:17,862 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:18,147 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:18,147 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Successfully parsed 2602.17666
-2026-02-22 22:13:18,148 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Parsed files saved in D:\future\antigravity\LaTexTrans\backend\data\outputs\0391639e-b143-48a3-a8e1-b562ff5ba535\zh_2602.17666
-2026-02-22 22:13:18,422 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:18,423 - backend.app.services.agents.coordinator_agent - INFO - Starting translation
-2026-02-22 22:13:18,696 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
-2026-02-22 22:13:18,699 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=0
-2026-02-22 22:13:18,699 - backend.app.services.agents.translator_agent - INFO - Starting translating for project: 2602.17666
-2026-02-22 22:13:18,981 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:13:18,983 - backend.app.services.agents.translator_agent - INFO - Section 0 contains translatable content, translating...
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:19,737 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:19,901 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:20,391 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:20,849 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:21,274 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:21,895 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:23,007 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:25,138 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:27,369 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:28,991 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:0. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:13:31,390 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:33,417 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:34,990 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:37,167 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:38,982 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:41,172 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-22 22:13:43,168 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:44,973 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:46,969 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:48,972 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:51,164 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:13:52,977 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:54,974 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:56,970 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:13:58,968 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:00,972 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:02,972 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:14:05,140 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:07,141 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:08,971 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:10,975 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:13,164 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_2>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:14:15,208 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:14:15,501 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:14:15,502 - backend.app.services.agents.translator_agent - INFO - Retranslating fail parts: ['0', '<PLACEHOLDER_CAP_1>', '<PLACEHOLDER_CAP_2>', '<PLACEHOLDER_ENV_1>'], attempt 1/3
-2026-02-22 22:14:15,502 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['0']
-2026-02-22 22:14:15,504 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:16,971 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:18,969 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:20,969 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:22,974 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:24,971 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:0. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:14:26,971 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:28,969 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:31,805 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:33,004 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:35,346 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:36,969 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-22 22:14:37,606 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_CAP_1>', '<PLACEHOLDER_CAP_2>']       
-2026-02-22 22:14:38,973 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:41,166 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:42,984 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:44,976 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:46,972 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:14:49,162 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:51,174 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:53,167 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:54,971 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:14:56,971 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_2>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:14:58,750 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_ENV_1>']
-2026-02-22 22:14:58,973 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:00,970 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:03,139 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:05,330 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:07,161 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:09,045 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_ENV_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:15:09,289 - backend.app.services.agents.translator_agent - INFO - Retranslating fail parts: ['0', '<PLACEHOLDER_CAP_1>', '<PLACEHOLDER_CAP_2>', '<PLACEHOLDER_ENV_1>'], attempt 2/3
-2026-02-22 22:15:09,289 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['0']
-2026-02-22 22:15:11,167 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:12,973 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:14,972 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:17,559 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:19,749 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:0. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-2026-02-22 22:15:21,724 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:23,575 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:25,559 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:27,754 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:29,553 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-⚠️ Failed to extract terms, set N/A.
-2026-02-22 22:15:31,014 - backend.app.services.agents.base_tool_agent - INFO - [TranslatorAgent] Retranslating for ['<PLACEHOLDER_CAP_1>', '<PLACEHOLDER_CAP_2>']       
-2026-02-22 22:15:31,544 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:33,182 - backend.app.api.routes.task - INFO - Getting status for task: 0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:36,008 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
-2026-02-22 22:15:37,057 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=task_id%2Csource_type%2Carxiv_id%2Ctranslation_mode%2Cstatus%2Cprogress%2Ccreated_at%2Ccompleted_at%2Csource_language%2Ctarget_language%2Ccompile_strategy%2Ctranslation_model%2Cenable_verification%2Cgenerate_glossary%2Cuse_author_api&order=created_at.desc&offset=0&limit=10 "HTTP/2 200 OK"
+Requirement already satisfied: six>=1.5 in d:\apps\anaconda3\envs\latex_rag_agent\lib\site-packages (from python-dateutil>=2.8.2->pandas==2.1.3->-r backend\requirements.txt (line 17)) (1.17.0)      
+Requirement already satisfied: cffi>=2.0.0 in d:\apps\anaconda3\envs\latex_rag_agent\lib\site-packages (from cryptography>=41.0.0->-r backend\requirements.txt (line 39)) (2.0.0)
+Requirement already satisfied: pycparser in d:\apps\anaconda3\envs\latex_rag_agent\lib\site-packages (from cffi>=2.0.0->cryptography>=41.0.0->-r backend\requirements.txt (line 39)) (3.0)
+Loading environment variables from backend\.env...
+  Set LLM_API_KEY
+  Set LLM_BASE_URL
+  Set LLM_MODEL
+  Set LATEX_BIN_DIR
+  Set SUPABASE_URL
+  Set SUPABASE_ANON_KEY
+  Set SUPABASE_SERVICE_ROLE_KEY
+  Set ENCRYPTION_KEY
+Starting uvicorn server...
+INFO:     Will watch for changes in these directories: ['D:\\future\\antigravity\\LaTexTrans']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [23712] using WatchFiles
+INFO:     Started server process [33572]
+INFO:     Waiting for application startup.
+2026-02-23 01:20:37,233 - backend.app.main - INFO - Starting LaTeXTrans Backend v0.1.0
+2026-02-23 01:20:37,233 - backend.app.main - INFO - Data directory: D:\future\antigravity\LaTexTrans\backend\data
+2026-02-23 01:20:37,233 - backend.app.main - INFO - LLM Model: qwen/qwen3-235b-a22b 
+2026-02-23 01:20:37,234 - backend.app.services.task_manager - INFO - [TaskQueue] Initialized with max_concurrent=3
+2026-02-23 01:20:37,234 - backend.app.main - INFO - [Startup] TaskQueue initialized (max_concurrent=3)
+2026-02-23 01:20:37,234 - backend.app.main - INFO - [Startup] Guest cleanup task started (interval=30min)
+2026-02-23 01:20:37,234 - backend.app.services.task_manager - INFO - [TaskQueue] Worker started
+INFO:     Application startup complete.
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/settings HTTP/1.1" 200 OK
+2026-02-23 01:20:56,609 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-23 01:20:57,732 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/user_settings?select=%2A "HTTP/2 200 OK"
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/history?page=1&page_size=10 HTTP/1.1" 200 OK
+2026-02-23 01:21:03,357 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-23 01:21:05,034 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=task_id%2Csource_type%2Carxiv_id%2Ctranslation_mode%2Cstatus%2Cprogress%2Ccreated_at%2Ccompleted_at%2Csource_language%2Ctarget_language%2Ccompile_strategy%2Ctranslation_model%2Cenable_verification%2Cgenerate_glossary%2Cuse_author_api%2Cformatting&order=created_at.desc&offset=0&limit=10 "HTTP/2 200 OK"
 INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/history?page=1&page_size=10 HTTP/1.1" 200 OK
-❌ Failed to translate text, return the original text:<PLACEHOLDER_CAP_1>. 404, message='Not Found', url=URL('https://integrate.api.nvidia.com/v1')
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/history/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
-2026-02-22 22:15:44,311 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
-2026-02-22 22:15:48,519 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:15:49,396 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.0391639e-b143-48a3-a8e1-b562ff5ba535 "HTTP/2 200 OK"
-2026-02-22 22:15:49,398 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\0391639e-b143-48a3-a8e1-b562ff5ba535
-INFO:     2604:4300:a:224::68:35c8:0 - "DELETE /api/history/0391639e-b143-48a3-a8e1-b562ff5ba535 HTTP/1.1" 200 OK
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/history/4b351c25-496d-4352-a600-686e1aedfb07 HTTP/1.1" 200 OK
+2026-02-23 01:21:10,769 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-23 01:21:12,002 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.4b351c25-496d-4352-a600-686e1aedfb07 "HTTP/2 200 OK"
+2026-02-23 01:21:12,278 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.4b351c25-496d-4352-a600-686e1aedfb07 "HTTP/2 200 OK"
+2026-02-23 01:21:12,294 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\4b351c25-496d-4352-a600-686e1aedfb07
+INFO:     2604:4300:a:224::68:35c8:0 - "DELETE /api/history/4b351c25-496d-4352-a600-686e1aedfb07 HTTP/1.1" 200 OK
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/history HTTP/1.1" 200 OK
+2026-02-23 01:21:16,549 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-23 01:21:17,945 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.5f2b07cc-0d5d-4fe5-a268-a2be7a18376d "HTTP/2 200 OK"
+2026-02-23 01:21:18,232 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.5f2b07cc-0d5d-4fe5-a268-a2be7a18376d "HTTP/2 200 OK"
+2026-02-23 01:21:18,249 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\5f2b07cc-0d5d-4fe5-a268-a2be7a18376d
+2026-02-23 01:21:18,518 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.5116cf68-97c4-4f76-b361-7c5e708d380f "HTTP/2 200 OK"
+2026-02-23 01:21:18,804 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.5116cf68-97c4-4f76-b361-7c5e708d380f "HTTP/2 200 OK"
+2026-02-23 01:21:18,816 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\5116cf68-97c4-4f76-b361-7c5e708d380f
+2026-02-23 01:21:19,117 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.358cd3eb-dde7-4503-bdab-00f48f20360b "HTTP/2 200 OK"
+2026-02-23 01:21:19,417 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.358cd3eb-dde7-4503-bdab-00f48f20360b "HTTP/2 200 OK"
+2026-02-23 01:21:19,436 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\358cd3eb-dde7-4503-bdab-00f48f20360b
+2026-02-23 01:21:19,716 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.d91f47bc-e5ec-42d6-bed2-5a2a257b5048 "HTTP/2 200 OK"
+2026-02-23 01:21:19,990 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.d91f47bc-e5ec-42d6-bed2-5a2a257b5048 "HTTP/2 200 OK"
+2026-02-23 01:21:20,001 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\d91f47bc-e5ec-42d6-bed2-5a2a257b5048
+2026-02-23 01:21:20,288 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.145de447-13a6-4a27-bbbc-ca6af700d84a "HTTP/2 200 OK"
+2026-02-23 01:21:20,558 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.145de447-13a6-4a27-bbbc-ca6af700d84a "HTTP/2 200 OK"
+2026-02-23 01:21:20,570 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\145de447-13a6-4a27-bbbc-ca6af700d84a
+2026-02-23 01:21:20,844 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.65ee0624-4df7-4d4b-b262-deba61a32a60 "HTTP/2 200 OK"
+2026-02-23 01:21:21,119 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.65ee0624-4df7-4d4b-b262-deba61a32a60 "HTTP/2 200 OK"
+2026-02-23 01:21:21,143 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\65ee0624-4df7-4d4b-b262-deba61a32a60
+2026-02-23 01:21:21,419 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=status&task_id=eq.023c3486-6c76-46b0-96a9-1759adf6e3d2 "HTTP/2 200 OK"
+2026-02-23 01:21:22,137 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.023c3486-6c76-46b0-96a9-1759adf6e3d2 "HTTP/2 200 OK"
+2026-02-23 01:21:22,180 - backend.app.services.task_manager - INFO - [TaskManager] Deleted directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\023c3486-6c76-46b0-96a9-1759adf6e3d2
+INFO:     2604:4300:a:224::68:35c8:0 - "DELETE /api/history HTTP/1.1" 200 OK
+2026-02-23 01:21:29,386 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2026-02-23 01:21:30,877 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/user_settings?select=%2A "HTTP/2 200 OK"
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/arxiv HTTP/1.1" 200 OK
+2026-02-23 01:21:32,491 - backend.app.api.routes.arxiv - INFO - Starting download for arXiv paper: 2502.03513
+2026-02-23 01:21:32,492 - backend.app.api.routes.arxiv - INFO - Authenticated user creating arXiv task: 65e62c60-1662-4be8-8690-1433c6017257
+2026-02-23 01:21:33,738 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+INFO:     2604:4300:a:224::68:35c8:0 - "POST /api/arxiv HTTP/1.1" 200 OK
+2026-02-23 01:21:33,746 - backend.app.services.latex.utils - INFO - [SKIP] Already downloaded: 2502.03513
+2026-02-23 01:21:34,086 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:34,086 - backend.app.api.routes.arxiv - INFO - Successfully downloaded arXiv 2502.03513 to D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2502.03513\2502.03513
+2026-02-23 01:21:34,361 - backend.app.api.routes.task - INFO - Starting SSE stream for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924/stream HTTP/1.1" 200 OK
+2026-02-23 01:21:34,976 - backend.app.api.routes.task - INFO - SSE stream cancelled for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/translate/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:21:53,377 - backend.app.api.routes.translate - INFO - Translation request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:21:53,378 - backend.app.api.routes.translate - INFO - Authenticated user: 65e62c60-1662-4be8-8690-1433c6017257
+2026-02-23 01:21:54,392 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:54,819 - httpx - INFO - HTTP Request: POST https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks "HTTP/2 201 Created"
+2026-02-23 01:21:54,820 - backend.app.services.task_manager - INFO - [TaskManager]  ✅ Persisted task bf92b8ca-d583-471c-8331-d184e4095924 to Supabase for user 65e62c60-1662-4be8-8690-1433c6017257
+2026-02-23 01:21:54,820 - backend.app.services.task_manager - INFO - [TaskManager] Persisted task bf92b8ca-d583-471c-8331-d184e4095924 to database
+2026-02-23 01:21:54,820 - backend.app.api.routes.translate - INFO - Computed config_hash for task bf92b8ca-d583-471c-8331-d184e4095924: 46207530738db9552e4f4efb3fe9c827
+2026-02-23 01:21:55,137 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:55,449 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:55,451 - backend.app.api.routes.translate - INFO - Stored config_hash in database for task bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:21:55,764 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:55,767 - backend.app.services.task_manager - INFO - [TaskQueue] Enqueued task bf92b8ca-d583-471c-8331-d184e4095924 (user=65e62c60-1662-4be8-8690-1433c6017257, queue_size=1)
+2026-02-23 01:21:55,769 - backend.app.api.routes.translate - INFO - Task bf92b8ca-d583-471c-8331-d184e4095924 enqueued via TaskQueue
+INFO:     2604:4300:a:224::68:35c8:0 - "POST /api/translate/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:21:55,773 - backend.app.services.task_manager - INFO - [TaskQueue] Worker picked up task bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:21:55,776 - backend.app.api.routes.translate - INFO - Starting translation for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:21:55,778 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, verify=True, user_id=65e62c60-1662-4be8-8690-1433c6017257 
+2026-02-23 01:21:55,780 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2502.03513\2502.03513
+2026-02-23 01:21:55,789 - backend.app.services.latex_validator - INFO - Found 1 .tex files
+2026-02-23 01:21:55,793 - backend.app.services.latex_validator - INFO - Found main file by \documentclass: goldbach.tex
+2026-02-23 01:21:55,797 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=goldbach.tex
+2026-02-23 01:21:55,801 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2502.03513\2502.03513\goldbach.tex
+2026-02-23 01:21:56,117 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:56,121 - backend.app.api.routes.translate - INFO - Config hash for task bf92b8ca-d583-471c-8331-d184e4095924: 46207530738db9552e4f4efb3fe9c827
+2026-02-23 01:21:56,542 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.46207530738db9552e4f4efb3fe9c827&status=eq.completed&task_id=neq.bf92b8ca-d583-471c-8331-d184e4095924&limit=1 "HTTP/2 200 OK"
+2026-02-23 01:21:56,543 - backend.app.api.routes.translate - INFO - No reusable output found, proceeding with translation
+2026-02-23 01:21:56,842 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:56,842 - backend.app.api.routes.translate - INFO - Using author's API configuration (use_author_api=True)
+2026-02-23 01:21:56,842 - backend.app.api.routes.translate - INFO - Agent config: mode=0, engine=auto, verify=True
+2026-02-23 01:21:56,846 - backend.tests.test_config_interceptor - INFO - ✅ 配置已捕获: D:\future\antigravity\LaTexTrans\backend\tests\captured_configs\config_bf92b8ca_20260223_012156.json
+2026-02-23 01:21:56,846 - backend.tests.test_config_interceptor - INFO - 📋 配置摘要:
+2026-02-23 01:21:56,846 - backend.tests.test_config_interceptor - INFO -    - 翻译模式: full
+2026-02-23 01:21:56,846 - backend.tests.test_config_interceptor - INFO -    - 编译策略: auto
+2026-02-23 01:21:56,847 - backend.tests.test_config_interceptor - INFO -    - 验证代理: True
+2026-02-23 01:21:56,847 - backend.tests.test_config_interceptor - INFO -    - 双语输出: N/A
+2026-02-23 01:21:56,847 - backend.tests.test_config_interceptor - INFO -    - 翻译模型: qwen/qwen3-235b-a22b
+2026-02-23 01:21:56,847 - backend.tests.test_config_interceptor - INFO -    - Agent 模式: 0
+2026-02-23 01:21:56,847 - backend.tests.test_config_interceptor - INFO -    - LaTeX 引擎: auto
+2026-02-23 01:21:56,847 - backend.app.api.routes.translate - INFO - 🔍 配置已拦截并 保存到: D:\future\antigravity\LaTexTrans\backend\tests\captured_configs\config_bf92b8ca_20260223_012156.json
+2026-02-23 01:21:56,849 - backend.app.api.routes.translate - INFO - Running translation workflow for D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2502.03513\2502.03513\goldbach.tex
+2026-02-23 01:21:56,852 - backend.app.services.agents.coordinator_agent - INFO - Starting LaTeX parsing for 2502.03513
+2026-02-23 01:21:57,156 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:57,157 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Starting parsing for project: 2502.03513
+2026-02-23 01:21:57,449 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:57,775 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:57,775 - backend.app.services.latex.parser - INFO - Starting LaTeX document parsing
+2026-02-23 01:21:58,079 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:58,375 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:58,973 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:59,542 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:21:59,843 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:00,146 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:00,438 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:00,731 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:01,023 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:01,325 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:01,614 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:01,921 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:02,205 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:02,206 - backend.app.services.latex.parser - INFO - Parsing complete: 9 sections processed
+2026-02-23 01:22:02,206 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Environment filter stats: total=11, need_llm_check=2, skipped_by_type=5, skipped_by_length=0
+2026-02-23 01:22:02,206 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Setting need_trans for 2 environments (parallel)
+2026-02-23 01:22:02,476 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:03,117 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:03,833 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:04,432 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:05,018 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:05,196 - backend.app.services.agents.parser_agent - ERROR - Parallel env judgment failed: 'NoneType' object has no attribute 'strip'
+2026-02-23 01:22:05,196 - backend.app.services.agents.parser_agent - ERROR - Parallel env judgment failed: 'NoneType' object has no attribute 'strip'
+2026-02-23 01:22:05,481 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:05,743 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:05,745 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Successfully parsed 2502.03513
+2026-02-23 01:22:05,745 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Parsed files saved in D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513
+2026-02-23 01:22:06,006 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:06,006 - backend.app.services.agents.coordinator_agent - INFO - Starting translation
+2026-02-23 01:22:06,277 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
+2026-02-23 01:22:06,279 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=0
+2026-02-23 01:22:06,279 - backend.app.services.agents.translator_agent - INFO - Starting translating for project: 2502.03513
+2026-02-23 01:22:06,544 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:06,787 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:08,740 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:10,760 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:11,487 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'appendices' @(3,0)
+2026-02-23 01:22:11,487 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(8,0)
+2026-02-23 01:22:11,488 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'appendices' @(3,0)
+2026-02-23 01:22:11,489 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(8,0)
+2026-02-23 01:22:12,749 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:14,772 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:16,747 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:19,755 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:19,760 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:20,762 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:22,843 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:24,602 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:24,796 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:26,776 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:28,390 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:28,769 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:30,671 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:33,555 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:34,843 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:36,813 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:38,819 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:40,803 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:42,818 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:44,759 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:47,282 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:47,285 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:48,207 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:48,781 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:50,807 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:52,738 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:54,938 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:22:54,942 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:56,734 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:22:58,761 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:03,091 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:14,404 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:16,775 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:18,854 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:20,778 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:22,793 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:24,976 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:24,980 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:25,247 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:25,518 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:25,519 - backend.app.services.agents.translator_agent - INFO - Successfully translated sections!
+2026-02-23 01:23:25,781 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:25,784 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\terminology_table.csv with 44 unique terms
+2026-02-23 01:23:25,786 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 47 terms
+2026-02-23 01:23:26,056 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:26,057 - backend.app.services.agents.coordinator_agent - INFO - Validating translation
+2026-02-23 01:23:26,322 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:26,324 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2502.03513
+2026-02-23 01:23:26,584 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:26,848 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:27,548 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:27,822 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:28,126 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'appendices' @(3,0)
+2026-02-23 01:23:28,126 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(8,0)
+2026-02-23 01:23:28,126 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'appendices' @(3,0)
+2026-02-23 01:23:28,128 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(8,0)
+2026-02-23 01:23:28,396 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:28,692 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:28,694 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2502.03513, remaining errors: 3
+2026-02-23 01:23:28,699 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 1/3
+2026-02-23 01:23:28,964 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
+2026-02-23 01:23:28,967 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
+2026-02-23 01:23:28,968 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['2', '5', '<PLACEHOLDER_ENV_9>'], attempt 1/3  
+2026-02-23 01:23:28,969 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=3
+2026-02-23 01:23:28,969 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2
+2026-02-23 01:23:29,235 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:29,239 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5
+2026-02-23 01:23:29,504 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:29,505 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_9>
+2026-02-23 01:23:29,768 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:29,770 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
+2026-02-23 01:23:29,775 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-02-23 01:23:29,777 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\terminology_table.csv with 44 unique terms
+2026-02-23 01:23:29,778 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 47 terms
+2026-02-23 01:23:29,778 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2502.03513
+2026-02-23 01:23:30,038 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:30,307 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:30,574 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:30,846 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:31,260 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:31,263 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2502.03513, remaining errors: 3
+2026-02-23 01:23:31,263 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 2/3
+2026-02-23 01:23:31,527 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
+2026-02-23 01:23:31,531 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
+2026-02-23 01:23:31,531 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['2', '5', '<PLACEHOLDER_ENV_9>'], attempt 2/3  
+2026-02-23 01:23:31,533 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=3
+2026-02-23 01:23:31,533 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2
+2026-02-23 01:23:32,228 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:32,229 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5
+2026-02-23 01:23:32,501 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:32,502 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_9>
+2026-02-23 01:23:32,765 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:32,765 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
+2026-02-23 01:23:32,768 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:32,771 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-02-23 01:23:32,772 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\terminology_table.csv with 44 unique terms
+2026-02-23 01:23:32,772 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 47 terms
+2026-02-23 01:23:32,772 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2502.03513
+2026-02-23 01:23:33,039 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:33,301 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:33,563 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:33,858 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:34,295 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:34,300 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2502.03513, remaining errors: 3
+2026-02-23 01:23:34,300 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 3/3
+2026-02-23 01:23:34,831 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
+2026-02-23 01:23:34,837 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
+2026-02-23 01:23:34,837 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['2', '5', '<PLACEHOLDER_ENV_9>'], attempt 3/3  
+2026-02-23 01:23:34,837 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=3
+2026-02-23 01:23:34,839 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2
+2026-02-23 01:23:35,102 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:35,102 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5
+2026-02-23 01:23:35,368 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:35,369 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_9>
+2026-02-23 01:23:35,740 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:35,740 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
+2026-02-23 01:23:35,745 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-02-23 01:23:35,745 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\terminology_table.csv with 44 unique terms
+2026-02-23 01:23:35,746 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 47 terms
+2026-02-23 01:23:35,746 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2502.03513
+2026-02-23 01:23:36,010 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:36,276 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:36,540 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:36,805 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:37,228 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:37,232 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2502.03513, remaining errors: 3
+2026-02-23 01:23:37,502 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:37,504 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
+2026-02-23 01:23:37,775 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:37,775 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 2502.03513
+2026-02-23 01:23:38,040 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:38,732 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:39,430 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:39,695 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:39,966 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:40,230 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:40,499 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:40,768 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:40,781 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\2502.03513
+2026-02-23 01:23:41,056 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:41,057 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
+2026-02-23 01:23:41,596 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:42,295 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:42,561 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:42,833 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:43,096 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:43,100 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\2502.03513\goldbach.tex
+2026-02-23 01:23:43,370 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:43,372 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
+2026-02-23 01:23:43,651 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:43,654 - backend.app.services.latex.compiler - INFO - Found main tex by documentclass: goldbach.tex
+2026-02-23 01:23:43,655 - backend.app.services.latex.utils - INFO - apply_formatting_config: applying {'line_spacing': 1.5, 'font_size': 10.0, 'cjk_font': 'songti', 'column_mode': None, 'margin': 'narrow', 'paragraph_indent': True, 'bib_style': 'gbt7714-numerical', 'cite_style': 'numbers', 'localize_captions': True}
+2026-02-23 01:23:43,660 - backend.app.services.agents.generator_agent - INFO - Applied formatting config to D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\2502.03513\goldbach.tex
+2026-02-23 01:23:43,925 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:43,929 - backend.app.services.latex.compiler - INFO - Found main tex by documentclass: goldbach.tex
+2026-02-23 01:23:43,931 - backend.app.services.agents.generator_agent - INFO - Compiling goldbach.tex...
+2026-02-23 01:23:43,931 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\2502.03513\goldbach.tex   
+2026-02-23 01:23:43,936 - backend.app.services.latex.compiler - INFO - Detected CJK document, using engine order: ['xelatex', 'lualatex', 'pdflatex']
+2026-02-23 01:23:43,936 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with xelatex...
+2026-02-23 01:23:43,937 - backend.app.services.latex.compiler - INFO - Compiling goldbach.tex with latexmk (xelatex)...
+2026-02-23 01:23:50,586 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) completed with exit code 12
+2026-02-23 01:23:50,591 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) result: PDF=✓, Errors=0, Exit Code=12
+2026-02-23 01:23:50,592 - backend.app.services.latex.compiler - INFO - ✅ xelatex produced perfect compilation (zero errors)
+2026-02-23 01:23:51,583 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:51,586 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Successfully generated PDF: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\2502.03513\goldbach.pdf
+2026-02-23 01:23:51,587 - backend.app.services.latex.compiler - INFO - PDF verified ready: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf (313145 bytes)
+2026-02-23 01:23:51,590 - backend.app.services.agents.coordinator_agent - INFO - PDF verified ready: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf
+2026-02-23 01:23:51,872 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:52,152 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.bf92b8ca-d583-471c-8331-d184e4095924 "HTTP/2 200 OK"
+2026-02-23 01:23:52,154 - backend.app.api.routes.translate - INFO - Translation completed: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:52,154 - backend.app.services.task_manager - INFO - [TaskQueue] Task bf92b8ca-d583-471c-8331-d184e4095924 completed, semaphore released
+2026-02-23 01:23:52,155 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:52,156 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:52,382 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:52,735 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:53,306 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:53,904 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:54,493 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:55,083 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:55,685 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:56,280 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:56,545 - backend.app.api.routes.download - INFO - PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:56,547 - backend.app.api.routes.download - INFO - Returning PDF for preview: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf
+2026-02-23 01:23:56,548 - backend.app.api.routes.download - INFO - Source PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:56,549 - backend.app.api.routes.download - INFO - Redirecting to arxiv.org PDF: https://arxiv.org/pdf/2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/source-pdf HTTP/1.1" 302 Found
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/pdf HTTP/1.1" 200 OK
+2026-02-23 01:23:56,697 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:56,725 - backend.app.api.routes.download - INFO - Source PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:56,725 - backend.app.api.routes.download - INFO - Redirecting to arxiv.org PDF: https://arxiv.org/pdf/2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/source-pdf HTTP/1.1" 302 Found
+2026-02-23 01:23:56,733 - backend.app.api.routes.download - INFO - PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:56,735 - backend.app.api.routes.download - INFO - Returning PDF for preview: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/pdf HTTP/1.1" 200 OK
+2026-02-23 01:23:57,288 - backend.app.api.routes.download - INFO - Source PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:57,294 - backend.app.api.routes.download - INFO - Redirecting to arxiv.org PDF: https://arxiv.org/pdf/2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/source-pdf HTTP/1.1" 302 Found
+2026-02-23 01:23:57,295 - backend.app.api.routes.download - INFO - PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:57,298 - backend.app.api.routes.download - INFO - Returning PDF for preview: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/pdf HTTP/1.1" 200 OK
+2026-02-23 01:23:57,520 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:58,104 - backend.app.api.routes.task - INFO - Getting status for task: bf92b8ca-d583-471c-8331-d184e4095924
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/bf92b8ca-d583-471c-8331-d184e4095924 HTTP/1.1" 200 OK
+2026-02-23 01:23:58,188 - backend.app.api.routes.download - INFO - PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:58,191 - backend.app.api.routes.download - INFO - Returning PDF for preview: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/pdf HTTP/1.1" 200 OK
+2026-02-23 01:23:58,199 - backend.app.api.routes.download - INFO - Source PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:58,199 - backend.app.api.routes.download - INFO - Redirecting to arxiv.org PDF: https://arxiv.org/pdf/2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/source-pdf HTTP/1.1" 302 Found
+2026-02-23 01:23:58,727 - backend.app.api.routes.download - INFO - PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:58,730 - backend.app.api.routes.download - INFO - Returning PDF for preview: D:\future\antigravity\LaTexTrans\backend\data\outputs\bf92b8ca-d583-471c-8331-d184e4095924\zh_2502.03513\zh_2502.03513.pdf
+2026-02-23 01:23:58,731 - backend.app.api.routes.download - INFO - Source PDF preview request for task: bf92b8ca-d583-471c-8331-d184e4095924
+2026-02-23 01:23:58,733 - backend.app.api.routes.download - INFO - Redirecting to arxiv.org PDF: https://arxiv.org/pdf/2502.03513.pdf
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/source-pdf HTTP/1.1" 302 Found
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/preview/bf92b8ca-d583-471c-8331-d184e4095924/pdf HTTP/1.1" 200 OK

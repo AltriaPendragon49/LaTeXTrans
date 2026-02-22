@@ -4,23 +4,14 @@
 TBD - created by archiving change add-multi-user-support. Update Purpose after archive.
 ## Requirements
 ### Requirement: Translation Task Language Persistence
-系统 SHALL 在创建翻译任务时持久化语言配置，并将其传递给 Agent。
 
-#### Scenario: 创建任务时保存语言配置
-- **WHEN** 用户提交翻译请求，指定 source_language 和 target_language
-- **THEN** 系统在 Supabase `translation_tasks` 表中存储语言配置
-- **AND** 该配置在后续翻译流程中被读取和使用
+The system SHALL ensure default model names are consistent across components and rely exclusively on `.env` environment variables.
 
-#### Scenario: 使用默认语言
-- **WHEN** 用户提交翻译请求但未显式指定语言
-- **THEN** 系统从用户设置中读取默认语言
-- **AND** 使用默认语言创建任务
-
-#### Scenario: 语言参数传递到 Agent
-- **WHEN** 翻译任务开始执行
-- **THEN** 系统从任务记录中读取 source_language 和 target_language
-- **AND** 将语言参数注入到 CoordinatorAgent 配置中
-- **AND** Agent 不硬编码语言设置
+#### Scenario: 确保默认模型名跨组件一致性
+- **GIVEN** the system default model is `qwen/qwen3-235b-a22b`
+- **THEN** both frontend fallback values (in store) and backend defaults (in Config models) MUST be identical
+- **AND** all sensitive configurations (API keys, URLs) MUST exclusively rely on `.env` environment variables
+- **AND** the system SHALL NOT provide hardcoded fallback keys in the code if environment variables are missing
 
 ### Requirement: Language Selection UI
 前端 SHALL 在新建翻译页面提供语言选择 UI。

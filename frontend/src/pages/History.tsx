@@ -45,6 +45,8 @@ interface TaskHistoryItem {
     enable_verification: boolean
     generate_glossary: boolean
     use_author_api: boolean
+    // Typography formatting snapshot
+    formatting?: Record<string, unknown> | null
 }
 
 interface HistoryResponse {
@@ -554,6 +556,60 @@ export default function HistoryPage() {
                                                         <span className="text-xs">使用作者 API</span>
                                                     </div>
                                                 </div>
+
+                                                {/* 排版配置快照 */}
+                                                {task.formatting && Object.keys(task.formatting).length > 0 && (
+                                                    <div className="md:col-span-2 space-y-2">
+                                                        <div className="text-xs text-muted-foreground font-medium">排版设置：</div>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {task.formatting.line_spacing != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    行距: {String(task.formatting.line_spacing)}
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.font_size != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    字号: {String(task.formatting.font_size)}pt
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.column_mode != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    {task.formatting.column_mode === 'single' ? '单栏' : '双栏'}
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.margin != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    边距: {task.formatting.margin === 'narrow' ? '窄' : task.formatting.margin === 'wide' ? '宽' : '标准'}
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.cjk_font != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    字体: {task.formatting.cjk_font === 'songti' ? '宋体' : '黑体'}
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.paragraph_indent === true && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    首行缩进
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.localize_captions === true && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    图表本地化
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.bib_style != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    文献: {String(task.formatting.bib_style)}
+                                                                </span>
+                                                            )}
+                                                            {task.formatting.cite_style != null && (
+                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                    引文: {task.formatting.cite_style === 'numbers' ? '数字' : task.formatting.cite_style === 'super' ? '上标' : '著者-年'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </CollapsibleContent>

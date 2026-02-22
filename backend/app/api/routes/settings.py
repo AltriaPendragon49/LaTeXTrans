@@ -8,7 +8,7 @@ Settings API Routes - 纯 RLS 模式
 - 这是 Supabase 官方最终推荐形态
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from supabase import Client
@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 class UserSettingsResponse(BaseModel):
-    """User settings response model"""
+    """Response model for user settings"""
     default_source_language: str = "en"
     default_target_language: str = "zh"
     translation_mode: str = "full"
@@ -31,10 +31,11 @@ class UserSettingsResponse(BaseModel):
     use_author_api: bool = True
     custom_base_url: Optional[str] = None
     has_custom_api_key: bool = False
+    default_formatting: Optional[Dict[str, Any]] = None  # FormattingConfig as dict
 
 
 class UserSettingsUpdate(BaseModel):
-    """User settings update model"""
+    """Update model for user settings"""
     default_source_language: Optional[str] = None
     default_target_language: Optional[str] = None
     translation_mode: Optional[str] = None
@@ -44,7 +45,8 @@ class UserSettingsUpdate(BaseModel):
     generate_glossary: Optional[bool] = None
     use_author_api: Optional[bool] = None
     custom_base_url: Optional[str] = None
-    custom_api_key: Optional[str] = None
+    custom_api_key: Optional[str] = None  # Write-only, not returned in response
+    default_formatting: Optional[Dict[str, Any]] = None  # FormattingConfig as dict
 
 
 # System default settings
@@ -59,6 +61,7 @@ SYSTEM_DEFAULTS = {
     "use_author_api": True,
     "custom_base_url": None,
     "custom_api_key_encrypted": None,
+    "default_formatting": None,
 }
 
 
@@ -75,6 +78,7 @@ def _build_response(settings: dict) -> UserSettingsResponse:
         use_author_api=settings.get("use_author_api", True),
         custom_base_url=settings.get("custom_base_url"),
         has_custom_api_key=bool(settings.get("custom_api_key_encrypted")),
+        default_formatting=settings.get("default_formatting"),
     )
 
 
@@ -176,6 +180,11 @@ async def update_user_settings(
             update_data["custom_base_url"] = update.custom_base_url
         if update.custom_api_key is not None:
             update_data["custom_api_key_encrypted"] = encrypt_api_key(update.custom_api_key)
+        if update.default_formatting is not None:
+            update_data["default_formatting"] = update.default_formatting
+        elif "default_formatting" in (update.model_fields_set if hasattr(update, 'model_fields_set') else {}):
+            # Explicit None means clear the formatting
+            update_data["default_formatting"] = None
         
         if not update_data:
             return await get_user_settings(supabase)

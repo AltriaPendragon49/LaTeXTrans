@@ -4,31 +4,15 @@
 TBD - created by archiving change add-multi-user-support. Update Purpose after archive.
 ## Requirements
 ### Requirement: Task Metadata Persistence
-系统 SHALL 将翻译任务元数据持久化存储在 Supabase Postgres。为了保证历史记录显示的准确性，持久化的元数据必须包含用户实际选择的精确配置，而不能仅仅是默认值。
 
-**Why:**
-To provide an accurate history log to users. Previously, tasks saved the default languages instead of user-selected languages, confusing users viewing their history.
+The system SHALL update the translation task metadata to reflect the actual utilized model.
 
-#### Scenario: 创建任务时持久化
-- **WHEN** 用户通过上传文件或 arXiv ID 创建新翻译任务
-- **THEN** 系统在 `translation_tasks` 表中创建记录
-- **AND** 记录包含 task_id, user_id, source_type, source_language, target_language, status, created_at
-- **AND** 必须确保 `source_language` 和 `target_language` 及其它高级配置都是基于用户的实际请求，而非硬编码的 `"en"` 和 `"zh"` 默认值
-
-#### Scenario: 任务状态更新时同步
-- **WHEN** 翻译任务状态发生变化（progress, status, stage）
-- **THEN** 系统同步更新 Supabase 中的对应记录
-
-#### Scenario: 跨语言实时翻译记录正确显示
-- **Given** a user uploads a paper and selects English as the source language and Japanese as the target language
-- **When** the translation task is started and persisted to the database
-- **Then** the database record must contain `source_language: "en"` and `target_language: "ja"`
-- **And** the history page must correctly display "en -> ja" for this specific task.
-
-#### Scenario: 批量高级配置记录
-- **Given** a user inputs multiple arXiv IDs and selects an advanced compilation strategy (e.g., "xelatex")
-- **When** the batch translation tasks are created and persisted
-- **Then** the database records for each task must contain the selected compilation strategy and language configurations.
+#### Scenario: 任务执行时同步实际使用的模型
+- **GIVEN** a translation task is started with a generic `translation_model` (e.g., default placeholder)
+- **WHEN** the backend determines the actual LLM config via `build_llm_config()`
+- **THEN** it MUST compare the actual model name with the one in metadata
+- **AND** if different, UPDATE the metadata in database to reflect the ACTUAL model used
+- **AND** ensure the history record displays the actual model name (e.g., `qwen/qwen3-235b-a22b`)
 
 ### Requirement: User Task Isolation
 系统 SHALL 确保用户只能访问自己的翻译任务。
@@ -107,12 +91,23 @@ To provide an accurate history log to users. Previously, tasks saved the default
 - **THEN** 系统不复用，启动正常翻译流程
 
 ### Requirement: Config Hash Storage
-系统 SHALL 在 translation_tasks 表中存储翻译配置签名用于快速匹配。
+系统 SHALL 在 translation_tasks 表中存储翻译配置签名用于快速匹配，签名包含排版配置。
 
 #### Scenario: 创建任务时生成 config_hash
 - **WHEN** 翻译任务创建或翻译配置确定时
 - **THEN** 系统计算 config_hash 并存储到 translation_tasks 表
-- **AND** config_hash 基于 arxiv_id、source_language、target_language、translation_mode、compile_strategy、enable_verification 生成
+- **AND** config_hash 基于 arxiv_id、source_language、target_language、translation_mode、compile_strategy、enable_verification、formatting 生成
+
+#### Scenario: 排版配置影响 config_hash
+- **WHEN** 两个翻译任务的排版配置不同但其他配置相同
+- **THEN** 两者的 config_hash 不同
+- **AND** output reuse 不会跨排版配置误命中
+
+#### Scenario: 历史记录展示排版快照
+- **WHEN** 用户在前端阅读某条历史记录详情
+- **AND** 当前任务具备有效的 formatting 排版字段快照数据
+- **THEN** 系统展示对应的“排版设置”区域详情
+- **AND** 以具有明显视觉区分度的组件样式（如 Badge）展示其各项排版的历史选择值
 
 ### Requirement: Deferred Task Persistence
 系统 SHALL 在翻译阶段才将任务持久化到数据库，上传/下载阶段仅创建内存任务。

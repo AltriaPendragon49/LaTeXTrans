@@ -4,6 +4,8 @@
 
 ### Requirement: Advanced Configuration in Translation Request
 
+The web API SHALL support advanced configuration overrides seamlessly.
+
 #### Scenario: 后端处理自定义 API 配置
 - **WHEN** 后端接收到 `use_author_api = false` 的请求或使用系统后台预设配置
 - **THEN** 后端使用 `normalize_base_url` 逻辑处理 `base_url`

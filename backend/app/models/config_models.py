@@ -5,7 +5,7 @@ Defines data structures for translation configuration, source types, and LaTeX v
 """
 
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -14,6 +14,68 @@ class SourceType(str, Enum):
     UPLOAD = "upload"              # Traditional file upload
     ARXIV = "arxiv"                # ArXiv download
     FOLDER_UPLOAD = "folder_upload"  # Drag-and-drop directory upload
+
+
+class FormattingConfig(BaseModel):
+    """
+    Typography formatting configuration for LaTeX preamble injection.
+    
+    All fields default to None, meaning 'keep original' - safe for backward compatibility.
+    Injected into the LaTeX preamble after add_cjk_package() during PDF generation.
+    """
+    # 行距: None=保持, 数值如 1.5, 2.0
+    line_spacing: Optional[float] = Field(
+        default=None,
+        description="Line spacing multiplier (e.g. 1.5). None means keep original."
+    )
+    
+    # 全局字号: None=保持, 数值如 10, 11, 12 (单位 pt)
+    font_size: Optional[float] = Field(
+        default=None,
+        description="Global font size in pt (e.g. 12). None means keep original."
+    )
+    
+    # 中文字体: None=保持, \"songti\"=宋体, \"heiti\"=黑体
+    cjk_font: Optional[str] = Field(
+        default=None,
+        description="CJK font preset: 'songti' or 'heiti'. None means keep original."
+    )
+    
+    # 栏模式: None=保持, \"single\"=单栏, \"double\"=双栏
+    column_mode: Optional[str] = Field(
+        default=None,
+        description="Column layout: 'single' or 'double'. None means keep original."
+    )
+    
+    # 页边距: None=保持, \"narrow\"/\"normal\"/\"wide\"
+    margin: Optional[str] = Field(
+        default=None,
+        description="Page margin preset: 'narrow', 'normal', or 'wide'. None means keep original."
+    )
+    
+    # 首行缩进: None=保持, True=启用 2em 缩进
+    paragraph_indent: Optional[bool] = Field(
+        default=None,
+        description="Enable 2em paragraph indent (CJK convention). None means keep original."
+    )
+    
+    # 参考文献格式: None=保持
+    bib_style: Optional[str] = Field(
+        default=None,
+        description="Bibliography style: 'gbt7714-numerical', 'gbt7714-author-year', 'ieeetr', 'apalike'. None means keep original."
+    )
+    
+    # 引文标记风格: None=保持
+    cite_style: Optional[str] = Field(
+        default=None,
+        description="Citation style: 'numbers', 'super', 'authoryear'. None means keep original."
+    )
+    
+    # 图表标题本地化: None=保持, True=启用
+    localize_captions: Optional[bool] = Field(
+        default=None,
+        description="Localize figure/table captions (e.g. 图/表). None means keep original."
+    )
 
 
 class AdvancedConfig(BaseModel):
@@ -57,6 +119,12 @@ class AdvancedConfig(BaseModel):
     custom_api_key: Optional[str] = Field(
         default=None, 
         description="Custom API key for the base URL"
+    )
+    
+    # Typography formatting configuration
+    formatting: Optional[FormattingConfig] = Field(
+        default=None,
+        description="Typography formatting config for LaTeX preamble injection. None means keep all original formatting."
     )
 
 

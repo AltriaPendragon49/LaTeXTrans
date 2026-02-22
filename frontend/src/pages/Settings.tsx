@@ -18,6 +18,8 @@ import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Settings, LogIn, Save, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { FormattingPanel } from '@/components/FormattingPanel'
+import type { FormattingConfig } from '@/types/config'
 
 interface UserSettings {
     default_source_language: string
@@ -30,6 +32,7 @@ interface UserSettings {
     use_author_api: boolean
     custom_base_url: string | null
     has_custom_api_key: boolean
+    default_formatting: FormattingConfig | null
 }
 
 const defaultSettings: UserSettings = {
@@ -43,6 +46,7 @@ const defaultSettings: UserSettings = {
     use_author_api: true,
     custom_base_url: null,
     has_custom_api_key: false,
+    default_formatting: null,
 }
 
 export default function SettingsPage() {
@@ -126,6 +130,11 @@ export default function SettingsPage() {
             // Only include API key if user entered a new one
             if (customApiKey) {
                 updateData.custom_api_key = customApiKey
+            }
+
+            // Include formatting if user has configured it (null clears it)
+            if (settings.default_formatting !== undefined) {
+                updateData.default_formatting = settings.default_formatting
             }
 
             const response = await fetch(
@@ -402,6 +411,26 @@ export default function SettingsPage() {
                                     onCheckedChange={(checked) => setSettings(s => ({ ...s, use_author_api: checked }))}
                                 />
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Formatting Defaults */}
+                    <Card className="border-border/50 bg-card/80">
+                        <CardHeader>
+                            <CardTitle className="text-lg">排版默认值</CardTitle>
+                            <CardDescription>设置翻译输出的默认排版格式，优先级低于翻译时手动设置的值</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <FormattingPanel
+                                value={settings.default_formatting ?? {}}
+                                onChange={(patch) =>
+                                    setSettings(s => ({
+                                        ...s,
+                                        default_formatting: { ...(s.default_formatting ?? {}), ...patch }
+                                    }))
+                                }
+                                targetLanguage={settings.default_target_language}
+                            />
                         </CardContent>
                     </Card>
 

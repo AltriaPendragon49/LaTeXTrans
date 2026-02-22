@@ -10,7 +10,7 @@ History API Routes - 纯 RLS 模式
 - RLS 使用 auth.uid() 自动控制权限
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from supabase import Client
@@ -38,6 +38,8 @@ class TaskHistoryItem(BaseModel):
     enable_verification: bool
     generate_glossary: bool
     use_author_api: bool
+    # Typography formatting snapshot (JSONB)
+    formatting: Optional[Dict[str, Any]] = None
 
 
 class TaskHistoryResponse(BaseModel):
@@ -63,6 +65,8 @@ class TaskDetailResponse(BaseModel):
     enable_verification: bool
     generate_glossary: bool
     use_author_api: bool
+    # Typography formatting snapshot (JSONB)
+    formatting: Optional[Dict[str, Any]] = None
     # Status
     status: str
     progress: int
@@ -102,7 +106,7 @@ async def get_user_history(
             """task_id, source_type, arxiv_id, translation_mode, status, progress, 
                created_at, completed_at, source_language, target_language, 
                compile_strategy, translation_model, enable_verification, 
-               generate_glossary, use_author_api""",
+               generate_glossary, use_author_api, formatting""",
             count="exact"
         )
         
@@ -132,6 +136,7 @@ async def get_user_history(
                 enable_verification=task.get("enable_verification", True),
                 generate_glossary=task.get("generate_glossary", True),
                 use_author_api=task.get("use_author_api", True),
+                formatting=task.get("formatting"),
             )
             for task in result.data
         ]
@@ -202,6 +207,7 @@ async def get_task_detail(
             enable_verification=task.get("enable_verification", True),
             generate_glossary=task.get("generate_glossary", True),
             use_author_api=task.get("use_author_api", True),
+            formatting=task.get("formatting"),
             status=task["status"],
             progress=task.get("progress", 0),
             stage=task.get("stage", "idle"),

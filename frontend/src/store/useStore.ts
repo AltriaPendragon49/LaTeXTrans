@@ -217,6 +217,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     use_author_api: settings.use_author_api ?? true,
                     custom_base_url: settings.custom_base_url || undefined,
                     // Note: API key is not returned for security
+                    formatting: settings.default_formatting || undefined,
                 }
             }
 

@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Callable
 from .base_tool_agent import BaseToolAgent
 from backend.app.services.latex.reconstruct import LatexConstructor
 from backend.app.services.latex.compiler import compile_with_intelligent_fallback, find_main_tex_file
+from backend.app.services.latex.utils import apply_formatting_config
 from pathlib import Path
 import os
 import shutil
@@ -75,6 +76,25 @@ class GeneratorAgent(BaseToolAgent):
             target_language=target_language
         )
         latex_constructor.construct(on_progress=self.on_progress)
+
+        self.update_progress(80, "Applying formatting config")
+        
+        # Apply typography formatting config to main .tex file (if specified)
+        formatting_config = self.config.get("formatting")
+        if formatting_config:
+            transed_main_tex = find_main_tex_file(transed_latex_dir)
+            if transed_main_tex:
+                try:
+                    with open(transed_main_tex, 'r', encoding='utf-8', errors='replace') as f:
+                        tex_content = f.read()
+                    tex_content = apply_formatting_config(tex_content, formatting_config)
+                    with open(transed_main_tex, 'w', encoding='utf-8') as f:
+                        f.write(tex_content)
+                    logger.info(f"Applied formatting config to {transed_main_tex}")
+                except Exception as e:
+                    logger.warning(f"Failed to apply formatting config: {e}")
+            else:
+                logger.warning("No main .tex file found; formatting config not applied")
 
         self.update_progress(80, "Compiling PDF document")
         

@@ -12,6 +12,31 @@ export type TranslationMode = 'full' | 'quick_scan'
 export type CompileStrategy = 'pdflatex' | 'xelatex' | 'lualatex' | 'auto'
 
 /**
+ * Typography formatting configuration.
+ * All fields default to undefined (keep original LaTeX source).
+ */
+export interface FormattingConfig {
+    /** Line spacing multiplier, e.g. 1.5 */
+    line_spacing?: number
+    /** Font size in pt, e.g. 12 */
+    font_size?: number
+    /** CJK font preset: 'songti' | 'heiti' */
+    cjk_font?: string
+    /** Column layout: 'single' | 'double' */
+    column_mode?: string
+    /** Page margin preset: 'narrow' | 'normal' | 'wide' */
+    margin?: string
+    /** Enable 2em paragraph indent (CJK convention) */
+    paragraph_indent?: boolean
+    /** Bibliography style: 'gbt7714-numerical' | 'gbt7714-author-year' | 'ieeetr' | 'apalike' */
+    bib_style?: string
+    /** Citation style: 'numbers' | 'super' | 'authoryear' */
+    cite_style?: string
+    /** Localize figure/table captions */
+    localize_captions?: boolean
+}
+
+/**
  * Advanced configuration options.
  * 
  * These options control translation behavior and API configuration.
@@ -34,6 +59,8 @@ export interface AdvancedConfig {
     custom_base_url?: string
     /** Custom API key */
     custom_api_key?: string
+    /** Typography formatting for LaTeX preamble injection */
+    formatting?: FormattingConfig
 }
 
 /**

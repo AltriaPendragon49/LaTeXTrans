@@ -218,7 +218,8 @@ def compute_config_hash(
     translation_mode: str,
     compile_strategy: str,
     enable_verification: bool,
-    source_path: Optional[str] = None
+    source_path: Optional[str] = None,
+    formatting: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     生成翻译配置签名,用于快速匹配已有结果
@@ -231,6 +232,7 @@ def compute_config_hash(
         compile_strategy: 编译策略
         enable_verification: 是否启用验证
         source_path: 源文件路径 (用于区分不同上传内容)
+        formatting: 排版配置字典（纳入 output reuse 签名）
     
     Returns:
         MD5 hash 字符串
@@ -245,7 +247,8 @@ def compute_config_hash(
         "target_language": target_language,
         "translation_mode": translation_mode,
         "compile_strategy": compile_strategy,
-        "enable_verification": enable_verification
+        "enable_verification": enable_verification,
+        "formatting": formatting  # None == keep original, included for cache correctness
     }
     return hashlib.md5(
         json.dumps(config, sort_keys=True).encode()
@@ -431,7 +434,8 @@ async def run_translation(
             translation_mode=advanced_config.translation_mode,
             compile_strategy=advanced_config.compile_strategy,
             enable_verification=advanced_config.enable_verification,
-            source_path=str(source_path)
+            source_path=str(source_path),
+            formatting=advanced_config.formatting.model_dump() if advanced_config.formatting else None
         )
         logger.info(f"Config hash for task {task_id}: {config_hash}")
         
@@ -494,7 +498,8 @@ async def run_translation(
             "latex_engine": advanced_config.compile_strategy,
             "use_verification_agent": advanced_config.enable_verification,
             "generate_terminology": advanced_config.generate_terminology_table,
-            "llm_config": llm_config
+            "llm_config": llm_config,
+            "formatting": advanced_config.formatting.model_dump() if advanced_config.formatting else None
         }
         
         logger.info(f"Agent config: mode={agent_config['mode']}, "
@@ -673,7 +678,8 @@ async def start_translation(
         translation_mode=request.advanced_config.translation_mode,
         compile_strategy=request.advanced_config.compile_strategy,
         enable_verification=request.advanced_config.enable_verification,
-        source_path=task.get("source_path")
+        source_path=task.get("source_path"),
+        formatting=request.advanced_config.formatting.model_dump() if request.advanced_config.formatting else None
     )
     logger.info(f"Computed config_hash for task {task_id}: {config_hash}")
 

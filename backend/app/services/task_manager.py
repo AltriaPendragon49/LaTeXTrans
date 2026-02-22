@@ -196,6 +196,15 @@ class TaskManager:
                     db_updates["use_author_api"] = advanced_config.get("use_author_api", True)
                     db_updates["custom_base_url"] = advanced_config.get("custom_base_url")
                     db_updates["custom_api_key_encrypted"] = advanced_config.get("custom_api_key_encrypted")
+                    # Persist formatting config as JSONB
+                    fmt = advanced_config.get("formatting")
+                    if fmt is not None:
+                        # Convert Pydantic model to dict if needed
+                        if hasattr(fmt, "model_dump"):
+                            fmt = fmt.model_dump(exclude_none=True)
+                        elif hasattr(fmt, "dict"):
+                            fmt = fmt.dict(exclude_none=True)
+                        db_updates["formatting"] = fmt if fmt else None
             
             if latex_validation is not None:
                 task["latex_validation"] = latex_validation
@@ -547,6 +556,14 @@ class TaskManager:
                 db_record["use_author_api"] = advanced_config.get("use_author_api", True)
                 db_record["custom_base_url"] = advanced_config.get("custom_base_url")
                 db_record["custom_api_key_encrypted"] = advanced_config.get("custom_api_key_encrypted")
+                # Persist formatting config as JSONB
+                fmt = advanced_config.get("formatting")
+                if fmt is not None:
+                    if hasattr(fmt, "model_dump"):
+                        fmt = fmt.model_dump(exclude_none=True)
+                    elif hasattr(fmt, "dict"):
+                        fmt = fmt.dict(exclude_none=True)
+                    db_record["formatting"] = fmt if fmt else None
             
             # Insert into database
             result = client.table("translation_tasks").insert(db_record).execute()

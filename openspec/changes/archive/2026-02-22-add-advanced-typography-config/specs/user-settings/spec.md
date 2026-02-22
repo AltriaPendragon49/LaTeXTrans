@@ -1,8 +1,5 @@
-# user-settings Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-multi-user-support. Update Purpose after archive.
-## Requirements
 ### Requirement: User Settings Storage
 系统 SHALL 在 Supabase Postgres 中存储用户设置，包括默认排版配置。
 
@@ -24,31 +21,6 @@ TBD - created by archiving change add-multi-user-support. Update Purpose after a
 - **AND** 返回更新后的设置
 - **AND** `default_formatting` 字段以 JSONB 格式存储
 
-### Requirement: Settings Page UI
-前端 SHALL 提供系统设置页面供用户管理偏好。
-
-#### Scenario: 查看设置页面
-- **WHEN** 用户访问 `/settings` 页面
-- **THEN** 系统显示当前设置，包含：
-  - 默认源语言
-  - 默认目标语言
-  - 功能开关（如验证模式、严格模式）
-
-#### Scenario: 保存设置
-- **WHEN** 用户修改设置并点击保存按钮
-- **THEN** 系统调用 API 更新设置
-- **AND** 显示成功/失败反馈
-
-#### Scenario: 使用作者API时锁定翻译模型
-- **WHEN** 用户在系统设置页面中开启"使用作者默认 API"
-- **THEN** 翻译模型输入框变为禁用状态
-- **AND** 显示当前作者默认模型名称（只读）
-- **AND** 显示提示文字说明使用作者 API 时模型不可更改
-
-#### Scenario: 关闭作者API时解锁翻译模型
-- **WHEN** 用户在系统设置页面中关闭"使用作者默认 API"
-- **THEN** 翻译模型输入框恢复为可编辑状态
-
 ### Requirement: Settings Effect on Translation
 系统 SHALL 使用用户设置作为翻译任务的默认值，包括排版配置。
 
@@ -68,4 +40,3 @@ TBD - created by archiving change add-multi-user-support. Update Purpose after a
 #### Scenario: 功能开关生效
 - **WHEN** 用户启用/禁用某功能开关
 - **THEN** 后续翻译任务应用对应的功能配置
-

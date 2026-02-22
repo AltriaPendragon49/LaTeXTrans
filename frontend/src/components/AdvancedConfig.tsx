@@ -1,4 +1,4 @@
-import { Settings2, Info, Languages, BookText, CheckCircle2 } from 'lucide-react'
+import { Settings2, Info, Languages, BookText, CheckCircle2, Palette } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 import {
@@ -17,7 +17,8 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useStore } from '@/store/useStore'
-import type { TranslationMode, CompileStrategy } from '@/types/config'
+import type { TranslationMode, CompileStrategy, FormattingConfig } from '@/types/config'
+import { FormattingPanel } from '@/components/FormattingPanel'
 
 // Custom Simple Switch Component since Radix Switch is not installed
 interface SimpleSwitchProps {
@@ -66,6 +67,12 @@ export const AdvancedConfig = () => {
     // Local handlers
     const updateConfig = (key: keyof typeof advanced_config, value: unknown) => {
         setAdvancedConfig({ [key]: value })
+    }
+
+    const updateFormatting = (patch: Partial<FormattingConfig>) => {
+        setAdvancedConfig({
+            formatting: { ...(advanced_config.formatting ?? {}), ...patch }
+        })
     }
 
     return (
@@ -294,6 +301,21 @@ export const AdvancedConfig = () => {
                     )}
                 </div>
             </div>
+
+            {/* ── Formatting Configuration Section ───────────────────────── */}
+            <div className="space-y-3 md:col-span-2 pt-2 border-t border-border/50">
+                <div className="flex items-center gap-2">
+                    <Palette className="w-4 h-4 text-primary" />
+                    <h4 className="text-sm font-medium">排版配置</h4>
+                    <span className="text-xs text-muted-foreground ml-1">（可选 · 注入 LaTeX 导言区）</span>
+                </div>
+                <FormattingPanel
+                    value={advanced_config.formatting ?? {}}
+                    onChange={updateFormatting}
+                    targetLanguage={target_language}
+                />
+            </div>
         </div>
     )
 }
+

@@ -4,6 +4,8 @@
 
 ### Requirement: Task Metadata Persistence
 
+The system SHALL update the translation task metadata to reflect the actual utilized model.
+
 #### Scenario: 任务执行时同步实际使用的模型
 - **GIVEN** a translation task is started with a generic `translation_model` (e.g., default placeholder)
 - **WHEN** the backend determines the actual LLM config via `build_llm_config()`

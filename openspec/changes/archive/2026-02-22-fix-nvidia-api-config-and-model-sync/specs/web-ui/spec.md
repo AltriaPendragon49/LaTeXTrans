@@ -1,6 +1,6 @@
 # web-ui Spec Delta
 
-## NEW Requirements
+## ADDED Requirements
 
 ### Requirement: Interactive Dismissible Tips
 

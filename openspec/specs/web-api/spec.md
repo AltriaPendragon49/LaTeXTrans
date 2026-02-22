@@ -85,22 +85,15 @@ The system SHALL expose a health check endpoint to verify backend readiness.
 - **THEN** 系统返回 HTTP 404 错误，提示"Task not found"
 
 ### Requirement: Advanced Configuration in Translation Request
-后端 SHALL 接受翻译请求中的高级配置参数，并将其注入到翻译 Agent 中。
 
-#### Scenario: 翻译请求包含高级配置
-- **WHEN** 前端提交 `POST /translate/{task_id}` 请求
-- **THEN** 请求体包含 `advanced_config` 对象
-- **AND** 包含所有配置项：translation_mode, compile_strategy, enable_verification, generate_terminology_table 等
+The web API SHALL support advanced configuration overrides seamlessly.
 
 #### Scenario: 后端处理自定义 API 配置
-- **WHEN** 后端接收到 use_author_api = false 的请求
-- **THEN** 后端使用 custom_base_url 和 custom_api_key 构建 LLM 配置
-- **AND** 自动在 custom_base_url 末尾追加 /v1/chat/completions（如未包含）
-
-#### Scenario: 配置持久化到任务记录
-- **WHEN** 翻译任务创建成功
-- **THEN** 任务记录包含 `advanced_config` 字段
-- **AND** 配置值为创建时的实际值
+- **WHEN** 后端接收到 `use_author_api = false` 的请求或使用系统后台预设配置
+- **THEN** 后端使用 `normalize_base_url` 逻辑处理 `base_url`
+- **AND** 若 URL 已包含 `/chat/completions`，则保持原样
+- **AND** 若为短路径（如仅域名或 `/v1`），则自动补全为 `/v1/chat/completions`
+- **AND** 确保对 Nvidia NIM API 等包含完整路径的端点具有 100% 兼容性
 
 ### Requirement: Terminology Table Download Endpoint
 后端 SHALL 提供术语表下载端点。

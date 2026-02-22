@@ -1385,3 +1385,328 @@ def extract_arxiv_ids(arxiv_input):
         if match:
             ids.append(match.group(1))
     return ids
+
+
+# ---------------------------------------------------------------------------
+# Typography Formatting Config Injection
+# ---------------------------------------------------------------------------
+
+# Geometry margin presets for LaTeX geometry package
+_MARGIN_PRESETS = {
+    "narrow": "left=1.5cm,right=1.5cm,top=2cm,bottom=2cm",
+    "normal": "left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm",
+    "wide":   "left=3.5cm,right=3.5cm,top=3cm,bottom=3cm",
+}
+
+# CJK font mapping to TeX Live 2025 font names
+_CJK_FONT_MAP = {
+    "songti": ("FandolSong", "FandolSong Bold", "FandolSong"),
+    "heiti":  ("FandolHei",  "FandolHei Bold",  "FandolHei"),
+}
+
+
+def _has_package(latex_code: str, pkg: str) -> bool:
+    """Check whether a LaTeX package is already loaded (rough string match)."""
+    return bool(re.search(rf'\\usepackage(?:\[[^\]]*\])?\{{{re.escape(pkg)}\}}', latex_code))
+
+
+def _inject_after_documentclass(latex_code: str, block: str) -> str:
+    """Insert *block* immediately after the \\documentclass{...} command."""
+    pattern = get_command_pattern(r'documentclass')
+    match = pattern.search(latex_code)
+    if match:
+        pos = match.end()
+        return latex_code[:pos] + "\n" + block + latex_code[pos:]
+    # Fallback: prepend to preamble area (before \begin{document})
+    begin_doc = re.search(r'\\begin\s*\{document\}', latex_code)
+    if begin_doc:
+        pos = begin_doc.start()
+        return latex_code[:pos] + block + "\n" + latex_code[pos:]
+    return block + "\n" + latex_code
+
+
+def _inject_after_begin_document(latex_code: str, block: str) -> str:
+    """Insert *block* immediately after \\begin{document}."""
+    match = re.search(r'\\begin\s*\{document\}', latex_code)
+    if match:
+        pos = match.end()
+        return latex_code[:pos] + "\n" + block + latex_code[pos:]
+    return latex_code + "\n" + block
+
+
+def _inject_after_cjk_package(latex_code: str, block: str) -> str:
+    """Insert *block* immediately after the CJK package (ctex or xeCJK).
+
+    The \\setCJKmainfont family of commands requires xeCJK to be loaded first.
+    When ctex is used, it automatically loads xeCJK, so we can safely inject
+    after ctex.  If neither package is found, fall back to injecting right
+    before \\begin{document} (preamble end).
+    """
+    # Try ctex first (most common for zh translations)
+    for pkg_pattern in [
+        r'\\usepackage(?:\[[^\]]*\])?\{ctex\}',
+        r'\\usepackage(?:\[[^\]]*\])?\{xeCJK\}',
+    ]:
+        match = re.search(pkg_pattern, latex_code)
+        if match:
+            pos = match.end()
+            return latex_code[:pos] + "\n" + block + latex_code[pos:]
+
+    # Fallback: just before \begin{document}
+    begin_doc = re.search(r'\\begin\s*\{document\}', latex_code)
+    if begin_doc:
+        pos = begin_doc.start()
+        return latex_code[:pos] + block + "\n" + latex_code[pos:]
+
+    return _inject_after_documentclass(latex_code, block)
+
+def apply_formatting_config(latex_code: str, config) -> str:
+    """
+    Inject typography formatting commands into the LaTeX preamble based on
+    FormattingConfig settings.
+
+    This function is called after add_cjk_package() (in GeneratorAgent.execute)
+    and before LaTeX compilation. It follows the same anchor-locate + regex-inject
+    pattern used by add_cjk_package() / add_ctex_package().
+
+    Args:
+        latex_code: Full LaTeX source code (preamble + body).
+        config: FormattingConfig instance (or dict-like with .get() support).
+                If None or all fields are None, the original code is returned unchanged.
+
+    Returns:
+        Modified LaTeX source code.
+    """
+    if config is None:
+        return latex_code
+
+    # Support both Pydantic model and plain dict
+    def _get(field, default=None):
+        if hasattr(config, field):
+            return getattr(config, field)
+        if isinstance(config, dict):
+            return config.get(field, default)
+        return default
+
+    line_spacing    = _get("line_spacing")
+    font_size       = _get("font_size")
+    cjk_font        = _get("cjk_font")
+    column_mode     = _get("column_mode")
+    margin          = _get("margin")
+    paragraph_indent = _get("paragraph_indent")
+    bib_style       = _get("bib_style")
+    cite_style      = _get("cite_style")
+    localize_captions = _get("localize_captions")
+
+    # Early exit: nothing to do
+    if all(v is None for v in [
+        line_spacing, font_size, cjk_font, column_mode,
+        margin, paragraph_indent, bib_style, cite_style, localize_captions
+    ]):
+        return latex_code
+
+    logger.info(f"apply_formatting_config: applying {config!r}")
+
+    # -----------------------------------------------------------------------
+    # 1. Line spacing — inject setspace package + \setstretch{}
+    # -----------------------------------------------------------------------
+    if line_spacing is not None:
+        spacing_block = ""
+        if not _has_package(latex_code, "setspace"):
+            spacing_block += "\\usepackage{setspace}\n"
+        # Replace existing \setstretch or \doublespacing/\onehalfspacing, else inject
+        existing = re.search(r'\\(?:setstretch|doublespacing|onehalfspacing|singlespacing)\b[^\n]*', latex_code)
+        if existing:
+            latex_code = latex_code[:existing.start()] + f"\\setstretch{{{line_spacing}}}" + latex_code[existing.end():]
+        else:
+            spacing_block += f"\\setstretch{{{line_spacing}}}\n"
+        if spacing_block:
+            latex_code = _inject_after_documentclass(latex_code, spacing_block.rstrip())
+        logger.debug(f"Injected line_spacing={line_spacing}")
+
+    # -----------------------------------------------------------------------
+    # 2. Font size — replace/add pt option in \documentclass[...]{...}
+    # -----------------------------------------------------------------------
+    if font_size is not None:
+        pt_str = f"{font_size:g}pt"
+        # Match \documentclass[...Xpt...]{...} and replace the Xpt part
+        def _replace_fontsize(m):
+            opts = m.group(0)
+            # Remove any existing Xpt
+            opts = re.sub(r'\d+(?:\.\d+)?pt', '', opts)
+            # Insert new size after opening bracket
+            opts = re.sub(r'\[', f"[{pt_str},", opts, count=1)
+            # Clean up double commas
+            opts = re.sub(r',\s*,', ',', opts)
+            opts = re.sub(r'\[,', '[', opts)
+            return opts
+
+        latex_code = re.sub(r'\[[^\]]*\d+(?:\.\d+)?pt[^\]]*\]', _replace_fontsize, latex_code, count=1)
+
+        # If no existing pt option, add it to documentclass options
+        if pt_str not in latex_code:
+            def _add_fontsize(m):
+                full = m.group(0)
+                # Has options bracket
+                if '[' in full:
+                    return re.sub(r'\[', f"[{pt_str},", full, count=1)
+                # No options: insert before {classname}
+                brace_pos = full.index('{')
+                return full[:brace_pos] + f"[{pt_str}]" + full[brace_pos:]
+            latex_code = re.sub(
+                r'\\documentclass(?:\[[^\]]*\])?\{[^}]+\}',
+                _add_fontsize,
+                latex_code,
+                count=1
+            )
+        logger.debug(f"Injected font_size={font_size}pt")
+
+    # -----------------------------------------------------------------------
+    # 3. CJK font — \setCJKmainfont / \setCJKsansfont / \setCJKmonofont
+    #    MUST be placed AFTER \usepackage{ctex} or \usepackage{xeCJK} so that
+    #    the xeCJK commands are available. Injecting after \documentclass would
+    #    put them BEFORE ctex, causing them to render as plain text.
+    # -----------------------------------------------------------------------
+    if cjk_font is not None and cjk_font in _CJK_FONT_MAP:
+        main, bold, mono = _CJK_FONT_MAP[cjk_font]
+        font_block = (
+            f"\\setCJKmainfont{{{main}}}[BoldFont={{{bold}}}]\n"
+            f"\\setCJKsansfont{{{main}}}\n"
+            f"\\setCJKmonofont{{{mono}}}\n"
+        )
+        # Replace existing \setCJKmainfont or inject after CJK package
+        existing = re.search(r'\\setCJKmainfont[^\n]+\n?', latex_code)
+        if existing:
+            latex_code = latex_code[:existing.start()] + font_block + latex_code[existing.end():]
+        else:
+            latex_code = _inject_after_cjk_package(latex_code, font_block.rstrip())
+        logger.debug(f"Injected cjk_font={cjk_font}")
+
+    # -----------------------------------------------------------------------
+    # 4. Column mode — single/double column switching
+    # -----------------------------------------------------------------------
+    if column_mode == "single":
+        # Remove twocolumn from documentclass options
+        latex_code = re.sub(
+            r'(\\documentclass\[)([^\]]*)(twocolumn,?\s*|,?\s*twocolumn)([^\]]*\])',
+            lambda m: m.group(1) + re.sub(r',?\s*twocolumn\s*,?', '', m.group(2) + m.group(4)).replace(',,', ',').strip(','),
+            latex_code
+        )
+        # Remove \twocolumn command if present
+        latex_code = re.sub(r'\\twocolumn\b[^\n]*\n?', '', latex_code)
+        # Add \onecolumn after \begin{document} if it's not already there
+        if '\\onecolumn' not in latex_code:
+            latex_code = _inject_after_begin_document(latex_code, "\\onecolumn")
+        logger.debug("Injected column_mode=single")
+
+    elif column_mode == "double":
+        # Add twocolumn to documentclass options if not present
+        if 'twocolumn' not in latex_code:
+            latex_code = re.sub(
+                r'(\\documentclass\[)([^\]]*\])',
+                lambda m: m.group(1) + "twocolumn," + m.group(2),
+                latex_code,
+                count=1
+            )
+            # If no options bracket, add one
+            if 'twocolumn' not in latex_code:
+                latex_code = re.sub(
+                    r'(\\documentclass)(\{[^}]+\})',
+                    r'\1[twocolumn]\2',
+                    latex_code,
+                    count=1
+                )
+        logger.debug("Injected column_mode=double")
+
+    # -----------------------------------------------------------------------
+    # 5. Page margins — geometry package
+    # -----------------------------------------------------------------------
+    if margin is not None and margin in _MARGIN_PRESETS:
+        geo_opts = _MARGIN_PRESETS[margin]
+        existing_geo = re.search(r'\\usepackage\[[^\]]*\]\{geometry\}', latex_code)
+        if existing_geo:
+            # Replace existing geometry options
+            latex_code = latex_code[:existing_geo.start()] + \
+                         f"\\usepackage[{geo_opts}]{{geometry}}" + \
+                         latex_code[existing_geo.end():]
+        else:
+            latex_code = _inject_after_documentclass(latex_code, f"\\usepackage[{geo_opts}]{{geometry}}")
+        logger.debug(f"Injected margin={margin}")
+
+    # -----------------------------------------------------------------------
+    # 6. Paragraph indent — \setlength{\parindent}{2em}
+    # -----------------------------------------------------------------------
+    if paragraph_indent is True:
+        indent_cmd = "\\setlength{\\parindent}{2em}"
+        existing = re.search(r'\\setlength\s*\{\\parindent\}[^\n]+', latex_code)
+        if existing:
+            latex_code = latex_code[:existing.start()] + indent_cmd + latex_code[existing.end():]
+        else:
+            latex_code = _inject_after_begin_document(latex_code, indent_cmd)
+        logger.debug("Injected paragraph_indent=True")
+
+    # -----------------------------------------------------------------------
+    # 7. Bibliography style — replace \bibliographystyle{...}
+    # -----------------------------------------------------------------------
+    if bib_style is not None:
+        # Map friendly names to actual BibTeX style names
+        _BIB_STYLE_MAP = {
+            "gbt7714-numerical":   "gbt7714-numerical",
+            "gbt7714-author-year": "gbt7714-author-year",
+            "ieeetr":              "ieeetr",
+            "apalike":             "apalike",
+        }
+        actual_style = _BIB_STYLE_MAP.get(bib_style, bib_style)
+        # Replace existing \bibliographystyle
+        existing = re.search(r'\\bibliographystyle\{[^}]*\}', latex_code)
+        if existing:
+            latex_code = latex_code[:existing.start()] + \
+                         f"\\bibliographystyle{{{actual_style}}}" + \
+                         latex_code[existing.end():]
+        else:
+            # Inject before \bibliography{...} if it exists, otherwise before \end{document}
+            bib_ref = re.search(r'\\bibliography\{', latex_code)
+            if bib_ref:
+                latex_code = latex_code[:bib_ref.start()] + \
+                             f"\\bibliographystyle{{{actual_style}}}\n" + \
+                             latex_code[bib_ref.start():]
+        logger.debug(f"Injected bib_style={bib_style}")
+
+    # -----------------------------------------------------------------------
+    # 8. Citation style — natbib package
+    # -----------------------------------------------------------------------
+    if cite_style is not None:
+        _CITE_STYLE_MAP = {
+            "numbers":    "numbers",
+            "super":      "super",
+            "authoryear": "authoryear",
+        }
+        natbib_opt = _CITE_STYLE_MAP.get(cite_style, "numbers")
+        existing_natbib = re.search(r'\\usepackage(?:\[[^\]]*\])?\{natbib\}', latex_code)
+        if existing_natbib:
+            # Replace options
+            latex_code = latex_code[:existing_natbib.start()] + \
+                         f"\\usepackage[{natbib_opt}]{{natbib}}" + \
+                         latex_code[existing_natbib.end():]
+        else:
+            latex_code = _inject_after_documentclass(latex_code, f"\\usepackage[{natbib_opt}]{{natbib}}")
+        logger.debug(f"Injected cite_style={cite_style}")
+
+    # -----------------------------------------------------------------------
+    # 9. Localize captions — \renewcommand\figurename{图} etc.
+    # -----------------------------------------------------------------------
+    if localize_captions is True:
+        caption_block = (
+            "\\renewcommand{\\figurename}{图}\n"
+            "\\renewcommand{\\tablename}{表}\n"
+            "\\renewcommand{\\abstractname}{摘要}\n"
+            "\\renewcommand{\\contentsname}{目录}\n"
+            "\\renewcommand{\\refname}{参考文献}\n"
+            "\\renewcommand{\\appendixname}{附录}\n"
+        )
+        # Inject after \begin{document}
+        if "\\renewcommand{\\figurename}" not in latex_code:
+            latex_code = _inject_after_begin_document(latex_code, caption_block.rstrip())
+        logger.debug("Injected localize_captions=True")
+
+    return latex_code
