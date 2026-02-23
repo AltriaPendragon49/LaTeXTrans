@@ -56,7 +56,7 @@ class TranslatorAgent(BaseToolAgent):
 
     async def execute(self, error_retry_count=0, Maxtry=3):
 
-        pm.init_prompts(self.config["source_language"], self.config["target_language"])
+        self.prompts = pm.create_prompts(self.config["source_language"], self.config["target_language"])
         self.add_placeholder()
         self.build_term_dict()
 
@@ -577,7 +577,7 @@ class TranslatorAgent(BaseToolAgent):
         if self.trans_mode == 0:
             
             transed_section["trans_content"] = await self._request_llm_for_trans(
-                pm.section_system_prompt,
+                self.prompts["section_system_prompt"],
                 section["content"],
                 fail_part=section_num,
                 type="sec",
@@ -585,7 +585,7 @@ class TranslatorAgent(BaseToolAgent):
             )
         elif self.trans_mode == 1:
             transed_section["trans_content"] = await self._request_llm_for_retrans_error_parts(
-            pm.retrans_error_parts_system_prompt,
+            self.prompts["retrans_error_parts_system_prompt"],
             part=transed_section,
             error_message=error_message,
             fail_part=section_num,
@@ -595,7 +595,7 @@ class TranslatorAgent(BaseToolAgent):
         elif self.trans_mode == 3:
             # Quick scan mode: translate like mode 0
             transed_section["trans_content"] = await self._request_llm_for_trans(
-                pm.section_system_prompt,
+                self.prompts["section_system_prompt"],
                 section["content"],
                 fail_part=section_num,
                 type="sec",
@@ -608,7 +608,7 @@ class TranslatorAgent(BaseToolAgent):
             """
             if not self.term_dict:
                 transed_section["trans_content"] = await self._request_llm_for_trans(
-                    pm.section_system_prompt,
+                    self.prompts["section_system_prompt"],
                     section["content"],
                     fail_part=section_num,
                     type="sec",
@@ -616,7 +616,7 @@ class TranslatorAgent(BaseToolAgent):
                 )
             else:
                 transed_section["trans_content"] = await self._request_llm_for_trans_with_terms(
-                                                            pm.section_system_prompt_with_dict,
+                                                            self.prompts["section_system_prompt_with_dict"],
                                                             section["content"], 
                                                             fail_part=section_num,
                                                             type="sec",
@@ -627,7 +627,7 @@ class TranslatorAgent(BaseToolAgent):
                 if self.update_term == True:
                     src_text = self._extract_text_from_tex(transed_section["content"])
                     tgt_text = self._extract_text_from_tex(transed_section["trans_content"])
-                    term_text = await self._request_llm_for_extract_terms(pm.extract_terminology_system_prompt,
+                    term_text = await self._request_llm_for_extract_terms(self.prompts["extract_terminology_system_prompt"],
                                                             src_text,
                                                             tgt_text,
                                                             session=session
@@ -658,7 +658,7 @@ class TranslatorAgent(BaseToolAgent):
         transed_caption = caption.copy()
         placeholder = caption["placeholder"]
         if self.trans_mode == 0:
-            transed_caption["trans_content"] = await self._request_llm_for_trans(pm.caption_system_prompt,
+            transed_caption["trans_content"] = await self._request_llm_for_trans(self.prompts["caption_system_prompt"],
                                                         caption["content"],
                                                         fail_part=placeholder,
                                                         type="cap",
@@ -667,7 +667,7 @@ class TranslatorAgent(BaseToolAgent):
         elif self.trans_mode == 1:
             """先不改"""
             print("translate_caption_mode_1")
-            transed_caption["trans_content"] = await self._request_llm_for_retrans_error_parts(pm.retrans_error_parts_system_prompt,
+            transed_caption["trans_content"] = await self._request_llm_for_retrans_error_parts(self.prompts["retrans_error_parts_system_prompt"],
                                                                                          part=transed_caption,
                                                                                          error_message=error_message,
                                                                                          fail_part=placeholder,
@@ -676,14 +676,14 @@ class TranslatorAgent(BaseToolAgent):
             
         elif self.trans_mode == 2:
             if not self.term_dict:
-                transed_caption["trans_content"] = await self._request_llm_for_trans(pm.caption_system_prompt,
+                transed_caption["trans_content"] = await self._request_llm_for_trans(self.prompts["caption_system_prompt"],
                                                         caption["content"], 
                                                         fail_part=placeholder,
                                                         type="cap",
                                                         session=session
                                                         )
             else:
-                transed_caption["trans_content"] = await self._request_llm_for_trans_with_terms(pm.caption_system_prompt_with_dict,
+                transed_caption["trans_content"] = await self._request_llm_for_trans_with_terms(self.prompts["caption_system_prompt_with_dict"],
                                                                                           caption["content"],
                                                                                           fail_part=placeholder,
                                                                                           type="cap",
@@ -713,7 +713,7 @@ class TranslatorAgent(BaseToolAgent):
         placeholder = env["placeholder"]
         if self.trans_mode == 0: # sum
             if env["need_trans"]:
-                transed_env["trans_content"] = await self._request_llm_for_trans(pm.env_system_prompt,
+                transed_env["trans_content"] = await self._request_llm_for_trans(self.prompts["env_system_prompt"],
                                                             env["content"], 
                                                             fail_part=placeholder,
                                                             type="env",
@@ -731,7 +731,7 @@ class TranslatorAgent(BaseToolAgent):
         elif self.trans_mode == 2: # dict or sum+dict
             if not self.term_dict:
                 if env["need_trans"]:
-                    transed_env["trans_content"] = await self._request_llm_for_trans(pm.env_system_prompt,
+                    transed_env["trans_content"] = await self._request_llm_for_trans(self.prompts["env_system_prompt"],
                                                             env["content"], 
                                                             fail_part=placeholder,
                                                             type="env",
@@ -741,7 +741,7 @@ class TranslatorAgent(BaseToolAgent):
                     transed_env["trans_content"] = env["content"]
             else:
                 if env["need_trans"]:
-                    transed_env["trans_content"] = await self._request_llm_for_trans_with_terms(pm.env_system_prompt_with_dict,
+                    transed_env["trans_content"] = await self._request_llm_for_trans_with_terms(self.prompts["env_system_prompt_with_dict"],
                                                                                             env["content"],
                                                                                             fail_part=placeholder,
                                                                                             type="env",
@@ -768,7 +768,7 @@ class TranslatorAgent(BaseToolAgent):
         elif self.trans_mode == 3:
             # Quick scan mode: translate if needed (same as mode 0)
             if env["need_trans"]:
-                transed_env["trans_content"] = await self._request_llm_for_trans(pm.env_system_prompt,
+                transed_env["trans_content"] = await self._request_llm_for_trans(self.prompts["env_system_prompt"],
                                                             env["content"], 
                                                             fail_part=placeholder,
                                                             type="env",
@@ -1313,7 +1313,7 @@ class TranslatorAgent(BaseToolAgent):
         try:
             # 使用现有的术语提取逻辑
             term_text = await self._request_llm_for_extract_terms(
-                pm.extract_terminology_system_prompt,
+                self.prompts["extract_terminology_system_prompt"],
                 src_text,
                 tgt_text,
                 session=session

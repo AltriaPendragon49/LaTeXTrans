@@ -58,8 +58,10 @@ class ParserAgent(BaseToolAgent):
 
     async def execute(self) -> Any:
         """Execute parsing task (async version with parallel LLM calls)"""
-        pm.init_prompts(self.config.get("source_language", "en"), 
-                       self.config.get("target_language", "ch"))
+        self.prompts = pm.create_prompts(
+            self.config.get("source_language", "en"),
+            self.config.get("target_language", "ch")
+        )
         
         self.log(f"Starting parsing for project: {os.path.basename(self.project_dir)}")
         self.update_progress(0, f"Parsing {os.path.basename(self.project_dir)}")
@@ -233,7 +235,7 @@ class ParserAgent(BaseToolAgent):
             async def judge_single_env(env: Dict) -> tuple:
                 """Judge a single environment and return (placeholder, result)"""
                 result = await self._request_llm_for_judge_async(
-                    pm.set_need_trans_for_envs_system_prompt,
+                    self.prompts["set_need_trans_for_envs_system_prompt"],
                     env["content"],
                     session,
                     semaphore

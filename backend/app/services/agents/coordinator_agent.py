@@ -50,6 +50,29 @@ class CoordinatorAgent:
         """
         return self.loop.run_until_complete(coro)
 
+    def _write_task_log(self, output_dir: str, event: str, data: dict = None):
+        """Write structured event to task-specific log file"""
+        import json
+        import datetime
+        log_file = Path(output_dir) / "task_log.json"
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "event": event,
+            **(data or {})
+        }
+        # Append to log
+        logs = []
+        if log_file.exists():
+            try:
+                logs = json.loads(log_file.read_text(encoding="utf-8"))
+            except:
+                pass
+        logs.append(entry)
+        try:
+            log_file.write_text(json.dumps(logs, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Failed to write task log: {e}")
+
     async def workflow_latextrans_async(self) -> None:
         """
         Initializes the tool agent based on the provided agent name key.
@@ -58,6 +81,7 @@ class CoordinatorAgent:
         transed_project_dir = os.path.join(self.output_dir, f"{self.target_language}_{base_name}")
 
         os.makedirs(transed_project_dir, exist_ok=True)
+        self._write_task_log(transed_project_dir, "task_started", {"project": base_name, "config": {k: v for k, v in self.config.items() if k != "llm_config"}})
 
         # Step 1: Parse LaTeX (10% total progress)
         logger.info(f"Starting LaTeX parsing for {base_name}")
@@ -70,6 +94,7 @@ class CoordinatorAgent:
             on_progress=lambda s, p, m: self.update_progress(5 + int(p * 0.05), m)
         )
         await parser_agent.execute()
+        self._write_task_log(transed_project_dir, "parsing_completed")
         self.update_progress(10, "Parsing completed")
 
         # Step 2: Translate (10% - 70% total progress)
@@ -85,6 +110,7 @@ class CoordinatorAgent:
             on_progress=lambda s, p, m: self.update_progress(10 + int(p * 0.6), m)
         )
         await translator_agent.execute()
+        self._write_task_log(transed_project_dir, "translation_completed")
         self.update_progress(70, "Translation completed")
 
         # Step 3: Validate (70% - 75% total progress)
@@ -98,6 +124,7 @@ class CoordinatorAgent:
             on_progress=lambda s, p, m: self.update_progress(70 + int(p * 0.05), m)
         )
         errors_report = validator_agent.execute()
+        self._write_task_log(transed_project_dir, "validation_completed", {"errors_count": len(errors_report) if errors_report else 0})
         
         # Step 4: Retry if needed (75% - 85% total progress)
         # NOTE: Quick scan mode (mode == 3) skips repair to preserve semantic boundary
@@ -141,6 +168,7 @@ class CoordinatorAgent:
             PDF_file_path = generator_agent.execute()
         except Exception as e:
             logger.error(f"Failed to generate PDF for {base_name}: {e}")
+            self._write_task_log(transed_project_dir, "error", {"stage": "generation", "error": str(e)})
             self.update_progress(100, f"Failed: {e}")
             return
         
@@ -152,12 +180,15 @@ class CoordinatorAgent:
             from backend.app.services.latex.compiler import verify_pdf_ready
             if verify_pdf_ready(new_PDF_path):
                 logger.info(f"PDF verified ready: {new_PDF_path}")
+                self._write_task_log(transed_project_dir, "compilation_completed", {"pdf_path": new_PDF_path})
                 self.update_progress(100, "Translation completed successfully")
             else:
                 logger.warning(f"PDF may not be fully ready: {new_PDF_path}")
+                self._write_task_log(transed_project_dir, "compilation_completed_with_warnings", {"pdf_path": new_PDF_path})
                 self.update_progress(100, "Translation completed, PDF may need refresh")
         else:
             logger.error(f"Failed to generate PDF for {base_name}")
+            self._write_task_log(transed_project_dir, "error", {"stage": "generation", "error": "No PDF path returned"})
             self.update_progress(100, "Failed to generate PDF")
 
     def workflow_latextrans(self) -> None:

@@ -208,10 +208,9 @@ class ValidatorAgent(BaseToolAgent):
         
     def _find_brackets_errors(self, content, org=None):
         """Find unmatched brackets in content"""
-        if org:
-            bracket_pairs = {'[': ']', '{': '}'}    
-        else:
-            bracket_pairs = {'(': ')', '[': ']', '{': '}'}
+        # Only check [] and {} - parentheses () cause false positives
+        # with numbered lists like 1) 2) in enumerate environments
+        bracket_pairs = {'[': ']', '{': '}'}
         
         opening_brackets = set(bracket_pairs.keys())
         closing_brackets = set(bracket_pairs.values())

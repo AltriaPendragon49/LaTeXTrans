@@ -2,6 +2,7 @@ import argparse
 import toml
 import os
 import sys
+import threading
 
 # base_dir = os.getcwd()
 # sys.path.append(base_dir)
@@ -90,6 +91,7 @@ def init_prompts(source_lang: str, target_lang: str):
     9.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     10.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
     11.Name retention principle,always keep author names (e.g., "Daya Guo", "Dejian Yang") in their original {source_lang} form. Never translate, transliterate, or reorder names (e.g., "Daya Guo" → "Daya Guo", NOT "郭达雅" or "Guo Daya"). 
+    12.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items (the descriptive text following \\item), paragraph descriptions, and inline explanations. Do NOT leave any {source_lang} sentences or phrases untranslated. The only content that should remain in {source_lang} are: proper nouns (model names like GPT-4, BERT), benchmark dataset names (HumanEval, MMLU), and short technical abbreviations that are universally used as-is.
     """
     env_system_prompt = f"""
     You are a professional academic translator specializing in LaTeX-based scientific writing. 
@@ -108,6 +110,7 @@ def init_prompts(source_lang: str, target_lang: str):
     7.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     8.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     9.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    10.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items and inline descriptions. Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
 
     caption_system_prompt_with_dict = f"""
@@ -127,6 +130,7 @@ def init_prompts(source_lang: str, target_lang: str):
     7.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     8.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
     9.Please add appropriate spaces before and after special symbols to ensure that after the translated code is compiled, the text will not be misaligned on the right side, which will affect the layout and format of the text. For example, when translating "|special_token|<reasoning_process>|special_token|<summary>", you may need to add appropriate spaces to become: "| special\_token| <reasoning\_process> | special\_token| <summary>", because if the text appears at the end of the line after compilation, it may be misaligned on the right side due to the inability to wrap.
+    10.You MUST translate ALL natural language text without exception. Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
 
     section_system_prompt_with_dict = f"""
@@ -147,6 +151,7 @@ def init_prompts(source_lang: str, target_lang: str):
     8.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     9.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     10.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    11.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items (the descriptive text following \\item). Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
     env_system_prompt_with_dict = f"""
     You are a professional academic translator specializing in LaTeX-based scientific writing. 
@@ -165,6 +170,7 @@ def init_prompts(source_lang: str, target_lang: str):
     7.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     8.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     9.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    10.You MUST translate ALL natural language text without exception, including list items inside \\begin{{enumerate}}/\\begin{{itemize}} environments. Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
 
     set_need_trans_for_envs_system_prompt = f"""
@@ -416,6 +422,7 @@ def init_prompts(source_lang: str, target_lang: str):
     8.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     9.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     10.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    11.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items (the descriptive text following \\item), paragraph descriptions, and inline explanations. Do NOT leave any {source_lang} sentences or phrases untranslated. Only proper nouns (model names like GPT-4, BERT), benchmark dataset names (HumanEval, MMLU), and short technical abbreviations that are universally used as-is may remain in {source_lang}.
     """
 
     caption_system_prompt_with_sum  = f"""
@@ -435,6 +442,7 @@ def init_prompts(source_lang: str, target_lang: str):
     7.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     8.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
     9.Please add appropriate spaces before and after special symbols to ensure that after the translated code is compiled, the text will not be misaligned on the right side, which will affect the layout and format of the text. For example, when translating "|special_token|<reasoning_process>|special_token|<summary>", you may need to add appropriate spaces to become: "| special\_token| <reasoning\_process> | special\_token| <summary>", because if the text appears at the end of the line after compilation, it may be misaligned on the right side due to the inability to wrap.
+    10.You MUST translate ALL natural language text without exception. Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
 
     env_system_prompt_with_sum = f"""
@@ -455,6 +463,7 @@ def init_prompts(source_lang: str, target_lang: str):
     7.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     8.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     9.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    10.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items and inline descriptions. Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
 
     section_system_prompt_with_terms_sum = f"""
@@ -484,6 +493,7 @@ def init_prompts(source_lang: str, target_lang: str):
     8.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     9.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     10.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    11.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items (the descriptive text following \\item), paragraph descriptions, and inline explanations. Do NOT leave any {source_lang} sentences or phrases untranslated. Only proper nouns (model names like GPT-4, BERT), benchmark dataset names (HumanEval, MMLU), and short technical abbreviations that are universally used as-is may remain in {source_lang}.
     
     You are expected to combine semantic understanding (from the summary), precise terminology usage (from the term dictionary), and strict LaTeX fidelity to produce a high-quality translation.
     """
@@ -506,6 +516,7 @@ def init_prompts(source_lang: str, target_lang: str):
     8.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     9.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     10.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    11.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items (the descriptive text following \\item). Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4, BERT), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     
     To ensure consistency in terminology and style, here is the context of the preceding paragraph:
     """
@@ -528,4 +539,47 @@ def init_prompts(source_lang: str, target_lang: str):
     8.Ensure that the translated text is accurate, coherent, and follows academic writing conventions in the target language.Maintain consistent academic terminology and use standard abbreviations where appropriate.
     9.Directly output only the translated LaTeX code without any additional explanations, formatting markers, or comments such as "```latex".
     10.<PLACEHOLDER_CAP_...>,<PLACEHOLDER_ENV_...>,<PLACEHOLDER_..._begin> and <PLACEHOLDER_..._end> are placeholders for artificial environments or captions. Please do not let them affect your translation and keep these placeholders after translation.
+    11.You MUST translate ALL natural language text without exception, including text inside \\begin{{enumerate}}/\\begin{{itemize}} list items (the descriptive text following \\item). Do NOT leave any {source_lang} sentences untranslated. Only proper nouns (model names like GPT-4, BERT), benchmark names, and universally-used abbreviations may remain in {source_lang}.
     """
+
+
+# Module-level lock to serialize access to global prompt variables.
+# create_prompts() holds this lock while calling init_prompts() and reading
+# back the results, preventing another concurrent call from overwriting them.
+_prompts_lock = threading.Lock()
+
+
+def create_prompts(source_lang: str, target_lang: str) -> dict:
+    """Create a prompt dictionary for the given language pair.
+    
+    Unlike init_prompts(), this function is thread-safe. It returns a
+    task-specific dict so that each concurrent translation task holds its
+    own immutable copy of the prompts configured for its language pair.
+    
+    Usage in agents:
+        self.prompts = pm.create_prompts(source_lang, target_lang)
+        # then access via: self.prompts["section_system_prompt"] etc.
+    """
+    with _prompts_lock:
+        # Under the lock: set globals for this language pair, then immediately
+        # snapshot all values into a local dict before releasing the lock.
+        init_prompts(source_lang, target_lang)
+        return {
+            "caption_system_prompt": caption_system_prompt,
+            "section_system_prompt": section_system_prompt,
+            "env_system_prompt": env_system_prompt,
+            "caption_system_prompt_with_dict": caption_system_prompt_with_dict,
+            "section_system_prompt_with_dict": section_system_prompt_with_dict,
+            "env_system_prompt_with_dict": env_system_prompt_with_dict,
+            "set_need_trans_for_envs_system_prompt": set_need_trans_for_envs_system_prompt,
+            "retrans_error_parts_system_prompt": retrans_error_parts_system_prompt,
+            "extract_terminology_system_prompt": extract_terminology_system_prompt,
+            "get_summary_system_prompt": get_summary_system_prompt,
+            "refine_summary_system_prompt": refine_summary_system_prompt,
+            "section_system_prompt_with_sum": section_system_prompt_with_sum,
+            "caption_system_prompt_with_sum": caption_system_prompt_with_sum,
+            "env_system_prompt_with_sum": env_system_prompt_with_sum,
+            "section_system_prompt_with_terms_sum": section_system_prompt_with_terms_sum,
+            "section_system_prompt_with_prev": section_system_prompt_with_prev,
+            "section_system_prompt_with_terms_prev": section_system_prompt_with_terms_prev,
+        }

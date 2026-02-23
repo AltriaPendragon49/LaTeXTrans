@@ -394,6 +394,7 @@ def compile_latex(
             "-file-line-error",
             "-synctex=1",
             "-f",  # force mode
+            "-bibtex",  # ensure biber/bibtex is called for biblatex/bibtex documents
             tex_filename
         ]
         

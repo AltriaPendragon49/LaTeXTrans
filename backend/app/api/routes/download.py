@@ -12,6 +12,7 @@ import zipfile
 import tempfile
 import shutil
 
+from typing import Optional
 from backend.app.services.task_manager import get_task_manager
 from backend.app.core.config import get_settings, TaskStatus
 
@@ -19,6 +20,50 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
+
+
+def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
+    """
+    Search for the translated PDF in the output directory.
+    Prioritizes files with '_translated.pdf' and avoids searching 
+    recursively into source project subdirectories.
+    """
+    # 1. Try finding explicitly named translated PDF in root
+    pdf_files = list(output_dir.glob("*_translated.pdf"))
+    if pdf_files:
+        return pdf_files[0]
+    
+    # 2. Try finding any PDF in the root output dir
+    pdf_files = list(output_dir.glob("*.pdf"))
+    if pdf_files:
+        return pdf_files[0]
+    
+    # 3. Try finding in subdirectories, but be careful of source PDFs
+    # We search recursively but filter out known source directory patterns
+    all_pdfs = list(output_dir.rglob("*.pdf"))
+    
+    # Heuristic: exclude PDFs that are inside a directory containing many .tex files
+    # or a directory name matching an ArXiv ID (e.g., 2503.19300)
+    valid_pdfs = []
+    import re
+    for pdf in all_pdfs:
+        rel_parts = pdf.relative_to(output_dir).parts
+        if len(rel_parts) > 1:
+            # If it's inside a subdirectory, check if that subdirectory is a source dir
+            parent_name = rel_parts[0]
+            if re.match(r'^\d+\.\d+$', parent_name):
+                # Only allow if the filename itself implies it's translated
+                if "_translated" in pdf.name:
+                    valid_pdfs.append(pdf)
+                continue
+        valid_pdfs.append(pdf)
+    
+    # Prioritize those with '_translated' in name
+    translated_only = [f for f in valid_pdfs if "_translated" in f.name]
+    if translated_only:
+        return translated_only[0]
+        
+    return valid_pdfs[0] if valid_pdfs else None
 
 
 @router.get("/download/{task_id}/pdf")
@@ -61,19 +106,16 @@ async def download_pdf(task_id: str):
         )
     
     # Search for PDF files
-    pdf_files = list(output_dir.rglob("*_translated.pdf"))
-    if not pdf_files:
-        # Try finding any PDF
-        pdf_files = list(output_dir.rglob("*.pdf"))
+    pdf_file = _find_translated_pdf(output_dir)
     
-    if not pdf_files:
+    if not pdf_file:
         raise HTTPException(
             status_code=404,
             detail="Translated PDF not found"
         )
     
     # Return the first PDF found
-    pdf_file = pdf_files[0]
+    # Already found via helper
     
     # Verify PDF file integrity before download
     if pdf_file.stat().st_size == 0:
@@ -148,19 +190,16 @@ async def preview_pdf(task_id: str):
         )
     
     # Search for PDF files
-    pdf_files = list(output_dir.rglob("*_translated.pdf"))
-    if not pdf_files:
-        # Try finding any PDF
-        pdf_files = list(output_dir.rglob("*.pdf"))
+    pdf_file = _find_translated_pdf(output_dir)
     
-    if not pdf_files:
+    if not pdf_file:
         raise HTTPException(
             status_code=404,
             detail="Translated PDF not found"
         )
     
     # Return the first PDF found with inline content disposition for preview
-    pdf_file = pdf_files[0]
+    # Already found via helper
     
     # Verify PDF file integrity
     # Check file size
