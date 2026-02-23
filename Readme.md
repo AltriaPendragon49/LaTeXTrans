@@ -1,145 +1,109 @@
-# LaTeXTrans-Pro: 基于检索增强与智能体协作的 LaTeX 论文翻译系统
+# LaTeXTrans-Pro: 基于大模型的 LaTeX 论文智能翻译系统
 
-Project Title: Design and Implementation of LaTeX Paper Translation System Based on RAG and Agent Collaboration
+LaTeXTrans-Pro 是一个专为科研人员打造的 LaTeX 论文翻译工具。通过直接操作 `.tex` 源码，并在隔离环境中进行编译，系统能够提供既保持原始排版格式，又符合学术规范的高质量翻译。
 
-Status: In Development (Phase 1: MVP Skeleton)
+系统采用现代前后端分离架构，结合 Supabase 提供完善的用户认证与任务历史管理。
 
-Original Prototype: NiuTrans/LaTeXTrans
+## ✨ 核心特性
 
-## 1. 项目背景与目标
+- **直接操作 LaTeX 源码**: 彻底解决传统 PDF 翻译导致的排版错乱、公式乱码等问题。
+- **多种输入源支持**:
+  - **拖拽上传**: 支持直接拖拽 `.zip`、`.tar.gz` 压缩包或包含 `.tex` 文件的文件夹。
+  - **arXiv 一键抓取**: 输入论文 ID，自动下载源码并准备翻译。
+- **先进的翻译功能**:
+  - **自动处理引用与图片**: 智能提取 LaTeX 结构，翻译时保护公式与宏命令。
+  - **学术术语生成**: 翻译同时可自动生成中英文专业术语对照表。
+  - **翻译模式切换**: 支持“全文翻译”与“文献快速筛查（仅摘要与结论）”两种模式。
+- **智能编译与错误处理**:
+  - 在 Docker 环境中隔离运行纯净的 MiKTeX，自动按需安装宏包。
+  - 支持 `pdflatex`、`xelatex` 及自动协商编译策略（例如自动降级，或因含有中文等 Unicode 字符自动选择支持环境）。
+- **完善的用户体验**:
+  - 基于 Supabase 的账户认证体系（支持访客匿名试用）。
+  - 个性化配置持久化（记录自定义 API Key、偏好模型等）。
+  - 翻译历史云端留存，支持重新下载 PDF、源码、日志和术语表。
+  - 前端支持 PDF 原文与译文分屏实时对比。
 
-本项目旨在解决科研人员阅读和撰写外文 LaTeX 论文时的痛点。不同于传统的 PDF 翻译工具，本系统直接操作 `.tex` 源码，保证翻译后的文档格式不乱、公式不崩、可重新编译。
+## 🏗️ 系统架构
 
-**核心痛点解决：**
+整个系统包含三个核心组成部分：
 
-* **术语幻觉**：通过 RAG 技术引入外部术语表，解决学术名词（如 "Self-Attention" 被误译为 "自关注"）等问题。
-* **上下文缺失**：通过 Agent 协作，自动解析 `\cite{}` 引用内容和 `\includegraphics{}` 图片内容，辅助翻译。
-* **编译报错**：内置 Compiler Agent，自动捕获编译日志并尝试修复 LaTeX 语法错误。
+- **Frontend (Web UI)**: 基于 React 19 + TypeScript + Vite 构建，使用 Tailwind CSS & shadcn/ui 提供现代化界面。用户可以在此处进行文件上传、配置调整、任务状态轮询和 PDF 阅读对比。 
+  - 详情请查阅: [前端文档 (frontend/README.md)](frontend/README.md)
+  
+- **Backend (Web API)**: 基于 FastAPI (Python) 构建的纯 REST API。负责接收请求、解析 LaTeX 语法 (AST)、管理翻译和编译流程，以及与 LLM API 交互。
+  - 详情请查阅: [后端文档 (backend/README.md)](backend/README.md)
 
-## 2. 系统架构
+- **Supabase (BaaS)**: 用作系统的用户中心及数据库引擎 (PostgreSQL)，负责处理 JWT 鉴权、翻译历史存储、任务状态同步等持久化需求。
 
-系统采用微服务架构，主要包含以下模块：
-
-### 2.1 目录结构
+### 目录结构
 
 ```text
 Project-Root/
-├── backend/                # FastAPI 后端服务
-│   ├── app/
-│   │   ├── core/           # 配置与工厂模式
-│   │   ├── api/            # RESTful 接口 (Upload, Translate)
-│   │   ├── services/       # 核心业务逻辑
-│   │   │   ├── parser/     # AST 解析器 (基于 pylatexenc)
-│   │   │   ├── rag/        # 向量检索服务 (ChromaDB)
-│   │   │   └── agents/     # LangChain 智能体 (Translator, Compiler)
-│   │   └── utils/          # 日志与工具
-│   ├── tests/              # 单元测试
-│   └── requirements.txt
-├── frontend/               # React 前端应用
-├── docker/                 # 容器化配置
-│   ├── Dockerfile.backend
-│   └── Dockerfile.miktex  # 纯净的编译环境 (MiKTeX with install on the fly)
-└── data/                   # 本地存储 (上传文件, 向量库, 术语表)
+├── backend/                # FastAPI 后端服务 (REST API, LaTeX 解析, Agent 逻辑)
+├── frontend/               # React 前端应用 (Web UI, 用户面板, 配置管理)
+├── docker/                 # 环境编排相关 (Dockerfile.miktex, docker-compose)
+├── openspec/               # OpenSpec 项目规范与需求变更追踪档案
+└── data/                   # 本地存储卷 (包含用户上传文件、翻译产出)
 ```
 
-### 2.2 核心工作流
+## 🚀 快速开始
 
-1. **Input**: 用户上传 `.zip` (包含 `.tex` 和图片)，或使用 CLI 工具下载 arXiv 论文。
-2. **Parse**: LaTeXParser 将源码解析为 AST，剥离出纯文本，保留公式/宏命令骨架。
-3. **RAG 检索**: 对文本块提取关键词，在 ChromaDB 中混合检索 (Semantic + Keyword) 相关术语。
-4. **Agent Loop**:
-   * *TranslateTool*: 结合 RAG 结果翻译文本。
-   * *CiteTool*: (可选) 查询 arXiv 获取引用背景。
-   * *ImageTool*: (可选) 识别图片内容。
-5. **Reconstruct**: 将译文回填至 AST 骨架，还原为 `.tex` 文件。
-6. **Compile & Heal**: 尝试编译，若失败则分析系统日志，通过 Agent 自动修复并重试。
-7. **Output**: 生成双语对照 PDF 及翻译后的源码包。
+本项目依赖 Python 3.10+、Node.js 18+ 以及 Docker (用于提供 LaTeX 编译环境)。以下步骤假定您希望在本地运行开发服务器。
 
-## 3. 功能特性 (Roadmap)
+### 1. 配置必要的环境
 
-根据项目执行规划，开发分为以下阶段：
+在启动任何服务前，建议申请并配置好您的大模型 (LLM) API Key 以及 Supabase 项目参数。您可以在前端 UI 界面中直接填写并保存您的个人专属 API 密钥。
 
-- [ ] **Phase 1: MVP 骨架 (进行中)**
-  - [ ] 实现文件上传/下载接口及 CLI `--arxiv` 支持。
-  - [ ] 移植原型的 AST 解析逻辑。
-  - [ ] 跑通 "Tex -> String -> LLM -> String -> Tex" 闭环。
-- [ ] **Phase 2: RAG 增强**
-  - [ ] 搭建 ChromaDB 向量库。
-  - [ ] 实现术语提取与混合检索。
-- [ ] **Phase 3: Agent 协作**
-  - [ ] 重构为 LangChain 架构。
-  - [ ] 实现 Docker 内的编译与错误修复循环 (MiKTeX)。
-- [ ] **Phase 4: Web 交互**
-  - [ ] 双栏实时预览 (Source vs PDF)。
-  - [ ] 异步任务队列 (Redis + Celery)。
+### 2. 启动后端 (Backend)
 
-## 4. 快速开始 (Quick Start)
-
-### 环境要求
-* Python 3.10+
-* Node.js 18+
-* Docker & Docker Compose
-* MiKTeX (推荐使用 Docker 镜像，配置 `install on the fly`)
-
-### 本地开发 (MVP阶段)
-
-**1. 启动后端:**
 ```bash
 cd backend
 pip install -r requirements.txt
-# 配置环境变量: 在 backend/.env 中配置 LLM_API_KEY 等必要参数
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+# (可选) 复制并配置 .env 文件中的 LLM 默认参数与 Supabase 凭据
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**2. 启动前端:**
+或者使用提供的启动脚本：
+- Windows: 运行 `backend/start.bat`
+- Linux/Mac: 运行 `./backend/start.sh`
+
+### 3. 启动前端 (Frontend)
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-**3. CLI 示例:** 
-```bash
-python main.py --arxiv 2508.18791
-```
+启动后，访问 `http://localhost:5173` 即可进入系统主界面。
 
-### Cloudflare 部署 (外部访问)
+### 4. Cloudflare 免费公网穿透部署
 
-如需让外部用户快速访问体验系统，可使用 Cloudflare Pages + Tunnel 进行免费部署：
+为方便团队内部测试，项目可以通过 Cloudflare Tunnel 与 Pages 快速部署至公网：
 
-**1. 安装依赖工具:**
 ```powershell
-# 安装 Wrangler CLI (Cloudflare Pages)
+# 1. 安装工具 (Wrangler 与 cloudflared)
 npm install -g wrangler
-
-# 安装 cloudflared (Cloudflare Tunnel)
 winget install Cloudflare.cloudflared
-```
 
-**2. 启动本地后端:**
-```powershell
-cd backend
-python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-```
-
-**3. 启动 Tunnel 暴露后端:**
-```powershell
+# 2. 确保后端在运行中，并开启 Tunnel
 .\scripts\start-tunnel.ps1
-# 请记录输出的公网 URL (如: https://xxx-xxx.trycloudflare.com)
+# (记录此时终端输出的 TryCloudflare URL)
+
+# 3. 构建并发布前端静态文件
+.\scripts\deploy-frontend.ps1 -TunnelUrl "https://您的tunnel地址"
 ```
 
-**4. 部署前端:**
-```powershell
-.\scripts\deploy-frontend.ps1 -TunnelUrl "https://你的tunnel地址"
-```
+> ⚠️ 注意: 临时 Tunnel 地址在每次重启后均会变化，若需要长期稳定使用，请在 Cloudflare Dashboard 中配置固定 Tunnel。
 
-**5. 访问地址**: 
-前端部署完成后，访问对应的 Pages 链接（如 `https://latextrans.pages.dev`）。
+## 📖 规范与贡献
 
-> **注意**: 如果使用临时 Tunnel，每次重启后端 Tunnel 地址可能会变化，需要重新部署并绑定前端。保持 Tunnel 终端开启以维持稳定的长连接。
+该项目采用 **OpenSpec** 驱动的纯规划开发模式，所有新功能、变更以及架构更新都必须首先在 `openspec/changes/` 目录中建立提案并经过验证后方可执行。
 
-## 5. 贡献指南
+### 贡献流程
+1. 查看已有规范: 浏览 `openspec/specs/` 了解系统当前的真实行为。
+2. 提案撰写: 使用 `openspec init` 和对应指令生成修改草案，确保所有包含的需求都有明确的 Scenario 验证。
+3. 执行: 只有提案完全通过 `openspec validate` 后，才可开始编写前端或后端代码。
+4. 提交测试: 确保 AST 解析测试通过，并在提交中使用 Conventional Commits (例如: `feat: add guest cleanup`).
 
-* 提交代码前请确保通过最新的 AST 解析测试。
-* 所有新功能必须包含对应的单元测试覆盖。
-* Commit Message 需遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 规范 (例如: `feat: add rag retriever`).
+更多细节请参考 [OpenSpec 指南 (openspec/AGENTS.md)](openspec/AGENTS.md).

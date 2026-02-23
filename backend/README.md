@@ -131,7 +131,13 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
     "generate_terminology_table": true,
     "use_author_api": true,
     "custom_base_url": null,
-    "custom_api_key": null
+    "custom_api_key": null,
+    "typography": {
+      "line_spacing": 1.5,
+      "font_size": 11,
+      "enable_two_column": false
+    },
+    "enable_email_notification": true
   }
 }
 ```
@@ -150,6 +156,11 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 - `use_author_api`: 是否使用默认 API (false 时使用自定义 API)
 - `custom_base_url`: 自定义 API 端点（可选）
 - `custom_api_key`: 自定义 API 密钥（可选）
+- `typography`: 进阶排版配置 (可选)
+  - `line_spacing`: 行距 (例如 1.5)
+  - `font_size`: 字号 (例如 11)
+  - `enable_two_column`: 双栏排版
+- `enable_email_notification`: 任务完成/失败时是否发送邮件通知
 
 **响应:**
 ```json
