@@ -18,6 +18,7 @@ import re
 import json
 import zipfile
 import tarfile
+from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 import regex
 import subprocess
@@ -560,8 +561,16 @@ def get_captionof_pattern():
     return pattern
 
 
-def add_ctex_package(latex_code):
-    """Add ctex package for Chinese support and handle XeLaTeX compatibility"""
+def add_ctex_package(latex_code, tex_file_path: str = None):
+    """Add ctex package for Chinese support and handle XeLaTeX compatibility.
+
+    Args:
+        latex_code: The main .tex source code.
+        tex_file_path: Optional path to the .tex file.  When provided, also
+            scans sibling .cls / .sty files and neutralises pdfLaTeX-only
+            font packages (fontenc[T1], newtxtext, …) that would otherwise
+            prevent CJK characters from rendering under xelatex+ctex.
+    """
     if "\\usepackage[UTF8]{ctex}" not in latex_code:
         ctex_package = "\\usepackage[UTF8]{ctex}"
         documentclass = r'documentclass'
@@ -570,10 +579,15 @@ def add_ctex_package(latex_code):
         if match:
             position = match.end()
             latex_code = latex_code[:position] + "\n" + ctex_package + "\n" + latex_code[position:]
-    
-    # Comment out pdfLaTeX-specific commands for XeLaTeX compatibility
+
+    # Comment out pdfLaTeX-specific commands in the main .tex
     latex_code = _comment_out_pdflatex_commands(latex_code)
-    
+
+    # Also patch sibling .cls / .sty files that may load pdfLaTeX-only font
+    # packages internally (e.g. atlasdoc.cls loading fontenc[T1] + newtxtext).
+    if tex_file_path:
+        _patch_sibling_style_files(tex_file_path)
+
     return latex_code
 
 
@@ -649,6 +663,12 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
         r'\\pdfminorversion\s*=\s*\d+',    # \pdfminorversion=7
         r'\\pdfpagewidth\s*=',             # \pdfpagewidth=...
         r'\\pdfpageheight\s*=',            # \pdfpageheight=...
+        # Font packages incompatible with xelatex + ctex/xeCJK
+        r'(?:\\usepackage|\\RequirePackage)\s*\[T1\]\s*\{fontenc\}',  # fontenc[T1]
+        r'(?:\\usepackage|\\RequirePackage)\s*(?:\[[^\]]*\])?\s*\{newtxtext\}',
+        r'(?:\\usepackage|\\RequirePackage)\s*(?:\[[^\]]*\])?\s*\{newtxmath\}',
+        r'(?:\\usepackage|\\RequirePackage)\s*(?:\[[^\]]*\])?\s*\{txfonts\}',
+        r'\\pdfinclusioncopyfonts\s*=\s*\d+',  # \pdfinclusioncopyfonts=1
     ]
     
     combined_pattern = re.compile('|'.join(pdflatex_single_patterns))
@@ -670,6 +690,48 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
     
     return '\n'.join(modified_lines)
 
+
+def _patch_sibling_style_files(tex_file_path: str) -> None:
+    """Patch .cls and .sty files in the same directory as the .tex file.
+
+    Custom document classes (e.g. ``atlasdoc.cls``) often load pdfLaTeX-only
+    font packages such as ``fontenc[T1]``, ``newtxtext``, or ``newtxmath``
+    via ``\\RequirePackage``.  Under xelatex + ctex, these packages override
+    the Unicode font handling and make CJK characters invisible (rendered
+    with ``nullfont``).
+
+    This function scans sibling ``.cls`` and ``.sty`` files and applies the
+    same ``_comment_out_pdflatex_commands`` transformation used on the main
+    ``.tex`` file.
+    """
+    import glob
+
+    tex_dir = os.path.dirname(os.path.abspath(tex_file_path))
+    patched = 0
+
+    for ext in ("*.cls", "*.sty"):
+        for style_path in glob.glob(os.path.join(tex_dir, ext)):
+            try:
+                with open(style_path, "r", encoding="utf-8", errors="replace") as f:
+                    original = f.read()
+
+                patched_content = _comment_out_pdflatex_commands(original)
+
+                if patched_content != original:
+                    with open(style_path, "w", encoding="utf-8") as f:
+                        f.write(patched_content)
+                    patched += 1
+                    logger.info(
+                        f"[CJK compat] Patched pdfLaTeX font packages in "
+                        f"{os.path.basename(style_path)}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[CJK compat] Failed to patch {style_path}: {e}"
+                )
+
+    if patched:
+        logger.info(f"[CJK compat] Patched {patched} style file(s) for xelatex+ctex")
 
 def add_ja_package(latex_code):
     """Add Japanese package support"""
@@ -757,7 +819,7 @@ def add_cyrillic_font_support(latex_code: str, target_language: str = "ru") -> s
     return latex_code
 
 
-def add_cjk_package(latex_code: str, target_language: str = "en") -> str:
+def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path: str = None) -> str:
     """
     Dynamically inject the appropriate font/language package based on target language.
 
@@ -775,7 +837,7 @@ def add_cjk_package(latex_code: str, target_language: str = "en") -> str:
     lang = target_language.lower()
     if lang in ("zh", "ch"):
         # Chinese: use ctex package
-        return add_ctex_package(latex_code)
+        return add_ctex_package(latex_code, tex_file_path=tex_file_path)
     elif lang == "ko":
         # Korean: use xeCJK with Korean-capable fonts
         # UnBatang/UnDotum are bundled with TeX Live (un-core package)
@@ -1077,6 +1139,8 @@ class DownloadProgressCallback:
             "downloading_pdf": (60, 80),  # 下载 PDF 60-80%
             "validating": (80, 100)       # 验证文件 80-100%
         }
+        # 节流：记录上次上报的整数进度，避免对每个数据块都触发 Supabase 写入
+        self._last_reported_progress: int = -1
     
     def update(self, current: int, total: int):
         """
@@ -1092,7 +1156,14 @@ class DownloadProgressCallback:
         start, end = self.stage_ranges.get(self.stage, (0, 100))
         stage_progress = (current / total) if total > 0 else 0
         overall_progress = int(start + (end - start) * stage_progress)
-        
+
+        # 节流：仅在整数进度发生变化或下载/解压完成时才上报，
+        # 避免对每个 8KB 数据块都触发一次同步 Supabase 写操作。
+        is_complete = (current >= total)
+        if overall_progress <= self._last_reported_progress and not is_complete:
+            return
+        self._last_reported_progress = overall_progress
+
         # 获取阶段描述
         stage_descriptions = {
             "downloading": "正在下载 TeX 源码",
@@ -1101,7 +1172,7 @@ class DownloadProgressCallback:
             "validating": "正在验证文件"
         }
         message = f"{stage_descriptions.get(self.stage, self.stage)}: {int(stage_progress * 100)}%"
-        
+
         self.task_manager.update_task(
             task_id=self.task_id,
             progress=overall_progress,
@@ -1460,7 +1531,36 @@ def _inject_after_cjk_package(latex_code: str, block: str) -> str:
 
     return _inject_after_documentclass(latex_code, block)
 
-def apply_formatting_config(latex_code: str, config) -> str:
+# ---------------------------------------------------------------------------
+# Document-class font size restrictions
+# Keys are LaTeX class names; values are sets of supported pt sizes.
+# Used by apply_formatting_config() to auto-downgrade unsafe values.
+# ---------------------------------------------------------------------------
+_RESTRICTED_DOCCLASSES: Dict[str, set] = {
+    "revtex4-2":   {10, 12},
+    "revtex4-1":   {10, 12},
+    "revtex4":     {10, 12},
+    "IEEEtran":    {9, 10, 11, 12},
+    "elsarticle":  {10, 11, 12},
+    "svjour3":     {10},
+    "spie":        {10, 12},
+    "aastex":      {10, 12},
+    "aastex62":    {10, 12},
+}
+
+
+def _detect_docclass(latex_code: str) -> str:
+    """Extract document class name from \\documentclass command."""
+    m = re.search(r'\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}', latex_code)
+    return m.group(1).strip() if m else ""
+
+
+def _nearest_allowed_size(requested: float, allowed: set) -> int:
+    """Return the size in *allowed* closest to *requested*."""
+    return min(allowed, key=lambda x: abs(x - requested))
+
+
+def apply_formatting_config(latex_code: str, config) -> tuple:
     """
     Inject typography formatting commands into the LaTeX preamble based on
     FormattingConfig settings.
@@ -1475,10 +1575,13 @@ def apply_formatting_config(latex_code: str, config) -> str:
                 If None or all fields are None, the original code is returned unchanged.
 
     Returns:
-        Modified LaTeX source code.
+        (modified_latex_code, list_of_warning_messages)
+        Callers should pass warnings to task_manager.update_task(warnings=...)
     """
+    fmt_warnings: list = []
+
     if config is None:
-        return latex_code
+        return latex_code, fmt_warnings
 
     # Support both Pydantic model and plain dict
     def _get(field, default=None):
@@ -1503,13 +1606,24 @@ def apply_formatting_config(latex_code: str, config) -> str:
         line_spacing, font_size, cjk_font, column_mode,
         margin, paragraph_indent, bib_style, cite_style, localize_captions
     ]):
-        return latex_code
+        return latex_code, fmt_warnings
 
     logger.info(f"apply_formatting_config: applying {config!r}")
 
     # -----------------------------------------------------------------------
     # 1. Line spacing — inject setspace package + \setstretch{}
     # -----------------------------------------------------------------------
+    if line_spacing is not None:
+        # ── Validate line spacing range ─────────────────────────────────────
+        if line_spacing < 1.0 or line_spacing > 2.5:
+            warn_msg = (
+                f"行间距 {line_spacing} 超出安全范围 [1.0, 2.5]，"
+                f"已跳过注入以避免排版异常"
+            )
+            fmt_warnings.append(warn_msg)
+            logger.warning(f"[apply_formatting_config] {warn_msg}")
+            line_spacing = None  # skip injection
+
     if line_spacing is not None:
         spacing_block = ""
         if not _has_package(latex_code, "setspace"):
@@ -1527,6 +1641,28 @@ def apply_formatting_config(latex_code: str, config) -> str:
     # -----------------------------------------------------------------------
     # 2. Font size — replace/add pt option in \documentclass[...]{...}
     # -----------------------------------------------------------------------
+    if font_size is not None:
+        # ── Validate / auto-downgrade font size ──────────────────────────────
+        docclass = _detect_docclass(latex_code)
+        restricted = _RESTRICTED_DOCCLASSES.get(docclass)
+        if restricted and int(font_size) not in restricted:
+            safe = _nearest_allowed_size(font_size, restricted)
+            warn_msg = (
+                f"字号 {font_size:g}pt 与文档类 '{docclass}' 不兼容（仅支持 "
+                f"{sorted(restricted)}pt），已自动调整为 {safe}pt"
+            )
+            fmt_warnings.append(warn_msg)
+            logger.warning(f"[apply_formatting_config] {warn_msg}")
+            font_size = float(safe)
+        elif font_size < 8 or font_size > 14:
+            warn_msg = (
+                f"字号 {font_size:g}pt 超出安全范围 [8, 14]pt，"
+                f"已跳过注入以避免编译错误"
+            )
+            fmt_warnings.append(warn_msg)
+            logger.warning(f"[apply_formatting_config] {warn_msg}")
+            font_size = None  # skip injection entirely
+
     if font_size is not None:
         pt_str = f"{font_size:g}pt"
         # Match \documentclass[...Xpt...]{...} and replace the Xpt part
@@ -1709,4 +1845,4 @@ def apply_formatting_config(latex_code: str, config) -> str:
             latex_code = _inject_after_begin_document(latex_code, caption_block.rstrip())
         logger.debug("Injected localize_captions=True")
 
-    return latex_code
+    return latex_code, fmt_warnings

@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Progress } from '@/components/ui/progress'
 import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -138,14 +137,44 @@ export default function Dashboard() {
 
                             {/* Download Progress Bar */}
                             {isDownloading && (
-                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex justify-between text-sm text-muted-foreground">
-                                        <span className="capitalize">{downloadStage?.replace(/_/g, ' ') || 'Process Started...'}</span>
-                                        <span className="font-mono">{Math.round(downloadProgress)}%</span>
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 rounded-xl border border-border/60 bg-muted/30 p-4 backdrop-blur-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className="relative flex h-2.5 w-2.5">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+                                            </span>
+                                            <span className="text-sm font-medium capitalize text-foreground">
+                                                {downloadStage?.replace(/_/g, ' ') || 'Starting...'}
+                                            </span>
+                                        </div>
+                                        <span className="text-sm font-mono font-semibold text-primary tabular-nums">
+                                            {Math.round(downloadProgress)}%
+                                        </span>
                                     </div>
-                                    <Progress value={downloadProgress} className="h-2" />
+                                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
+                                            style={{ width: `${Math.round(downloadProgress)}%` }}
+                                        />
+                                        {/* shimmer effect */}
+                                        {downloadProgress < 100 && (
+                                            <div
+                                                className="absolute inset-0 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_1.5s_infinite] rounded-full"
+                                                style={{ backgroundSize: '200% 100%' }}
+                                            />
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {downloadStage === 'downloading' && '正在从 arXiv 下载 TeX 源码，请耐心等待…'}
+                                        {downloadStage === 'extracting' && '正在解压缩文件…'}
+                                        {downloadStage === 'downloading_pdf' && '正在下载 PDF 参考文件…'}
+                                        {downloadStage === 'validating' && '正在验证源码有效性…'}
+                                        {!downloadStage && '正在准备中…'}
+                                    </p>
                                 </div>
                             )}
+
                         </TabsContent>
 
                         <TabsContent value="upload" className="mt-0">

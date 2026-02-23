@@ -129,6 +129,28 @@ class Settings(BaseSettings):
         env="GUEST_TASK_TTL_HOURS"
     )
 
+    # SMTP / Email Notification Settings (all optional)
+    smtp_host: Optional[str] = Field(default=None, env="SMTP_HOST")
+    smtp_port: int = Field(default=587, env="SMTP_PORT")
+    smtp_user: Optional[str] = Field(default=None, env="SMTP_USER")
+    smtp_password: Optional[str] = Field(default=None, env="SMTP_PASSWORD")
+    smtp_from: Optional[str] = Field(
+        default=None,
+        env="SMTP_FROM",
+        description="Sender address; defaults to SMTP_USER if not set"
+    )
+
+    # Global LLM API concurrency limit (across all tasks and all users)
+    # Set this to the max concurrent requests your LLM provider allows.
+    # - NVIDIA NIM free tier: ~40 RPM → use 30
+    # - OpenAI Tier 1: ~500 RPM → use 50-100
+    # - Self-hosted Triton NIM: no hard limit → use 100-200
+    llm_max_concurrent_requests: int = Field(
+        default=30,
+        env="LLM_MAX_CONCURRENT_REQUESTS",
+        description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
+    )
+
     # Server Settings
     host: str = "0.0.0.0"
     port: int = 8000

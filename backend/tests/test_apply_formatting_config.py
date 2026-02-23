@@ -1,6 +1,7 @@
 """
 Unit tests for apply_formatting_config() in utils.py.
-Covers all 9 injection scenarios and conflict detection.
+Covers all 9 injection scenarios, conflict detection,
+font-size safe-range enforcement and restricted-docclass auto-downgrade.
 """
 
 import sys
@@ -39,6 +40,17 @@ NATBIB_DOC = r"""\documentclass{article}
 \end{document}
 """
 
+REVTEX_DOC = r"""\documentclass[reprint,amsmath,amssymb,aps]{revtex4-2}
+\begin{document}
+\end{document}
+"""
+
+
+# ── Helper: unpack tuple return ───────────────────────────────────────────
+def fmt(latex, config):
+    """Apply formatting and return (modified_code, warnings)."""
+    return apply_formatting_config(latex, config)
+
 
 # ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -46,8 +58,9 @@ class TestNone:
     """Config = None → code unchanged"""
 
     def test_none_returns_unchanged(self):
-        result = apply_formatting_config(MINIMAL_DOC, None)
+        result, warns = fmt(MINIMAL_DOC, None)
         assert result == MINIMAL_DOC
+        assert warns == []
 
     def test_all_none_fields_returns_unchanged(self):
         class EmptyConfig:
@@ -60,8 +73,9 @@ class TestNone:
             bib_style = None
             cite_style = None
             localize_captions = None
-        result = apply_formatting_config(MINIMAL_DOC, EmptyConfig())
+        result, warns = fmt(MINIMAL_DOC, EmptyConfig())
         assert result == MINIMAL_DOC
+        assert warns == []
 
 
 class TestLineSpacing:
@@ -73,7 +87,7 @@ class TestLineSpacing:
             font_size = cjk_font = column_mode = margin = None
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, _ = fmt(MINIMAL_DOC, C())
         assert r'\usepackage{setspace}' in result
         assert r'\setstretch{1.5}' in result
 
@@ -89,7 +103,7 @@ class TestLineSpacing:
             font_size = cjk_font = column_mode = margin = None
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(doc, C())
+        result, _ = fmt(doc, C())
         assert result.count(r'\usepackage{setspace}') == 1
         assert r'\setstretch{1.5}' in result
         # Old setstretch replaced
@@ -106,8 +120,9 @@ class TestFontSize:
             cjk_font = column_mode = margin = None
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, warns = fmt(MINIMAL_DOC, C())
         assert '14pt' in result
+        assert warns == []  # 14pt is within safe range, normal doc class
 
     def test_no_existing_options_adds_bracket(self):
         doc = r'\documentclass{article}' + '\n' + r'\begin{document}' + '\nEnd.\n' + r'\end{document}'
@@ -118,8 +133,83 @@ class TestFontSize:
             cjk_font = column_mode = margin = None
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(doc, C())
+        result, warns = fmt(doc, C())
         assert '11pt' in result
+        assert warns == []
+
+
+class TestFontSizeSafeRange:
+    """font_size out of [8, 14] range → injected skipped with warning"""
+
+    def test_too_small_skipped(self):
+        class C:
+            line_spacing = None
+            font_size = 6
+            cjk_font = column_mode = margin = None
+            paragraph_indent = bib_style = cite_style = localize_captions = None
+
+        result, warns = fmt(MINIMAL_DOC, C())
+        # '6pt' should NOT appear in the documentclass (skip injection)
+        assert '6pt' not in result
+        assert '12pt' in result  # original preserved
+        assert len(warns) == 1
+        assert '6' in warns[0]
+
+    def test_too_large_skipped(self):
+        class C:
+            line_spacing = None
+            font_size = 20
+            cjk_font = column_mode = margin = None
+            paragraph_indent = bib_style = cite_style = localize_captions = None
+
+        result, warns = fmt(MINIMAL_DOC, C())
+        assert '20pt' not in result
+        assert '12pt' in result  # original preserved
+        assert len(warns) == 1
+        assert '20' in warns[0]
+
+
+class TestFontSizeRestrictedDocclass:
+    """Restricted documentclass → font_size auto-downgraded to nearest allowed"""
+
+    def test_revtex_incompatible_size_downgraded(self):
+        class C:
+            line_spacing = None
+            font_size = 11  # revtex4-2 only allows 10 or 12
+            cjk_font = column_mode = margin = None
+            paragraph_indent = bib_style = cite_style = localize_captions = None
+
+        result, warns = fmt(REVTEX_DOC, C())
+        # Should be downgraded to 10 (nearest to 11 in {10,12})
+        assert '10pt' in result
+        assert '11pt' not in result
+        assert len(warns) == 1
+        assert 'revtex4-2' in warns[0]
+        assert '10pt' in warns[0]
+
+    def test_revtex_compatible_size_unchanged(self):
+        class C:
+            line_spacing = None
+            font_size = 12  # allowed
+            cjk_font = column_mode = margin = None
+            paragraph_indent = bib_style = cite_style = localize_captions = None
+
+        result, warns = fmt(REVTEX_DOC, C())
+        assert '12pt' in result
+        assert warns == []
+
+    def test_revtex_downgrade_produces_warning_message(self):
+        """Warning message should contain both original and downgraded sizes."""
+        class C:
+            line_spacing = None
+            font_size = 8  # revtex4-2 only allows {10,12} → nearest is 10
+            cjk_font = column_mode = margin = None
+            paragraph_indent = bib_style = cite_style = localize_captions = None
+
+        _, warns = fmt(REVTEX_DOC, C())
+        assert len(warns) == 1
+        assert '8' in warns[0]
+        assert '10' in warns[0]
 
 
 class TestColumnMode:
@@ -131,7 +221,7 @@ class TestColumnMode:
             column_mode = 'single'
             margin = paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(TWOCOL_DOC, C())
+        result, _ = fmt(TWOCOL_DOC, C())
         assert 'twocolumn' not in result
         assert r'\onecolumn' in result
 
@@ -141,7 +231,7 @@ class TestColumnMode:
             column_mode = 'double'
             margin = paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, _ = fmt(MINIMAL_DOC, C())
         assert 'twocolumn' in result
 
 
@@ -154,7 +244,7 @@ class TestMargin:
             margin = 'narrow'
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, _ = fmt(MINIMAL_DOC, C())
         assert r'\usepackage' in result
         assert 'geometry' in result
         assert '1.5cm' in result
@@ -165,7 +255,7 @@ class TestMargin:
             margin = 'wide'
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, _ = fmt(MINIMAL_DOC, C())
         assert '3.5cm' in result
 
     def test_existing_geometry_replaced(self):
@@ -179,7 +269,7 @@ class TestMargin:
             margin = 'normal'
             paragraph_indent = bib_style = cite_style = localize_captions = None
 
-        result = apply_formatting_config(doc, C())
+        result, _ = fmt(doc, C())
         assert result.count(r'{geometry}') == 1
         assert '2.5cm' in result
 
@@ -194,7 +284,7 @@ class TestBibStyle:
             bib_style = 'gbt7714-numerical'
             cite_style = localize_captions = None
 
-        result = apply_formatting_config(BIB_DOC, C())
+        result, _ = fmt(BIB_DOC, C())
         assert r'\bibliographystyle{gbt7714-numerical}' in result
         assert r'\bibliographystyle{plain}' not in result
 
@@ -209,7 +299,7 @@ class TestCiteStyle:
             cite_style = 'authoryear'
             localize_captions = None
 
-        result = apply_formatting_config(NATBIB_DOC, C())
+        result, _ = fmt(NATBIB_DOC, C())
         assert r'\usepackage[authoryear]{natbib}' in result
         assert r'\usepackage[numbers]{natbib}' not in result
 
@@ -220,7 +310,7 @@ class TestCiteStyle:
             cite_style = 'super'
             localize_captions = None
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, _ = fmt(MINIMAL_DOC, C())
         assert r'\usepackage[super]{natbib}' in result
 
 
@@ -233,7 +323,7 @@ class TestLocalizeCaptions:
             paragraph_indent = bib_style = cite_style = None
             localize_captions = True
 
-        result = apply_formatting_config(MINIMAL_DOC, C())
+        result, _ = fmt(MINIMAL_DOC, C())
         assert r'\renewcommand{\figurename}{图}' in result
         assert r'\renewcommand{\tablename}{表}' in result
 
@@ -248,7 +338,7 @@ class TestLocalizeCaptions:
             paragraph_indent = bib_style = cite_style = None
             localize_captions = True
 
-        result = apply_formatting_config(doc, C())
+        result, _ = fmt(doc, C())
         assert result.count(r'\renewcommand{\figurename}{图}') == 1
 
 
@@ -267,5 +357,6 @@ class TestDictSupport:
             'cite_style': None,
             'localize_captions': None,
         }
-        result = apply_formatting_config(MINIMAL_DOC, config)
+        result, warns = fmt(MINIMAL_DOC, config)
         assert r'\setstretch{2.0}' in result
+        assert warns == []

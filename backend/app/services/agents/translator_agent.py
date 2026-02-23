@@ -1,6 +1,7 @@
 from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
 from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C
+from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
 from pathlib import Path
@@ -246,42 +247,63 @@ class TranslatorAgent(BaseToolAgent):
                         captions: List[Dict[str, Any]],
                         session: aiohttp.ClientSession) -> Dict[str, Any]:
         """
-        Translates the input data
+        Translates the input data.
+
+        Uses a 3-phase concurrent approach:
+          Phase 1: Translate section body (single await, sequential).
+          Phase 2: Translate all referenced environments concurrently via asyncio.gather.
+                   Caption placeholders inside envs are also discovered here.
+          Phase 3: Translate all referenced captions concurrently via asyncio.gather.
         """
         placeholder_pattern_cap = r"<PLACEHOLDER_CAP_\d+>"
         placeholder_pattern_env = r"<PLACEHOLDER_ENV_\d+>"
         placeholders_cap = re.findall(placeholder_pattern_cap, section["content"])
         placeholders_env = re.findall(placeholder_pattern_env, section["content"])
 
-        # Section -1 is LaTeX preamble, never translate
-        # Section 0 may contain main body text, translate if it has translatable content
+        # ── Phase 1: Translate section body ──────────────────────────────────
+        # Section -1 is LaTeX preamble, never translate.
+        # Section 0 may contain main body text, translate if it has translatable content.
         if section["section"] == "-1":
-            section = section  # Skip preamble
+            pass  # Skip preamble
         elif section["section"] == "0":
             if self._section_has_translatable_content(section["content"]):
                 logger.info(f"Section 0 contains translatable content, translating...")
                 section = await self._translate_section(section, session)
-            else:
-                section = section  # Skip if no translatable content
+            # else: no translatable content, keep original
         else:
-            section = await self._translate_section(section, session)  
+            section = await self._translate_section(section, session)
 
-        for placeholder in placeholders_env:
-            for i, env in enumerate(envs):
-                if placeholder == env["placeholder"]:
-                    placeholders_cap_in_env = re.findall(placeholder_pattern_cap, env["content"])
-                    placeholders_cap.extend(placeholders_cap_in_env)
-                    envs[i] = await self._translate_env(env, session)  
-                    break
+        # ── Phase 2: Translate all environments concurrently ─────────────────
+        # Build a lookup: placeholder → index in envs list.
+        env_ph_to_idx = {env["placeholder"]: i for i, env in enumerate(envs)}
 
-        # remove duplicates
+        async def _translate_env_by_ph(placeholder: str):
+            idx = env_ph_to_idx.get(placeholder)
+            if idx is None:
+                return
+            env = envs[idx]
+            # Discover captions embedded inside this env's content.
+            cap_phs_in_env = re.findall(placeholder_pattern_cap, env["content"])
+            placeholders_cap.extend(cap_phs_in_env)
+            envs[idx] = await self._translate_env(env, session)
+
+        if placeholders_env:
+            await asyncio.gather(*[_translate_env_by_ph(ph) for ph in placeholders_env])
+
+        # ── Phase 3: Translate all captions concurrently ─────────────────────
+        # Remove duplicates while preserving order (captions from section + from envs).
         placeholders_cap = list(dict.fromkeys(placeholders_cap))
 
-        for placeholder in placeholders_cap:
-            for i, caption in enumerate(captions):
-                if placeholder == caption["placeholder"]:
-                    captions[i] = await self._translate_caption(caption, session)  
-                    break
+        cap_ph_to_idx = {cap["placeholder"]: i for i, cap in enumerate(captions)}
+
+        async def _translate_caption_by_ph(placeholder: str):
+            idx = cap_ph_to_idx.get(placeholder)
+            if idx is None:
+                return
+            captions[idx] = await self._translate_caption(captions[idx], session)
+
+        if placeholders_cap:
+            await asyncio.gather(*[_translate_caption_by_ph(ph) for ph in placeholders_cap])
 
         return section
     
@@ -779,16 +801,25 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
 
+        _timeout = aiohttp.ClientTimeout(total=180)
         for attempt in range(1, 4):
             try:
-                async with session.post(self.base_url, json=payload, headers=headers, timeout=100) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
+                            logger.warning(f"Rate limited (429), waiting {retry_after}s before retry {attempt}/3 for {fail_part}")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result["choices"][0]["message"]["content"].strip()
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
                 if attempt < 3:
-                    await asyncio.sleep(5)
+                    logger.warning(f"LLM request attempt {attempt}/3 failed for {fail_part}: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
                     self.have_fail_parts = True
                     if type == 'sec':
@@ -798,7 +829,7 @@ class TranslatorAgent(BaseToolAgent):
                     else:
                         self.fail_env_phs.append(fail_part)
 
-                    print(f"❌ Failed to translate text, return the original text:{fail_part}. {e}")
+                    logger.error(f"❌ Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
                     return text
 
     async def _request_llm_for_trans_with_terms(self,
@@ -830,16 +861,25 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
 
+        _timeout = aiohttp.ClientTimeout(total=180)
         for attempt in range(1, 4):
             try:
-                async with session.post(self.base_url, json=payload, headers=headers, timeout=100) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
+                            logger.warning(f"Rate limited (429), waiting {retry_after}s before retry {attempt}/3 for {fail_part}")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result["choices"][0]["message"]["content"].strip()
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
                 if attempt < 3:
-                    await asyncio.sleep(5)
+                    logger.warning(f"LLM request attempt {attempt}/3 failed for {fail_part}: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
                     self.have_fail_parts = True
                     if type == 'sec':
@@ -849,8 +889,7 @@ class TranslatorAgent(BaseToolAgent):
                     else:
                         self.fail_env_phs.append(fail_part)
 
-                    print(f"❌ Failed to translate text, return the original text:{fail_part}. {e}")
-
+                    logger.error(f"❌ Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
                     return text
 
     async def _request_llm_for_retrans_error_parts(self,
@@ -885,17 +924,25 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
 
+        _timeout = aiohttp.ClientTimeout(total=180)
         for attempt in range(1, 4):
             try:
-                async with session.post(self.base_url, json=payload, headers=headers, timeout=100) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
+                            logger.warning(f"Rate limited (429), waiting {retry_after}s before retry {attempt}/3 for {fail_part}")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result["choices"][0]["message"]["content"].strip()
 
-            except requests.exceptions.RequestException as e:
-                # print(f"⚠️ The {attempt}th request to translate {fail_part} failed: {e}")
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
                 if attempt < 3:
-                    await asyncio.sleep(5)
+                    logger.warning(f"LLM request attempt {attempt}/3 failed for {fail_part}: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
                     self.have_fail_parts = True
                     if type == 'sec':
@@ -905,7 +952,7 @@ class TranslatorAgent(BaseToolAgent):
                     else:
                         self.fail_env_phs.append(fail_part)
 
-                    print(f"❌ Failed to translate text, return the original text:{fail_part}. {e}")
+                    logger.error(f"❌ Failed to retranslate error parts after 3 attempts, returning previous translation: {fail_part}. {e}")
                     return part["trans_content"]
 
     async def _request_llm_for_extract_terms(self, system_prompt, src, tgt,
@@ -933,18 +980,27 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
 
+        _timeout = aiohttp.ClientTimeout(total=180)
         for attempt in range(1, 4):
             try:
-                async with session.post(self.base_url, json=payload, headers=headers, timeout=100) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
+                            logger.warning(f"Rate limited (429) during term extraction, waiting {retry_after}s")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result["choices"][0]["message"]["content"].strip()
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
                 if attempt < 3:
-                    await asyncio.sleep(5)
+                    logger.warning(f"Term extraction attempt {attempt}/3 failed: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
-                    print(f"⚠️ Failed to extract terms, set N/A.")
+                    logger.warning("Failed to extract terms after 3 attempts, set N/A.")
                     return "N/A"
 
     async def _request_llm_for_summary(self, system_prompt: str, text: str, session: aiohttp.ClientSession) -> str:
@@ -972,18 +1028,26 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
         
+        _timeout = aiohttp.ClientTimeout(total=180)
         for attempt in range(1, 4):
             try:
-                async with session.post(self.base_url, json=payload, headers=headers, timeout=100) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
+                            logger.warning(f"Rate limited (429) during summarization, waiting {retry_after}s")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result["choices"][0]["message"]["content"].strip()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                wait = 5 * (2 ** (attempt - 1))
                 if attempt < 3:
-                    logger.warning(f"Summary attempt {attempt} failed: {e}")
-                    await asyncio.sleep(3)
+                    logger.warning(f"Summary attempt {attempt}/3 failed: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
-                    logger.warning("Failed to summarize text, set N/A.")
+                    logger.warning("Failed to summarize text after 3 attempts, set N/A.")
                     return "N/A"
 
     async def _request_llm_for_refine_summary(self, system_prompt: str, text: str, sum: str, session: aiohttp.ClientSession) -> str:
@@ -1011,18 +1075,26 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
         
+        _timeout = aiohttp.ClientTimeout(total=180)
         for attempt in range(1, 4):
             try:
-                async with session.post(self.base_url, json=payload, headers=headers, timeout=100) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
+                            logger.warning(f"Rate limited (429) during refine summary, waiting {retry_after}s")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result["choices"][0]["message"]["content"].strip()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                wait = 5 * (2 ** (attempt - 1))
                 if attempt < 3:
-                    logger.warning(f"Refine summary attempt {attempt} failed: {e}")
-                    await asyncio.sleep(3)
+                    logger.warning(f"Refine summary attempt {attempt}/3 failed: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
-                    logger.warning("Failed to refine summary, set N/A.")
+                    logger.warning("Failed to refine summary after 3 attempts, set N/A.")
                     return "N/A"
 
     def _updated_term_dict(self, text: str) -> None:

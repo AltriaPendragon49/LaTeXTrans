@@ -199,11 +199,11 @@ export const FormattingPanel = ({
                     icon={<AlignJustify className="w-4 h-4" />}
                     value={value.line_spacing}
                     onChange={(v) => onChange({ line_spacing: v ?? undefined })}
-                    min={0.8}
-                    max={4}
+                    min={1.0}
+                    max={2.5}
                     step={0.1}
                     placeholder="保持原样（例：1.5）"
-                    tooltip="行距倍数，如 1.5 表示 1.5 倍行距"
+                    tooltip="行距倍数 (1.0-2.5)。小于 1.0 会导致排版混乱，后端会自动跳过"
                 />
                 <NumericField
                     id="fmt-font-size"
@@ -211,11 +211,11 @@ export const FormattingPanel = ({
                     icon={<Type className="w-4 h-4" />}
                     value={value.font_size}
                     onChange={(v) => onChange({ font_size: v ?? undefined })}
-                    min={6}
-                    max={24}
+                    min={8}
+                    max={14}
                     step={0.5}
                     placeholder="保持原样（例：12）"
-                    tooltip="全局字号，单位 pt，如 10/11/12"
+                    tooltip="全局字号 (8-14pt)。revtex4-2、IEEEtran 等文档类仅支持特定字号，后端会自动选择最近的安全值"
                 />
             </div>
 

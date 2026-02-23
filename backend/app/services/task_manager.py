@@ -191,7 +191,6 @@ class TaskManager:
                     db_updates["translation_mode"] = advanced_config.get("translation_mode", "full")
                     db_updates["compile_strategy"] = advanced_config.get("compile_strategy", "auto")
                     db_updates["translation_model"] = advanced_config.get("translation_model")
-                    db_updates["enable_verification"] = advanced_config.get("enable_verification", True)
                     db_updates["generate_glossary"] = advanced_config.get("generate_terminology_table", True)
                     db_updates["use_author_api"] = advanced_config.get("use_author_api", True)
                     db_updates["custom_base_url"] = advanced_config.get("custom_base_url")
@@ -228,8 +227,88 @@ class TaskManager:
         # Sync to Supabase if user_id exists and we have updates
         if user_id and db_updates:
             self._persist_task_update(task_id, db_updates)
-        
+
+        # ── Email notification on terminal state ──────────────────────────
+        # Fire-and-forget: errors are logged but never raised to the caller.
+        final_statuses = {
+            TaskStatus.COMPLETED.value,
+            TaskStatus.COMPLETED_WITH_WARNINGS.value,
+            TaskStatus.FAILED.value,
+            TaskStatus.FAILED_COMPILATION.value,
+        }
+        if status in final_statuses:
+            self._maybe_send_email_notification(task_id, status, user_id)
+
         return True
+
+    def _maybe_send_email_notification(
+        self, task_id: str, status: str, user_id: Optional[str]
+    ):
+        """
+        If the task requested email notification AND the user is authenticated,
+        look up the user's email from Supabase auth.users and dispatch a
+        notification via EmailService.
+
+        Runs synchronously (called from update_task) but all failures are
+        swallowed so they never interrupt the main task flow.
+        """
+        try:
+            # Retrieve the full task snapshot (already under lock by this point)
+            with self._lock:
+                task_snap = self._tasks.get(task_id, {}).copy()
+
+            adv = task_snap.get("advanced_config") or {}
+            if not adv.get("email_notification"):
+                return  # User did not opt in
+
+            uid = user_id or task_snap.get("user_id")
+            if not uid:
+                return  # Guest users have no email address
+
+            # Fetch user email from Supabase auth admin API
+            client = get_supabase_admin_client()
+            if not client:
+                logger.warning(
+                    f"[EmailService] Cannot send notification for task {task_id}: "
+                    "Supabase admin client unavailable."
+                )
+                return
+
+            try:
+                user_resp = client.auth.admin.get_user_by_id(uid)
+                to_email = (
+                    user_resp.user.email
+                    if user_resp and user_resp.user
+                    else None
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[EmailService] Failed to fetch email for user {uid}: {e}"
+                )
+                return
+
+            if not to_email:
+                logger.warning(
+                    f"[EmailService] No email found for user {uid}, skipping notification."
+                )
+                return
+
+            # Dispatch email (non-blocking, errors swallowed inside EmailService)
+            from backend.app.services.email_service import get_email_service
+            get_email_service().send_task_completed_email(
+                to_email=to_email,
+                task_id=task_id,
+                status=status,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[EmailService] Unexpected error while sending notification "
+                f"for task {task_id}: {e}",
+                exc_info=True,
+            )
+
+
     
     def persist_task_if_needed(self, task_id: str) -> bool:
         """
@@ -551,7 +630,6 @@ class TaskManager:
                 db_record["translation_mode"] = advanced_config.get("translation_mode", "full")
                 db_record["compile_strategy"] = advanced_config.get("compile_strategy", "auto")
                 db_record["translation_model"] = advanced_config.get("translation_model")
-                db_record["enable_verification"] = advanced_config.get("enable_verification", True)
                 db_record["generate_glossary"] = advanced_config.get("generate_terminology_table", True)
                 db_record["use_author_api"] = advanced_config.get("use_author_api", True)
                 db_record["custom_base_url"] = advanced_config.get("custom_base_url")
@@ -655,7 +733,6 @@ class TaskManager:
                         "translation_mode": db_task.get("translation_mode", "full"),
                         "compile_strategy": db_task.get("compile_strategy", "auto"),
                         "translation_model": db_task.get("translation_model"),
-                        "enable_verification": db_task.get("enable_verification", True),
                         "generate_terminology_table": db_task.get("generate_glossary", True),
                         "use_author_api": db_task.get("use_author_api", True),
                     },

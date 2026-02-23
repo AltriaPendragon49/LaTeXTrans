@@ -27,7 +27,6 @@ interface UserSettings {
     translation_mode: string
     compile_strategy: string
     translation_model: string | null
-    enable_verification: boolean
     generate_glossary: boolean
     use_author_api: boolean
     custom_base_url: string | null
@@ -41,7 +40,6 @@ const defaultSettings: UserSettings = {
     translation_mode: 'full',
     compile_strategy: 'auto',
     translation_model: null,
-    enable_verification: true,
     generate_glossary: true,
     use_author_api: true,
     custom_base_url: null,
@@ -121,7 +119,6 @@ export default function SettingsPage() {
                 translation_mode: settings.translation_mode,
                 compile_strategy: settings.compile_strategy,
                 translation_model: settings.translation_model,
-                enable_verification: settings.enable_verification,
                 generate_glossary: settings.generate_glossary,
                 use_author_api: settings.use_author_api,
                 custom_base_url: settings.custom_base_url,
@@ -364,24 +361,9 @@ export default function SettingsPage() {
                     <Card className="border-border/50 bg-card/80">
                         <CardHeader>
                             <CardTitle className="text-lg">高级设置</CardTitle>
-                            <CardDescription>配置验证、术语表和 API 选项</CardDescription>
+                            <CardDescription>配置术语表和 API 选项</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* Enable Verification */}
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label htmlFor="enable_verification">验证代理</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                        使用双模型验证提高翻译质量
-                                    </p>
-                                </div>
-                                <Switch
-                                    id="enable_verification"
-                                    checked={settings.enable_verification}
-                                    onCheckedChange={(checked) => setSettings(s => ({ ...s, enable_verification: checked }))}
-                                />
-                            </div>
-
                             {/* Generate Glossary */}
                             <div className="flex items-center justify-between">
                                 <div className="space-y-0.5">

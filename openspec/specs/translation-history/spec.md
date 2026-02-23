@@ -71,24 +71,10 @@ The system SHALL update the translation task metadata to reflect the actual util
 
 #### Scenario: 完全匹配配置时复用 output
 - **WHEN** 用户启动翻译任务
-- **AND** 存在已完成任务具有相同 arxiv_id、source_language、target_language、translation_mode、compile_strategy、enable_verification
+- **AND** 存在已完成任务具有相同 arxiv_id、source_language、target_language、translation_mode、compile_strategy
 - **THEN** 系统深拷贝已有 output 目录到新任务
 - **AND** 新任务标记为 completed，跳过翻译流程
 - **AND** 新任务 output 与源 output 目录独立（深拷贝）
-
-#### Scenario: 跨用户复用
-- **WHEN** 用户 A 的翻译配置与用户 B 已完成任务一致
-- **THEN** 系统仍可复用用户 B 的 output（使用 admin client 查询）
-- **AND** 不向用户 A 暴露用户 B 的其他信息
-
-#### Scenario: 匹配 output 已被删除
-- **WHEN** 配置签名匹配到已完成任务
-- **BUT** 该任务的 output 目录不存在（已被删除）
-- **THEN** 系统跳过复用，启动正常翻译流程
-
-#### Scenario: 配置部分匹配
-- **WHEN** 存在已完成任务但配置仅部分匹配
-- **THEN** 系统不复用，启动正常翻译流程
 
 ### Requirement: Config Hash Storage
 系统 SHALL 在 translation_tasks 表中存储翻译配置签名用于快速匹配，签名包含排版配置。
@@ -96,18 +82,7 @@ The system SHALL update the translation task metadata to reflect the actual util
 #### Scenario: 创建任务时生成 config_hash
 - **WHEN** 翻译任务创建或翻译配置确定时
 - **THEN** 系统计算 config_hash 并存储到 translation_tasks 表
-- **AND** config_hash 基于 arxiv_id、source_language、target_language、translation_mode、compile_strategy、enable_verification、formatting 生成
-
-#### Scenario: 排版配置影响 config_hash
-- **WHEN** 两个翻译任务的排版配置不同但其他配置相同
-- **THEN** 两者的 config_hash 不同
-- **AND** output reuse 不会跨排版配置误命中
-
-#### Scenario: 历史记录展示排版快照
-- **WHEN** 用户在前端阅读某条历史记录详情
-- **AND** 当前任务具备有效的 formatting 排版字段快照数据
-- **THEN** 系统展示对应的“排版设置”区域详情
-- **AND** 以具有明显视觉区分度的组件样式（如 Badge）展示其各项排版的历史选择值
+- **AND** config_hash 基于 arxiv_id、source_language、target_language、translation_mode、compile_strategy、formatting 生成
 
 ### Requirement: Deferred Task Persistence
 系统 SHALL 在翻译阶段才将任务持久化到数据库，上传/下载阶段仅创建内存任务。

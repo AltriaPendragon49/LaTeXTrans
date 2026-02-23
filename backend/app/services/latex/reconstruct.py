@@ -177,9 +177,9 @@ class LatexConstructor:
             tex = re.sub(r"<PLACEHOLDER_[^>]*>", "", tex)
 
         # Add language-specific packages based on target language
-        tex = add_cjk_package(tex, self.target_language)
-
         main_file_path = find_main_tex_file(self.output_latex_dir)
+        tex = add_cjk_package(tex, self.target_language, tex_file_path=main_file_path)
+
         if os.path.exists(main_file_path):
             logger.info(f"Writing main tex file: {main_file_path}")
             with open(main_file_path, "w", encoding="utf-8") as f:

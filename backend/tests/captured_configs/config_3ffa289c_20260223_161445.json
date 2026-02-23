@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "task_id": "3ffa289c-eb3c-4b24-bf41-4d9a9106e708",
+    "captured_at": "2026-02-23T16:14:45.758162",
+    "timestamp": "20260223_161445"
+  },
+  "advanced_config": {
+    "translation_mode": "full",
+    "compile_strategy": "auto",
+    "generate_terminology_table": true,
+    "translation_model": "qwen/qwen3-235b-a22b",
+    "use_author_api": true,
+    "custom_base_url": "https://integrate.api.nvidia.com",
+    "custom_api_key": null,
+    "formatting": {
+      "line_spacing": 1.0,
+      "font_size": 12.0,
+      "cjk_font": null,
+      "column_mode": null,
+      "margin": null,
+      "paragraph_indent": true,
+      "bib_style": null,
+      "cite_style": null,
+      "localize_captions": true
+    },
+    "email_notification": true
+  },
+  "agent_config": {
+    "sys_name": "LaTeXTrans",
+    "target_language": "zh",
+    "source_language": "en",
+    "mode": 0,
+    "latex_engine": "auto",
+    "use_verification_agent": false,
+    "generate_terminology": true,
+    "llm_config": {
+      "api_key": "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",
+      "base_url": "https://integrate.api.nvidia.com/v1/chat/completions",
+      "model": "qwen/qwen3-235b-a22b",
+      "timeout": 60
+    }
+  },
+  "llm_config": {
+    "base_url": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "model": "qwen/qwen3-235b-a22b",
+    "timeout": 60,
+    "api_key_masked": "********************"
+  },
+  "additional_info": {
+    "user_id": "52180195-e893-4b3b-874f-dd9be92529db",
+    "task_id": "3ffa289c-eb3c-4b24-bf41-4d9a9106e708",
+    "target_language": "zh",
+    "source_language": "en",
+    "source_path": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\uploads\\arxiv_2502.02937\\2502.02937",
+    "output_dir": "D:\\future\\antigravity\\LaTexTrans\\backend\\data\\outputs\\3ffa289c-eb3c-4b24-bf41-4d9a9106e708"
+  }
+}

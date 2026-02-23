@@ -15,7 +15,7 @@ const steps = [
 ]
 
 export default function ProcessingPage() {
-    const { taskId: storeTaskId, status, logs, pollStatus, stopPolling, setTaskId } = useStore()
+    const { taskId: storeTaskId, status, logs, pollStatus, stopPolling, setTaskId, taskWarnings } = useStore()
     const [searchParams] = useSearchParams()
     const navigate = useNavigate()
     const { user } = useAuth()
@@ -57,7 +57,7 @@ export default function ProcessingPage() {
             {/* Guest warning banner */}
             {isGuest && (
                 <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-                    <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
                     <p className="flex-1 text-sm text-amber-300">
                         <span className="font-semibold">访客模式：</span>
                         离开此页面后将无法重新访问翻译结果。
@@ -68,6 +68,16 @@ export default function ProcessingPage() {
                             <LogIn className="h-3 w-3" />
                             登录以保存到历史记录
                         </button>
+                    </p>
+                </div>
+            )}
+
+            {/* Formatting warnings (e.g. auto-downgraded font size) */}
+            {taskWarnings && (
+                <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                    <p className="flex-1 text-sm text-amber-300">
+                        <span className="font-semibold">排版提示：</span>{taskWarnings}
                     </p>
                 </div>
             )}

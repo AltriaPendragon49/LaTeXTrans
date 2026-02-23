@@ -87,10 +87,19 @@ class GeneratorAgent(BaseToolAgent):
                 try:
                     with open(transed_main_tex, 'r', encoding='utf-8', errors='replace') as f:
                         tex_content = f.read()
-                    tex_content = apply_formatting_config(tex_content, formatting_config)
+                    tex_content, fmt_warnings = apply_formatting_config(tex_content, formatting_config)
                     with open(transed_main_tex, 'w', encoding='utf-8') as f:
                         f.write(tex_content)
                     logger.info(f"Applied formatting config to {transed_main_tex}")
+                    # Surface any auto-downgrade warnings via progress callback
+                    for warn in fmt_warnings:
+                        logger.warning(f"[FormattingConfig] {warn}")
+                        self.update_progress(80, f"⚠ 排版提示：{warn}")
+                    # Store warnings for caller to forward to task_manager
+                    if fmt_warnings and not hasattr(self, '_fmt_warnings'):
+                        self._fmt_warnings = []
+                    if fmt_warnings:
+                        self._fmt_warnings.extend(fmt_warnings)
                 except Exception as e:
                     logger.warning(f"Failed to apply formatting config: {e}")
             else:

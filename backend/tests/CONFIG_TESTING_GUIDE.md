@@ -1,5 +1,6 @@
-cd backend
+
 # 初始化测试环境
+cd backend
 python tests/test_config_interceptor.py
 
 # 应用拦截代码 (自动备份)  

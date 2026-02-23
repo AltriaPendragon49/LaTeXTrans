@@ -1,4 +1,4 @@
-import { Settings2, Info, Languages, BookText, CheckCircle2, Palette } from 'lucide-react'
+import { Settings2, Info, Languages, BookText, CheckCircle2, Palette, Mail } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 import {
@@ -17,6 +17,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useStore } from '@/store/useStore'
+import { useAuth } from '@/contexts/AuthContext'
 import type { TranslationMode, CompileStrategy, FormattingConfig } from '@/types/config'
 import { FormattingPanel } from '@/components/FormattingPanel'
 
@@ -62,6 +63,7 @@ const LANGUAGES = [
 
 export const AdvancedConfig = () => {
     const { config, setConfig, setAdvancedConfig, hasSystemApiKey } = useStore()
+    const { user } = useAuth()
     const { advanced_config, source_language, target_language } = config
 
     // Local handlers
@@ -220,14 +222,14 @@ export const AdvancedConfig = () => {
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="flex items-center justify-between space-x-4 p-3 rounded-lg border bg-card/30 flex-1">
                             <div className="space-y-0.5">
-                                <Label className="text-base">验证代理</Label>
+                                <Label className="text-base">使用作者默认 API</Label>
                                 <p className="text-xs text-muted-foreground">
-                                    使用双模型校验提高准确性
+                                    关闭后需要配置自定义 API 端点
                                 </p>
                             </div>
                             <SimpleSwitch
-                                checked={advanced_config.enable_verification}
-                                onCheckedChange={(v) => updateConfig('enable_verification', v)}
+                                checked={advanced_config.use_author_api}
+                                onCheckedChange={(v) => updateConfig('use_author_api', v)}
                             />
                         </div>
 
@@ -247,21 +249,26 @@ export const AdvancedConfig = () => {
                             />
                         </div>
                     </div>
-                </div>
 
-                {/* API Configuration */}
-                <div className="md:col-span-2 space-y-4 pt-2 border-t border-border/50">
-                    <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-sm text-muted-foreground">API 设置</h4>
-                    </div>
-
-                    <div className="flex items-center justify-between space-x-2">
-                        <Label>使用作者默认 API</Label>
-                        <SimpleSwitch
-                            checked={advanced_config.use_author_api}
-                            onCheckedChange={(v) => updateConfig('use_author_api', v)}
-                        />
-                    </div>
+                    {/* Email Notification – logged-in users only */}
+                    {user && (
+                        <div className="flex items-center justify-between space-x-4 p-3 rounded-lg border bg-card/30">
+                            <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                    <Mail className="w-4 h-4 text-muted-foreground" />
+                                    <Label className="text-base">发送邮件通知 (完成时)</Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    任务完成或失败时向账户邮箱发送通知
+                                </p>
+                            </div>
+                            <SimpleSwitch
+                                id="email-notification"
+                                checked={advanced_config.email_notification ?? false}
+                                onCheckedChange={(v) => updateConfig('email_notification', v)}
+                            />
+                        </div>
+                    )}
 
                     {!advanced_config.use_author_api && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">

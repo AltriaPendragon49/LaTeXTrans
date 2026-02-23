@@ -15,6 +15,7 @@ interface TranslationState {
     logs: string[]
     error: string | null
     isPolling: boolean
+    taskWarnings: string | null  // Font-size auto-downgrade and other formatting notices
     outputMetrics: {
         pdfPath?: string
         translationQuality?: number
@@ -66,6 +67,7 @@ export const useStore = create<TranslationState>((set, get) => ({
     logs: [],
     error: null,
     isPolling: false,
+    taskWarnings: null,
     outputMetrics: {},
 
     // Download Progress State
@@ -123,6 +125,7 @@ export const useStore = create<TranslationState>((set, get) => ({
             logs: [],
             error: null,
             isPolling: false,
+            taskWarnings: null,
             outputMetrics: {},
             latexValidation: null,
             isDownloading: false,
@@ -211,7 +214,6 @@ export const useStore = create<TranslationState>((set, get) => ({
                 advanced_config: {
                     translation_mode: settings.translation_mode || 'full',
                     compile_strategy: settings.compile_strategy || 'auto',
-                    enable_verification: settings.enable_verification ?? true,
                     generate_terminology_table: settings.generate_glossary ?? true,
                     translation_model: settings.translation_model || 'qwen/qwen3-235b-a22b',
                     use_author_api: settings.use_author_api ?? true,
@@ -510,6 +512,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     progress: statusData.progress,
                     message: statusData.message,
                     error: statusData.error || null,
+                    taskWarnings: (statusData as any).warnings ?? state.taskWarnings,
                     logs: statusData.logs ? statusData.logs : [...state.logs, statusData.message].filter((v, i, a) => a.indexOf(v) === i)
                 }))
 

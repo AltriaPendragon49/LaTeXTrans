@@ -35,7 +35,6 @@ class TaskHistoryItem(BaseModel):
     target_language: str
     compile_strategy: str
     translation_model: Optional[str] = None
-    enable_verification: bool
     generate_glossary: bool
     use_author_api: bool
     # Typography formatting snapshot (JSONB)
@@ -62,7 +61,6 @@ class TaskDetailResponse(BaseModel):
     translation_mode: str
     compile_strategy: str
     translation_model: Optional[str] = None
-    enable_verification: bool
     generate_glossary: bool
     use_author_api: bool
     # Typography formatting snapshot (JSONB)
@@ -105,7 +103,7 @@ async def get_user_history(
         query = supabase.table("translation_tasks").select(
             """task_id, source_type, arxiv_id, translation_mode, status, progress, 
                created_at, completed_at, source_language, target_language, 
-               compile_strategy, translation_model, enable_verification, 
+               compile_strategy, translation_model, 
                generate_glossary, use_author_api, formatting""",
             count="exact"
         )
@@ -133,7 +131,6 @@ async def get_user_history(
                 target_language=task.get("target_language", "zh"),
                 compile_strategy=task.get("compile_strategy", "auto"),
                 translation_model=task.get("translation_model"),
-                enable_verification=task.get("enable_verification", True),
                 generate_glossary=task.get("generate_glossary", True),
                 use_author_api=task.get("use_author_api", True),
                 formatting=task.get("formatting"),
@@ -204,7 +201,6 @@ async def get_task_detail(
             translation_mode=task.get("translation_mode", "full"),
             compile_strategy=task.get("compile_strategy", "auto"),
             translation_model=task.get("translation_model"),
-            enable_verification=task.get("enable_verification", True),
             generate_glossary=task.get("generate_glossary", True),
             use_author_api=task.get("use_author_api", True),
             formatting=task.get("formatting"),

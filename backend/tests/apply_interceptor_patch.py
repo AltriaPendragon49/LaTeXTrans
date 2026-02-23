@@ -33,6 +33,8 @@ INTERCEPTOR_CODE = '''
             agent_config=agent_config,
             llm_config=llm_config,
             additional_info={
+                "user_id": user_id,
+                "task_id": task_id,
                 "target_language": target_language,
                 "source_language": source_language,
                 "source_path": str(source_path),

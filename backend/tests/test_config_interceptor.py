@@ -89,7 +89,6 @@ class ConfigInterceptor:
         logger.info(f"📋 配置摘要:")
         logger.info(f"   - 翻译模式: {advanced_config.get('translation_mode', 'N/A')}")
         logger.info(f"   - 编译策略: {advanced_config.get('compile_strategy', 'N/A')}")
-        logger.info(f"   - 验证代理: {advanced_config.get('enable_verification', 'N/A')}")
         logger.info(f"   - 双语输出: {advanced_config.get('bilingual_output', 'N/A')}")
         logger.info(f"   - 翻译模型: {advanced_config.get('translation_model', 'N/A')}")
         logger.info(f"   - Agent模式: {agent_config.get('mode', 'N/A')}")
@@ -153,7 +152,6 @@ def create_test_config_samples():
         "advanced_config": {
             "translation_mode": "full",
             "compile_strategy": "auto",
-            "enable_verification": True,
             "bilingual_output": False,
             "translation_model": "deepseek",
             "use_author_api": True,
@@ -168,7 +166,6 @@ def create_test_config_samples():
         "advanced_config": {
             "translation_mode": "abstract",
             "compile_strategy": "pdflatex",
-            "enable_verification": False,
             "bilingual_output": False,
             "translation_model": "gpt-4.1-mini",
             "use_author_api": True,
@@ -183,7 +180,6 @@ def create_test_config_samples():
         "advanced_config": {
             "translation_mode": "full",
             "compile_strategy": "xelatex",
-            "enable_verification": True,
             "bilingual_output": True,
             "translation_model": "deepseek",
             "use_author_api": True,
@@ -198,7 +194,6 @@ def create_test_config_samples():
         "advanced_config": {
             "translation_mode": "full",
             "compile_strategy": "auto",
-            "enable_verification": True,
             "bilingual_output": False,
             "translation_model": "gpt-4",
             "use_author_api": False,
@@ -368,9 +363,8 @@ config_a1b2c3d4_20260204_160530.json
 1. **默认配置**: 不修改任何高级选项
 2. **摘要模式**: translation_mode = "abstract"
 3. **XeLaTeX**: compile_strategy = "xelatex"
-4. **关闭验证**: enable_verification = False
-5. **双语输出**: bilingual_output = True
-6. **自定义API**: use_author_api = False
+4. **双语输出**: bilingual_output = True
+5. **自定义API**: use_author_api = False
 
 每次测试后,检查生成的配置文件,对比差异。
 

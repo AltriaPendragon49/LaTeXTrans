@@ -26,7 +26,6 @@ class UserSettingsResponse(BaseModel):
     translation_mode: str = "full"
     compile_strategy: str = "auto"
     translation_model: Optional[str] = None
-    enable_verification: bool = True
     generate_glossary: bool = True
     use_author_api: bool = True
     custom_base_url: Optional[str] = None
@@ -41,7 +40,6 @@ class UserSettingsUpdate(BaseModel):
     translation_mode: Optional[str] = None
     compile_strategy: Optional[str] = None
     translation_model: Optional[str] = None
-    enable_verification: Optional[bool] = None
     generate_glossary: Optional[bool] = None
     use_author_api: Optional[bool] = None
     custom_base_url: Optional[str] = None
@@ -56,7 +54,6 @@ SYSTEM_DEFAULTS = {
     "translation_mode": "full",
     "compile_strategy": "auto",
     "translation_model": None,
-    "enable_verification": True,
     "generate_glossary": True,
     "use_author_api": True,
     "custom_base_url": None,
@@ -73,7 +70,6 @@ def _build_response(settings: dict) -> UserSettingsResponse:
         translation_mode=settings.get("translation_mode", "full"),
         compile_strategy=settings.get("compile_strategy", "auto"),
         translation_model=settings.get("translation_model"),
-        enable_verification=settings.get("enable_verification", True),
         generate_glossary=settings.get("generate_glossary", True),
         use_author_api=settings.get("use_author_api", True),
         custom_base_url=settings.get("custom_base_url"),
@@ -170,8 +166,6 @@ async def update_user_settings(
             update_data["compile_strategy"] = update.compile_strategy
         if update.translation_model is not None:
             update_data["translation_model"] = update.translation_model
-        if update.enable_verification is not None:
-            update_data["enable_verification"] = update.enable_verification
         if update.generate_glossary is not None:
             update_data["generate_glossary"] = update.generate_glossary
         if update.use_author_api is not None:

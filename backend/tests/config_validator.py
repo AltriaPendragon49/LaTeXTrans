@@ -57,12 +57,6 @@ class ConfigValidator:
             "impact": ConfigImpact.MODERATE,
             "description": "编译策略影响PDF生成方式"
         },
-        "enable_verification": {
-            "agent_key": "use_verification_agent",
-            "transform": lambda x: x,  # 布尔值直接传递
-            "impact": ConfigImpact.CRITICAL,
-            "description": "验证代理影响翻译质量"
-        },
         "bilingual_output": {
             "agent_key": "bilingual_mode",
             "transform": lambda x: x,  # 布尔值直接传递
@@ -244,7 +238,6 @@ class ConfigValidator:
         keys_to_compare = [
             "translation_mode",
             "compile_strategy",
-            "enable_verification",
             "bilingual_output",
             "translation_model"
         ]

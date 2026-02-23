@@ -45,6 +45,7 @@ interface BatchTask {
     status: string
     progress: number
     message: string
+    warnings?: string | null  // Formatting auto-downgrade notices from backend
 }
 
 interface QueuedFile {
@@ -165,6 +166,14 @@ function TaskList({ tasks }: { tasks: BatchTask[] }) {
                     {(task.status === 'failed' || task.status === 'failed_compilation') && (
                         <p className="text-xs text-destructive">{task.message}</p>
                     )}
+
+                    {/* Formatting warnings (e.g. auto-downgraded font size) */}
+                    {task.warnings && (
+                        <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="h-3 w-3 shrink-0" />
+                            {task.warnings}
+                        </p>
+                    )}
                 </div>
             ))}
         </div>
@@ -248,7 +257,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     setter(prev =>
                         prev.map(t =>
                             t.task_id === task_id
-                                ? { ...t, status: s.status, progress: s.progress, message: s.message }
+                                ? { ...t, status: s.status, progress: s.progress, message: s.message, warnings: (s as any).warnings ?? t.warnings }
                                 : t
                         )
                     )
@@ -403,7 +412,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                 <TabsContent value="arxiv" className="mt-4 space-y-4">
                     {/* Hint */}
                     <div className="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-                        <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                         <span>
                             每行输入一个 arXiv ID（如 <code className="font-mono text-foreground">2401.00001</code>），最多 {MAX_BATCH} 个。
                             支持完整 URL 或纯 ID 格式。
@@ -454,7 +463,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                 <TabsContent value="upload" className="mt-4 space-y-4">
                     {/* Hint */}
                     <div className="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-                        <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                         <span>
                             支持 <code className="font-mono text-foreground">.zip .rar .tar.gz .tex</code> 格式，
                             单文件最大 50 MB，最多 {MAX_BATCH} 个文件。
@@ -516,7 +525,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                                         key={qf.id}
                                         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
                                     >
-                                        <FileArchive className="h-4 w-4 flex-shrink-0 text-primary" />
+                                        <FileArchive className="h-4 w-4 shrink-0 text-primary" />
                                         <span className="flex-1 truncate font-mono text-sm text-foreground">
                                             {qf.file.name}
                                         </span>

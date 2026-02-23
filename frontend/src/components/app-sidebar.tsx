@@ -46,7 +46,7 @@ export function AppSidebar() {
             <SidebarHeader>
                 <div className="px-2 py-4">
                     {state === "expanded" && (
-                        <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent transition-all duration-200">
+                        <h1 className="text-xl font-bold bg-linear-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent transition-all duration-200">
                             LaTeXTrans 🚀
                         </h1>
                     )}

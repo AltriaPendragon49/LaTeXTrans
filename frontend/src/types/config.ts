@@ -47,8 +47,6 @@ export interface AdvancedConfig {
     translation_mode: TranslationMode
     /** LaTeX compile strategy */
     compile_strategy: CompileStrategy
-    /** Enable dual-model verification for quality */
-    enable_verification: boolean
     /** Generate terminology reference table (CSV) */
     generate_terminology_table: boolean
     /** Translation LLM model name */
@@ -61,6 +59,8 @@ export interface AdvancedConfig {
     custom_api_key?: string
     /** Typography formatting for LaTeX preamble injection */
     formatting?: FormattingConfig
+    /** Send email notification when task completes or fails */
+    email_notification?: boolean
 }
 
 /**
@@ -82,12 +82,12 @@ export interface TranslationConfig {
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
     translation_mode: 'full',
     compile_strategy: 'auto',
-    enable_verification: true,
     generate_terminology_table: true,  // 默认启用术语表生成
     translation_model: 'qwen/qwen3-235b-a22b',
     use_author_api: true,
     custom_base_url: undefined,
-    custom_api_key: undefined
+    custom_api_key: undefined,
+    email_notification: undefined,
 }
 
 /**

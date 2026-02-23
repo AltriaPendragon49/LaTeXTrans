@@ -94,10 +94,6 @@ class AdvancedConfig(BaseModel):
         default="auto", 
         description="LaTeX compile strategy: pdflatex|xelatex|lualatex|auto"
     )
-    enable_verification: bool = Field(
-        default=True, 
-        description="Enable dual-model verification"
-    )
     generate_terminology_table: bool = Field(
         default=True, 
         description="Generate terminology reference table (CSV)"
@@ -125,6 +121,12 @@ class AdvancedConfig(BaseModel):
     formatting: Optional[FormattingConfig] = Field(
         default=None,
         description="Typography formatting config for LaTeX preamble injection. None means keep all original formatting."
+    )
+
+    # Notification
+    email_notification: bool = Field(
+        default=False,
+        description="Send email notification when task completes or fails."
     )
 
 

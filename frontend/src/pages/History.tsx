@@ -42,7 +42,6 @@ interface TaskHistoryItem {
     target_language: string
     compile_strategy: string
     translation_model?: string
-    enable_verification: boolean
     generate_glossary: boolean
     use_author_api: boolean
     // Typography formatting snapshot
@@ -529,15 +528,6 @@ export default function HistoryPage() {
 
                                                 {/* 高级选项 */}
                                                 <div className="md:col-span-2 flex flex-wrap gap-2">
-                                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30">
-                                                        {task.enable_verification ? (
-                                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                                                        ) : (
-                                                            <XCircle className="h-3.5 w-3.5 text-gray-400" />
-                                                        )}
-                                                        <span className="text-xs">翻译验证</span>
-                                                    </div>
-
                                                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30">
                                                         {task.generate_glossary ? (
                                                             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
