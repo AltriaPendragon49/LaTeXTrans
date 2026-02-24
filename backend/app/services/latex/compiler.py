@@ -342,6 +342,153 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
     return len(errors), errors
 
 
+def _extract_content_between_braces(text: str, start_index: int) -> str:
+    """Extracts content inside { } taking into account nested braces."""
+    brace_count = 0
+    in_braces = False
+    content = []
+    for i in range(start_index, len(text)):
+        char = text[i]
+        if char == '{':
+            if in_braces: content.append(char)
+            brace_count += 1
+            in_braces = True
+        elif char == '}':
+            brace_count -= 1
+            if brace_count == 0 and in_braces: return "".join(content)
+            if in_braces: content.append(char)
+        elif in_braces:
+            content.append(char)
+    return "".join(content)
+
+def _fallback_biblatex_to_thebibliography(tex_dir: str, output_dir: str) -> None:
+    """
+    Fallback for biblatex projects without .bib files (like many arXiv submissions).
+    Modern biblatex cannot parse older format .bbl files, causing raw data spill.
+    This parses the old .bbl manually and replaces \printbibliography
+    with a raw thebibliography environment, removing the biblatex dependency entirely.
+    """
+    bbl_path = None
+    for search_dir in [output_dir, tex_dir]:
+        for bbl in Path(search_dir).rglob("*.bbl"):
+            try:
+                content = bbl.read_text(encoding='utf-8', errors='replace')
+                if 'biblatex bbl format version' in content:
+                    bbl_path = bbl
+                    break
+            except Exception:
+                pass
+        if bbl_path: break
+        
+    if not bbl_path:
+        return
+        
+    bbl_content = bbl_path.read_text(encoding='utf-8', errors='replace')
+    entries = []
+    parts = bbl_content.split(r'\entry{')
+    for part in parts[1:]:
+        if r'\endentry' not in part: continue
+        entry_text = part.split(r'\endentry')[0]
+        
+        id_end = entry_text.find('}')
+        if id_end == -1: continue
+        entry_id = entry_text[:id_end]
+        
+        title = ""
+        title_idx = entry_text.find(r'\field{title}{')
+        if title_idx != -1:
+            title = _extract_content_between_braces(entry_text, title_idx + 13)
+            title = re.sub(r'\s+', ' ', title).strip()
+            
+        year = ""
+        year_idx = entry_text.find(r'\field{year}{')
+        if year_idx != -1:
+            year = _extract_content_between_braces(entry_text, year_idx + 12)
+            
+        authors = []
+        author_block_idx = entry_text.find(r'\name{author}')
+        if author_block_idx != -1:
+            end_author_idx = entry_text.find(r'\name{', author_block_idx + 1)
+            if end_author_idx == -1: end_author_idx = entry_text.find(r'\list{')
+            if end_author_idx == -1: end_author_idx = len(entry_text)
+            author_text = entry_text[author_block_idx:end_author_idx]
+            
+            hash_blocks = author_text.split('{{hash=')
+            for hb in hash_blocks[1:]:
+                # Extract family
+                fam_idx = hb.find('family={')
+                fam_str = ""
+                if fam_idx != -1:
+                    fam_str = _extract_content_between_braces(hb, fam_idx + 7)
+                    
+                # Extract given
+                giv_idx = hb.find('given={')
+                giv_str = ""
+                if giv_idx != -1:
+                    giv_str = _extract_content_between_braces(hb, giv_idx + 6)
+                
+                author_str = ""
+                if giv_str:
+                    g = re.sub(r'\\bibnamedelima\s*', ' ', giv_str)
+                    g = re.sub(r'\\[a-zA-Z]+', '', g) 
+                    author_str += g.strip() + " "
+                if fam_str:
+                    f = re.sub(r'\\bibnamedelima\s*', ' ', fam_str)
+                    f = re.sub(r'\\[a-zA-Z]+', '', f)
+                    author_str += f.strip()
+                if author_str: authors.append(author_str.strip())
+        
+        author_final = " and ".join(authors) if authors else "Unknown Author"
+        if not title: title = "Unknown Title"
+        entries.append({'id': entry_id, 'author': author_final, 'title': title, 'year': year})
+
+    if not entries: return
+    
+    out = ["\\begin{thebibliography}{99}"]
+    for e in entries:
+        item = f"\\bibitem{{{e['id']}}} {e['author']}. \\textit{{{e['title']}}}."
+        if e['year']: item += f" {e['year']}."
+        out.append(item)
+    out.append("\\end{thebibliography}")
+    bibliography_str = '\n'.join(out)
+    
+    # Now patch the .tex files
+    patched = False
+    for search_dir in [output_dir, tex_dir]:
+        for tex_path in Path(search_dir).rglob("*.tex"):
+            try:
+                tex_content = tex_path.read_text(encoding='utf-8', errors='replace')
+                orig_content = tex_content
+                
+                # Disable biblatex import 
+                if 'biblatex' in tex_content:
+                    tex_content = re.sub(r'\\usepackage\[[^\]]*\]\{biblatex\}', r'% \\usepackage{biblatex}', tex_content)
+                    tex_content = re.sub(r'\\usepackage\{biblatex\}', r'% \\usepackage{biblatex}', tex_content)
+                    tex_content = re.sub(r'\\addbibresource\{[^}]+\}', r'% \\addbibresource', tex_content)
+                    tex_content = re.sub(r'\\makeatletter\\def\\blx@bblversion\{[^}]+\}\\makeatother', '', tex_content)
+                    
+                    # Replace \printbibliography (with or without options)
+                    if bibliography_str:
+                        # Ensure special regex chars in bibliography_str act as raw replacement string
+                        replacement = bibliography_str.replace('\\', '\\\\')
+                        tex_content = re.sub(r'\\printbibliography\[[^\]]*\]', replacement, tex_content)
+                        tex_content = re.sub(r'\\printbibliography', replacement, tex_content)
+                
+                # Double-check: some documents might just use \makeatletter... hack left over
+                if 'blx@bblversion' in tex_content:
+                    tex_content = re.sub(r'\\makeatletter\\def\\blx@bblversion\{[^}]+\}\\makeatother', '', tex_content)
+
+                if tex_content != orig_content:
+                    tex_path.write_text(tex_content, encoding='utf-8')
+                    logger.info(f"Replaced biblatex with {len(entries)}-entry thebibliography fallback in {tex_path}")
+                    patched = True
+            except Exception as e:
+                logger.warning(f"Failed to patch tex file {tex_path}: {e}")
+                
+    if patched:
+        logger.info(f"Successfully applied biblatex fallback using raw {bbl_path.name}")
+
+
 def compile_latex(
     tex_file: str,
     output_dir: str,
@@ -386,6 +533,25 @@ def compile_latex(
         # -file-line-error: better error messages
         # -synctex=1: for editor integration
         # -f: force mode, continue despite errors
+        
+        # Detect if project has real .bib files (excluding auto-generated *-blx.bib by biblatex)
+        # ArXiv submissions often include pre-built .bbl without .bib files.
+        # Forcing -bibtex in that case causes bibtex to fail and overwrite the .bbl with an empty one.
+        tex_dir = str(Path(tex_file).parent)
+        has_real_bib = any(
+            not bib.name.endswith("-blx.bib")
+            for bib in Path(tex_dir).rglob("*.bib")
+        )
+        bibtex_flag = "-bibtex" if has_real_bib else "-bibtex-"
+        logger.info(f"Bibliography detection: {'found' if has_real_bib else 'no'} .bib files → using {bibtex_flag}")
+
+        # When no .bib files exist, we must use a fallback to standard thebibliography
+        # because modern biblatex v3.3+ cannot parse older biblatex v3.2 .bbl format 
+        # (causes undefined control sequences or text garbling).
+        if not has_real_bib:
+            _fallback_biblatex_to_thebibliography(tex_dir, output_dir)
+        
+        
         cmd = [
             "latexmk",
             f"-{engine}",
@@ -394,7 +560,7 @@ def compile_latex(
             "-file-line-error",
             "-synctex=1",
             "-f",  # force mode
-            "-bibtex",  # ensure biber/bibtex is called for biblatex/bibtex documents
+            bibtex_flag,  # conditionally run bibtex (skip if no .bib to preserve existing .bbl)
             tex_filename
         ]
         
