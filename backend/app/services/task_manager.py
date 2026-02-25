@@ -13,9 +13,11 @@ import uuid
 import asyncio
 import threading
 import logging
+import shutil
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Union, List
-from backend.app.core.config import TaskStatus, CompilationStage
+from backend.app.core.config import TaskStatus, CompilationStage, get_settings
 from backend.app.core.supabase_client import get_supabase_admin_client
 
 logger = logging.getLogger(__name__)
@@ -79,7 +81,9 @@ class TaskManager:
                 "arxiv_id": arxiv_id,
                 "user_id": user_id,
                 "source_language": source_language,
-                "target_language": target_language
+                "target_language": target_language,
+                "failure_intercepted": False,
+                "failed_output_path": None,
             }
         
         # 2. Register guest tasks for TTL tracking
@@ -136,6 +140,7 @@ class TaskManager:
         """
         # Collect updates for Supabase sync
         db_updates = {}
+        task_snapshot: Optional[Dict[str, Any]] = None
         
         with self._lock:
             if task_id not in self._tasks:
@@ -223,10 +228,22 @@ class TaskManager:
             # Get user_id from task if not provided
             if user_id is None:
                 user_id = task.get("user_id")
+            task_snapshot = task.copy()
         
         # Sync to Supabase if user_id exists and we have updates
         if user_id and db_updates:
             self._persist_task_update(task_id, db_updates)
+
+        failed_statuses = {
+            TaskStatus.FAILED.value,
+            TaskStatus.FAILED_COMPILATION.value,
+        }
+        if status in failed_statuses and task_snapshot is not None:
+            self._intercept_failed_task(
+                task_id=task_id,
+                status_message=message,
+                status_error=error,
+            )
 
         # ── Email notification on terminal state ──────────────────────────
         # Fire-and-forget: errors are logged but never raised to the caller.
@@ -240,6 +257,136 @@ class TaskManager:
             self._maybe_send_email_notification(task_id, status, user_id)
 
         return True
+
+    def _should_skip_failure_quarantine(
+        self,
+        task_id: str,
+        task_snapshot: Dict[str, Any],
+        status_message: Optional[str],
+        status_error: Optional[str],
+        is_cancelled: bool,
+    ) -> bool:
+        """Return True when failed-task quarantine should be skipped."""
+        if task_snapshot.get("failure_intercepted"):
+            return True
+
+        if is_cancelled:
+            return True
+
+        text_candidates = [
+            status_message,
+            status_error,
+            task_snapshot.get("message"),
+            task_snapshot.get("error"),
+        ]
+        for text in text_candidates:
+            if not text:
+                continue
+            lowered = str(text).lower()
+            if "cancelled" in lowered or "canceled" in lowered or "取消" in str(text):
+                return True
+
+        return False
+
+    def _quarantine_failed_output(self, task_id: str, task_snapshot: Dict[str, Any]) -> Optional[str]:
+        """
+        Move failed task output to data/failed_tasks.
+
+        Returns destination path if moved (or already inside failed_tasks), else None.
+        """
+        settings = get_settings()
+        source_path = task_snapshot.get("output_path")
+        source_dir = Path(source_path) if source_path else settings.outputs_dir / task_id
+
+        if not source_dir.exists() or not source_dir.is_dir():
+            logger.info(
+                f"[TaskManager] No output directory to quarantine for failed task {task_id}: {source_dir}"
+            )
+            return None
+
+        failed_root = Path(settings.failed_tasks_dir)
+        failed_root.mkdir(parents=True, exist_ok=True)
+
+        try:
+            source_resolved = source_dir.resolve()
+            failed_root_resolved = failed_root.resolve()
+            if source_resolved == failed_root_resolved or failed_root_resolved in source_resolved.parents:
+                logger.info(f"[TaskManager] Failed output already quarantined for task {task_id}: {source_dir}")
+                return str(source_dir)
+        except Exception:
+            # Path resolution failure should not block quarantine.
+            pass
+
+        dest_dir = failed_root / task_id
+        if dest_dir.exists():
+            suffix = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            dest_dir = failed_root / f"{task_id}_{suffix}"
+
+        shutil.move(str(source_dir), str(dest_dir))
+        logger.info(f"[TaskManager] Quarantined failed output for task {task_id}: {dest_dir}")
+        return str(dest_dir)
+
+    def _delete_failed_task_from_supabase(self, task_id: str) -> bool:
+        """Delete failed task row from Supabase translation_tasks table."""
+        try:
+            client = get_supabase_admin_client()
+            if not client:
+                logger.warning(
+                    f"[TaskManager] Supabase admin client unavailable, skip failed-task delete for {task_id}"
+                )
+                return False
+
+            client.table("translation_tasks").delete().eq("task_id", task_id).execute()
+            logger.info(f"[TaskManager] Deleted failed task {task_id} from Supabase translation_tasks")
+            return True
+        except Exception as e:
+            logger.error(f"[TaskManager] Failed deleting task {task_id} from Supabase: {e}", exc_info=True)
+            return False
+
+    def _intercept_failed_task(
+        self,
+        task_id: str,
+        status_message: Optional[str],
+        status_error: Optional[str],
+    ) -> None:
+        """Handle failed-task quarantine and database cleanup without interrupting task flow."""
+        with self._lock:
+            current_task = self._tasks.get(task_id)
+            if current_task is None:
+                return
+
+            is_cancelled = task_id in self._cancelled_tasks
+            latest_snapshot = current_task.copy()
+            if self._should_skip_failure_quarantine(
+                task_id=task_id,
+                task_snapshot=latest_snapshot,
+                status_message=status_message,
+                status_error=status_error,
+                is_cancelled=is_cancelled,
+            ):
+                return
+
+            # Mark immediately for idempotence across repeated failure updates.
+            current_task["failure_intercepted"] = True
+            current_task.setdefault("failed_output_path", None)
+
+        quarantined_output_path: Optional[str] = None
+        try:
+            quarantined_output_path = self._quarantine_failed_output(task_id, latest_snapshot)
+        except Exception as e:
+            logger.error(f"[TaskManager] Failed output quarantine for task {task_id}: {e}", exc_info=True)
+
+        try:
+            self._delete_failed_task_from_supabase(task_id)
+        except Exception as e:
+            logger.error(f"[TaskManager] Failed Supabase cleanup for task {task_id}: {e}", exc_info=True)
+
+        if quarantined_output_path:
+            with self._lock:
+                current_task = self._tasks.get(task_id)
+                if current_task is not None:
+                    current_task["failed_output_path"] = quarantined_output_path
+                    current_task["output_path"] = quarantined_output_path
 
     def _maybe_send_email_notification(
         self, task_id: str, status: str, user_id: Optional[str]

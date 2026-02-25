@@ -1,15 +1,21 @@
+# Runtime Config Capture Testing Guide
 
-# 初始化测试环境
+```bash
+# 1) Enter backend workspace
 cd backend
-python tests/test_config_interceptor.py
 
-# 应用拦截代码 (自动备份)  
-python tests/apply_interceptor_patch.py
+# 2) Ensure runtime config capture is enabled (default: true)
+set ENABLE_TASK_CONFIG_CAPTURE=true
 
-# 启动后端,进行翻译测试...
+# 3) Start backend and run translation tests from frontend
 
-# 验证配置是否生效
-python tests/config_validator.py tests/captured_configs/config_*.json
+# 4) Verify captured snapshots
+dir data\\task_configs
 
-# 测试完成后撤销
-python tests/apply_interceptor_patch.py undo
+# 5) Validate captured configs
+python tests/config_validator.py data/task_configs/config_*.json
+```
+
+Notes:
+- Runtime capture is integrated in `translate.py` and does not depend on `backend/tests/test_config_interceptor.py`.
+- `python tests/apply_interceptor_patch.py` is only a compatibility helper for older branches.

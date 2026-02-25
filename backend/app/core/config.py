@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     uploads_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "uploads")
     outputs_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "outputs")
     terms_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "terms")
+    task_configs_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "task_configs")
+    failed_tasks_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "failed_tasks")
+    enable_task_config_capture: bool = Field(default=True, env="ENABLE_TASK_CONFIG_CAPTURE")
     
     # File Upload Settings
     max_upload_size: int = 50 * 1024 * 1024  # 50MB in bytes
@@ -167,6 +170,8 @@ class Settings(BaseSettings):
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
         self.outputs_dir.mkdir(parents=True, exist_ok=True)
         self.terms_dir.mkdir(parents=True, exist_ok=True)
+        self.task_configs_dir.mkdir(parents=True, exist_ok=True)
+        self.failed_tasks_dir.mkdir(parents=True, exist_ok=True)
     
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM API configuration as a dictionary"""

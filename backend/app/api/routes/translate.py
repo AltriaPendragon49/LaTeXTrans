@@ -18,6 +18,7 @@ from pathlib import Path
 from backend.app.services.task_manager import get_task_manager
 from backend.app.services.agents.coordinator_agent import CoordinatorAgent
 from backend.app.services.latex_validator import find_main_tex_file
+from backend.app.services.config_capture import capture_task_config
 from backend.app.core.config import get_settings, TaskStatus
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
@@ -456,11 +457,7 @@ async def run_translation(
                     f"engine={agent_config['latex_engine']}, "
                     f"verify={agent_config['use_verification_agent']}")
 
-        # ========== 配置拦截代码 - 开始 ==========
-        from backend.tests.test_config_interceptor import ConfigInterceptor
-        
-        interceptor = ConfigInterceptor()
-        config_file = interceptor.capture_config(
+        captured_config_file = capture_task_config(
             task_id=task_id,
             advanced_config=advanced_config.model_dump(),
             agent_config=agent_config,
@@ -473,11 +470,13 @@ async def run_translation(
                 "target_language": target_language,
                 "source_language": source_language,
                 "source_path": str(source_path),
-                "output_dir": str(output_dir)
-            }
+                "output_dir": str(output_dir),
+            },
         )
-        logger.info(f"🔍 配置已拦截并保存到: {config_file}")
-        # ========== 配置拦截代码 - 结束 ==========
+        if captured_config_file:
+            logger.info(f"Task config snapshot saved: {captured_config_file}")
+
+
 
 
 

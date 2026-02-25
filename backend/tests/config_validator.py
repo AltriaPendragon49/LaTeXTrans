@@ -7,7 +7,7 @@
     python tests/config_validator.py <配置文件1> <配置文件2> ...
 
 示例:
-    python tests/config_validator.py captured_configs/config_*.json
+    python tests/config_validator.py data/task_configs/config_*.json
 
 作者: LaTeXTrans Team
 日期: 2026-02-04
@@ -256,7 +256,7 @@ def main():
     """主函数"""
     if len(sys.argv) < 2:
         print("使用方法: python config_validator.py <配置文件1> [配置文件2] ...")
-        print("示例: python config_validator.py captured_configs/config_*.json")
+        print("示例: python config_validator.py data/task_configs/config_*.json")
         sys.exit(1)
     
     # 收集所有配置文件
