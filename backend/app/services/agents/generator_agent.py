@@ -34,12 +34,16 @@ class GeneratorAgent(BaseToolAgent):
         self.output_dir = output_dir
         self.latex_engine = config.get("latex_engine", "auto")
 
-    def execute(self) -> Optional[str]:
+    def execute(self) -> Dict[str, Any]:
         """
         Execute generation task: reconstruct LaTeX and compile to PDF
         
         Returns:
-            Path to generated PDF file, or None if compilation failed
+            Structured generation result:
+            - status: "completed" | "completed_with_warnings" | "failed_compilation"
+            - pdf_path: Path to generated PDF when available
+            - error_summary: Compilation error summary when failed
+            - warnings: Warning summary when compilation completed with warnings
         """
         self.log(f"Starting generation for project: {os.path.basename(self.project_dir)}")
         self.update_progress(5, "Starting generation")
@@ -111,9 +115,17 @@ class GeneratorAgent(BaseToolAgent):
         main_tex = find_main_tex_file(transed_latex_dir)
         
         if not main_tex:
-            logger.error(f"No main .tex file found in {transed_latex_dir}")
+            error_summary = f"No main .tex file found in {transed_latex_dir}"
+            logger.error(error_summary)
             self.update_progress(100, "No main .tex file found")
-            return None
+            return {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": error_summary,
+                "warnings": None,
+                "engine": None,
+                "error_count": 0,
+            }
         
         logger.info(f"Compiling {Path(main_tex).name}...")
         
@@ -135,17 +147,38 @@ class GeneratorAgent(BaseToolAgent):
         )
 
         pdf_file = result.get("pdf_path")
+        if pdf_file and not Path(pdf_file).exists():
+            logger.error(f"Compiler returned a missing PDF path: {pdf_file}")
+            result["errors"] = result.get("errors") or f"Compilation returned a missing PDF path: {pdf_file}"
+            pdf_file = None
         
         if pdf_file:
             self.update_progress(100, "PDF generation complete")
             self.log(f"Successfully generated PDF: {pdf_file}")
-            return pdf_file
-        else:
-            self.update_progress(100, "PDF compilation failed")
-            self.log("Failed to compile PDF document", level="error")
-            if result.get("errors"):
-                self.log(f"Errors: {result['errors']}", level="error")
-            return None
+            return {
+                "status": result.get("status", "completed"),
+                "pdf_path": pdf_file,
+                "error_summary": None,
+                "warnings": result.get("warnings"),
+                "engine": result.get("engine"),
+                "error_count": result.get("error_count", 0),
+            }
+
+        self.update_progress(100, "PDF compilation failed")
+        self.log("Failed to compile PDF document", level="error")
+
+        error_summary = result.get("errors") or "Compilation failed without detailed error output"
+        if result.get("errors"):
+            self.log(f"Errors: {result['errors']}", level="error")
+
+        return {
+            "status": "failed_compilation",
+            "pdf_path": None,
+            "error_summary": error_summary,
+            "warnings": result.get("warnings"),
+            "engine": result.get("engine"),
+            "error_count": result.get("error_count", 0),
+        }
         
     def _create_transed_latex_folder(self, src_dir: str) -> str:
         """

@@ -13,10 +13,41 @@ import re
 import subprocess
 import logging
 import json
+import shutil
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
+import platform
+import signal
 
 logger = logging.getLogger(__name__)
+
+
+def _kill_process_tree(pid: int) -> None:
+    """
+    Kill a process and all its children (entire process tree).
+    
+    On Windows, subprocess timeout only kills the parent process,
+    leaving child processes (e.g. xelatex spawned by latexmk) as orphans.
+    This function uses 'taskkill /T /F' on Windows to kill the entire tree.
+    On Unix, it sends SIGTERM to the process group.
+    """
+    try:
+        if platform.system() == "Windows":
+            # /T = kill child processes, /F = force, /PID = process id
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(pid)],
+                capture_output=True,
+                timeout=10
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except Exception as e:
+        logger.warning(f"Failed to kill process tree for PID {pid}: {e}")
+        # Fallback: try to kill just the process
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
 
 # CJK character detection threshold
 CJK_THRESHOLD = 100
@@ -300,14 +331,29 @@ class CompilationResult:
         self.exit_code = exit_code
 
 
+def _remove_stale_expected_pdf(pdf_path: Path) -> None:
+    """
+    Remove stale expected output PDF before an engine run.
+
+    Some source bundles include a prebuilt PDF with the same basename as the
+    main TeX file (for example `main.pdf`). If compilation fails and that stale
+    file remains, it can be misclassified as newly compiled output.
+    """
+    if not pdf_path.exists():
+        return
+    try:
+        pdf_path.unlink()
+        logger.info(f"Removed stale PDF before compilation: {pdf_path}")
+    except Exception as exc:
+        logger.warning(f"Failed to remove stale PDF {pdf_path}: {exc}")
+
+
 def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
     """
     Parse LaTeX .log file and count errors
     
-    Matches patterns:
-    - ! LaTeX Error
-    - ! Undefined control sequence
-    - ! Missing
+    Supports both classic LaTeX log style ("! LaTeX Error ...") and
+    file-line-error style ("file.tex:123: LaTeX Error ...").
     
     Args:
         log_path: Path to .log file
@@ -319,11 +365,24 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
         return 0, []
     
     error_patterns = [
-        r'^! LaTeX Error',
-        r'^! Undefined control sequence',
-        r'^! Missing',
-        r'^! .*Error',
+        # Classic TeX/LaTeX error format
+        r"^! LaTeX Error",
+        r"^! Package .* Error",
+        r"^! Undefined control sequence",
+        r"^! Missing",
+        r"^! Emergency stop",
+        r"^! .*Error",
+        # -file-line-error format (latexmk default in this project)
+        r"^.+:\d+:\s+LaTeX Error:",
+        r"^.+:\d+:\s+Package .* Error:",
+        r"^.+:\d+:\s+Undefined control sequence\.?$",
+        r"^.+:\d+:\s+Missing .+ inserted\.?$",
+        r"^.+:\d+:\s+Extra .+$",
+        # Fatal fallback signatures
+        r"^.+Fatal error occurred, no output PDF file produced!?$",
+        r"^Emergency stop\.$",
     ]
+    compiled_patterns = [re.compile(pattern) for pattern in error_patterns]
     
     errors = []
     
@@ -331,10 +390,13 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
                 line = line.strip()
-                for pattern in error_patterns:
-                    if re.match(pattern, line):
+                if not line:
+                    continue
+
+                if any(pattern.search(line) for pattern in compiled_patterns):
+                    # Avoid noisy duplicate lines in summaries.
+                    if not errors or errors[-1] != line:
                         errors.append(line)
-                        break
     except Exception as e:
         logger.warning(f"Failed to parse log file {log_path}: {e}")
         return 0, []
@@ -512,32 +574,36 @@ def compile_latex(
     Returns:
         CompilationResult object
     """
-    if not os.path.exists(tex_file):
+    tex_path = Path(tex_file).resolve()
+    out_path = Path(output_dir).resolve()
+
+    if not tex_path.exists():
         logger.error(f"TeX file not found: {tex_file}")
         return CompilationResult(success=False, exit_code=-1)
-    
-    tex_path = Path(tex_file)
+
     tex_filename = tex_path.name
     tex_basename = tex_path.stem
     
     # Prepare output directory
-    out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
+    pdf_path = out_path / f"{tex_basename}.pdf"
+    log_path = out_path / f"{tex_basename}.log"
+    _remove_stale_expected_pdf(pdf_path)
     
     logger.info(f"Compiling {tex_filename} with latexmk ({engine})...")
     
     try:
         # Use latexmk for intelligent compilation
-        # -interaction=nonstopmode: continue on errors
+        # -interaction=nonstopmode: don't stop for missing files etc.
+        # -halt-on-error: stop immediately on first error (prevents error cascade loops)
         # -outdir: specify output directory
         # -file-line-error: better error messages
         # -synctex=1: for editor integration
-        # -f: force mode, continue despite errors
         
         # Detect if project has real .bib files (excluding auto-generated *-blx.bib by biblatex)
         # ArXiv submissions often include pre-built .bbl without .bib files.
         # Forcing -bibtex in that case causes bibtex to fail and overwrite the .bbl with an empty one.
-        tex_dir = str(Path(tex_file).parent)
+        tex_dir = tex_path.parent
         has_real_bib = any(
             not bib.name.endswith("-blx.bib")
             for bib in Path(tex_dir).rglob("*.bib")
@@ -549,47 +615,50 @@ def compile_latex(
         # because modern biblatex v3.3+ cannot parse older biblatex v3.2 .bbl format 
         # (causes undefined control sequences or text garbling).
         if not has_real_bib:
-            _fallback_biblatex_to_thebibliography(tex_dir, output_dir)
+            _fallback_biblatex_to_thebibliography(str(tex_dir), str(out_path))
         
         
         cmd = [
             "latexmk",
             f"-{engine}",
             "-interaction=nonstopmode",
-            f"-outdir={output_dir}",
+            "-halt-on-error",
+            f"-outdir={out_path}",
             "-file-line-error",
             "-synctex=1",
-            "-f",  # force mode
             bibtex_flag,  # conditionally run bibtex (skip if no .bib to preserve existing .bbl)
             tex_filename
         ]
         
-        # Run compilation with binary mode to avoid encoding issues on Windows
-        result = subprocess.run(
+        # Use Popen instead of subprocess.run to properly kill the entire process tree
+        # on timeout. On Windows, subprocess.run timeout only kills the parent (latexmk),
+        # leaving child processes (xelatex/lualatex) as orphans that hang forever.
+        import time
+        compilation_timeout = 300  # 5 minutes per engine attempt
+        
+        proc = subprocess.Popen(
             cmd,
-            cwd=str(tex_path.parent),
-            capture_output=True,
-            text=False,  # Binary mode to avoid Windows gbk encoding issues
-            timeout=600  # 10 minute timeout for latexmk
+            cwd=str(tex_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         
-        last_exit_code = result.returncode
+        try:
+            stdout, stderr = proc.communicate(timeout=compilation_timeout)
+            last_exit_code = proc.returncode
+            logger.info(f"latexmk ({engine}) completed with exit code {proc.returncode}")
+        except subprocess.TimeoutExpired:
+            logger.error(f"latexmk ({engine}) compilation timed out after {compilation_timeout}s, killing process tree (PID {proc.pid})...")
+            _kill_process_tree(proc.pid)
+            proc.wait(timeout=10)  # Wait for cleanup
+            return CompilationResult(success=False, exit_code=-2)
         
-        logger.info(f"latexmk ({engine}) completed with exit code {result.returncode}")
-        
-    except subprocess.TimeoutExpired:
-        logger.error(f"latexmk ({engine}) compilation timed out")
-        return CompilationResult(success=False, exit_code=-2)
     except FileNotFoundError:
         logger.warning("latexmk not found, falling back to direct compiler call")
-        return _compile_latex_direct(tex_file, output_dir, engine, max_runs)
+        return _compile_latex_direct(str(tex_path), str(out_path), engine, max_runs)
     except Exception as e:
         logger.error(f"latexmk ({engine}) compilation failed: {e}")
         return CompilationResult(success=False, exit_code=-3)
-    
-    # Check for output PDF
-    pdf_path = out_path / f"{tex_basename}.pdf"
-    log_path = out_path / f"{tex_basename}.log"
     
     pdf_exists = pdf_path.exists()
     
@@ -598,6 +667,14 @@ def compile_latex(
     errors = []
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
+
+    if (not pdf_exists) and error_count == 0:
+        fallback_error = (
+            f"{tex_filename}: compilation failed without parsable log errors "
+            f"(exit code {last_exit_code})"
+        )
+        errors = [fallback_error]
+        error_count = 1
     
     success = pdf_exists and error_count == 0
     
@@ -628,10 +705,14 @@ def _compile_latex_direct(
     Fallback: Compile LaTeX file directly with pdflatex/xelatex
     Used when latexmk is not available.
     """
-    tex_path = Path(tex_file)
+    tex_path = Path(tex_file).resolve()
     tex_filename = tex_path.name
     tex_basename = tex_path.stem
-    out_path = Path(output_dir)
+    out_path = Path(output_dir).resolve()
+    out_path.mkdir(parents=True, exist_ok=True)
+    pdf_path = out_path / f"{tex_basename}.pdf"
+    log_path = out_path / f"{tex_basename}.log"
+    _remove_stale_expected_pdf(pdf_path)
     
     logger.info(f"Compiling {tex_filename} directly with {engine}...")
     
@@ -651,36 +732,49 @@ def _compile_latex_direct(
             cmd = [
                 engine_path,
                 "-interaction=nonstopmode",
-                "-output-directory", str(output_dir),
+                "-halt-on-error",
+                "-output-directory", str(out_path),
                 tex_filename
             ]
             
-            result = subprocess.run(
+            # Use Popen for proper process tree cleanup on timeout
+            direct_timeout = 300  # 5 minutes
+            
+            proc = subprocess.Popen(
                 cmd,
                 cwd=str(tex_path.parent),
-                capture_output=True,
-                text=False,  # Binary mode to avoid encoding issues
-                timeout=300
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             
-            last_exit_code = result.returncode
-            logger.info(f"{engine} run {run + 1}/{max_runs} completed with exit code {result.returncode}")
+            try:
+                stdout, stderr = proc.communicate(timeout=direct_timeout)
+                last_exit_code = proc.returncode
+                logger.info(f"{engine} run {run + 1}/{max_runs} completed with exit code {proc.returncode}")
+            except subprocess.TimeoutExpired:
+                logger.error(f"{engine} compilation timed out, killing process tree (PID {proc.pid})...")
+                _kill_process_tree(proc.pid)
+                proc.wait(timeout=10)
+                return CompilationResult(success=False, exit_code=-2)
             
-        except subprocess.TimeoutExpired:
-            logger.error(f"{engine} compilation timed out")
-            return CompilationResult(success=False, exit_code=-2)
         except Exception as e:
             logger.error(f"{engine} compilation failed: {e}")
             return CompilationResult(success=False, exit_code=-3)
     
-    pdf_path = out_path / f"{tex_basename}.pdf"
-    log_path = out_path / f"{tex_basename}.log"
     pdf_exists = pdf_path.exists()
     
     error_count = 0
     errors = []
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
+
+    if (not pdf_exists) and error_count == 0:
+        fallback_error = (
+            f"{tex_filename}: compilation failed without parsable log errors "
+            f"(exit code {last_exit_code})"
+        )
+        errors = [fallback_error]
+        error_count = 1
     
     success = pdf_exists and error_count == 0
     
@@ -699,6 +793,74 @@ def _compile_latex_direct(
         errors=errors,
         exit_code=last_exit_code
     )
+
+
+def _upgrade_outdated_cls_files(tex_dir: str) -> None:
+    """
+    Remove bundled .cls/.sty files that are outdated and conflict with the system TeX Live.
+    
+    Many arXiv submissions bundle old class files (e.g. IEEEtran.cls v1.8b from 2015).
+    These can cause fatal compilation errors on newer TeX Live (e.g. 'Illegal parameter number').
+    If a newer version exists in the system TeX Live, we remove the bundled copy so the
+    system version is used instead.
+    """
+    # Known problematic class files and their minimum compatible versions
+    # Format: filename -> (version_pattern_regex, min_year)
+    KNOWN_PROBLEMATIC = {
+        "IEEEtran.cls": 2020,  # v1.8b (2015) breaks on TeX Live 2024+
+        "llncs.cls": 2020,     # Older LNCS class files can also break
+    }
+    
+    tex_path = Path(tex_dir)
+    
+    for cls_file in tex_path.glob("*.cls"):
+        filename = cls_file.name
+        if filename not in KNOWN_PROBLEMATIC:
+            continue
+            
+        min_year = KNOWN_PROBLEMATIC[filename]
+        
+        try:
+            # Check if a system version exists via kpsewhich
+            result = subprocess.run(
+                ["kpsewhich", filename],
+                capture_output=True, text=True, timeout=10
+            )
+            system_path = result.stdout.strip()
+            
+            if not system_path or not Path(system_path).exists():
+                # No system version available, keep the bundled one
+                continue
+            
+            # Read the bundled file to extract version date
+            content = cls_file.read_text(encoding='utf-8', errors='ignore')[:5000]
+            
+            # Try to extract year from common version patterns
+            # e.g. "2015/08/26", "2022/01/15", etc.
+            year_match = re.search(r'(\d{4})/\d{2}/\d{2}', content)
+            if year_match:
+                file_year = int(year_match.group(1))
+                if file_year < min_year:
+                    logger.warning(
+                        f"Removing outdated bundled {filename} (year={file_year}) — "
+                        f"system has newer version at {system_path}"
+                    )
+                    cls_file.unlink()
+                    continue
+            
+            # If we can't parse the year, compare file sizes as heuristic
+            # System version is typically newer and larger
+            bundled_size = cls_file.stat().st_size
+            system_size = Path(system_path).stat().st_size
+            if system_size > bundled_size * 1.1:  # System version is 10%+ larger
+                logger.warning(
+                    f"Removing bundled {filename} (size={bundled_size}B) — "
+                    f"system version is larger ({system_size}B), likely newer"
+                )
+                cls_file.unlink()
+                
+        except Exception as e:
+            logger.debug(f"Could not check {filename}: {e}")
 
 
 def compile_with_intelligent_fallback(
@@ -735,6 +897,13 @@ def compile_with_intelligent_fallback(
         - errors: Combined error details if compilation failed
     """
     logger.info(f"Starting intelligent three-engine compilation for {tex_file}")
+
+    normalized_tex_file = str(Path(tex_file).resolve())
+    normalized_output_dir = str(Path(output_dir).resolve())
+    
+    # Pre-compilation: remove outdated bundled .cls files that conflict with system TeX Live
+    tex_dir = str(Path(normalized_tex_file).parent)
+    _upgrade_outdated_cls_files(tex_dir)
     
     # Determine engine order
     if preferred_order is not None:
@@ -758,7 +927,29 @@ def compile_with_intelligent_fallback(
     
     for engine in engines:
         logger.info(f"⚡ Attempting compilation with {engine}...")
-        result = compile_latex(tex_file, output_dir, engine=engine)
+        result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
+
+        # Preserve each engine PDF under an engine-specific filename.
+        # Later engine attempts may overwrite/remove "<basename>.pdf".
+        if result.pdf_path:
+            pdf_candidate = Path(result.pdf_path)
+            if pdf_candidate.exists():
+                preserved_pdf = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}.{engine}.pdf"
+                try:
+                    shutil.copy2(pdf_candidate, preserved_pdf)
+                    result.pdf_path = str(preserved_pdf)
+                    logger.info(f"Preserved {engine} PDF snapshot: {preserved_pdf}")
+                except Exception as exc:
+                    logger.warning(
+                        f"Failed to preserve {engine} PDF snapshot from {pdf_candidate}: {exc}"
+                    )
+                    result.pdf_path = str(pdf_candidate) if pdf_candidate.exists() else None
+            else:
+                logger.warning(
+                    f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}"
+                )
+                result.pdf_path = None
+
         results[engine] = result
         
         # Perfect compilation - return immediately
@@ -778,7 +969,7 @@ def compile_with_intelligent_fallback(
     engines_with_pdf = [
         (engine, result) 
         for engine, result in results.items() 
-        if result.pdf_path is not None
+        if result.pdf_path is not None and Path(result.pdf_path).exists()
     ]
     
     if engines_with_pdf:

@@ -576,13 +576,14 @@ class TranslatorAgent(BaseToolAgent):
         section_num = section["section"]
         if self.trans_mode == 0:
             
-            transed_section["trans_content"] = await self._request_llm_for_trans(
+            result = await self._request_llm_for_trans(
                 self.prompts["section_system_prompt"],
                 section["content"],
                 fail_part=section_num,
                 type="sec",
                 session=session
             )
+            transed_section["trans_content"] = result if result is not None else section["content"]
         elif self.trans_mode == 1:
             transed_section["trans_content"] = await self._request_llm_for_retrans_error_parts(
             self.prompts["retrans_error_parts_system_prompt"],
@@ -626,7 +627,7 @@ class TranslatorAgent(BaseToolAgent):
             try:
                 if self.update_term == True:
                     src_text = self._extract_text_from_tex(transed_section["content"])
-                    tgt_text = self._extract_text_from_tex(transed_section["trans_content"])
+                    tgt_text = self._extract_text_from_tex(transed_section.get("trans_content") or transed_section["content"])
                     term_text = await self._request_llm_for_extract_terms(self.prompts["extract_terminology_system_prompt"],
                                                             src_text,
                                                             tgt_text,
@@ -642,7 +643,7 @@ class TranslatorAgent(BaseToolAgent):
         if self.generate_terminology and self.trans_mode != 2:
             try:
                 src_text = self._extract_text_from_tex(transed_section["content"])
-                tgt_text = self._extract_text_from_tex(transed_section["trans_content"])
+                tgt_text = self._extract_text_from_tex(transed_section.get("trans_content") or transed_section["content"])
                 terms = await self._extract_terminology_from_translation(src_text, tgt_text, session)
                 if terms:
                     self.terminology_table.extend(terms)
@@ -802,24 +803,50 @@ class TranslatorAgent(BaseToolAgent):
         }
 
         _timeout = aiohttp.ClientTimeout(total=180)
-        for attempt in range(1, 4):
+        rate_limit_hits = 0    # Consecutive 429 count
+        network_failures = 0   # Non-429 failure count (max 3)
+        while True:
             try:
                 async with global_llm_semaphore:
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
-                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
-                            logger.warning(f"Rate limited (429), waiting {retry_after}s before retry {attempt}/3 for {fail_part}")
-                            await asyncio.sleep(retry_after)
-                            continue
-                        response.raise_for_status()
-                        result = await response.json()
-                        return result["choices"][0]["message"]["content"].strip()
+                            # Read Retry-After before exiting response context
+                            retry_after_raw = response.headers.get("Retry-After", "")
+                            rate_limit_hits += 1
+                            # Graduated backoff: ≤3 quick, 4-9 progressive, >9 infinite with warning
+                            if rate_limit_hits <= 3:
+                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
+                            elif rate_limit_hits <= 9:
+                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)  # 35s, 40s, ... 60s
+                            else:
+                                wait = 60
+                            logger.warning(
+                                f"⏳ API rate limited (429) for {fail_part}, "
+                                f"waiting {wait}s (429 count: {rate_limit_hits})"
+                            )
+                            # Only show frontend warning after 9 consecutive 429s
+                            if rate_limit_hits > 9:
+                                self.update_progress(
+                                    -1,
+                                    f"⏳ API rate limited, retrying until API recovers. "
+                                    f"Consider using your own API key for better performance. "
+                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)"
+                                )
+                        else:
+                            response.raise_for_status()
+                            result = await response.json()
+                            return result["choices"][0]["message"]["content"].strip()
+                # --- Semaphore RELEASED here ---
+                # Sleep for 429 outside semaphore so other tasks can proceed
+                await asyncio.sleep(wait)
+                continue
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
-                if attempt < 3:
-                    logger.warning(f"LLM request attempt {attempt}/3 failed for {fail_part}: {e}. Retrying in {wait}s...")
-                    await asyncio.sleep(wait)
+                network_failures += 1
+                backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
+                if network_failures < 3:
+                    logger.warning(f"LLM request attempt {network_failures}/3 failed for {fail_part}: {e}. Retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
                 else:
                     self.have_fail_parts = True
                     if type == 'sec':
@@ -862,24 +889,46 @@ class TranslatorAgent(BaseToolAgent):
         }
 
         _timeout = aiohttp.ClientTimeout(total=180)
-        for attempt in range(1, 4):
+        rate_limit_hits = 0    # Consecutive 429 count
+        network_failures = 0   # Non-429 failure count (max 3)
+        while True:
             try:
                 async with global_llm_semaphore:
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
-                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
-                            logger.warning(f"Rate limited (429), waiting {retry_after}s before retry {attempt}/3 for {fail_part}")
-                            await asyncio.sleep(retry_after)
-                            continue
-                        response.raise_for_status()
-                        result = await response.json()
-                        return result["choices"][0]["message"]["content"].strip()
+                            retry_after_raw = response.headers.get("Retry-After", "")
+                            rate_limit_hits += 1
+                            if rate_limit_hits <= 3:
+                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
+                            elif rate_limit_hits <= 9:
+                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)
+                            else:
+                                wait = 60
+                            logger.warning(
+                                f"⏳ API rate limited (429) for {fail_part}, "
+                                f"waiting {wait}s (429 count: {rate_limit_hits})"
+                            )
+                            if rate_limit_hits > 9:
+                                self.update_progress(
+                                    -1,
+                                    f"⏳ API rate limited, retrying until API recovers. "
+                                    f"Consider using your own API key for better performance. "
+                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)"
+                                )
+                        else:
+                            response.raise_for_status()
+                            result = await response.json()
+                            return result["choices"][0]["message"]["content"].strip()
+                # --- Semaphore RELEASED here ---
+                await asyncio.sleep(wait)
+                continue
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
-                if attempt < 3:
-                    logger.warning(f"LLM request attempt {attempt}/3 failed for {fail_part}: {e}. Retrying in {wait}s...")
-                    await asyncio.sleep(wait)
+                network_failures += 1
+                backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
+                if network_failures < 3:
+                    logger.warning(f"LLM request attempt {network_failures}/3 failed for {fail_part}: {e}. Retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
                 else:
                     self.have_fail_parts = True
                     if type == 'sec':
@@ -925,24 +974,46 @@ class TranslatorAgent(BaseToolAgent):
         }
 
         _timeout = aiohttp.ClientTimeout(total=180)
-        for attempt in range(1, 4):
+        rate_limit_hits = 0    # Consecutive 429 count
+        network_failures = 0   # Non-429 failure count (max 3)
+        while True:
             try:
                 async with global_llm_semaphore:
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
-                            retry_after = int(response.headers.get("Retry-After", 10 * attempt))
-                            logger.warning(f"Rate limited (429), waiting {retry_after}s before retry {attempt}/3 for {fail_part}")
-                            await asyncio.sleep(retry_after)
-                            continue
-                        response.raise_for_status()
-                        result = await response.json()
-                        return result["choices"][0]["message"]["content"].strip()
+                            retry_after_raw = response.headers.get("Retry-After", "")
+                            rate_limit_hits += 1
+                            if rate_limit_hits <= 3:
+                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
+                            elif rate_limit_hits <= 9:
+                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)
+                            else:
+                                wait = 60
+                            logger.warning(
+                                f"⏳ API rate limited (429) for {fail_part}, "
+                                f"waiting {wait}s (429 count: {rate_limit_hits})"
+                            )
+                            if rate_limit_hits > 9:
+                                self.update_progress(
+                                    -1,
+                                    f"⏳ API rate limited, retrying until API recovers. "
+                                    f"Consider using your own API key for better performance. "
+                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)"
+                                )
+                        else:
+                            response.raise_for_status()
+                            result = await response.json()
+                            return result["choices"][0]["message"]["content"].strip()
+                # --- Semaphore RELEASED here ---
+                await asyncio.sleep(wait)
+                continue
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
-                if attempt < 3:
-                    logger.warning(f"LLM request attempt {attempt}/3 failed for {fail_part}: {e}. Retrying in {wait}s...")
-                    await asyncio.sleep(wait)
+                network_failures += 1
+                backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
+                if network_failures < 3:
+                    logger.warning(f"LLM request attempt {network_failures}/3 failed for {fail_part}: {e}. Retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
                 else:
                     self.have_fail_parts = True
                     if type == 'sec':
@@ -953,7 +1024,7 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_env_phs.append(fail_part)
 
                     logger.error(f"❌ Failed to retranslate error parts after 3 attempts, returning previous translation: {fail_part}. {e}")
-                    return part["trans_content"]
+                    return part.get("trans_content") or part.get("content", "")
 
     async def _request_llm_for_extract_terms(self, system_prompt, src, tgt,
                                        session: aiohttp.ClientSession) -> str:

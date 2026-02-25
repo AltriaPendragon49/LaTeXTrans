@@ -18,7 +18,7 @@ import re
 import json
 import zipfile
 import tarfile
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from tqdm import tqdm
 import regex
 import subprocess
@@ -389,6 +389,934 @@ def delete_ph(text) -> str:
     return text.strip()
 
 
+def restore_display_math_delimiters(original: str, translated: str) -> str:
+    """
+    Restore display-math delimiters when model output rewrites "\\[...\\]" as "$$...$$".
+
+    This applies a conservative fix:
+    - Only runs when source contains "\\[" / "\\]" and translation is missing them.
+    - Replaces unescaped "$$" tokens in order.
+    - Never forces replacement when source has no "\\[" / "\\]".
+    """
+    if not original or not translated:
+        return translated
+
+    src_open = len(re.findall(r'(?<!\\)\\\[', original))
+    src_close = len(re.findall(r'(?<!\\)\\\]', original))
+
+    # No bracketed display-math in source: do nothing.
+    if src_open == 0 and src_close == 0:
+        return translated
+
+    dst_open = len(re.findall(r'(?<!\\)\\\[', translated))
+    dst_close = len(re.findall(r'(?<!\\)\\\]', translated))
+
+    missing_open = max(0, src_open - dst_open)
+    missing_close = max(0, src_close - dst_close)
+    if missing_open == 0 and missing_close == 0:
+        return translated
+
+    # Convert in complete pairs only.
+    budget_pairs = min(missing_open, missing_close)
+    if budget_pairs <= 0:
+        return translated
+
+    token_pattern = re.compile(r'(?<!\\)\$\$')
+    matches = list(token_pattern.finditer(translated))
+    if not matches:
+        return translated
+
+    replace_count = min(len(matches), budget_pairs * 2)
+    if replace_count < 2:
+        return translated
+
+    parts = []
+    last_idx = 0
+    replaced = 0
+    for m in matches:
+        parts.append(translated[last_idx:m.start()])
+        if replaced < replace_count:
+            parts.append(r"\[" if replaced % 2 == 0 else r"\]")
+            replaced += 1
+        else:
+            parts.append("$$")
+        last_idx = m.end()
+    parts.append(translated[last_idx:])
+    return "".join(parts)
+
+
+def _has_malformed_display_math_shell(text: str) -> bool:
+    """
+    Detect malformed display-math delimiters in a conservative way.
+
+    Checks:
+    - unbalanced `\\[ ... \\]`
+    - unbalanced `$$ ... $$`
+    - mixed nested usage between bracketed display math and `$$`
+    """
+    if not text:
+        return False
+
+    bracket_depth = 0
+    in_dollar_display = False
+    i = 0
+    n = len(text)
+
+    while i < n:
+        if text[i] == "%" and not _is_escaped(text, i):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+
+        if text.startswith(r"\[", i) and not _is_escaped(text, i):
+            if in_dollar_display:
+                return True
+            bracket_depth += 1
+            i += 2
+            continue
+
+        if text.startswith(r"\]", i) and not _is_escaped(text, i):
+            if bracket_depth == 0:
+                return True
+            bracket_depth -= 1
+            i += 2
+            continue
+
+        if text.startswith("$$", i) and not _is_escaped(text, i):
+            if bracket_depth > 0:
+                return True
+            in_dollar_display = not in_dollar_display
+            i += 2
+            continue
+
+        i += 1
+
+    return bracket_depth != 0 or in_dollar_display
+
+
+def restore_display_math_shell_structure(original: str, translated: str) -> str:
+    """
+    Restore the whole fragment when translated display-math shell is malformed.
+
+    This is a strict safety net for failures like:
+    - odd/unclosed `$$`
+    - `\\tag`-adjacent display blocks getting split into broken shells
+    """
+    if not original or not translated:
+        return translated
+
+    if _has_malformed_display_math_shell(translated) and not _has_malformed_display_math_shell(original):
+        logger.warning("Restored fragment due to malformed display-math shell")
+        return original
+
+    return translated
+
+
+def restore_label_commands(original: str, translated: str) -> str:
+    """
+    Restore `\\label{...}` commands deterministically from source to translation.
+
+    This protects cross-reference stability when label keys are mutated by LLM output.
+    Strategy:
+    - Replace translated labels with source labels by occurrence order.
+    - If translated drops labels entirely, append missing source labels to the end.
+    """
+    if not original or not translated:
+        return translated
+
+    pattern = re.compile(r"\\label\s*\{[^}]*\}")
+    original_labels = pattern.findall(original)
+    if not original_labels:
+        return translated
+
+    translated_matches = list(pattern.finditer(translated))
+    if not translated_matches:
+        suffix = "\n" + "\n".join(original_labels)
+        if translated.endswith("\n"):
+            return translated + "\n".join(original_labels)
+        return translated + suffix
+
+    parts = []
+    last = 0
+    for i, m in enumerate(translated_matches):
+        parts.append(translated[last:m.start()])
+        if i < len(original_labels):
+            parts.append(original_labels[i])
+        else:
+            parts.append(m.group(0))
+        last = m.end()
+    parts.append(translated[last:])
+
+    restored = "".join(parts)
+    if len(original_labels) > len(translated_matches):
+        extras = original_labels[len(translated_matches):]
+        if restored.endswith("\n"):
+            restored += "\n".join(extras)
+        else:
+            restored += "\n" + "\n".join(extras)
+
+    return restored
+
+
+_DISPLAY_TAG_ENVS = {
+    "equation",
+    "equation*",
+    "align",
+    "align*",
+    "alignat",
+    "alignat*",
+    "flalign",
+    "flalign*",
+    "gather",
+    "gather*",
+    "multline",
+    "multline*",
+    "eqnarray",
+    "eqnarray*",
+}
+
+
+def _has_tag_outside_display_math_context(text: str) -> bool:
+    """
+    Return True if any `\\tag{...}` appears outside a display-math context.
+
+    Supported display contexts:
+    - `\\[ ... \\]`
+    - `$$ ... $$`
+    - common display math environments (equation/align/gather/etc.)
+    """
+    if not text or r"\tag" not in text:
+        return False
+
+    tag_positions = [m.start() for m in re.finditer(r"\\tag\*?\s*\{", text)]
+    if not tag_positions:
+        return False
+
+    bracket_depth = 0
+    in_dollar_display = False
+    display_env_stack: List[str] = []
+    tag_idx = 0
+    i = 0
+    n = len(text)
+
+    while i < n:
+        while tag_idx < len(tag_positions) and tag_positions[tag_idx] == i:
+            if bracket_depth == 0 and (not in_dollar_display) and (not display_env_stack):
+                return True
+            tag_idx += 1
+
+        if text[i] == "%" and not _is_escaped(text, i):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+
+        if text.startswith(r"\[", i) and not _is_escaped(text, i):
+            bracket_depth += 1
+            i += 2
+            continue
+
+        if text.startswith(r"\]", i) and not _is_escaped(text, i):
+            if bracket_depth > 0:
+                bracket_depth -= 1
+            i += 2
+            continue
+
+        if text.startswith("$$", i) and not _is_escaped(text, i):
+            in_dollar_display = not in_dollar_display
+            i += 2
+            continue
+
+        if text.startswith(r"\begin", i) and not _is_escaped(text, i):
+            begin_match = re.match(r"\\begin\s*\{([^}]+)\}", text[i:])
+            if begin_match:
+                env_name = begin_match.group(1).strip()
+                if env_name in _DISPLAY_TAG_ENVS:
+                    display_env_stack.append(env_name)
+                i += begin_match.end()
+                continue
+
+        if text.startswith(r"\end", i) and not _is_escaped(text, i):
+            end_match = re.match(r"\\end\s*\{([^}]+)\}", text[i:])
+            if end_match:
+                env_name = end_match.group(1).strip()
+                if env_name in _DISPLAY_TAG_ENVS:
+                    for stack_idx in range(len(display_env_stack) - 1, -1, -1):
+                        if display_env_stack[stack_idx] == env_name:
+                            del display_env_stack[stack_idx]
+                            break
+                i += end_match.end()
+                continue
+
+        i += 1
+
+    return False
+
+
+def restore_tag_commands(original: str, translated: str) -> str:
+    """
+    Restore/remove `\\tag{...}` commands by source occurrence order.
+
+    - If source has no `\\tag`, strip all translated tags (they are unsafe drift).
+    - If source has tags, replace translated tags by order to keep consistency.
+    """
+    if not original or not translated:
+        return translated
+
+    pattern = re.compile(r"\\tag\*?\s*\{[^{}]*\}")
+    original_tags = pattern.findall(original)
+    translated_matches = list(pattern.finditer(translated))
+
+    if not translated_matches:
+        if original_tags:
+            logger.warning("Restored fragment because translated content dropped \\tag command(s)")
+            return original
+        return translated
+
+    if not original_tags:
+        cleaned = pattern.sub("", translated)
+        if cleaned != translated:
+            logger.warning("Removed translated \\tag command(s) not present in source")
+        return cleaned
+
+    parts = []
+    last = 0
+    for i, m in enumerate(translated_matches):
+        parts.append(translated[last:m.start()])
+        if i < len(original_tags):
+            parts.append(original_tags[i])
+        else:
+            # Drop extra translated tags beyond source count.
+            logger.warning("Dropped extra translated \\tag command beyond source count")
+        last = m.end()
+    parts.append(translated[last:])
+    restored = "".join(parts)
+
+    if _has_tag_outside_display_math_context(restored) and not _has_tag_outside_display_math_context(original):
+        logger.warning("Restored fragment because translated \\tag moved outside display math")
+        return original
+
+    return restored
+
+
+def _parse_balanced_group(text: str, start: int, open_char: str, close_char: str) -> Tuple[bool, int]:
+    """
+    Parse a balanced bracket/brace group starting at `start`.
+
+    Returns (ok, next_index_after_group).
+    """
+    if start >= len(text) or text[start] != open_char:
+        return False, start
+
+    depth = 0
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if ch == open_char and not _is_escaped(text, i):
+            depth += 1
+        elif ch == close_char and not _is_escaped(text, i):
+            depth -= 1
+            if depth == 0:
+                return True, i + 1
+            if depth < 0:
+                return False, i
+        i += 1
+
+    return False, i
+
+
+def _skip_whitespace(text: str, index: int) -> int:
+    """Skip whitespace from index and return the next non-space index."""
+    n = len(text)
+    while index < n and text[index].isspace():
+        index += 1
+    return index
+
+
+def _has_well_formed_caption_commands(text: str) -> bool:
+    """
+    Validate `\\caption`, `\\subcaption`, and `\\captionof` command structure.
+
+    - `\\caption` / `\\subcaption` expect optional `[...]` then mandatory `{...}`.
+    - `\\captionof` expects `{type}` then optional `[...]` then mandatory `{...}`.
+    """
+    command_pattern = re.compile(r"\\(captionof|subcaption|caption)\b")
+
+    for match in command_pattern.finditer(text):
+        command = match.group(1)
+        i = _skip_whitespace(text, match.end())
+
+        if command == "captionof":
+            ok, i = _parse_balanced_group(text, i, "{", "}")
+            if not ok:
+                return False
+            i = _skip_whitespace(text, i)
+
+        if i < len(text) and text[i] == "[":
+            ok, i = _parse_balanced_group(text, i, "[", "]")
+            if not ok:
+                return False
+            i = _skip_whitespace(text, i)
+
+        ok, i = _parse_balanced_group(text, i, "{", "}")
+        if not ok:
+            return False
+
+    return True
+
+
+def restore_caption_command_structure(original: str, translated: str) -> str:
+    """
+    Restore caption command wrappers when translation breaks caption structure.
+
+    We keep translated text whenever caption commands are structurally valid.
+    If command count/order changes or command arguments become malformed, we
+    fall back to source content for that caption unit.
+    """
+    if not original or not translated:
+        return translated
+
+    command_pattern = re.compile(r"\\(captionof|subcaption|caption)\b")
+    original_commands = command_pattern.findall(original)
+    if not original_commands:
+        return translated
+
+    translated_commands = command_pattern.findall(translated)
+    if original_commands != translated_commands:
+        logger.warning("Restored caption block due to command mismatch")
+        return original
+
+    if not _has_well_formed_caption_commands(translated):
+        logger.warning("Restored caption block due to malformed caption command structure")
+        return original
+
+    return translated
+
+
+def _has_well_formed_sectioning_commands(text: str) -> bool:
+    """
+    Validate sectioning command structure:
+    \\section, \\subsection, \\subsubsection, \\paragraph, etc.
+
+    Expected shape: optional `[...]` then required `{...}`.
+    """
+    section_pattern = re.compile(
+        r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\b"
+    )
+
+    for match in section_pattern.finditer(text):
+        i = _skip_whitespace(text, match.end())
+
+        if i < len(text) and text[i] == "[":
+            ok, i = _parse_balanced_group(text, i, "[", "]")
+            if not ok:
+                return False
+            i = _skip_whitespace(text, i)
+
+        ok, i = _parse_balanced_group(text, i, "{", "}")
+        if not ok:
+            return False
+
+    return True
+
+
+def _extract_sectioning_commands(text: str) -> List[Dict[str, Any]]:
+    """Extract sectioning commands with byte ranges and mandatory title argument."""
+    section_pattern = re.compile(
+        r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\b"
+    )
+
+    commands = []
+    for match in section_pattern.finditer(text):
+        i = _skip_whitespace(text, match.end())
+
+        if i < len(text) and text[i] == "[":
+            ok, i = _parse_balanced_group(text, i, "[", "]")
+            if not ok:
+                return []
+            i = _skip_whitespace(text, i)
+
+        arg_start = i
+        ok, arg_end = _parse_balanced_group(text, arg_start, "{", "}")
+        if not ok:
+            return []
+
+        arg = text[arg_start:arg_end]
+        commands.append(
+            {
+                "start": match.start(),
+                "end": arg_end,
+                "full": text[match.start():arg_end],
+                "arg_start": arg_start,
+                "arg_end": arg_end,
+                "arg": arg,
+                "arg_inner": arg[1:-1] if len(arg) >= 2 else "",
+            }
+        )
+
+    return commands
+
+
+def _repair_sectioning_command_math_preserve_translation(command_text: str) -> str:
+    """Wrap likely math tokens inside a section title argument without losing translation."""
+    commands = _extract_sectioning_commands(command_text)
+    if not commands:
+        return command_text
+
+    cmd = commands[0]
+    repaired_inner = _wrap_likely_math_tokens(cmd["arg_inner"])
+    return (
+        command_text[: cmd["arg_start"] + 1]
+        + repaired_inner
+        + command_text[cmd["arg_end"] - 1 :]
+    )
+
+
+def restore_sectioning_command_structure(original: str, translated: str) -> str:
+    """
+    Restore sectioning wrappers when translation breaks command arguments.
+    """
+    if not original or not translated:
+        return translated
+
+    section_pattern = re.compile(
+        r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\b"
+    )
+    original_commands = section_pattern.findall(original)
+    if not original_commands:
+        return translated
+
+    translated_commands = section_pattern.findall(translated)
+    if original_commands != translated_commands:
+        logger.warning("Restored section block due to sectioning command mismatch")
+        return original
+
+    if not _has_well_formed_sectioning_commands(translated):
+        logger.warning("Restored section block due to malformed sectioning command structure")
+        return original
+
+    original_entries = _extract_sectioning_commands(original)
+    translated_entries = _extract_sectioning_commands(translated)
+    if not original_entries or not translated_entries or len(original_entries) != len(translated_entries):
+        logger.warning("Restored section block due to sectioning command parse mismatch")
+        return original
+
+    parts = []
+    last = 0
+    repaired_count = 0
+    fallback_count = 0
+
+    for idx, t_entry in enumerate(translated_entries):
+        parts.append(translated[last:t_entry["start"]])
+
+        replacement = t_entry["full"]
+        o_entry = original_entries[idx]
+
+        original_title_has_math = "$" in o_entry["arg_inner"]
+        translated_title_has_math = "$" in t_entry["arg_inner"]
+        translated_title_has_unsafe_math_tokens = bool(re.search(r"(?<!\\)[_^]", t_entry["arg_inner"]))
+
+        if original_title_has_math and not translated_title_has_math and translated_title_has_unsafe_math_tokens:
+            repaired = _repair_sectioning_command_math_preserve_translation(t_entry["full"])
+            repaired_entries = _extract_sectioning_commands(repaired)
+            repaired_arg_inner = repaired_entries[0]["arg_inner"] if repaired_entries else t_entry["arg_inner"]
+            if _has_unsafe_math_tokens_outside_inline_math(repaired_arg_inner):
+                replacement = o_entry["full"]
+                fallback_count += 1
+            else:
+                replacement = repaired
+                repaired_count += 1
+
+        parts.append(replacement)
+        last = t_entry["end"]
+
+    parts.append(translated[last:])
+    restored = "".join(parts)
+
+    if repaired_count:
+        logger.warning(f"Repaired {repaired_count} section title(s) by wrapping math tokens")
+    if fallback_count:
+        logger.warning(f"Restored {fallback_count} section title(s) from source due to unsafe math tokens")
+
+    return restored
+
+
+def restore_twopartpiecewise_commands(original: str, translated: str) -> str:
+    """
+    Restore `\\twopartpiecewise{...}{...}{...}{...}` calls from source by order.
+
+    This command is structure-sensitive and frequently broken by LLM output
+    (missing wrappers, stray `$`, or malformed braces), so we preserve the
+    original command bodies to keep compilation stable.
+    """
+    if not original or not translated:
+        return translated
+    if r"\twopartpiecewise" not in original:
+        return translated
+
+    cmd_pattern = regex.compile(
+        get_pattern_command_full("twopartpiecewise", n=4),
+        flags=regex.DOTALL,
+    )
+
+    original_commands = [m.group(0) for m in cmd_pattern.finditer(original)]
+    translated_matches = list(cmd_pattern.finditer(translated))
+
+    if not original_commands:
+        return translated
+    if not translated_matches:
+        logger.warning("Restored fragment because translated content dropped \\twopartpiecewise command(s)")
+        return original
+    if len(original_commands) != len(translated_matches):
+        logger.warning("Restored fragment due to \\twopartpiecewise command count mismatch")
+        return original
+
+    parts = []
+    last = 0
+    for i, match in enumerate(translated_matches):
+        parts.append(translated[last:match.start()])
+        parts.append(original_commands[i])
+        last = match.end()
+    parts.append(translated[last:])
+
+    restored = "".join(parts)
+    if restored != translated:
+        logger.warning(f"Restored {len(original_commands)} \\twopartpiecewise command(s) from source")
+    return restored
+
+
+def _is_escaped(text: str, index: int) -> bool:
+    """Return True when `text[index]` is escaped by an odd number of backslashes."""
+    backslashes = 0
+    i = index - 1
+    while i >= 0 and text[i] == "\\":
+        backslashes += 1
+        i -= 1
+    return (backslashes % 2) == 1
+
+
+def _has_balanced_unescaped_braces(text: str) -> bool:
+    """Check whether unescaped `{` and `}` are balanced and never underflow."""
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "{" and not _is_escaped(text, i):
+            depth += 1
+        elif ch == "}" and not _is_escaped(text, i):
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def _count_unclosed_unescaped_open_braces(text: str) -> int:
+    """Count how many unescaped `{` remain unclosed by `}`."""
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "{" and not _is_escaped(text, i):
+            depth += 1
+        elif ch == "}" and not _is_escaped(text, i):
+            if depth > 0:
+                depth -= 1
+    return depth
+
+
+def restore_document_tail_structure(original: str, translated: str) -> str:
+    """
+    Restore a structurally complete document tail when translation is truncated.
+
+    Typical symptoms:
+    - missing `\\end{document}`
+    - bibliography/contact tail cut off in the final lines
+    """
+    if not original or not translated:
+        return translated
+
+    end_doc_pattern = re.compile(r"\\end\s*\{document\}")
+    if not end_doc_pattern.search(original):
+        return translated
+    if end_doc_pattern.search(translated):
+        return translated
+
+    anchor_patterns = [
+        r"\\bibliographystyle\b",
+        r"\\bibliography\b",
+        r"\\begin\s*\{thebibliography\}",
+        r"\\appendix\b",
+    ]
+
+    for pattern in anchor_patterns:
+        src_matches = list(re.finditer(pattern, original))
+        dst_matches = list(re.finditer(pattern, translated))
+        if not src_matches or not dst_matches:
+            continue
+
+        src_idx = src_matches[-1].start()
+        dst_idx = dst_matches[-1].start()
+        restored = translated[:dst_idx] + original[src_idx:]
+        if end_doc_pattern.search(restored):
+            logger.warning("Restored document tail from source due to missing \\end{document}")
+            return restored
+
+    restored = translated.rstrip()
+    missing_braces = _count_unclosed_unescaped_open_braces(restored)
+    if missing_braces > 0:
+        restored += "\n" + ("}" * missing_braces)
+    restored += "\n\\end{document}\n"
+    logger.warning("Appended fallback \\end{document} to recover truncated output tail")
+    return restored
+
+
+def restore_math_environment_blocks(original: str, translated: str) -> str:
+    """
+    Restore damaged math environments from source by occurrence order.
+
+    Only targeted environments are considered (`align`, `equation`, `gather`,
+    `multline`, `eqnarray`, `alignat`, `flalign`, with optional `*`).
+    A translated math block is replaced by source only when brace structure is
+    syntactically unsafe (unbalanced/underflow).
+    """
+    if not original or not translated:
+        return translated
+
+    env_pattern = re.compile(
+        r"\\begin\{(alignat\*?|align\*?|flalign\*?|gather\*?|multline\*?|equation\*?|eqnarray\*?)\}.*?\\end\{\1\}",
+        flags=re.DOTALL,
+    )
+    original_blocks = list(env_pattern.finditer(original))
+    translated_blocks = list(env_pattern.finditer(translated))
+    if not original_blocks or not translated_blocks:
+        return translated
+
+    parts = []
+    last = 0
+    replaced_count = 0
+    for idx, match in enumerate(translated_blocks):
+        parts.append(translated[last:match.start()])
+        block = match.group(0)
+
+        if (not _has_balanced_unescaped_braces(block)) and idx < len(original_blocks):
+            parts.append(original_blocks[idx].group(0))
+            replaced_count += 1
+        else:
+            parts.append(block)
+        last = match.end()
+
+    parts.append(translated[last:])
+    if replaced_count:
+        logger.warning(f"Restored {replaced_count} damaged math environment block(s) from source")
+    return "".join(parts)
+
+
+def restore_inline_math_segments(original: str, translated: str) -> str:
+    """
+    Restore malformed inline `$...$` math segments from source by occurrence order.
+
+    Only segments with structurally unsafe brace balance are replaced, so normal
+    translated prose remains intact.
+    """
+    if not original or not translated:
+        return translated
+
+    inline_pattern = re.compile(
+        r"(?<!\\)(?<!\$)\$(?!\$).*?(?<!\\)(?<!\$)\$(?!\$)",
+        flags=re.DOTALL,
+    )
+    original_segments = inline_pattern.findall(original)
+    translated_segments = list(inline_pattern.finditer(translated))
+    if not original_segments or not translated_segments:
+        return translated
+
+    parts = []
+    last = 0
+    replaced_count = 0
+    for idx, match in enumerate(translated_segments):
+        parts.append(translated[last:match.start()])
+        segment = match.group(0)
+        inner = segment[1:-1] if len(segment) >= 2 else segment
+
+        if (not _has_balanced_unescaped_braces(inner)) and idx < len(original_segments):
+            parts.append(original_segments[idx])
+            replaced_count += 1
+        else:
+            parts.append(segment)
+        last = match.end()
+
+    parts.append(translated[last:])
+    if replaced_count:
+        logger.warning(f"Restored {replaced_count} malformed inline math segment(s) from source")
+    return "".join(parts)
+
+
+def _has_unsafe_math_tokens_outside_inline_math(text: str) -> bool:
+    """Detect `_`/`^` tokens outside inline `$...$` regions."""
+    sanitized = re.sub(r"(?<!\\)(?<!\$)\$.*?(?<!\\)(?<!\$)\$", "", text)
+    return bool(re.search(r"(?<!\\)[_^]", sanitized))
+
+
+def _wrap_likely_math_tokens(header_text: str) -> str:
+    """
+    Wrap common math-like tokens (e.g., Y_i, x^2) in `$...$` within header text.
+    """
+    if not header_text:
+        return header_text
+
+    # Simple variable/subscript/superscript token patterns.
+    token_pattern = re.compile(
+        r"(?<!\\)(?:[A-Za-z]+(?:_[A-Za-z0-9]+)+(?:\^[A-Za-z0-9]+)*|[A-Za-z]+(?:\^[A-Za-z0-9]+)+)"
+    )
+
+    def _replacer(match: re.Match) -> str:
+        token = match.group(0)
+        return f"${token}$"
+
+    return token_pattern.sub(_replacer, header_text)
+
+
+def _repair_begin_header_math_preserve_translation(begin_cmd: str) -> str:
+    """
+    Try to preserve translated begin-header text while repairing unsafe math tokens.
+    """
+    m = re.match(r"(\\begin\s*\{[^}]+\}\s*\[)([^\]]*)(\])", begin_cmd, flags=re.DOTALL)
+    if not m:
+        return begin_cmd
+
+    prefix, header_text, suffix = m.groups()
+    repaired_header = _wrap_likely_math_tokens(header_text)
+    return f"{prefix}{repaired_header}{suffix}"
+
+
+def _strip_unsafe_inner_environment_wrapper(body: str, outer_env: str) -> str:
+    """
+    Remove a full-body translated inner environment wrapper when its env name is unsafe.
+
+    Example:
+      outer: \\begin{definition} ... \\end{definition}
+      body : \\begin{定义} ... \\end{定义}
+    """
+    if not body:
+        return body
+
+    stripped = body.strip()
+    begin_inner_match = re.match(
+        r"\s*\\begin\s*\{(?P<env>[^}]+)\}(?:\s*\[[^\]]*\])?",
+        stripped,
+        flags=re.DOTALL,
+    )
+    if not begin_inner_match:
+        return stripped
+
+    inner_env = begin_inner_match.group("env")
+    if inner_env == outer_env:
+        return stripped
+
+    # Keep valid ASCII LaTeX env names unchanged; only strip clearly unsafe names.
+    if re.match(r"^[A-Za-z*@]+$", inner_env):
+        return stripped
+
+    end_inner_match = re.search(
+        rf"(\\end\s*\{{{re.escape(inner_env)}\}})\s*$",
+        stripped,
+        flags=re.DOTALL,
+    )
+    if not end_inner_match:
+        return stripped
+
+    inner_body = stripped[begin_inner_match.end():end_inner_match.start()].strip()
+    return inner_body or stripped
+
+
+def restore_environment_structure(original: str, translated: str) -> str:
+    """
+    Restore critical environment wrappers when translation drops or corrupts them.
+
+    Scope:
+    - Only applies when `original` is a single LaTeX environment block.
+    - Ensures `\\begin{env}` / `\\end{env}` pair exists in translated content.
+    - If translated begin header loses math delimiters from source and introduces
+      unsafe `_`/`^` tokens, fallback to the original begin header.
+    """
+    if not original or not translated:
+        return translated
+
+    begin_original_match = re.match(
+        r"\s*(\\begin\s*\{(?P<env>[^}]+)\}(?:\s*\[[^\]]*\])?)",
+        original,
+        flags=re.DOTALL,
+    )
+    if not begin_original_match:
+        return translated
+
+    env_name = begin_original_match.group("env")
+    original_begin_cmd = begin_original_match.group(1)
+
+    end_original_match = re.search(
+        rf"(\\end\s*\{{{re.escape(env_name)}\}})\s*$",
+        original,
+        flags=re.DOTALL,
+    )
+    if not end_original_match:
+        return translated
+    original_end_cmd = end_original_match.group(1)
+
+    begin_translated_match = re.match(
+        rf"\s*(\\begin\s*\{{{re.escape(env_name)}\}}(?:\s*\[[^\]]*\])?)",
+        translated,
+        flags=re.DOTALL,
+    )
+    end_translated_match = re.search(
+        rf"(\\end\s*\{{{re.escape(env_name)}\}})\s*$",
+        translated,
+        flags=re.DOTALL,
+    )
+
+    missing_begin = begin_translated_match is None
+    missing_end = end_translated_match is None
+
+    translated_begin_cmd = begin_translated_match.group(1) if begin_translated_match else original_begin_cmd
+    original_begin_has_math = "$" in original_begin_cmd
+    translated_begin_has_math = "$" in translated_begin_cmd
+    translated_begin_has_unsafe_math_tokens = bool(re.search(r"(?<!\\)[_^]", translated_begin_cmd))
+
+    begin_header_needs_repair = (
+        original_begin_has_math
+        and not translated_begin_has_math
+        and translated_begin_has_unsafe_math_tokens
+    )
+
+    if not missing_begin and not missing_end:
+        translated_body = translated[begin_translated_match.end():end_translated_match.start()].strip()
+        normalized_body = _strip_unsafe_inner_environment_wrapper(translated_body, env_name)
+        if not begin_header_needs_repair and normalized_body == translated_body:
+            return translated
+
+    begin_cmd = translated_begin_cmd
+    if begin_header_needs_repair:
+        repaired_begin_cmd = _repair_begin_header_math_preserve_translation(translated_begin_cmd)
+        if _has_unsafe_math_tokens_outside_inline_math(repaired_begin_cmd):
+            # Final fallback to source header if translated header still unsafe.
+            begin_cmd = original_begin_cmd
+        else:
+            begin_cmd = repaired_begin_cmd
+
+    body = translated
+    if begin_translated_match:
+        body = body[begin_translated_match.end():]
+    end_in_body = re.search(
+        rf"(\\end\s*\{{{re.escape(env_name)}\}})\s*$",
+        body,
+        flags=re.DOTALL,
+    )
+    if end_in_body:
+        body = body[:end_in_body.start()]
+
+    body = body.strip()
+    body = _strip_unsafe_inner_environment_wrapper(body, env_name)
+    if not body:
+        original_body = original[begin_original_match.end():end_original_match.start()]
+        body = original_body.strip()
+
+    return f"{begin_cmd}\n{body}\n{original_end_cmd}"
+
+
 def extract_pure_text(dir):
     """Extract pure text from LaTeX project"""
     main_file_path = find_main_tex_file(dir)
@@ -588,7 +1516,42 @@ def add_ctex_package(latex_code, tex_file_path: str = None):
     if tex_file_path:
         _patch_sibling_style_files(tex_file_path)
 
+    # XeCJK/ctex may leave math families (notably 6/11) without script fonts
+    # in some amsart-class documents, causing `scriptfont ... undefined` errors.
+    latex_code = _inject_cjk_math_family_fallback(latex_code)
+
     return latex_code
+
+
+def _inject_cjk_math_family_fallback(latex_code: str) -> str:
+    """Inject a defensive math-family fallback block for CJK engine paths."""
+    marker = "% CJK math family fallback"
+    if marker in latex_code:
+        return latex_code
+
+    fallback_block = (
+        f"{marker}\n"
+        "\\AtBeginDocument{\n"
+        "  \\textfont6=\\textfont2\n"
+        "  \\scriptfont6=\\scriptfont2\n"
+        "  \\scriptscriptfont6=\\scriptscriptfont2\n"
+        "  \\textfont11=\\textfont2\n"
+        "  \\scriptfont11=\\scriptfont2\n"
+        "  \\scriptscriptfont11=\\scriptscriptfont2\n"
+        "}"
+    )
+
+    # Prefer injecting directly after ctex/xeCJK package lines.
+    for pkg_pattern in [
+        r'\\usepackage(?:\[[^\]]*\])?\{ctex\}',
+        r'\\usepackage(?:\[[^\]]*\])?\{xeCJK\}',
+    ]:
+        match = re.search(pkg_pattern, latex_code)
+        if match:
+            pos = match.end()
+            return latex_code[:pos] + "\n" + fallback_block + "\n" + latex_code[pos:]
+
+    return _inject_after_documentclass(latex_code, fallback_block)
 
 
 def _comment_out_pdflatex_commands(latex_code: str) -> str:
@@ -819,6 +1782,106 @@ def add_cyrillic_font_support(latex_code: str, target_language: str = "ru") -> s
     return latex_code
 
 
+def _fix_page_overflow_for_cjk(latex_code: str) -> str:
+    """Fix page overflow issues that occur when CJK fonts are used with
+    document classes / packages that assume Western line heights.
+
+    CJK characters have taller line heights than Latin glyphs.  When a document
+    uses packages like ``a4wide`` (which aggressively expand ``\\textheight`` to
+    fill A4 pages under Western metrics), the extra CJK line height causes
+    content to overflow past the physical PDF page boundary.  The ``xdvipdfmx``
+    driver then clips the overflowing content, resulting in text being visually
+    cut in half at the bottom of each page.
+
+    This function applies two mitigations:
+
+    1. **Replace ``a4wide``** with ``geometry[a4paper, margin=2cm]`` so that
+       ``\\textheight`` is properly recalculated for the actual (larger) line
+       height.  The ``geometry`` package also ensures the PDF MediaBox is set
+       to A4, preventing canvas-size mismatches.
+
+    2. **Inject ``\\raggedbottom``** to prevent the ``\\flushbottom`` default
+       (used by ``amsart`` and many journal classes) from stretching vertical
+       glue, which can push the last line of a page below the bottom margin.
+    """
+    # --- 1. Replace a4wide with geometry[a4paper] --------------------------
+    # a4wide sets aggressive text dimensions that overflow with CJK line height.
+    # It can appear as standalone (\usepackage{a4wide}) or inside a combo
+    # (\usepackage{bbm, a4wide}).
+
+    # Pattern A: standalone  \usepackage{a4wide}  or  \usepackage[...]{a4wide}
+    standalone_pat = re.compile(
+        r'\\usepackage\s*(?:\[[^\]]*\])?\s*\{a4wide\}'
+    )
+    # Pattern B: combo like  \usepackage{bbm, a4wide}  or  \usepackage{a4wide, bbm}
+    #   We detect any \usepackage{...} whose brace content mentions a4wide
+    combo_pat = re.compile(
+        r'(\\usepackage\s*(?:\[[^\]]*\])?\s*\{)([^}]*\ba4wide\b[^}]*)(\})'
+    )
+
+    combo_m = combo_pat.search(latex_code)
+    standalone_m = standalone_pat.search(latex_code)
+
+    a4wide_removed = False
+
+    if combo_m:
+        pkg_list = combo_m.group(2)
+        # Split packages, remove a4wide, keep the rest
+        pkgs = [p.strip() for p in pkg_list.split(',') if p.strip().lower() != 'a4wide']
+        if pkgs:
+            # There are other packages remaining — keep them, remove a4wide
+            new_line = combo_m.group(1) + ', '.join(pkgs) + combo_m.group(3)
+        else:
+            # a4wide was the only package — comment out the entire line
+            new_line = '% ' + combo_m.group(0) + '  % Removed for CJK compat'
+        latex_code = latex_code[:combo_m.start()] + new_line + latex_code[combo_m.end():]
+        a4wide_removed = True
+    elif standalone_m:
+        # Comment out standalone a4wide line
+        latex_code = (
+            latex_code[:standalone_m.start()]
+            + '% ' + standalone_m.group(0) + '  % Removed for CJK compat'
+            + latex_code[standalone_m.end():]
+        )
+        a4wide_removed = True
+
+    if a4wide_removed:
+        # Inject geometry[a4paper] if not already present
+        has_geometry = re.search(
+            r'\\usepackage\s*(?:\[[^\]]*\])?\s*\{geometry\}', latex_code
+        )
+        if not has_geometry:
+            geometry_line = (
+                '\\usepackage[a4paper, left=2cm, right=2cm, '
+                'top=2.5cm, bottom=2.5cm]{geometry}'
+            )
+            latex_code = _inject_after_documentclass(latex_code, geometry_line)
+        else:
+            # geometry exists — make sure it has a4paper
+            geo_m = re.search(
+                r'(\\usepackage\s*\[)([^\]]*)(\]\s*\{geometry\})', latex_code
+            )
+            if geo_m and 'a4paper' not in geo_m.group(2):
+                latex_code = (
+                    latex_code[:geo_m.start()]
+                    + geo_m.group(1) + 'a4paper, ' + geo_m.group(2) + geo_m.group(3)
+                    + latex_code[geo_m.end():]
+                )
+        logger.info("Replaced a4wide with geometry[a4paper] for CJK page-overflow fix")
+
+    # --- 2. Inject \raggedbottom -------------------------------------------
+    if '\\raggedbottom' not in latex_code:
+        begin_doc = re.search(r'\\begin\s*\{document\}', latex_code)
+        if begin_doc:
+            pos = begin_doc.start()
+            latex_code = latex_code[:pos] + '\\raggedbottom\n' + latex_code[pos:]
+        else:
+            latex_code = _inject_after_documentclass(latex_code, '\\raggedbottom')
+        logger.info("Injected \\raggedbottom for CJK page-overflow fix")
+
+    return latex_code
+
+
 def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path: str = None) -> str:
     """
     Dynamically inject the appropriate font/language package based on target language.
@@ -837,7 +1900,8 @@ def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path:
     lang = target_language.lower()
     if lang in ("zh", "ch"):
         # Chinese: use ctex package
-        return add_ctex_package(latex_code, tex_file_path=tex_file_path)
+        latex_code = add_ctex_package(latex_code, tex_file_path=tex_file_path)
+        return _fix_page_overflow_for_cjk(latex_code)
     elif lang == "ko":
         # Korean: use xeCJK with Korean-capable fonts
         # UnBatang/UnDotum are bundled with TeX Live (un-core package)
@@ -872,8 +1936,9 @@ def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path:
                     1  # only replace first occurrence
                 )
                 logger.info("Added Korean font setup to existing xeCJK for Korean")
+        latex_code = _inject_cjk_math_family_fallback(latex_code)
         latex_code = _comment_out_pdflatex_commands(latex_code)
-        return latex_code
+        return _fix_page_overflow_for_cjk(latex_code)
     elif lang == "ja":
         # Japanese: use xeCJK with Japanese-capable fonts
         # IPAexMincho/IPAexGothic are bundled with TeX Live (ipaex package)
@@ -907,8 +1972,9 @@ def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path:
                     1  # only replace first occurrence
                 )
                 logger.info("Added Japanese font setup to existing xeCJK for Japanese")
+        latex_code = _inject_cjk_math_family_fallback(latex_code)
         latex_code = _comment_out_pdflatex_commands(latex_code)
-        return latex_code
+        return _fix_page_overflow_for_cjk(latex_code)
     elif lang in ("ru", "uk", "bg", "sr", "mk", "be"):
         # Cyrillic languages: use fontspec + CMU Serif for proper Cyrillic rendering
         return add_cyrillic_font_support(latex_code, target_language)

@@ -7,6 +7,7 @@ Provides endpoints for downloading translated PDFs and source files.
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 import logging
+import json
 from pathlib import Path
 import zipfile
 import tempfile
@@ -24,46 +25,72 @@ task_manager = get_task_manager()
 
 def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
     """
-    Search for the translated PDF in the output directory.
-    Prioritizes files with '_translated.pdf' and avoids searching 
-    recursively into source project subdirectories.
+    Locate translated PDF with strict rules to avoid selecting copied source PDFs.
+
+    Priority:
+    1. task_log.json events: compilation_completed / compilation_completed_with_warnings
+       - Support both output root and its direct child directories.
+    2. Root-level *_translated.pdf
+    3. Convention path: output_dir/<subdir>/<subdir>.pdf (direct child only)
     """
-    # 1. Try finding explicitly named translated PDF in root
+
+    def _iter_log_files(root: Path):
+        root_log = root / "task_log.json"
+        if root_log.is_file():
+            yield root_log
+        for child in root.iterdir():
+            if not child.is_dir():
+                continue
+            child_log = child / "task_log.json"
+            if child_log.is_file():
+                yield child_log
+
+    def _extract_pdf_from_log(log_path: Path) -> Optional[Path]:
+        try:
+            entries = json.loads(log_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"Failed to parse task log for PDF resolution: {e}")
+            return None
+
+        for entry in reversed(entries):
+            if entry.get("event") not in ("compilation_completed", "compilation_completed_with_warnings"):
+                continue
+            raw_path = entry.get("pdf_path")
+            if not raw_path:
+                continue
+            candidate = Path(raw_path)
+            if not candidate.is_absolute():
+                candidate = log_path.parent / candidate
+            try:
+                candidate_resolved = candidate.resolve()
+                output_resolved = output_dir.resolve()
+                candidate_resolved.relative_to(output_resolved)
+            except Exception:
+                continue
+            if candidate.is_file():
+                return candidate
+        return None
+
+    # 1) Use task-log explicit pdf_path first.
+    for log_file in _iter_log_files(output_dir):
+        resolved = _extract_pdf_from_log(log_file)
+        if resolved:
+            return resolved
+
+    # 2) Explicit translated naming in root.
     pdf_files = list(output_dir.glob("*_translated.pdf"))
     if pdf_files:
         return pdf_files[0]
-    
-    # 2. Try finding any PDF in the root output dir
-    pdf_files = list(output_dir.glob("*.pdf"))
-    if pdf_files:
-        return pdf_files[0]
-    
-    # 3. Try finding in subdirectories, but be careful of source PDFs
-    # We search recursively but filter out known source directory patterns
-    all_pdfs = list(output_dir.rglob("*.pdf"))
-    
-    # Heuristic: exclude PDFs that are inside a directory containing many .tex files
-    # or a directory name matching an ArXiv ID (e.g., 2503.19300)
-    valid_pdfs = []
-    import re
-    for pdf in all_pdfs:
-        rel_parts = pdf.relative_to(output_dir).parts
-        if len(rel_parts) > 1:
-            # If it's inside a subdirectory, check if that subdirectory is a source dir
-            parent_name = rel_parts[0]
-            if re.match(r'^\d+\.\d+$', parent_name):
-                # Only allow if the filename itself implies it's translated
-                if "_translated" in pdf.name:
-                    valid_pdfs.append(pdf)
-                continue
-        valid_pdfs.append(pdf)
-    
-    # Prioritize those with '_translated' in name
-    translated_only = [f for f in valid_pdfs if "_translated" in f.name]
-    if translated_only:
-        return translated_only[0]
-        
-    return valid_pdfs[0] if valid_pdfs else None
+
+    # 3) Strict convention: direct child folder with same-name PDF.
+    for child in output_dir.iterdir():
+        if not child.is_dir():
+            continue
+        expected_pdf = child / f"{child.name}.pdf"
+        if expected_pdf.is_file():
+            return expected_pdf
+
+    return None
 
 
 @router.get("/download/{task_id}/pdf")

@@ -73,9 +73,12 @@ class CoordinatorAgent:
         except Exception as e:
             logger.error(f"Failed to write task log: {e}")
 
-    async def workflow_latextrans_async(self) -> None:
+    async def workflow_latextrans_async(self) -> Dict[str, Any]:
         """
         Initializes the tool agent based on the provided agent name key.
+
+        Returns:
+            Structured workflow result with status/pdf_path/error_summary.
         """
         base_name = os.path.basename(self.project_dir)
         transed_project_dir = os.path.join(self.output_dir, f"{self.target_language}_{base_name}")
@@ -107,7 +110,7 @@ class CoordinatorAgent:
             output_dir=transed_project_dir,
             trans_mode=self.mode,
             generate_terminology=self.config.get("generate_terminology", False),
-            on_progress=lambda s, p, m: self.update_progress(10 + int(p * 0.6), m)
+            on_progress=lambda s, p, m: self.update_progress(-1, m) if p == -1 else self.update_progress(10 + int(p * 0.6), m)
         )
         await translator_agent.execute()
         self._write_task_log(transed_project_dir, "translation_completed")
@@ -165,33 +168,132 @@ class CoordinatorAgent:
         )
         
         try:
-            PDF_file_path = generator_agent.execute()
+            generation_result = generator_agent.execute()
         except Exception as e:
             logger.error(f"Failed to generate PDF for {base_name}: {e}")
-            self._write_task_log(transed_project_dir, "error", {"stage": "generation", "error": str(e)})
+            self._write_task_log(
+                transed_project_dir,
+                "compilation_failed",
+                {"error_summary": str(e)}
+            )
             self.update_progress(100, f"Failed: {e}")
-            return
+            return {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": str(e),
+                "warnings": None,
+            }
         
+        PDF_file_path = generation_result.get("pdf_path")
         if PDF_file_path:
+            if not Path(PDF_file_path).exists():
+                error_summary = (
+                    generation_result.get("error_summary")
+                    or f"Compilation returned a missing PDF path: {PDF_file_path}"
+                )
+                logger.error(f"Failed to finalize PDF for {base_name}: {error_summary}")
+                self._write_task_log(
+                    transed_project_dir,
+                    "compilation_failed",
+                    {
+                        "error_summary": error_summary,
+                        "pdf_path": PDF_file_path,
+                        "warnings": generation_result.get("warnings"),
+                        "error_count": generation_result.get("error_count"),
+                        "engine": generation_result.get("engine"),
+                    }
+                )
+                self.update_progress(100, "Failed to generate PDF")
+                return {
+                    "status": "failed_compilation",
+                    "pdf_path": None,
+                    "error_summary": error_summary,
+                    "warnings": generation_result.get("warnings"),
+                }
+
             new_PDF_path = os.path.join(transed_project_dir, f"{self.target_language}_{base_name}.pdf")
-            shutil.move(PDF_file_path, new_PDF_path)
+            try:
+                shutil.move(PDF_file_path, new_PDF_path)
+            except Exception as move_error:
+                error_summary = (
+                    generation_result.get("error_summary")
+                    or f"Failed to finalize compiled PDF: {move_error}"
+                )
+                logger.error(f"Failed to move compiled PDF for {base_name}: {move_error}")
+                self._write_task_log(
+                    transed_project_dir,
+                    "compilation_failed",
+                    {
+                        "error_summary": error_summary,
+                        "pdf_path": PDF_file_path,
+                        "warnings": generation_result.get("warnings"),
+                        "error_count": generation_result.get("error_count"),
+                        "engine": generation_result.get("engine"),
+                    }
+                )
+                self.update_progress(100, "Failed to generate PDF")
+                return {
+                    "status": "failed_compilation",
+                    "pdf_path": None,
+                    "error_summary": error_summary,
+                    "warnings": generation_result.get("warnings"),
+                }
             
             # Verify PDF is fully ready before updating status
             from backend.app.services.latex.compiler import verify_pdf_ready
+
+            compile_status = generation_result.get("status", "completed")
+            compile_warnings = generation_result.get("warnings")
             if verify_pdf_ready(new_PDF_path):
                 logger.info(f"PDF verified ready: {new_PDF_path}")
-                self._write_task_log(transed_project_dir, "compilation_completed", {"pdf_path": new_PDF_path})
-                self.update_progress(100, "Translation completed successfully")
+                if compile_status == "completed_with_warnings":
+                    self._write_task_log(
+                        transed_project_dir,
+                        "compilation_completed_with_warnings",
+                        {"pdf_path": new_PDF_path, "warnings": compile_warnings}
+                    )
+                    self.update_progress(100, "Translation completed with compilation warnings")
+                else:
+                    self._write_task_log(transed_project_dir, "compilation_completed", {"pdf_path": new_PDF_path})
+                    self.update_progress(100, "Translation completed successfully")
             else:
                 logger.warning(f"PDF may not be fully ready: {new_PDF_path}")
-                self._write_task_log(transed_project_dir, "compilation_completed_with_warnings", {"pdf_path": new_PDF_path})
+                compile_status = "completed_with_warnings"
+                compile_warnings = compile_warnings or "PDF generated but readiness verification timed out"
+                self._write_task_log(
+                    transed_project_dir,
+                    "compilation_completed_with_warnings",
+                    {"pdf_path": new_PDF_path, "warnings": compile_warnings}
+                )
                 self.update_progress(100, "Translation completed, PDF may need refresh")
+            return {
+                "status": compile_status,
+                "pdf_path": new_PDF_path,
+                "error_summary": None,
+                "warnings": compile_warnings,
+            }
         else:
-            logger.error(f"Failed to generate PDF for {base_name}")
-            self._write_task_log(transed_project_dir, "error", {"stage": "generation", "error": "No PDF path returned"})
+            error_summary = generation_result.get("error_summary") or "No PDF path returned"
+            logger.error(f"Failed to generate PDF for {base_name}: {error_summary}")
+            self._write_task_log(
+                transed_project_dir,
+                "compilation_failed",
+                {
+                    "error_summary": error_summary,
+                    "warnings": generation_result.get("warnings"),
+                    "error_count": generation_result.get("error_count"),
+                    "engine": generation_result.get("engine"),
+                }
+            )
             self.update_progress(100, "Failed to generate PDF")
+            return {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": error_summary,
+                "warnings": generation_result.get("warnings"),
+            }
 
-    def workflow_latextrans(self) -> None:
+    def workflow_latextrans(self) -> Dict[str, Any]:
         """
         Initialize the tool agent and execute the LaTeX conversion workflow 
         (with event loop security management)
@@ -202,9 +304,15 @@ class CoordinatorAgent:
 
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        result: Dict[str, Any] = {
+            "status": "failed",
+            "pdf_path": None,
+            "error_summary": "Workflow did not run",
+            "warnings": None,
+        }
 
         try:
-            self.loop.run_until_complete(self.workflow_latextrans_async())
+            result = self.loop.run_until_complete(self.workflow_latextrans_async())
 
         finally:
             # Complete all asynchronous resource recycling
@@ -221,3 +329,4 @@ class CoordinatorAgent:
                 )
 
             self.loop.run_until_complete(self.loop.shutdown_default_executor())
+        return result

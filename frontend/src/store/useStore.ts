@@ -516,7 +516,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     logs: statusData.logs ? statusData.logs : [...state.logs, statusData.message].filter((v, i, a) => a.indexOf(v) === i)
                 }))
 
-                if (['completed', 'failed', 'completed_with_warnings'].includes(statusData.status.toLowerCase())) {
+                if (['completed', 'failed', 'completed_with_warnings', 'failed_compilation'].includes(statusData.status.toLowerCase())) {
                     const wasPolling = get().isPolling
                     stopPolling()
                     if (wasPolling) {
@@ -524,6 +524,8 @@ export const useStore = create<TranslationState>((set, get) => ({
                             toast.success("Task completed successfully", { id: `task-completed-${taskId}` })
                         } else if (statusData.status.toLowerCase() === 'failed') {
                             toast.error("Task failed", { id: `task-failed-${taskId}` })
+                        } else if (statusData.status.toLowerCase() === 'failed_compilation') {
+                            toast.error("Task failed at PDF compilation stage", { id: `task-failed-compilation-${taskId}` })
                         }
                     }
                 }

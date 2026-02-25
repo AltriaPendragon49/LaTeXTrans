@@ -466,6 +466,8 @@ async def run_translation(
             agent_config=agent_config,
             llm_config=llm_config,
             additional_info={
+                "arxiv_id": arxiv_id,
+                "is_logged_in": bool(user_id),
                 "user_id": user_id,
                 "task_id": task_id,
                 "target_language": target_language,
@@ -476,6 +478,8 @@ async def run_translation(
         )
         logger.info(f"🔍 配置已拦截并保存到: {config_file}")
         # ========== 配置拦截代码 - 结束 ==========
+
+
 
       
         
@@ -489,24 +493,48 @@ async def run_translation(
         
         # Run translation workflow asynchronously
         logger.info(f"Running translation workflow for {main_tex_file}")
-        await coordinator.workflow_latextrans_async()
-        
-        # Check if translation succeeded by looking for output PDF
-        # The workflow saves PDF as {target_language}_{project_name}/{target_language}_{project_name}.pdf
-        project_name = source_path.name
-        # Subdirectory logic matching CoordinatorAgent's transed_project_dir
-        transed_subdir = f"{target_language}_{project_name}"
-        output_pdf = output_dir / transed_subdir / f"{target_language}_{project_name}.pdf"
-        
-        # Fallback recursive check: prioritize files starting with target_language_
-        if not output_pdf.exists():
-            prefix = f"{target_language}_"
-            found_pdfs = [p for p in output_dir.rglob("*.pdf") if p.name.startswith(prefix)]
-            if found_pdfs:
-                output_pdf = found_pdfs[0]
-                logger.info(f"Found translated PDF via fallback: {output_pdf}")
+        workflow_result = await coordinator.workflow_latextrans_async()
+        workflow_status = (workflow_result or {}).get("status")
+        error_summary = (workflow_result or {}).get("error_summary")
+        warning_summary = (workflow_result or {}).get("warnings")
+        pdf_path = (workflow_result or {}).get("pdf_path")
 
-        if output_pdf.exists():
+        if pdf_path and not Path(pdf_path).exists():
+            logger.error(
+                f"Workflow returned missing compiled PDF path for task {task_id}: {pdf_path}"
+            )
+            workflow_status = "failed_compilation"
+            error_summary = error_summary or f"Compilation returned a missing PDF path: {pdf_path}"
+            pdf_path = None
+
+        if workflow_status == "failed_compilation" or not pdf_path:
+            error_text = error_summary or "Compilation failed without detailed error output"
+            failure_msg = f"PDF compilation failed: {error_text}"
+            task_manager.update_task(
+                task_id=task_id,
+                status=TaskStatus.FAILED_COMPILATION.value,
+                progress=100,
+                message=failure_msg,
+                error=error_text,
+                warnings=warning_summary,
+                output_path=str(output_dir),
+                user_id=user_id
+            )
+            logger.warning(f"Translation finished with compilation failure: {task_id}")
+            return
+
+        if workflow_status == "completed_with_warnings":
+            task_manager.update_task(
+                task_id=task_id,
+                status=TaskStatus.COMPLETED_WITH_WARNINGS.value,
+                progress=100,
+                message="Translation completed with compilation warnings",
+                warnings=warning_summary or "Compilation completed with warnings",
+                output_path=str(output_dir),
+                user_id=user_id
+            )
+            logger.info(f"Translation completed with compilation warnings: {task_id}")
+        else:
             task_manager.update_task(
                 task_id=task_id,
                 status=TaskStatus.COMPLETED.value,
@@ -516,19 +544,6 @@ async def run_translation(
                 user_id=user_id
             )
             logger.info(f"Translation completed: {task_id}")
-        else:
-            # Check if there were any errors in the output directory
-            # If no PDF was generated, mark as completed with warnings
-            task_manager.update_task(
-                task_id=task_id,
-                status=TaskStatus.COMPLETED_WITH_WARNINGS.value,
-                progress=100,
-                message="Translation completed but PDF generation may have issues",
-                warnings="No PDF file found in output directory",
-                output_path=str(output_dir),
-                user_id=user_id
-            )
-            logger.warning(f"Translation completed with warnings: {task_id}")
     
     except Exception as e:
         logger.error(f"Translation error for task {task_id}: {e}", exc_info=True)

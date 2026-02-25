@@ -15,7 +15,7 @@ const steps = [
 ]
 
 export default function ProcessingPage() {
-    const { taskId: storeTaskId, status, logs, pollStatus, stopPolling, setTaskId, taskWarnings } = useStore()
+    const { taskId: storeTaskId, status, logs, pollStatus, stopPolling, setTaskId, taskWarnings, error } = useStore()
     const [searchParams] = useSearchParams()
     const navigate = useNavigate()
     const { user } = useAuth()
@@ -40,14 +40,17 @@ export default function ProcessingPage() {
         return () => stopPolling()
     }, [effectiveTaskId])
 
-    // Derive current step from status message or status enum
-    // For MVP, simplistic mapping:
-    let currentStepIndex = 0
-    if (status === 'downloading') currentStepIndex = 0
-    else if (status === 'processing' || status === 'started') currentStepIndex = 2 // Translating involves extracting
-    else if (status === 'completed' || status === 'completed_with_warnings') currentStepIndex = 4
+    const normalizedStatus = (status || "").toLowerCase()
+    const canPreview = normalizedStatus === 'completed' || normalizedStatus === 'completed_with_warnings'
+    const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'failed_compilation'
 
-    const isComplete = currentStepIndex >= 4
+    // Derive current step from status message or status enum
+    let currentStepIndex = 0
+    if (normalizedStatus === 'downloading') currentStepIndex = 0
+    else if (normalizedStatus === 'processing' || normalizedStatus === 'started') currentStepIndex = 2
+    else if (normalizedStatus === 'failed_compilation') currentStepIndex = 3
+    else if (normalizedStatus === 'failed') currentStepIndex = 2
+    else if (canPreview) currentStepIndex = 4
 
     // 使用 effectiveTaskId 替代 taskId 用于下载链接
     const activeTaskId = effectiveTaskId
@@ -87,13 +90,15 @@ export default function ProcessingPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Translation in Progress</h1>
                     <p className="text-muted-foreground">Monitor the realtime status of your translation task.</p>
                 </div>
-                {isComplete ? (
+                {canPreview ? (
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/download/${activeTaskId}/source`, '_blank')}>
                             <Download className="mr-2 h-4 w-4" /> Download Source
                         </Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>View Result</Button>
                     </div>
+                ) : isFailed ? (
+                    <Button variant="outline" onClick={() => navigate("/")}>Back to Home</Button>
                 ) : (
                     <Button variant="destructive" onClick={() => navigate("/")}>Cancel Task</Button>
                 )}
@@ -109,23 +114,26 @@ export default function ProcessingPage() {
                         <CardContent>
                             <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 space-y-8 pl-6 py-2">
                                 {steps.map((step, index) => {
-                                    // Use simple logic: if complete, all done. If processing, step 2 is active.
-                                    const isActive = !isComplete && index === currentStepIndex;
-                                    const isCompleted = index < currentStepIndex || isComplete;
+                                    const isActive = !canPreview && !isFailed && index === currentStepIndex
+                                    const isFailedStep = isFailed && index === currentStepIndex
+                                    const isCompleted = index < currentStepIndex || canPreview
 
                                     return (
                                         <div key={step.id} className="relative">
                                             <span className={`absolute -left-[31px] flex h-6 w-6 items-center justify-center rounded-full border-2 bg-background ${isCompleted ? "border-emerald-500 bg-emerald-500 text-white" :
-                                                isActive ? "border-indigo-500 border-2 animate-pulse" : "border-slate-300"
+                                                isFailedStep ? "border-red-500 bg-red-500 text-white" :
+                                                    isActive ? "border-indigo-500 border-2 animate-pulse" : "border-slate-300"
                                                 }`}>
                                                 {isCompleted && <CheckCircle2 className="h-3 w-3" />}
+                                                {isFailedStep && <AlertTriangle className="h-3 w-3" />}
                                                 {isActive && <RotateCw className="h-3 w-3 animate-spin text-indigo-500" />}
                                             </span>
                                             <div className="flex flex-col">
-                                                <span className={`text-sm font-medium ${isActive ? "text-indigo-600" : isCompleted ? "text-emerald-600" : "text-slate-500"}`}>
+                                                <span className={`text-sm font-medium ${isActive ? "text-indigo-600" : isCompleted ? "text-emerald-600" : isFailedStep ? "text-red-600" : "text-slate-500"}`}>
                                                     {step.label}
                                                 </span>
                                                 {isActive && <span className="text-xs text-muted-foreground animate-pulse">Running...</span>}
+                                                {isFailedStep && <span className="text-xs text-red-600">Failed</span>}
                                             </div>
                                         </div>
                                     )
@@ -136,16 +144,30 @@ export default function ProcessingPage() {
 
                     <Card>
                         <CardContent className="pt-6 flex justify-center items-center min-h-[200px]">
-                            {isComplete ? (
+                            {canPreview ? (
                                 <div className="text-center space-y-2">
                                     <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
                                     <p className="font-medium text-emerald-600">Translation Completed!</p>
+                                </div>
+                            ) : isFailed ? (
+                                <div className="text-center space-y-2">
+                                    <AlertTriangle className="h-16 w-16 text-red-500 mx-auto" />
+                                    <p className="font-medium text-red-600">Translation Failed</p>
+                                    <p className="text-xs text-slate-500">{error || status}</p>
                                 </div>
                             ) : (
                                 <div className="text-center space-y-2">
                                     <RotateCw className="h-16 w-16 text-indigo-500 animate-spin mx-auto" />
                                     <p className="text-sm text-muted-foreground">Processing...</p>
                                     <p className="text-xs text-slate-400">{status}</p>
+                                    {logs.length > 0 && logs[logs.length - 1]?.includes("rate limited") && (
+                                        <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 animate-pulse">
+                                            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                                            <p className="text-xs text-amber-500 dark:text-amber-400 text-left">
+                                                API rate limited, retrying until API recovers. Consider using your own API key for better performance.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </CardContent>

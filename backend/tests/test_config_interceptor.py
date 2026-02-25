@@ -63,8 +63,10 @@ class ConfigInterceptor:
         filename = f"config_{task_id[:8]}_{timestamp}.json"
         filepath = self.output_dir / filename
         
-        # 构建完整配置快照
+        # 构建完整配置快照 - 将 key 字段放在最上方
         config_snapshot = {
+            "arxiv_id": (additional_info or {}).get("arxiv_id"),
+            "is_logged_in": (additional_info or {}).get("is_logged_in", False),
             "metadata": {
                 "task_id": task_id,
                 "captured_at": datetime.now().isoformat(),
@@ -237,6 +239,8 @@ config_file = interceptor.capture_config(
     agent_config=agent_config,
     llm_config=llm_config,
     additional_info={
+        "arxiv_id": arxiv_id,
+        "is_logged_in": bool(user_id),
         "target_language": target_language,
         "source_language": source_language,
         "source_path": str(source_path),

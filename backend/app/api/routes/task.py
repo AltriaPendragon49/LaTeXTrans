@@ -189,7 +189,7 @@ async def stream_task_status(task_id: str):
                     heartbeat_counter = 0  # Reset heartbeat after update
                 
                 # Check for terminal states
-                if current_status in ("completed", "failed"):
+                if current_status in ("completed", "completed_with_warnings", "failed_compilation", "failed"):
                     event_data = {
                         "type": "complete",
                         "task_id": task_id,

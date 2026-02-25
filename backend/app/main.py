@@ -7,7 +7,7 @@ Minimal MVP version with:
 - Basic CORS configuration
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import logging
@@ -28,7 +28,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
-    description="LaTeXTrans Backend API - MVP Version"
+    description="LaTeXTrans Backend API"
 )
 
 # Configure CORS
@@ -219,6 +219,14 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """
+    Handle favicon.ico requests to avoid 404 errors in logs
+    """
+    return Response(content="", media_type="image/x-icon")
 
 
 # Import and include API routes

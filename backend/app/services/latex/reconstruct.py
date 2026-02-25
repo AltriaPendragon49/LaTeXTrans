@@ -82,8 +82,16 @@ class LatexConstructor:
         logger.debug(f"Merging {len(self.sections)} sections")
         tex = ""
         for section in self.sections:
-            # Use trans_content if available, otherwise use original content
-            content = section["trans_content"] if section["trans_content"] else section["content"]
+            original = section.get("content", "")
+            translated = section.get("trans_content") or original
+            content = restore_sectioning_command_structure(original, translated)
+            content = restore_display_math_delimiters(original, content)
+            content = restore_display_math_shell_structure(original, content)
+            content = restore_twopartpiecewise_commands(original, content)
+            content = restore_inline_math_segments(original, content)
+            content = restore_math_environment_blocks(original, content)
+            content = restore_tag_commands(original, content)
+            content = restore_label_commands(original, content)
             tex += content + "\n"
         return tex
 
@@ -92,8 +100,16 @@ class LatexConstructor:
         logger.debug(f"Reverting {len(self.envs)} environments")
         for env in self.envs:
             placeholder = env["placeholder"]
-            # Use trans_content if available, otherwise use original content
-            content = env["trans_content"] if env["trans_content"] else env["content"]
+            original = env.get("content", "")
+            translated = env.get("trans_content") or original
+            content = restore_display_math_delimiters(original, translated)
+            content = restore_display_math_shell_structure(original, content)
+            content = restore_twopartpiecewise_commands(original, content)
+            content = restore_inline_math_segments(original, content)
+            content = restore_math_environment_blocks(original, content)
+            content = restore_tag_commands(original, content)
+            content = restore_environment_structure(original, content)
+            content = restore_label_commands(original, content)
             tex = tex.replace(placeholder, content)
         return tex
              
@@ -102,8 +118,16 @@ class LatexConstructor:
         logger.debug(f"Reverting {len(self.captions)} captions")
         for caption in self.captions:
             placeholder = caption["placeholder"]
-            # Use trans_content if available, otherwise use original content
-            content = caption["trans_content"] if caption["trans_content"] else caption["content"]
+            original = caption.get("content", "")
+            translated = caption.get("trans_content") or original
+            content = restore_caption_command_structure(original, translated)
+            content = restore_display_math_delimiters(original, content)
+            content = restore_display_math_shell_structure(original, content)
+            content = restore_twopartpiecewise_commands(original, content)
+            content = restore_inline_math_segments(original, content)
+            content = restore_math_environment_blocks(original, content)
+            content = restore_tag_commands(original, content)
+            content = restore_label_commands(original, content)
             tex = tex.replace(placeholder, content)
         return tex                              
     
@@ -178,9 +202,18 @@ class LatexConstructor:
 
         # Add language-specific packages based on target language
         main_file_path = find_main_tex_file(self.output_latex_dir)
+        original_main_tex = ""
+        if main_file_path and os.path.exists(main_file_path):
+            try:
+                with open(main_file_path, "r", encoding="utf-8", errors="replace") as f:
+                    original_main_tex = f.read()
+            except Exception as exc:
+                logger.warning(f"Failed to read source main tex for tail restoration: {exc}")
+
+        tex = restore_document_tail_structure(original_main_tex, tex)
         tex = add_cjk_package(tex, self.target_language, tex_file_path=main_file_path)
 
-        if os.path.exists(main_file_path):
+        if main_file_path and os.path.exists(main_file_path):
             logger.info(f"Writing main tex file: {main_file_path}")
             with open(main_file_path, "w", encoding="utf-8") as f:
                 f.write(tex)

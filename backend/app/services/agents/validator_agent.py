@@ -161,7 +161,7 @@ class ValidatorAgent(BaseToolAgent):
     def _validate_command(self, part: Dict[str, Any]) -> Optional[str]:
         """Validate LaTeX commands are preserved in translation"""
         content = part.get("content", "")
-        trans = part.get("trans_content", "")
+        trans = part.get("trans_content") or ""
 
         src_counter = self.extract_command_counts(content)
         trans_counter = self.extract_command_counts(trans)
@@ -181,8 +181,8 @@ class ValidatorAgent(BaseToolAgent):
 
     def _validate_placeholder(self, part: Dict[str, Any]) -> Optional[str]:
         """Validate placeholders are preserved in translation"""
-        original_placeholders = self._extract_placeholders(part["content"])
-        translated_placeholders = self._extract_placeholders(part["trans_content"])
+        original_placeholders = self._extract_placeholders(part.get("content") or "")
+        translated_placeholders = self._extract_placeholders(part.get("trans_content") or "")
         missing = original_placeholders - translated_placeholders
         extra = translated_placeholders - original_placeholders
         errors = []
@@ -196,8 +196,8 @@ class ValidatorAgent(BaseToolAgent):
         
     def _validate_closed_brackets(self, part: Dict[str, Any]) -> Optional[str]:
         """Validate brackets are properly closed"""
-        content = part.get("content", "")
-        trans_content = part.get("trans_content", "")
+        content = part.get("content") or ""
+        trans_content = part.get("trans_content") or ""
         org_errors = self._find_brackets_errors(content, org=1)
         errors = self._find_brackets_errors(trans_content)
 

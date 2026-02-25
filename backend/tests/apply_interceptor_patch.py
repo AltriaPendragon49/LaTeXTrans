@@ -33,6 +33,8 @@ INTERCEPTOR_CODE = '''
             agent_config=agent_config,
             llm_config=llm_config,
             additional_info={
+                "arxiv_id": arxiv_id,
+                "is_logged_in": bool(user_id),
                 "user_id": user_id,
                 "task_id": task_id,
                 "target_language": target_language,

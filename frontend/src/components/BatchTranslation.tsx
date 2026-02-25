@@ -158,8 +158,21 @@ function TaskList({ tasks }: { tasks: BatchTask[] }) {
 
                     {(task.status === 'processing' || task.status === 'queued') && (
                         <div className="space-y-1">
-                            <Progress value={task.progress} className="h-1.5" />
-                            <p className="text-xs text-muted-foreground">{task.message}</p>
+                            <Progress
+                                value={task.progress}
+                                className={cn(
+                                    "h-1.5",
+                                    task.message?.includes("rate limited") && "animate-pulse [&>div]:bg-amber-500!"
+                                )}
+                            />
+                            <p className={cn(
+                                "text-xs",
+                                task.message?.includes("rate limited")
+                                    ? "text-amber-500 dark:text-amber-400 font-medium"
+                                    : "text-muted-foreground"
+                            )}>
+                                {task.message}
+                            </p>
                         </div>
                     )}
 

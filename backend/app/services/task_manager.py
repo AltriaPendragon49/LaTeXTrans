@@ -564,6 +564,28 @@ class TaskManager:
         """
         def on_progress(percentage: int, message: str = ""):
             """Progress callback"""
+            # percentage == -1 means "update message only, keep current progress"
+            if percentage == -1:
+                # Read current progress WITHOUT holding lock (update_task acquires it)
+                current_progress = 0
+                current_stage = CompilationStage.TRANSLATING.value
+                with self._lock:
+                    task = self._tasks.get(task_id)
+                    if task:
+                        current_progress = task.get("progress", 0)
+                        current_stage = task.get("stage", CompilationStage.TRANSLATING.value)
+                    else:
+                        return  # Task not found, skip
+                # Now call update_task without holding the lock
+                self.update_task(
+                    task_id=task_id,
+                    status=TaskStatus.PROCESSING.value,
+                    progress=current_progress,
+                    stage=current_stage,
+                    message=message
+                )
+                return
+
             # Infer stage from progress percentage
             if percentage < 10:
                 stage = CompilationStage.PARSING.value

@@ -203,3 +203,4 @@ start.sh
 # captured_configs
 tests/captured_configs/
 tests/captured_configs/*
+tests/
