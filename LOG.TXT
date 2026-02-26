@@ -1,42 +1,419 @@
-2604:4300:a:224::68:35c8:0 - "GET /api/history?page=1&page_size=10 HTTP/1.1" 200 OK
-2026-02-25 14:45:27,023 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:27,292 - httpx - INFO - HTTP Request: POST https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks "HTTP/2 201 Created"
-2026-02-25 14:45:27,292 - backend.app.services.task_manager - INFO - [TaskManager] ✅ Persisted task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e to Supabase for user 52180195-e893-4b3b-874f-dd9be92529db
-2026-02-25 14:45:27,293 - backend.app.services.task_manager - INFO - [TaskManager] Persisted task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e to database
-2026-02-25 14:45:27,293 - backend.app.api.routes.translate - INFO - [BatchTranslate] Created task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e for arxiv_id=2602.18463, download started in background
-INFO:     2604:4300:a:224::68:35c8:0 - "POST /api/batch-translate HTTP/1.1" 200 OK     
-2026-02-25 14:45:27,295 - backend.app.api.routes.translate - INFO - [BatchDownload] Starting background download for task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e, arxiv_id=2602.18463
-2026-02-25 14:45:27,553 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:27,554 - backend.app.services.latex.utils - INFO - [SKIP] Already downloaded: 2602.18463
-2026-02-25 14:45:27,819 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:28,079 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:28,081 - backend.app.services.task_manager - INFO - [TaskQueue] Enqueued task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e (user=52180195-e893-4b3b-874f-dd9be92529db, queue_size=1)
-2026-02-25 14:45:28,081 - backend.app.api.routes.translate - INFO - [BatchDownload] Task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e enqueued for arxiv_id=2602.18463
-2026-02-25 14:45:28,081 - backend.app.services.task_manager - INFO - [TaskQueue] Worker picked up task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e
-2026-02-25 14:45:28,081 - backend.app.api.routes.translate - INFO - Starting translation for task: 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e
-2026-02-25 14:45:28,081 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, user_id=52180195-e893-4b3b-874f-dd9be92529db
-2026-02-25 14:45:28,081 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18463\2602.18463
-2026-02-25 14:45:28,082 - backend.app.services.latex_validator - INFO - Found 1 .tex files
-2026-02-25 14:45:28,082 - backend.app.services.latex_validator - INFO - Found main file by name: Main.tex
-2026-02-25 14:45:28,083 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=Main.tex
-2026-02-25 14:45:28,083 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18463\2602.18463\Main.tex
-2026-02-25 14:45:28,357 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:28,358 - backend.app.api.routes.translate - INFO - Config hash for task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e: 74c9470f89341002690080a6bb93d14f
-2026-02-25 14:45:28,615 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.74c9470f89341002690080a6bb93d14f&status=eq.completed&task_id=neq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e&limit=1 "HTTP/2 200 OK"
-2026-02-25 14:45:28,618 - backend.app.api.routes.translate - INFO - No reusable output found, proceeding with translation
-2026-02-25 14:45:28,881 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:28,882 - backend.app.api.routes.translate - INFO - Using author's API configuration (use_author_api=True)
-2026-02-25 14:45:28,882 - backend.app.api.routes.translate - INFO - Agent config: mode=0, engine=auto, verify=False
-2026-02-25 14:45:28,883 - backend.app.api.routes.translate - ERROR - Translation error for task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e: No module named 'backend.tests.test_config_interceptor'
-Traceback (most recent call last):
-  File "D:\future\antigravity\LaTexTrans\backend\app\api\routes\translate.py", line 460, in run_translation
-    from backend.tests.test_config_interceptor import ConfigInterceptor
-ModuleNotFoundError: No module named 'backend.tests.test_config_interceptor'
-2026-02-25 14:45:29,147 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:29,149 - backend.app.services.task_manager - INFO - [TaskManager] Quarantined failed output for task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e: D:\future\antigravity\LaTexTrans\backend\data\failed_tasks\51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e
-2026-02-25 14:45:29,422 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e "HTTP/2 200 OK"
-2026-02-25 14:45:29,425 - backend.app.services.task_manager - INFO - [TaskManager] Deleted failed task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e from Supabase translation_tasks   
-2026-02-25 14:45:29,425 - backend.app.services.task_manager - INFO - [TaskQueue] Task 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e completed, semaphore released
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e HTTP/1.1" 200 OK
-2026-02-25 14:45:32,707 - backend.app.api.routes.task - INFO - Getting status for task: 51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/51cf9e08-cdc7-4ed3-ac8c-16b8afa8017e HTTP/1.1" 200 OK
+ACEHOLDER_ENV_45>', '<PLACEHOLDER_ENV_46>', '<PLACEHOLDER_ENV_49>', '<PLACEHOLDER_ENV_50>', '<PLACEHOLDER_ENV_56>', '<PLACEHOLDER_ENV_63>', '<PLACEHOLDER_ENV_67>', '<PLACEHOLDER_ENV_72>'], attempt 2/3
+2026-02-25 20:43:36,551 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=33
+2026-02-25 20:43:36,553 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:43:36,554 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 1
+2026-02-25 20:43:36,555 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 1
+2026-02-25 20:43:36,832 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:36,833 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 2_1
+2026-02-25 20:43:36,833 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2_1
+2026-02-25 20:43:37,099 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:37,100 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 2_2
+2026-02-25 20:43:37,100 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2_2
+2026-02-25 20:43:37,368 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:37,369 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 2_3
+2026-02-25 20:43:37,370 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2_3
+2026-02-25 20:43:38,086 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:38,088 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3
+2026-02-25 20:43:38,088 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3
+2026-02-25 20:43:38,356 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:38,358 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:43:38,358 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_1
+2026-02-25 20:43:38,358 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_1
+2026-02-25 20:43:38,625 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:38,628 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_2
+2026-02-25 20:43:38,629 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_2
+2026-02-25 20:43:38,898 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:38,899 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_3
+2026-02-25 20:43:38,899 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_3
+2026-02-25 20:43:39,170 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:39,171 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_4
+2026-02-25 20:43:39,171 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_4
+2026-02-25 20:43:39,438 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:39,440 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4
+2026-02-25 20:43:39,440 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4
+2026-02-25 20:43:39,718 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:39,720 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_1
+2026-02-25 20:43:39,720 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_1
+2026-02-25 20:43:40,023 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:40,024 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:43:40,024 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_2
+2026-02-25 20:43:40,024 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_2
+2026-02-25 20:43:40,293 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:40,295 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 5_1
+2026-02-25 20:43:40,295 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5_1
+2026-02-25 20:43:41,432 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:41,433 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:43:41,433 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 5_2
+2026-02-25 20:43:41,433 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5_2
+2026-02-25 20:43:41,703 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:41,704 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:43:41,704 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 5_3
+2026-02-25 20:43:41,704 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5_3
+2026-02-25 20:43:41,979 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:41,979 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_1>
+2026-02-25 20:43:41,979 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_1>
+2026-02-25 20:43:42,259 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:42,259 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_7>
+2026-02-25 20:43:42,260 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_7>
+2026-02-25 20:43:42,540 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:42,541 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_18>
+2026-02-25 20:43:42,541 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_18>
+2026-02-25 20:43:42,829 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:42,830 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_24>
+2026-02-25 20:43:42,831 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_24>
+2026-02-25 20:43:43,606 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:43,607 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_26>
+2026-02-25 20:43:43,607 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_26>
+2026-02-25 20:43:43,870 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:43,871 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_30>
+2026-02-25 20:43:43,872 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_30>
+2026-02-25 20:43:44,140 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:44,140 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_34>
+2026-02-25 20:43:44,140 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_34>
+2026-02-25 20:43:44,839 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:44,840 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_35>
+2026-02-25 20:43:44,840 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_35>
+2026-02-25 20:43:45,107 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:45,107 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_36>
+2026-02-25 20:43:45,107 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_36>
+2026-02-25 20:43:45,376 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:45,378 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_44>
+2026-02-25 20:43:45,378 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_44>
+2026-02-25 20:43:46,494 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:46,495 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_45>
+2026-02-25 20:43:46,495 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_45>
+2026-02-25 20:43:46,764 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:46,765 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_46>
+2026-02-25 20:43:47,462 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:47,463 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_49>
+2026-02-25 20:43:47,463 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_49>
+2026-02-25 20:43:47,736 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:47,737 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_50>
+2026-02-25 20:43:47,737 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_50>
+2026-02-25 20:43:48,006 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:48,006 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_56>
+2026-02-25 20:43:48,006 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_56>
+2026-02-25 20:43:48,704 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:48,704 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_63>
+2026-02-25 20:43:48,704 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_63>
+2026-02-25 20:43:48,984 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:48,987 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_67>
+2026-02-25 20:43:48,987 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_67>
+2026-02-25 20:43:49,253 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:49,253 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_72>
+2026-02-25 20:43:49,253 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_72>
+2026-02-25 20:43:49,518 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:49,518 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
+2026-02-25 20:43:49,520 - backend.app.services.task_manager - INFO - [TaskQueue] Worker picked up task e6a7fd21-18b1-4efd-ac8d-78cf0bd14032
+2026-02-25 20:43:49,523 - backend.app.api.routes.translate - INFO - Starting translation for task: 9c79e258-12ec-4c28-8874-ce82b1a159e6
+2026-02-25 20:43:49,524 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, user_id=95639bc0-e1bb-4cb2-8323-37ed9b85e7ed
+2026-02-25 20:43:49,524 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18654\2602.18654
+2026-02-25 20:43:49,525 - backend.app.services.latex_validator - INFO - Found 1 .tex files
+2026-02-25 20:43:49,526 - backend.app.services.latex_validator - INFO - Found main file by \documentclass: Corrigendum_v2__arxiv_.tex
+2026-02-25 20:43:49,527 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=Corrigendum_v2__arxiv_.tex
+2026-02-25 20:43:49,527 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18654\2602.18654\Corrigendum_v2__arxiv_.tex
+2026-02-25 20:43:49,795 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:49,796 - backend.app.api.routes.translate - INFO - Config hash for task 9c79e258-12ec-4c28-8874-ce82b1a159e6: b43af475053019fadd6167c9f3358dea
+2026-02-25 20:43:50,077 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.b43af475053019fadd6167c9f3358dea&status=eq.completed&task_id=neq.9c79e258-12ec-4c28-8874-ce82b1a159e6&limit=1 "HTTP/2 200 OK"
+2026-02-25 20:43:50,078 - backend.app.api.routes.translate - INFO - No reusable output found, proceeding with translation
+2026-02-25 20:43:50,345 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:50,346 - backend.app.api.routes.translate - INFO - Using author's API configuration (use_author_api=True)
+2026-02-25 20:43:50,346 - backend.app.api.routes.translate - INFO - Agent config: mode=0, engine=auto, verify=False
+2026-02-25 20:43:50,348 - backend.app.services.config_capture - INFO - Config captured and saved to: D:\future\antigravity\LaTexTrans\backend\data\task_configs\config_9c79e258_20260225_204350_346557.json
+2026-02-25 20:43:50,348 - backend.app.api.routes.translate - INFO - Task config snapshot saved: D:\future\antigravity\LaTexTrans\backend\data\task_configs\config_9c79e258_20260225_204350_346557.json
+2026-02-25 20:43:50,373 - backend.app.api.routes.translate - INFO - Running translation workflow for D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18654\2602.18654\Corrigendum_v2__arxiv_.tex
+2026-02-25 20:43:50,375 - backend.app.services.agents.coordinator_agent - INFO - Starting LaTeX parsing for 2602.18654
+2026-02-25 20:43:50,643 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:50,643 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Starting parsing for project: 2602.18654
+2026-02-25 20:43:50,910 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:51,179 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:51,180 - backend.app.services.latex.parser - INFO - Starting LaTeX document parsing
+2026-02-25 20:43:52,298 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:52,565 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:52,567 - backend.app.services.latex.parser - INFO - No sections found in document
+There is no section in the full tex.
+2026-02-25 20:43:52,837 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:53,103 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:53,798 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:54,073 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:54,075 - backend.app.services.latex.parser - INFO - Parsing complete: 2 sections processed
+2026-02-25 20:43:54,075 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Environment filter stats: total=11, need_llm_check=2, skipped_by_type=4, skipped_by_length=0
+2026-02-25 20:43:54,075 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Setting need_trans for 2 environments (parallel)
+2026-02-25 20:43:54,362 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.9c79e258-12ec-4c28-8874-ce82b1a159e6 "HTTP/2 200 OK"
+2026-02-25 20:43:54,363 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-02-25 20:43:54,364 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\79a4534d-64d5-46e0-9546-5f416657b6a3\zh_2602.18597\terminology_table.csv with 129 unique terms
+2026-02-25 20:43:54,364 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 155 terms
+2026-02-25 20:43:54,364 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2602.18597
+2026-02-25 20:43:54,637 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:54,909 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:55,177 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:55,442 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:55,682 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(7,212)
+2026-02-25 20:43:55,708 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): End of input while parsing arguments of macro "frac" @(7,202)
+Open LaTeX blocks:
+          @(7,202)  arguments of macro "frac"
+
+2026-02-25 20:43:55,709 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(7,212)
+2026-02-25 20:43:55,838 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(1,20) 
+2026-02-25 20:43:56,114 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:56,206 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(9,26) 
+2026-02-25 20:43:56,357 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(52,0)
+2026-02-25 20:43:56,375 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(54,0)
+2026-02-25 20:43:56,753 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:57,510 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:57,806 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:57,807 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2602.18597, remaining errors: 33  
+2026-02-25 20:43:57,807 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 3/3
+2026-02-25 20:43:58,074 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
+2026-02-25 20:43:58,078 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
+2026-02-25 20:43:58,078 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['1', '2_1', '2_2', '2_3', '3', '3_1', '3_2', '3_3', '3_4', '4', '4_1', '4_2', '5_1', '5_2', '5_3', '<PLACEHOLDER_ENV_1>', '<PLACEHOLDER_ENV_7>', '<PLACEHOLDER_ENV_18>', '<PLACEHOLDER_ENV_24>', '<PLACEHOLDER_ENV_26>', '<PLACEHOLDER_ENV_30>', '<PLACEHOLDER_ENV_34>', '<PLACEHOLDER_ENV_35>', '<PLACEHOLDER_ENV_36>', '<PLACEHOLDER_ENV_44>', '<PLACEHOLDER_ENV_45>', '<PLACEHOLDER_ENV_46>', '<PLACEHOLDER_ENV_49>', '<PLACEHOLDER_ENV_50>', '<PLACEHOLDER_ENV_56>', '<PLACEHOLDER_ENV_63>', '<PLACEHOLDER_ENV_67>', '<PLACEHOLDER_ENV_72>'], attempt 3/3
+2026-02-25 20:43:58,078 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=33
+2026-02-25 20:43:58,079 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:43:58,079 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 1
+2026-02-25 20:43:58,079 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 1
+2026-02-25 20:43:58,344 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:58,345 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 2_1
+2026-02-25 20:43:58,345 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2_1
+2026-02-25 20:43:58,621 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:58,621 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 2_2
+2026-02-25 20:43:58,621 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2_2
+2026-02-25 20:43:58,889 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:58,890 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 2_3
+2026-02-25 20:43:58,890 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 2_3
+2026-02-25 20:43:59,156 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:59,157 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3
+2026-02-25 20:43:59,157 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3
+2026-02-25 20:43:59,425 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:59,425 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_1
+2026-02-25 20:43:59,427 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_1
+2026-02-25 20:43:59,693 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:59,694 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_2
+2026-02-25 20:43:59,695 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_2
+2026-02-25 20:43:59,966 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:43:59,967 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_3
+2026-02-25 20:43:59,967 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_3
+2026-02-25 20:44:00,232 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:00,233 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_4
+2026-02-25 20:44:00,233 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_4
+2026-02-25 20:44:00,499 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:00,499 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4
+2026-02-25 20:44:00,499 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4
+2026-02-25 20:44:00,771 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:00,772 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_1
+2026-02-25 20:44:00,772 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_1
+2026-02-25 20:44:01,040 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:01,043 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:44:01,043 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_2
+2026-02-25 20:44:01,043 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_2
+2026-02-25 20:44:01,309 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:01,309 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 5_1
+2026-02-25 20:44:01,311 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5_1
+2026-02-25 20:44:01,575 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:01,577 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
+2026-02-25 20:44:01,577 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 5_2
+2026-02-25 20:44:01,577 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5_2
+2026-02-25 20:44:02,271 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:02,272 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 5_3
+2026-02-25 20:44:02,272 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 5_3
+2026-02-25 20:44:02,540 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:02,540 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_1>
+2026-02-25 20:44:02,540 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_1>
+2026-02-25 20:44:03,233 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:03,237 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_7>
+2026-02-25 20:44:03,239 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_7>
+2026-02-25 20:44:03,513 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:03,516 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_18>
+2026-02-25 20:44:03,517 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_18>
+2026-02-25 20:44:03,792 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:03,797 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_24>
+2026-02-25 20:44:03,798 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_24>
+2026-02-25 20:44:04,078 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:04,079 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_26>
+2026-02-25 20:44:04,079 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_26>
+2026-02-25 20:44:04,377 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:04,382 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_30>
+2026-02-25 20:44:04,384 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_30>
+2026-02-25 20:44:04,663 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:04,665 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_34>
+2026-02-25 20:44:04,665 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_34>
+2026-02-25 20:44:04,967 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:04,972 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_35>
+2026-02-25 20:44:04,973 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_35>
+2026-02-25 20:44:05,258 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:05,268 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_36>
+2026-02-25 20:44:05,274 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_36>
+2026-02-25 20:44:05,553 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:05,557 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_44>
+2026-02-25 20:44:05,557 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_44>
+2026-02-25 20:44:05,831 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:05,843 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_45>
+2026-02-25 20:44:05,845 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_45>
+2026-02-25 20:44:06,114 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:06,131 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_46>
+2026-02-25 20:44:06,403 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:06,406 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_49>
+2026-02-25 20:44:06,407 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_49>
+2026-02-25 20:44:06,682 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:06,684 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_50>
+2026-02-25 20:44:06,685 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_50>
+2026-02-25 20:44:06,955 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:06,961 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_56>
+2026-02-25 20:44:06,962 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_56>
+2026-02-25 20:44:07,238 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:07,241 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_63>
+2026-02-25 20:44:07,243 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_63>
+2026-02-25 20:44:08,068 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:08,072 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_67>
+2026-02-25 20:44:08,073 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_67>
+2026-02-25 20:44:08,343 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:08,350 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part <PLACEHOLDER_ENV_72>
+2026-02-25 20:44:08,351 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: <PLACEHOLDER_ENV_72>
+2026-02-25 20:44:08,618 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:08,620 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
+2026-02-25 20:44:08,620 - backend.app.api.routes.task - INFO - Getting status for task: 79a4534d-64d5-46e0-9546-5f416657b6a3
+INFO:     127.0.0.1:56213 - "GET /api/task/79a4534d-64d5-46e0-9546-5f416657b6a3 HTTP/1.1" 200 OK
+2026-02-25 20:44:08,622 - backend.app.api.routes.task - INFO - Getting status for task: 1a946bfd-a095-4090-8adc-20000db83b6d
+INFO:     127.0.0.1:62291 - "GET /api/task/1a946bfd-a095-4090-8adc-20000db83b6d HTTP/1.1" 200 OK
+2026-02-25 20:44:08,622 - backend.app.api.routes.task - INFO - Getting status for task: 9c79e258-12ec-4c28-8874-ce82b1a159e6
+INFO:     127.0.0.1:62130 - "GET /api/task/9c79e258-12ec-4c28-8874-ce82b1a159e6 HTTP/1.1" 200 OK
+2026-02-25 20:44:08,628 - backend.app.api.routes.task - INFO - Getting status for task: e6a7fd21-18b1-4efd-ac8d-78cf0bd14032
+INFO:     127.0.0.1:59722 - "GET /api/task/e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 HTTP/1.1" 200 OK
+2026-02-25 20:44:08,631 - backend.app.api.routes.task - INFO - Getting status for task: 6062ed57-42f3-42b2-87c6-da9b2f253a0f
+INFO:     127.0.0.1:57997 - "GET /api/task/6062ed57-42f3-42b2-87c6-da9b2f253a0f HTTP/1.1" 200 OK
+2026-02-25 20:44:08,653 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-02-25 20:44:08,655 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\79a4534d-64d5-46e0-9546-5f416657b6a3\zh_2602.18597\terminology_table.csv with 129 unique terms
+2026-02-25 20:44:08,656 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 155 terms
+2026-02-25 20:44:08,656 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2602.18597
+2026-02-25 20:44:09,144 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:09,862 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:10,130 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:10,838 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:11,064 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(7,212)
+2026-02-25 20:44:11,087 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): End of input while parsing arguments of macro "frac" @(7,202)
+Open LaTeX blocks:
+          @(7,202)  arguments of macro "frac"
+
+2026-02-25 20:44:11,087 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(7,212)
+2026-02-25 20:44:11,192 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(1,20) 
+2026-02-25 20:44:11,465 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:11,542 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(9,28) 
+2026-02-25 20:44:11,685 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(52,0)
+2026-02-25 20:44:11,741 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(54,0)
+2026-02-25 20:44:12,029 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:12,351 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:13,542 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:13,545 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2602.18597, remaining errors: 33  
+2026-02-25 20:44:13,823 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:13,823 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
+2026-02-25 20:44:14,094 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:14,095 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 2602.18597
+2026-02-25 20:44:14,371 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:14,646 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:14,925 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:15,630 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:16,336 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:16,613 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:16,891 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:17,159 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:17,167 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\79a4534d-64d5-46e0-9546-5f416657b6a3\zh_2602.18597\2602.18597
+2026-02-25 20:44:17,439 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:17,440 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
+2026-02-25 20:44:17,710 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:17,721 - backend.app.services.latex.utils - WARNING - Restored 1 malformed inline math segment(s) from source
+2026-02-25 20:44:17,725 - backend.app.services.latex.utils - WARNING - Restored 1 malformed inline math segment(s) from source
+2026-02-25 20:44:17,999 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:18,007 - backend.app.services.latex.utils - WARNING - Restored fragment due to malformed display-math shell
+2026-02-25 20:44:18,285 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:18,554 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:18,825 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:18,828 - backend.app.services.latex.utils - INFO - Injected \raggedbottom for CJK page-overflow fix
+2026-02-25 20:44:18,829 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\79a4534d-64d5-46e0-9546-5f416657b6a3\zh_2602.18597\2602.18597\HeatEquation_26_02_20.tex
+2026-02-25 20:44:19,100 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:19,101 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
+2026-02-25 20:44:19,371 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:19,644 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:19,647 - backend.app.services.latex.compiler - INFO - Found main tex from 00README.json: HeatEquation_26_02_20.tex
+2026-02-25 20:44:19,647 - backend.app.services.agents.generator_agent - INFO - Compiling HeatEquation_26_02_20.tex...
+2026-02-25 20:44:19,647 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\79a4534d-64d5-46e0-9546-5f416657b6a3\zh_2602.18597\2602.18597\HeatEquation_26_02_20.tex
+2026-02-25 20:44:19,649 - backend.app.services.latex.compiler - INFO - Detected CJK document, using engine order: ['xelatex', 'lualatex', 'pdflatex']     
+2026-02-25 20:44:19,649 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with xelatex...
+2026-02-25 20:44:19,651 - backend.app.services.latex.compiler - INFO - Compiling HeatEquation_26_02_20.tex with latexmk (xelatex)...
+2026-02-25 20:44:19,651 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files → using -bibtex
+2026-02-25 20:44:21,465 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) completed with exit code 12
+2026-02-25 20:44:21,467 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) result: PDF=✗, Errors=1, Exit Code=12
+2026-02-25 20:44:21,467 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with lualatex...
+2026-02-25 20:44:21,469 - backend.app.services.latex.compiler - INFO - Compiling HeatEquation_26_02_20.tex with latexmk (lualatex)...
+2026-02-25 20:44:21,470 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files → using -bibtex
+2026-02-25 20:44:24,684 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) completed with exit code 12
+2026-02-25 20:44:24,690 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) result: PDF=✗, Errors=1, Exit Code=12
+2026-02-25 20:44:24,690 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with pdflatex...
+2026-02-25 20:44:24,692 - backend.app.services.latex.compiler - INFO - Compiling HeatEquation_26_02_20.tex with latexmk (pdflatex)...
+2026-02-25 20:44:24,692 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files → using -bibtex
+2026-02-25 20:44:26,856 - backend.app.services.latex.compiler - INFO - latexmk (pdflatex) completed with exit code 12
+2026-02-25 20:44:26,862 - backend.app.services.latex.compiler - INFO - latexmk (pdflatex) result: PDF=✗, Errors=1, Exit Code=12
+2026-02-25 20:44:26,862 - backend.app.services.latex.compiler - ERROR - ❌ All engines failed to produce PDF: ['xelatex', 'lualatex', 'pdflatex']
+2026-02-25 20:44:33,309 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:33,311 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Failed to compile PDF document
+2026-02-25 20:44:33,311 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Errors: Compilation failed with all engines:
+
+xelatex (1 errors):
+HeatEquation_26_02_20.tex: compilation failed without parsable log errors (exit code 12)
+
+lualatex (1 errors):
+./HeatEquation_26_02_20.tex:53: Undefined control sequence.
+
+pdflatex (1 errors):
+HeatEquation_26_02_20.tex: compilation failed without parsable log errors (exit code 12)
+
+
+2026-02-25 20:44:33,312 - backend.app.services.agents.coordinator_agent - ERROR - Failed to generate PDF for 2602.18597: Compilation failed with all engines:
+
+xelatex (1 errors):
+HeatEquation_26_02_20.tex: compilation failed without parsable log errors (exit code 12)
+
+lualatex (1 errors):
+./HeatEquation_26_02_20.tex:53: Undefined control sequence.
+
+pdflatex (1 errors):
+HeatEquation_26_02_20.tex: compilation failed without parsable log errors (exit code 12)
+
+
+2026-02-25 20:44:33,591 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:34,631 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:34,634 - backend.app.services.task_manager - INFO - [TaskManager] Quarantined failed output for task 79a4534d-64d5-46e0-9546-5f416657b6a3: D:\future\antigravity\LaTexTrans\backend\data\failed_tasks\79a4534d-64d5-46e0-9546-5f416657b6a3
+2026-02-25 20:44:34,912 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.79a4534d-64d5-46e0-9546-5f416657b6a3 "HTTP/2 200 OK"
+2026-02-25 20:44:34,919 - backend.app.services.task_manager - INFO - [TaskManager] Deleted failed task 79a4534d-64d5-46e0-9546-5f416657b6a3 from Supabase translation_tasks
+2026-02-25 20:44:37,374 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/admin/users/95639bc0-e1bb-4cb2-8323-37ed9b85e7ed "HTTP/2 200 OK"
+2026-02-25 20:44:40,411 - backend.app.services.email_service - INFO - [EmailService] Notification sent to 1470804953@qq.com (task=79a4534d-64d5-46e0-9546-5f416657b6a3, status=failed_compilation)
+2026-02-25 20:44:40,412 - backend.app.api.routes.translate - WARNING - Translation finished with compilation failure: 79a4534d-64d5-46e0-9546-5f416657b6a3
+2026-02-25 20:44:40,412 - backend.app.services.task_manager - INFO - [TaskQueue] Task 79a4534d-64d5-46e0-9546-5f416657b6a3 completed, semaphore released  
+2026-02-25 20:44:40,413 - backend.app.services.agents.parser_agent - WARNING - Async LLM request failed (attempt 1):
+2026-02-25 20:44:40,413 - backend.app.services.agents.parser_agent - WARNING - Async LLM request failed (attempt 1):
+2026-02-25 20:44:40,413 - backend.app.services.agents.parser_agent - WARNING - Async LLM request failed (attempt 1):
+2026-02-25 20:44:40,413 - backend.app.services.agents.parser_agent - WARNING - Async LLM request failed (attempt 1):
+2026-02-25 20:44:40,413 - backend.app.services.agents.parser_agent - WARNING - Async LLM request failed (attempt 1):
+2026-02-25 20:44:40,414 - backend.app.api.routes.translate - INFO - Starting translation for task: e6a7fd21-18b1-4efd-ac8d-78cf0bd14032
+2026-02-25 20:44:40,414 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, user_id=95639bc0-e1bb-4cb2-8323-37ed9b85e7ed
+2026-02-25 20:44:40,414 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18680\2602.18680
+2026-02-25 20:44:40,415 - backend.app.services.latex_validator - INFO - Found 1 .tex files
+2026-02-25 20:44:40,415 - backend.app.services.latex_validator - INFO - Found main file by \documentclass: arxiv_cohom_point.tex
+2026-02-25 20:44:40,416 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=arxiv_cohom_point.tex
+2026-02-25 20:44:40,416 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18680\2602.18680\arxiv_cohom_point.tex
+2026-02-25 20:44:42,173 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 "HTTP/2 200 OK"
+2026-02-25 20:44:42,174 - backend.app.api.routes.translate - INFO - Config hash for task e6a7fd21-18b1-4efd-ac8d-78cf0bd14032: 07b52dc696116299903409abf7424dea
+2026-02-25 20:44:42,445 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.07b52dc696116299903409abf7424dea&status=eq.completed&task_id=neq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032&limit=1 "HTTP/2 200 OK"
+2026-02-25 20:44:42,446 - backend.app.api.routes.translate - INFO - No reusable output found, proceeding with translation
+2026-02-25 20:44:42,715 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 "HTTP/2 200 OK"
+2026-02-25 20:44:42,716 - backend.app.api.routes.translate - INFO - Using author's API configuration (use_author_api=True)
+2026-02-25 20:44:42,716 - backend.app.api.routes.translate - INFO - Agent config: mode=0, engine=auto, verify=False
+2026-02-25 20:44:42,720 - backend.app.services.config_capture - INFO - Config captured and saved to: D:\future\antigravity\LaTexTrans\backend\data\task_configs\config_e6a7fd21_20260225_204442_716936.json
+2026-02-25 20:44:42,720 - backend.app.api.routes.translate - INFO - Task config snapshot saved: D:\future\antigravity\LaTexTrans\backend\data\task_configs\config_e6a7fd21_20260225_204442_716936.json
+2026-02-25 20:44:42,721 - backend.app.api.routes.translate - INFO - Running translation workflow for D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_2602.18680\2602.18680\arxiv_cohom_point.tex
+2026-02-25 20:44:42,723 - backend.app.services.agents.coordinator_agent - INFO - Starting LaTeX parsing for 2602.18680
+2026-02-25 20:44:42,994 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 "HTTP/2 200 OK"
+2026-02-25 20:44:42,995 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Starting parsing for project: 2602.18680
+2026-02-25 20:44:43,261 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 "HTTP/2 200 OK"
+2026-02-25 20:44:43,530 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 "HTTP/2 200 OK"
+2026-02-25 20:44:43,531 - backend.app.services.latex.parser - INFO - Starting LaTeX document parsing
+2026-02-25 20:44:43,799 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.e6a7fd21-18b1-4efd-ac8d-78cf0bd14032 "HTTP/2 200 OK"

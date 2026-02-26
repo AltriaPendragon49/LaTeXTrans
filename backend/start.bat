@@ -45,7 +45,7 @@ if not defined SUPABASE_ANON_KEY echo [WARN] SUPABASE_ANON_KEY not configured - 
 REM Start uvicorn server
 echo Starting uvicorn server...
 REM 现在我们在根目录，backend.app.main 路径就是正确的了
-python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --log-level info
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --log-level info
 
 endlocal
 pause

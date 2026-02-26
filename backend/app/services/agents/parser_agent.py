@@ -36,6 +36,25 @@ SKIP_LLM_JUDGMENT_ENVS = [
     'quotation', 'quote', 'verse',
 ]
 
+# Task 2: Non-translatable environment registry
+# These environments must be preserved verbatim — LLM must NEVER touch their content.
+# Parser will set need_trans=False for any env whose env_name is in this set.
+VERBATIM_ENVS: frozenset = frozenset({
+    # Code / listing environments
+    'verbatim', 'verbatim*', 'Verbatim', 'lstlisting', 'minted',
+    'alltt', 'BVerbatim', 'LVerbatim', 'SaveVerbatim',
+    # XML / structural data blocks
+    'CCSXML',
+    # File content environments
+    'filecontents', 'filecontents*',
+    # Comment environments (should have been stripped, but guard anyway)
+    'comment',
+    # TikZ / PGF raw code (fragile)
+    'tikzpicture', 'pgfpicture',
+    # Algorithm pseudocode (preserve structure)
+    'algorithm', 'algorithm2e', 'algorithmic', 'algorithmicx',
+})
+
 
 class ParserAgent(BaseToolAgent):
     def __init__(self, 
@@ -75,6 +94,11 @@ class ParserAgent(BaseToolAgent):
         
         if latex_parser.envs_json:
             for env in latex_parser.envs_json:
+                # Task 2: Force need_trans=False for verbatim/structural environments
+                # These must be preserved exactly as-is; LLM must never see their content.
+                if env.get("env_name") in VERBATIM_ENVS:
+                    env["need_trans"] = False
+                    continue
                 if not env["need_trans"]:
                     continue
                 # 跳过已知不需要 LLM 判断的环境类型

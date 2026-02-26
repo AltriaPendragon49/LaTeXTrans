@@ -12,6 +12,7 @@ import os
 import re
 import logging
 from .utils import *
+from .utils import restore_mangled_placeholders
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,12 @@ class LatexConstructor:
         tex = self._merge_sections()
         
         if on_progress:
-            on_progress("reconstructing", 30, "Reverting environments...")
+            on_progress("reconstructing", 30, "Restoring mangled placeholders...")
+            
+        tex = self._restore_mangled_placeholders(tex)
+        
+        if on_progress:
+            on_progress("reconstructing", 40, "Reverting environments...")
         
         tex = self._revert_envs(tex)
         
@@ -94,6 +100,21 @@ class LatexConstructor:
             content = restore_label_commands(original, content)
             tex += content + "\n"
         return tex
+        
+    def _restore_mangled_placeholders(self, tex: str) -> str:
+        """Find and fix placeholders that the LLM escaped."""
+        expected_phs = []
+        for env in self.envs:
+            expected_phs.append(env["placeholder"])
+        for cap in self.captions:
+            expected_phs.append(cap["placeholder"])
+        for cmd in self.newcommands:
+            expected_phs.append(cmd["placeholder"])
+        for inp in self.inputs:
+            expected_phs.append(inp["begin"])
+            expected_phs.append(inp["end"])
+            
+        return restore_mangled_placeholders(tex, expected_phs)
 
     def _revert_envs(self, tex: str) -> str:
         """Revert all the envs to tex"""

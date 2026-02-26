@@ -15,7 +15,8 @@ The current translation pipeline still has multiple user-visible failure modes:
    - false "no compile errors" state when process exits without parsable errors but no PDF is generated.
 
 ## What Changes
-- Keep the existing compiler hardening work (process cleanup, halt-on-error, outdated `.cls` handling).
+- Keep the existing compiler hardening work (process cleanup, outdated `.cls` handling).
+- **Intentionally omit `-halt-on-error`**: LaTeX's built-in `nonstopmode` recovery allows many real-world arXiv papers to produce a readable PDF even when minor errors occur. Using `-halt-on-error` aborts compilation at the first error (including minor math/glyph issues introduced by translation), severely reducing PDF yield compared to the prototype system.
 - Add deterministic reconstruction-time repair for display-math delimiters:
   - Restore `$$` pairs back to `\[` and `\]` only when the source segment originally used `\[`/`\]`.
   - Apply this repair in sections, environment blocks, and captions before writing translated `.tex`.
@@ -78,6 +79,14 @@ The current translation pipeline still has multiple user-visible failure modes:
 - Implement Automatic PDF Page Dimension and Overflow Protection:
   - Detect and replace `a4wide` with `geometry[a4paper, margin=2cm]` to ensure correct `\textheight` and PDF MediaBox for CJK.
   - Automatically inject `\raggedbottom` for CJK translations to prevent vertical stretching from pushing content past the bottom margin.
+- Implement Sensitive Command Pre-Translation Protection (Emergency Regex Masking):
+  - Maintain a configurable registry of LaTeX commands whose arguments MUST NOT be translated (e.g., `\ccsdesc`, `\begin{CCSXML}...\end{CCSXML}`).
+  - Before sending content to the LLM, mask matched commands/environments with placeholders.
+  - After translation, restore original commands from placeholders.
+  - Log all protection actions to a structured JSON file for ongoing maintenance and rule expansion.
+- Establish "Target Language Persistence" Principle for Structural Repair:
+  - Replace nuclear fallbacks (returning to English original) in `restore_display_math_shell_structure`, `restore_tag_commands`, and `restore_twopartpiecewise_commands` with graceful degradation that preserves translated content.
+  - Enforce sensitive command masking during error retranslation attempts (`_request_llm_for_retrans_error_parts`) to prevent secondary corruption.
 
 ## Impact
 - Affected specs:
@@ -90,6 +99,7 @@ The current translation pipeline still has multiple user-visible failure modes:
   - `backend/app/services/agents/generator_agent.py`
   - `backend/app/services/agents/translator_agent.py`
   - `backend/app/services/agents/coordinator_agent.py`
+  - `backend/app/services/agents/parser_agent.py`
   - `backend/app/services/task_manager.py`
   - `backend/app/api/routes/translate.py`
   - `backend/app/api/routes/download.py`

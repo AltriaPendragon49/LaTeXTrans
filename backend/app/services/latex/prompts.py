@@ -582,4 +582,5 @@ def create_prompts(source_lang: str, target_lang: str) -> dict:
             "section_system_prompt_with_terms_sum": section_system_prompt_with_terms_sum,
             "section_system_prompt_with_prev": section_system_prompt_with_prev,
             "section_system_prompt_with_terms_prev": section_system_prompt_with_terms_prev,
+            "REFERENCE_CONTEXT_TEMPLATE": "\n<REFERENCE_CONTEXT>\n{context}\n</REFERENCE_CONTEXT>\nDO NOT TRANSLATE IT. IT IS ONLY FOR YOUR REFERENCE.",
         }

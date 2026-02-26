@@ -496,18 +496,23 @@ def _has_malformed_display_math_shell(text: str) -> bool:
 
 def restore_display_math_shell_structure(original: str, translated: str) -> str:
     """
-    Restore the whole fragment when translated display-math shell is malformed.
+    Detect malformed display-math shells in translated content.
 
-    This is a strict safety net for failures like:
-    - odd/unclosed `$$`
-    - `\\tag`-adjacent display blocks getting split into broken shells
+    Previously this function would revert to the original (English) text when
+    malformed shells were detected.  This caused silent translation loss.
+    Now we keep the translated content and only log a warning — a translated
+    PDF with minor math-shell issues is preferable to untranslated content.
     """
     if not original or not translated:
         return translated
 
     if _has_malformed_display_math_shell(translated) and not _has_malformed_display_math_shell(original):
-        logger.warning("Restored fragment due to malformed display-math shell")
-        return original
+        logger.warning(
+            "Detected malformed display-math shell in translated content; "
+            "keeping translated content to preserve target language output"
+        )
+        # Do NOT revert to original — keep translated content
+        return translated
 
     return translated
 
@@ -658,6 +663,8 @@ def restore_tag_commands(original: str, translated: str) -> str:
 
     - If source has no `\\tag`, strip all translated tags (they are unsafe drift).
     - If source has tags, replace translated tags by order to keep consistency.
+    - If translated drops all tags, append source tags at end instead of
+      reverting to original (to preserve target-language translation).
     """
     if not original or not translated:
         return translated
@@ -668,8 +675,14 @@ def restore_tag_commands(original: str, translated: str) -> str:
 
     if not translated_matches:
         if original_tags:
-            logger.warning("Restored fragment because translated content dropped \\tag command(s)")
-            return original
+            # Instead of reverting to original, append missing source tags
+            # at the end of translated content to keep the translation.
+            logger.warning(
+                "Translated content dropped \\tag command(s); "
+                "appending source tags to preserve target language output"
+            )
+            suffix = " " + " ".join(original_tags)
+            return translated.rstrip() + suffix
         return translated
 
     if not original_tags:
@@ -692,8 +705,11 @@ def restore_tag_commands(original: str, translated: str) -> str:
     restored = "".join(parts)
 
     if _has_tag_outside_display_math_context(restored) and not _has_tag_outside_display_math_context(original):
-        logger.warning("Restored fragment because translated \\tag moved outside display math")
-        return original
+        # Keep the translated content instead of reverting to original.
+        logger.warning(
+            "Translated \\tag moved outside display math context; "
+            "keeping translated content to preserve target language output"
+        )
 
     return restored
 
@@ -947,6 +963,10 @@ def restore_twopartpiecewise_commands(original: str, translated: str) -> str:
     This command is structure-sensitive and frequently broken by LLM output
     (missing wrappers, stray `$`, or malformed braces), so we preserve the
     original command bodies to keep compilation stable.
+
+    When translated content drops commands or has count mismatches, we keep
+    the translated content (with warnings) instead of reverting to the
+    original, to preserve target-language output.
     """
     if not original or not translated:
         return translated
@@ -964,23 +984,37 @@ def restore_twopartpiecewise_commands(original: str, translated: str) -> str:
     if not original_commands:
         return translated
     if not translated_matches:
-        logger.warning("Restored fragment because translated content dropped \\twopartpiecewise command(s)")
-        return original
+        # All commands dropped — append source commands at end instead of
+        # reverting entire fragment to original.
+        logger.warning(
+            "Translated content dropped \\twopartpiecewise command(s); "
+            "appending source commands to preserve target language output"
+        )
+        suffix = "\n" + "\n".join(original_commands)
+        return translated.rstrip() + suffix
     if len(original_commands) != len(translated_matches):
-        logger.warning("Restored fragment due to \\twopartpiecewise command count mismatch")
-        return original
+        # Count mismatch — replace what we can, keep translated text.
+        logger.warning(
+            f"\\twopartpiecewise count mismatch (source={len(original_commands)}, "
+            f"translated={len(translated_matches)}); replacing matched commands only"
+        )
 
+    # Replace matched translated commands with source commands (by order).
     parts = []
     last = 0
     for i, match in enumerate(translated_matches):
         parts.append(translated[last:match.start()])
-        parts.append(original_commands[i])
+        if i < len(original_commands):
+            parts.append(original_commands[i])
+        else:
+            # Extra translated commands beyond source count — keep as-is.
+            parts.append(match.group(0))
         last = match.end()
     parts.append(translated[last:])
 
     restored = "".join(parts)
     if restored != translated:
-        logger.warning(f"Restored {len(original_commands)} \\twopartpiecewise command(s) from source")
+        logger.warning(f"Restored {min(len(original_commands), len(translated_matches))} \\twopartpiecewise command(s) from source")
     return restored
 
 
@@ -1457,7 +1491,19 @@ def get_begin_document_pattern():
 
 def get_newcommand_pattern():
     """Get the regex pattern for matching \\newcommand commands"""
-    newcommand = rf'\\(?:newcommand\*?|def|renewcommand|newenvironment|renewenvironment){spaces}(?:\{{\\([a-zA-Z]+)\}}|\\([a-zA-Z]+)){spaces}(?:\[(\d)\])?{spaces}({get_pattern_brace(4)})'
+    cmd_types = r'newcommand\*?|def|renewcommand'
+    env_types = r'newenvironment|renewenvironment'
+    spaces_nl = r'\s*'
+    
+    # We must separate newcommand (1 argument block) and newenvironment (2 argument blocks)
+    # The get_pattern_brace(n) expects 'n' to be the regex group ID of its own outer capture group
+    newcommand = (
+        rf'\\(?:'
+        rf'(?:(?:{cmd_types}){spaces_nl}(?:\{{\\([a-zA-Z]+)\}}|\\([a-zA-Z]+)){spaces_nl}(?:\[(\d)\])?{spaces_nl}({get_pattern_brace(4)}))'
+        rf'|'
+        rf'(?:(?:{env_types}){spaces_nl}\{{([a-zA-Z*]+)\}}{spaces_nl}(?:\[(\d)\])?{spaces_nl}({get_pattern_brace(8)}){spaces_nl}({get_pattern_brace(10)}))'
+        rf')'
+    )
     newcommand_pattern = regex.compile(newcommand, regex.DOTALL)
     return newcommand_pattern
 
@@ -1489,6 +1535,39 @@ def get_captionof_pattern():
     return pattern
 
 
+def _detect_ctex_conflicts(preamble: str) -> List[str]:
+    """
+    Detect command names that conflict with ctex/CJK package definitions.
+
+    ctex and CJK packages redefine certain short commands like \\I and \\O.
+    If the document also defines these commands, a 'Command already defined'
+    error occurs at compilation.
+
+    Args:
+        preamble: The LaTeX preamble text (before \\begin{document}).
+
+    Returns:
+        List of conflicting command names (without backslash), e.g. ['I', 'O'].
+    """
+    # Commands known to be redefined by ctex/CJK
+    CTEX_RESERVED = {'I', 'O', 'TeX', 'LaTeX', 'ij', 'IJ'}
+
+    # Match \\newcommand{\\X}, \\def\\X, \\renewcommand{\\X},
+    # \\DeclareRobustCommand{\\X}, \\let\\X = ...
+    define_re = re.compile(
+        r'\\(?:newcommand\*?|renewcommand\*?|def|DeclareRobustCommand\*?|let)'
+        r'\s*\{?\\([A-Za-z]+)\}?'
+    )
+    conflicts = []
+    for m in define_re.finditer(preamble):
+        cmd = m.group(1)
+        if cmd in CTEX_RESERVED:
+            conflicts.append(cmd)
+    # Deduplicate while preserving order
+    seen = set()
+    return [c for c in conflicts if not (c in seen or seen.add(c))]
+
+
 def add_ctex_package(latex_code, tex_file_path: str = None):
     """Add ctex package for Chinese support and handle XeLaTeX compatibility.
 
@@ -1506,7 +1585,30 @@ def add_ctex_package(latex_code, tex_file_path: str = None):
         match = documentclass_pattern.search(latex_code)
         if match:
             position = match.end()
-            latex_code = latex_code[:position] + "\n" + ctex_package + "\n" + latex_code[position:]
+
+            # Task 4: Detect ctex command conflicts and inject \let\<cmd>\relax
+            # to neutralise author-defined commands before ctex redefines them.
+            preamble = latex_code[:position]
+            conflicts = _detect_ctex_conflicts(preamble)
+            conflict_prefix = ""
+            if conflicts:
+                relax_lines = "\n".join(
+                    f"\\let\\{cmd}\\relax  % ctex conflict resolution"
+                    for cmd in conflicts
+                )
+                conflict_prefix = "\n" + relax_lines
+                logger.warning(
+                    "[ctex compat] Detected conflicting command(s) %s; "
+                    "injecting \\let\\<cmd>\\relax before \\usepackage{ctex}",
+                    conflicts,
+                )
+
+            latex_code = (
+                latex_code[:position]
+                + conflict_prefix
+                + "\n" + ctex_package + "\n"
+                + latex_code[position:]
+            )
 
     # Comment out pdfLaTeX-specific commands in the main .tex
     latex_code = _comment_out_pdflatex_commands(latex_code)
@@ -1696,17 +1798,6 @@ def _patch_sibling_style_files(tex_file_path: str) -> None:
     if patched:
         logger.info(f"[CJK compat] Patched {patched} style file(s) for xelatex+ctex")
 
-def add_ja_package(latex_code):
-    """Add Japanese package support"""
-    if "\\usepackage{luatex-ja}" not in latex_code:
-        ctex_package = "\\usepackage{luatexja}"
-        documentclass = r'documentclass'
-        documentclass_pattern = get_command_pattern(documentclass)
-        match = documentclass_pattern.search(latex_code)
-        if match:
-            position = match.end()
-            latex_code = latex_code[:position] + "\n" + ctex_package + "\n" + latex_code[position:]
-    return latex_code
 
 
 def add_cyrillic_font_support(latex_code: str, target_language: str = "ru") -> str:
@@ -1888,14 +1979,11 @@ def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path:
 
     Language categories and their handling:
     - Chinese (zh/ch): inject ctex with UTF8, comment out pdfLaTeX-specific commands.
-    - Japanese (ja) / Korean (ko): inject xeCJK, comment out pdfLaTeX-specific commands.
-    - Russian (ru) / other Cyrillic (uk, bg, sr, mk, be):
-        inject fontspec + CMU Serif, comment out conflicting encodings and pdfLaTeX commands.
-    - Latin-extended (de, fr, es, pt, it, nl, pl, ...):
-        comment out pdfLaTeX-specific primitive commands only, so XeLaTeX fallback works.
-        Font/encoding (T1+inputenc) left intact since pdflatex handles them natively;
-        if pdflatex fails, xelatex will use its own Unicode handling.
-    - English / other (en, ...): comment out pdfLaTeX commands for XeLaTeX fallback safety.
+    - Japanese (ja): inject luatexja (strictly enforcing LuaLaTeX compatibility).
+    - Korean (ko): inject kotex (multi-engine safe).
+    - Russian (ru) / Cyrillic: inject fontspec + CMU Serif, comment out conflicting encodings.
+    - Latin-extended / English (en, de, fr, es, pt, it, nl, pl, ...):
+        Zero-touch pass-through. Preserves native pdflatex packages (T1, inputenc) unharmed.
     """
     lang = target_language.lower()
     if lang in ("zh", "ch"):
@@ -1903,88 +1991,35 @@ def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path:
         latex_code = add_ctex_package(latex_code, tex_file_path=tex_file_path)
         return _fix_page_overflow_for_cjk(latex_code)
     elif lang == "ko":
-        # Korean: use xeCJK with Korean-capable fonts
-        # UnBatang/UnDotum are bundled with TeX Live (un-core package)
-        # IMPORTANT: Inject font setup regardless of whether xeCJK is already present.
-        # The original document may already have \usepackage{xeCJK} but no Korean font.
-        ko_font_lines = (
-            "\\setCJKmainfont{UnBatang}[FallbackFonts={Noto Serif CJK KR}]\n"
-            "\\setCJKsansfont{UnDotum}[FallbackFonts={Noto Sans CJK KR}]\n"
-            "\\setCJKmonofont{UnDotum}\n"
-            "\\xeCJKsetup{CJKmath=true}\n"
-        )
-        if "\\usepackage{xeCJK}" not in latex_code:
-            # xeCJK not present: inject the full block (package + fonts)
-            ko_full_block = (
-                "\n\\usepackage{xeCJK}\n"
-                "\\usepackage{fontspec}\n"
-                + ko_font_lines
-            )
+        # Korean: use kotex package for reliable cross-platform compilation
+        if "\\usepackage{kotex}" not in latex_code:
+            ko_full_block = "\n\\usepackage{kotex}\n"
             documentclass_pattern = get_command_pattern(r'documentclass')
             match = documentclass_pattern.search(latex_code)
             if match:
                 position = match.end()
                 latex_code = latex_code[:position] + ko_full_block + latex_code[position:]
-                logger.info("Injected xeCJK + UnBatang for Korean")
-        else:
-            # xeCJK already present but may not have Korean font set:
-            # Inject font setup after existing \usepackage{xeCJK} line
-            if "\\setCJKmainfont" not in latex_code:
-                latex_code = latex_code.replace(
-                    "\\usepackage{xeCJK}",
-                    "\\usepackage{xeCJK}\n" + ko_font_lines,
-                    1  # only replace first occurrence
-                )
-                logger.info("Added Korean font setup to existing xeCJK for Korean")
-        latex_code = _inject_cjk_math_family_fallback(latex_code)
-        latex_code = _comment_out_pdflatex_commands(latex_code)
+                logger.info("Injected kotex for Korean compilation")
         return _fix_page_overflow_for_cjk(latex_code)
     elif lang == "ja":
-        # Japanese: use xeCJK with Japanese-capable fonts
-        # IPAexMincho/IPAexGothic are bundled with TeX Live (ipaex package)
-        # IMPORTANT: Inject font setup regardless of whether xeCJK is already present.
-        ja_font_lines = (
-            "\\setCJKmainfont{IPAexMincho}[FallbackFonts={Noto Serif CJK JP}]\n"
-            "\\setCJKsansfont{IPAexGothic}[FallbackFonts={Noto Sans CJK JP}]\n"
-            "\\setCJKmonofont{IPAexGothic}\n"
-            "\\xeCJKsetup{CJKmath=true}\n"
-        )
-        if "\\usepackage{xeCJK}" not in latex_code:
-            # xeCJK not present: inject the full block (package + fonts)
-            ja_full_block = (
-                "\n\\usepackage{xeCJK}\n"
-                "\\usepackage{fontspec}\n"
-                + ja_font_lines
-            )
+        # Japanese: solely use luatexja to natively enforce LuaLaTeX safety without font guesses
+        if "\\usepackage{luatexja}" not in latex_code:
+            ja_full_block = "\n\\usepackage{luatexja}\n"
             documentclass_pattern = get_command_pattern(r'documentclass')
             match = documentclass_pattern.search(latex_code)
             if match:
                 position = match.end()
                 latex_code = latex_code[:position] + ja_full_block + latex_code[position:]
-                logger.info("Injected xeCJK + IPAexMincho for Japanese")
-        else:
-            # xeCJK already present but may not have Japanese font set:
-            # Inject font setup after existing \usepackage{xeCJK} line
-            if "\\setCJKmainfont" not in latex_code:
-                latex_code = latex_code.replace(
-                    "\\usepackage{xeCJK}",
-                    "\\usepackage{xeCJK}\n" + ja_font_lines,
-                    1  # only replace first occurrence
-                )
-                logger.info("Added Japanese font setup to existing xeCJK for Japanese")
-        latex_code = _inject_cjk_math_family_fallback(latex_code)
-        latex_code = _comment_out_pdflatex_commands(latex_code)
+                logger.info("Injected luatexja for Japanese")
         return _fix_page_overflow_for_cjk(latex_code)
     elif lang in ("ru", "uk", "bg", "sr", "mk", "be"):
         # Cyrillic languages: use fontspec + CMU Serif for proper Cyrillic rendering
         return add_cyrillic_font_support(latex_code, target_language)
     else:
         # Latin-script languages (en, de, fr, es, pt, it, nl, pl, etc.):
-        # T1+inputenc works fine for pdflatex. For xelatex fallback, only need to
-        # remove pdflatex-specific primitive commands that cause xelatex errors.
-        # Do NOT remove T1/inputenc (xelatex ignores them harmlessly) or font packages.
-        latex_code = _comment_out_pdflatex_commands(latex_code)
-        logger.debug(f"Cleaned pdfLaTeX primitives for Latin-script language: {target_language}")
+        # Zero-touch pass-through: We preserve Native pdflatex packages like T1 fontenc.
+        # This completely drops the aggressive pdflatex primitive removals.
+        logger.debug(f"Zero-touch pass-through for Latin-script language: {target_language}")
         return latex_code
 
 
@@ -2912,3 +2947,230 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug("Injected localize_captions=True")
 
     return latex_code, fmt_warnings
+
+
+# ---------------------------------------------------------------------------
+# Task 12: Sensitive Command Pre-Translation Protection (Emergency Regex Masking)
+# ---------------------------------------------------------------------------
+
+# Registry of LaTeX commands/environments whose arguments MUST NOT be translated.
+# Each entry is a compiled regex pattern.  Patterns are tried in order.
+#
+# Design notes:
+#   - Use `regex` module (already imported) for possessive quantifiers that
+#     handle deeply nested braces without catastrophic backtracking.
+#   - CCSXML environment pattern spans multiple lines (regex.DOTALL).
+PROTECTED_COMMANDS: List[re.Pattern] = [
+    # \begin{CCSXML}...\end{CCSXML}  — ACM CCS XML block (multi-line)
+    regex.compile(
+        r'\\begin\{CCSXML\}.*?\\end\{CCSXML\}',
+        regex.DOTALL,
+    ),
+    # \ccsdesc[optional]{...}  — ACM CCS descriptor (nested braces allowed)
+    regex.compile(
+        r'\\ccsdesc(?:\[[^\[\]]*\])?\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
+        regex.DOTALL,
+    ),
+    # \received[optional]{...}  — ACM received date
+    regex.compile(
+        r'\\received(?:\[[^\[\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}',
+        regex.DOTALL,
+    ),
+    # \keywords{...}  — ACM keywords block
+    regex.compile(
+        r'\\keywords\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
+        regex.DOTALL,
+    ),
+]
+
+_PLACEHOLDER_PREFIX = "PROTECTED_CMD"
+# Primary exact-match pattern
+_PLACEHOLDER_RE = re.compile(r'<PROTECTED_CMD_(\d+)>')
+# Fuzzy pattern to tolerate common LLM mutations of the placeholder:
+#   \protect\PROTECTED_CMD_N, {\PROTECTED_CMD_N}, \\PROTECTED_CMD_N, etc.
+_PLACEHOLDER_FUZZY_RE = re.compile(
+    r'(?:'
+    r'\\\\protect\\\\?\s*|'   # \protect\ prefix
+    r'\\\\(?:protect)?\\\\?\s*|'  # \\ prefix
+    r'\\?'                   # optional backslash
+    r')'
+    r'(?:[{<])?'             # optional { or <
+    r'PROTECTED_CMD_(\d+)'   # capture the index
+    r'(?:[}>])?',            # optional } or >
+    re.IGNORECASE,
+)
+
+
+def mask_sensitive_commands(
+    content: str,
+    registry: Optional[List] = None,
+) -> Tuple[str, Dict[str, str]]:
+    """
+    Mask sensitive LaTeX commands before sending content to an LLM.
+
+    Replaces each match of every pattern in *registry* with an opaque
+    placeholder of the form ``<PROTECTED_CMD_N>``.  The mapping from
+    placeholder back to original text is returned so the caller can restore
+    the originals after translation.
+
+    Args:
+        content:  The raw LaTeX text to process.
+        registry: Optional list of compiled regex patterns.  Defaults to
+                  the module-level ``PROTECTED_COMMANDS`` list.
+
+    Returns:
+        A ``(masked_content, mapping)`` tuple where *mapping* maps each
+        placeholder string to its original matched text.
+    """
+    if not content:
+        return content, {}
+
+    if registry is None:
+        registry = PROTECTED_COMMANDS
+
+    mapping: Dict[str, str] = {}
+    counter = [0]  # mutable so nested closure can increment
+
+    def _replace(m: re.Match) -> str:
+        placeholder = f"<{_PLACEHOLDER_PREFIX}_{counter[0]}>"
+        mapping[placeholder] = m.group(0)
+        counter[0] += 1
+        return placeholder
+
+    masked = content
+    for pattern in registry:
+        masked = pattern.sub(_replace, masked)
+
+    if mapping:
+        logger.debug(
+            "mask_sensitive_commands: masked %d region(s): %s",
+            len(mapping),
+            list(mapping.keys()),
+        )
+
+    return masked, mapping
+
+
+def unmask_sensitive_commands(
+    translated_content: str,
+    mapping: Dict[str, str],
+) -> str:
+    """
+    Restore sensitive LaTeX commands after LLM translation.
+
+    Three-stage hardened restoration:
+    1. Exact match: replace ``<PROTECTED_CMD_N>`` with original from mapping.
+    2. Fuzzy match: handle LLM mutations like ``\\protect\\PROTECTED_CMD_N``,
+       ``{\\PROTECTED_CMD_N}``, ``\\\\PROTECTED_CMD_N`` etc.
+    3. Residual scan: if any ``PROTECTED_CMD_N`` substring still remains,
+       force-restore by index order from the sorted mapping.
+
+    Args:
+        translated_content: The translated text that may contain placeholders.
+        mapping: The ``{placeholder: original}`` dict returned by
+                 :func:`mask_sensitive_commands`.
+
+    Returns:
+        The restored string.
+    """
+    if not translated_content or not mapping:
+        return translated_content
+
+    # Build a lookup from index → (placeholder, original)
+    index_map: Dict[int, tuple] = {}
+    for ph, original in mapping.items():
+        m = _PLACEHOLDER_RE.match(ph)
+        if m:
+            index_map[int(m.group(1))] = (ph, original)
+
+    # --- Stage 1: Exact match ---
+    def _restore_exact(m: re.Match) -> str:
+        placeholder = m.group(0)
+        original = mapping.get(placeholder)
+        if original is None:
+            logger.warning(
+                "unmask_sensitive_commands [exact]: placeholder %s not found in mapping",
+                placeholder,
+            )
+            return placeholder
+        return original
+
+    restored = _PLACEHOLDER_RE.sub(_restore_exact, translated_content)
+
+    # --- Stage 2: Fuzzy match (if any PROTECTED_CMD text remains) ---
+    if "PROTECTED_CMD" in restored:
+        fuzzy_restored_count = [0]
+
+        def _restore_fuzzy(m: re.Match) -> str:
+            idx = int(m.group(1))
+            entry = index_map.get(idx)
+            if entry is None:
+                logger.warning(
+                    "unmask_sensitive_commands [fuzzy]: index %d not found in mapping",
+                    idx,
+                )
+                return m.group(0)
+            fuzzy_restored_count[0] += 1
+            logger.warning(
+                "unmask_sensitive_commands [fuzzy]: restored mutated placeholder "
+                "PROTECTED_CMD_%d via fuzzy match (matched: %r)",
+                idx,
+                m.group(0),
+            )
+            return entry[1]
+
+        restored = _PLACEHOLDER_FUZZY_RE.sub(_restore_fuzzy, restored)
+        if fuzzy_restored_count[0]:
+            logger.info(
+                "unmask_sensitive_commands: fuzzy stage restored %d placeholder(s)",
+                fuzzy_restored_count[0],
+            )
+
+    # --- Stage 3: Residual scan by positional order ---
+    if "PROTECTED_CMD" in restored and index_map:
+        remaining_indices = sorted(index_map.keys())
+        for idx in remaining_indices:
+            ph, original = index_map[idx]
+            # Try to find any remaining occurrence of "PROTECTED_CMD_<idx>" text
+            residual_pattern = re.compile(rf'PROTECTED_CMD_{idx}(?!\d)', re.IGNORECASE)
+            if residual_pattern.search(restored):
+                restored = residual_pattern.sub(lambda _m, orig=original: orig, restored)
+                logger.warning(
+                    "unmask_sensitive_commands [residual]: force-restored "
+                    "PROTECTED_CMD_%d by positional scan",
+                    idx,
+                )
+
+    # Final warning: if any PROTECTED_CMD text remains, it could not be restored
+    if "PROTECTED_CMD" in restored:
+        logger.error(
+            "unmask_sensitive_commands: could not restore all PROTECTED_CMD "
+            "placeholders; residual text remains in output"
+        )
+
+    return restored
+
+
+def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
+    import re
+    restored_tex = tex_content
+    for expected_ph in expected_phs:
+        if expected_ph in restored_tex:
+            continue
+        inner_content = expected_ph.strip('<>')
+        parts = inner_content.split('_')
+        escaped_parts = []
+        for p in parts:
+            escaped_p = ''.join([f'(?:{re.escape(c)}|\\\\{re.escape(c)})' for c in p])
+            escaped_parts.append(escaped_p)
+        separator = r'(?:_|\\_|\s*_\s*)'
+        flexible_inner = separator.join(escaped_parts)
+        prefix = r'(?:<|\\textless|\\langle|\$<\$|<\\\$|\\<|\$)?\s*'
+        suffix = r'\s*(?:>|\\textgreater|\\rangle|\$>\$|\\>\$|\\>|\$)?'
+        pattern = prefix + flexible_inner + suffix
+        regex = re.compile(pattern, re.IGNORECASE)
+        def replacement(match):
+            return expected_ph
+        # print('Compiling:', pattern)
+        restored_tex, count = regex.subn(replacement, restored_tex)
+    return restored_tex

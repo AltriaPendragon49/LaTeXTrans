@@ -24,6 +24,7 @@ LaTeXTrans-Pro is a LaTeX paper translation system based on Retrieval-Augmented 
 - **Skeleton First:** Prioritize building the full end-to-end pipeline before filling in complex sub-module logic.
 - **Agent Orchestration:** Use LangChain Agents (Translator, Compiler, CiteTool, ImageTool) to handle specialized tasks.
 - **RESTful API:** Communication between React frontend and FastAPI backend.
+- **Target Language Persistence:** A flawed translated PDF is better than reverting to the English original. For structural restoration fallbacks, always prefer keeping the target language text (even with minor tag/math malformations) over nuclear fallbacks to source text.
 
 ### Testing Strategy
 - AST parsing tests are mandatory to ensure LaTeX structure integrity.

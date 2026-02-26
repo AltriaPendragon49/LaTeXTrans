@@ -4,6 +4,10 @@ from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C
 from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
+from backend.app.services.latex.utils import (
+    mask_sensitive_commands,
+    unmask_sensitive_commands,
+)
 from pathlib import Path
 import os
 import re
@@ -492,32 +496,46 @@ class TranslatorAgent(BaseToolAgent):
     def _apply_structural_fix(self, part: Dict, error: Dict) -> bool:
         """
         Apply algorithmic fix for Type C structural consistency errors.
-        
+
         Strategies:
         1. Token补齐: Restore missing LaTeX commands from original
         2. Placeholder恢复: Restore missing placeholders from original
-        3. Fallback: Keep existing translation if available, else use original
-        
+        3. Math delimiter repair: Fix missing/extra $ delimiters using original as reference
+        4. Fallback: Keep existing translation if available, else use original
+
         Returns True if fix was successful (or fallback applied).
         """
         original = part.get("content", "")
         translated = part.get("trans_content", "")
-        
+
         if not translated:
             # No translation exists, use original as fallback
             part["trans_content"] = original
             return True
-        
+
         try:
             # Strategy 1: Restore missing LaTeX commands
             fixed = self._fix_missing_commands(original, translated)
-            
+
             # Strategy 2: Restore missing placeholders
             fixed = self._fix_missing_placeholders(original, fixed)
-            
+
+            # Strategy 3: Repair math-mode delimiters ($ / $$)
+            # Triggered when the error report contains a math_delimiter_mismatch.
+            math_error = error.get("math_error", "") or ""
+            if "math_delimiter_mismatch" in math_error:
+                from .validator_agent import ValidatorAgent as _VA
+                repaired = _VA.repair_math_delimiters(original, fixed)
+                if repaired is not None:
+                    fixed = repaired
+                    logger.info(
+                        "Applied math-delimiter repair for part %s",
+                        error.get("num_or_ph", "?"),
+                    )
+
             part["trans_content"] = fixed
             return True
-            
+
         except Exception as e:
             logger.warning(f"Structural fix failed: {e}")
             # Fallback: keep existing translation if available
@@ -525,6 +543,7 @@ class TranslatorAgent(BaseToolAgent):
                 return True
             part["trans_content"] = original
             return True
+
     
     def _fix_missing_commands(self, original: str, translated: str) -> str:
         """Restore missing LaTeX commands from original to translated content."""
@@ -549,41 +568,122 @@ class TranslatorAgent(BaseToolAgent):
     
     def _fix_missing_placeholders(self, original: str, translated: str) -> str:
         """Restore missing placeholders from original to translated content."""
-        placeholder_patterns = [
-            r'<PLACEHOLDER_[A-Z]+_\d+_begin>',
-            r'<PLACEHOLDER_[A-Z]+_\d+_end>',
-            r'<PLACEHOLDER_CAP_\d+>',
-            r'<PLACEHOLDER_ENV_\d+>',
-        ]
+        pattern = r'<PLACEHOLDER_[^>]+>'
         
-        for pattern in placeholder_patterns:
-            original_phs = set(re.findall(pattern, original))
-            translated_phs = set(re.findall(pattern, translated))
+        original_phs = re.findall(pattern, original)
+        
+        # 1. Before checking translated, restore any LLM-escaped mangled placeholders 
+        # that might be hiding as $<$PLACEHOLDER_...>$> or \textless PLACEHOLDER\_... \textgreater
+        translated = restore_mangled_placeholders(translated, original_phs)
+        
+        translated_phs = re.findall(pattern, translated)
+        
+        # Scenario 1: Exact count match but contents differ (spelling error)
+        if len(original_phs) == len(translated_phs) and original_phs != translated_phs:
+            for orig_ph, trans_ph in zip(original_phs, translated_phs):
+                if orig_ph != trans_ph:
+                    logger.debug(f"Correcting misspelled placeholder: {trans_ph} -> {orig_ph}")
+                    translated = translated.replace(trans_ph, orig_ph)
+            return translated
             
-            missing = original_phs - translated_phs
-            for ph in missing:
-                # Find position in original and try to restore in similar position
-                # For safety, append at end if exact position is unclear
-                if ph not in translated:
-                    logger.debug(f"Restoring missing placeholder: {ph}")
-                    translated = translated.rstrip() + " " + ph
+        original_ph_set = set(original_phs)
+        translated_ph_set = set(translated_phs)
+        missing = original_ph_set - translated_ph_set
         
+        # Scenario 2: Placeholders are missing
+        for ph in missing:
+            if ph in translated:
+                continue
+                
+            logger.debug(f"Restoring missing placeholder: {ph}")
+            
+            # Extract base tag name to pair _begin and _end using regex
+            base_match = re.match(r'<PLACEHOLDER_(.+?)(?:_(begin|end))?>', ph)
+            if base_match:
+                base_name = base_match.group(1)
+                tag_type = base_match.group(2)
+                
+                inserted = False
+                if tag_type == "begin":
+                    paired_end = f"<PLACEHOLDER_{base_name}_end>"
+                    if paired_end in translated:
+                        # Insert right before the paired end
+                        idx = translated.find(paired_end)
+                        translated = translated[:idx] + ph + " " + translated[idx:]
+                        inserted = True
+                elif tag_type == "end":
+                    paired_begin = f"<PLACEHOLDER_{base_name}_begin>"
+                    if paired_begin in translated:
+                        # Insert right after the paired begin
+                        idx = translated.find(paired_begin) + len(paired_begin)
+                        translated = translated[:idx] + " " + ph + translated[idx:]
+                        inserted = True
+                
+                if not inserted:
+                    # Fallback: append at the end
+                    translated = translated.rstrip() + " " + ph
+            else:
+                translated = translated.rstrip() + " " + ph
+                
         return translated
 
     async def _translate_section(self, section: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
         
         transed_section = section.copy()
         section_num = section["section"]
-        if self.trans_mode == 0:
+        previous_context = section.get("previous_context")
+        
+        async def fetch_translation(use_context: bool) -> str:
+            ctx = previous_context if use_context else None
             
-            result = await self._request_llm_for_trans(
-                self.prompts["section_system_prompt"],
-                section["content"],
-                fail_part=section_num,
-                type="sec",
-                session=session
-            )
+            if self.trans_mode == 0 or self.trans_mode == 3:
+                return await self._request_llm_for_trans(
+                    self.prompts["section_system_prompt"],
+                    section["content"],
+                    fail_part=section_num,
+                    type="sec",
+                    session=session,
+                    previous_context=ctx
+                )
+            elif self.trans_mode == 2:
+                if not self.term_dict:
+                    return await self._request_llm_for_trans(
+                        self.prompts["section_system_prompt"],
+                        section["content"],
+                        fail_part=section_num,
+                        type="sec",
+                        session=session,
+                        previous_context=ctx
+                    )
+                else:
+                    return await self._request_llm_for_trans_with_terms(
+                        self.prompts["section_system_prompt_with_dict"],
+                        section["content"], 
+                        fail_part=section_num,
+                        type="sec",
+                        session=session,
+                        previous_context=ctx
+                    )
+            return None
+
+        # Execute base translation with anti-leakage downgrade loop
+        if self.trans_mode in [0, 2, 3]:
+            # Attempt 1: With Context
+            result = await fetch_translation(use_context=True)
+            
+            # Leakage Check
+            if result and "<REFERENCE_CONTEXT>" in result:
+                logger.warning(f"⚠️ Prompt leakage detected in {section_num}. Retrying...")
+                # Attempt 2: Retry with Context
+                result = await fetch_translation(use_context=True)
+                
+                if result and "<REFERENCE_CONTEXT>" in result:
+                    logger.warning(f"🚨 Persistent leakage in {section_num}. Downgrading context...")
+                    # Attempt 3: Downgrade (No Context)
+                    result = await fetch_translation(use_context=False)
+                    
             transed_section["trans_content"] = result if result is not None else section["content"]
+
         elif self.trans_mode == 1:
             transed_section["trans_content"] = await self._request_llm_for_retrans_error_parts(
             self.prompts["retrans_error_parts_system_prompt"],
@@ -593,37 +693,8 @@ class TranslatorAgent(BaseToolAgent):
             type="sec",
             session=session)
 
-        elif self.trans_mode == 3:
-            # Quick scan mode: translate like mode 0
-            transed_section["trans_content"] = await self._request_llm_for_trans(
-                self.prompts["section_system_prompt"],
-                section["content"],
-                fail_part=section_num,
-                type="sec",
-                session=session
-            )
-
-        elif self.trans_mode == 2:
-            """
-            Combined with terminology translation
-            """
-            if not self.term_dict:
-                transed_section["trans_content"] = await self._request_llm_for_trans(
-                    self.prompts["section_system_prompt"],
-                    section["content"],
-                    fail_part=section_num,
-                    type="sec",
-                    session=session
-                )
-            else:
-                transed_section["trans_content"] = await self._request_llm_for_trans_with_terms(
-                                                            self.prompts["section_system_prompt_with_dict"],
-                                                            section["content"], 
-                                                            fail_part=section_num,
-                                                            type="sec",
-                                                            session=session
-                                                            )
-                
+        # Terminology Extraction execution...
+        if self.trans_mode == 2:
             try:
                 if self.update_term == True:
                     src_text = self._extract_text_from_tex(transed_section["content"])
@@ -785,13 +856,22 @@ class TranslatorAgent(BaseToolAgent):
                                      text: str,
                                      fail_part: str,
                                      type: str,
-                                     session: aiohttp.ClientSession) -> str:
+                                     session: aiohttp.ClientSession,
+                                     previous_context: Optional[str] = None) -> str:
+
+        # --- Task 12.4: Mask sensitive commands before sending to LLM ---
+        masked_text, _mask_mapping = mask_sensitive_commands(text)
         
+        # Inject Reference Context Template if available
+        if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
+            template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
+            system_prompt += template.format(context=previous_context)
+
         payload = {
             "model": f"{self.model}",
             "messages": [
                 {"role": "system", "content": f"{system_prompt}"},
-                {"role": "user", "content": f"{text}"}
+                {"role": "user", "content": f"{masked_text}"}
             ],
             "temperature": 0.7,
             "max_new_tokens": 8192
@@ -835,13 +915,28 @@ class TranslatorAgent(BaseToolAgent):
                         else:
                             response.raise_for_status()
                             result = await response.json()
-                            return result["choices"][0]["message"]["content"].strip()
+                            raw_result = result["choices"][0]["message"]["content"].strip()
+                            # --- Task 12.4: Restore masked commands after translation ---
+                            restored = unmask_sensitive_commands(raw_result, _mask_mapping)
+                            self._log_protection_actions(_mask_mapping, fail_part)
+                            return restored
                 # --- Semaphore RELEASED here ---
                 # Sleep for 429 outside semaphore so other tasks can proceed
                 await asyncio.sleep(wait)
                 continue
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
+                    logger.error(f"❌ Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    self.have_fail_parts = True
+                    if type == 'sec':
+                        self.fail_section_nums.append(fail_part)
+                    elif type == 'cap':
+                        self.fail_caption_phs.append(fail_part)
+                    else:
+                        self.fail_env_phs.append(fail_part)
+                    return text
+
                 network_failures += 1
                 backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
                 if network_failures < 3:
@@ -857,14 +952,25 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_env_phs.append(fail_part)
 
                     logger.error(f"❌ Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
+                    # Return original (unmasked) text on ultimate failure
                     return text
+
 
     async def _request_llm_for_trans_with_terms(self,
                                           system_prompt: str,
                                           text: str,
                                           fail_part: str,
                                           type: str,
-                                          session: aiohttp.ClientSession) -> str:
+                                          session: aiohttp.ClientSession,
+                                          previous_context: Optional[str] = None) -> str:
+
+        # --- Task 12.4: Mask sensitive commands before sending to LLM ---
+        masked_text, _mask_mapping = mask_sensitive_commands(text)
+        
+        # Inject Reference Context Template if available
+        if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
+            template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
+            system_prompt += template.format(context=previous_context)
 
         payload = {
             "model": f"{self.model}",
@@ -875,7 +981,7 @@ class TranslatorAgent(BaseToolAgent):
                 },
                 {
                     "role": "user",
-                    "content": f"[Current LaTeX Paragraph]:\n{text}"
+                    "content": f"[Current LaTeX Paragraph]:\n{masked_text}"
                 }
             ],
             "temperature": 0.7,
@@ -918,12 +1024,27 @@ class TranslatorAgent(BaseToolAgent):
                         else:
                             response.raise_for_status()
                             result = await response.json()
-                            return result["choices"][0]["message"]["content"].strip()
+                            raw_result = result["choices"][0]["message"]["content"].strip()
+                            # --- Task 12.4: Restore masked commands after translation ---
+                            restored = unmask_sensitive_commands(raw_result, _mask_mapping)
+                            self._log_protection_actions(_mask_mapping, fail_part)
+                            return restored
                 # --- Semaphore RELEASED here ---
                 await asyncio.sleep(wait)
                 continue
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
+                    logger.error(f"❌ Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    self.have_fail_parts = True
+                    if type == 'sec':
+                        self.fail_section_nums.append(fail_part)
+                    elif type == 'cap':
+                        self.fail_caption_phs.append(fail_part)
+                    else:
+                        self.fail_env_phs.append(fail_part)
+                    return text
+
                 network_failures += 1
                 backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
                 if network_failures < 3:
@@ -939,7 +1060,9 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_env_phs.append(fail_part)
 
                     logger.error(f"❌ Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
+                    # Return original (unmasked) text on ultimate failure
                     return text
+
 
     async def _request_llm_for_retrans_error_parts(self,
                                                    system_prompt: str,
@@ -949,8 +1072,12 @@ class TranslatorAgent(BaseToolAgent):
                                                    type: str,
                                                    session: aiohttp.ClientSession) -> str:
 
-        user_prompt = f"[Original]:\n{part['content']}\n[Translation]:\n{part['trans_content']}\n[Error]:\n{error_message}"
-        # print(user_prompt,'\n')
+        # --- Mask sensitive commands in the combined prompt ---
+        # We mask the full user_prompt (original + translation + error) as one
+        # string to avoid placeholder index collisions between original and
+        # translation, since both could contain the same CCSXML / \\ccsdesc.
+        raw_user_prompt = f"[Original]:\n{part['content']}\n[Translation]:\n{part.get('trans_content', '')}\n[Error]:\n{error_message}"
+        user_prompt, _mask_mapping = mask_sensitive_commands(raw_user_prompt)
         payload = {
             "model": f"{self.model}",
             "messages": [
@@ -1003,12 +1130,26 @@ class TranslatorAgent(BaseToolAgent):
                         else:
                             response.raise_for_status()
                             result = await response.json()
-                            return result["choices"][0]["message"]["content"].strip()
+                            raw_result = result["choices"][0]["message"]["content"].strip()
+                            # --- Restore masked commands after retranslation ---
+                            restored = unmask_sensitive_commands(raw_result, _mask_mapping)
+                            return restored
                 # --- Semaphore RELEASED here ---
                 await asyncio.sleep(wait)
                 continue
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
+                    logger.error(f"❌ Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    self.have_fail_parts = True
+                    if type == 'sec':
+                        self.fail_section_nums.append(fail_part)
+                    elif type == 'cap':
+                        self.fail_caption_phs.append(fail_part)
+                    else:
+                        self.fail_env_phs.append(fail_part)
+                    return part.get("trans_content") or part.get("content", "")
+
                 network_failures += 1
                 backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
                 if network_failures < 3:
@@ -1024,6 +1165,7 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_env_phs.append(fail_part)
 
                     logger.error(f"❌ Failed to retranslate error parts after 3 attempts, returning previous translation: {fail_part}. {e}")
+                    # Return original (unmasked) text on ultimate failure
                     return part.get("trans_content") or part.get("content", "")
 
     async def _request_llm_for_extract_terms(self, system_prompt, src, tgt,
@@ -1066,6 +1208,10 @@ class TranslatorAgent(BaseToolAgent):
                         return result["choices"][0]["message"]["content"].strip()
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
+                    logger.error(f"❌ Fatal API error {e.status} during term extraction: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    return "N/A"
+
                 wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
                 if attempt < 3:
                     logger.warning(f"Term extraction attempt {attempt}/3 failed: {e}. Retrying in {wait}s...")
@@ -1422,4 +1568,52 @@ class TranslatorAgent(BaseToolAgent):
                             terms.append((src, tgt))
                         break
         return terms
+
+    def _log_protection_actions(
+        self,
+        mapping: Dict[str, str],
+        fail_part: str,
+    ) -> None:
+        """
+        Task 12.5: Persist protection log entries to data/protection_log/<task_id>.json.
+
+        Only writes when *mapping* is non-empty.  Entries are appended to an
+        existing JSON array so the file accumulates across all translation calls.
+        """
+        if not mapping or not self.output_dir:
+            return
+
+        try:
+            # Convention: output_dir is <data_root>/<task_id>/output  (or similar).
+            task_id = Path(self.output_dir).parent.name or Path(self.output_dir).name
+
+            log_dir = Path(self.output_dir).parent.parent / "protection_log"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / f"{task_id}.json"
+
+            entries: list = []
+            if log_file.exists():
+                try:
+                    with open(log_file, "r", encoding="utf-8") as fh:
+                        entries = json.load(fh)
+                except (json.JSONDecodeError, OSError):
+                    entries = []
+
+            for placeholder, original in mapping.items():
+                entries.append({
+                    "fail_part": fail_part,
+                    "placeholder": placeholder,
+                    "original_command": original,
+                })
+
+            with open(log_file, "w", encoding="utf-8") as fh:
+                json.dump(entries, fh, ensure_ascii=False, indent=2)
+
+            logger.debug(
+                "_log_protection_actions: wrote %d entries to %s",
+                len(mapping),
+                log_file,
+            )
+        except Exception as exc:
+            logger.warning("_log_protection_actions failed: %s", exc)
 

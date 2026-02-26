@@ -10,10 +10,6 @@ The system SHALL compile translated LaTeX files with intelligent multi-engine fa
 - **THEN** the system MUST terminate the full process tree
 - **AND** on Windows MUST use process-tree termination semantics (`taskkill /T /F`).
 
-#### Scenario: Halt on first fatal compile error
-- **WHEN** an engine reports a fatal compile error
-- **THEN** the system MUST stop the current engine attempt immediately (`-halt-on-error` behavior)
-- **AND** continue fallback selection according to engine strategy.
 
 #### Scenario: Outdated local class-file conflict
 - **WHEN** a project-bundled `.cls` file conflicts with system TeX distribution compatibility
@@ -61,7 +57,7 @@ The system SHALL preserve source display-math delimiter semantics during reconst
 #### Scenario: Malformed display-math shell compared with valid source shell
 - **WHEN** translated fragment has malformed display-math shell state (e.g., unclosed/mixed `$$`, `\[` and `\]`)
 - **AND** the source fragment shell is structurally valid
-- **THEN** reconstruction MUST fallback that fragment to source content.
+- **THEN** reconstruction MUST keep the translated content (to prioritize target-language persistence) and log a warning.
 
 #### Scenario: Inline-math restoration must not capture display math
 - **WHEN** inline `$...$` restoration is applied to translated content
@@ -74,12 +70,12 @@ The system SHALL preserve source `\tag{...}` semantics and MUST prevent translat
 #### Scenario: Source tag dropped by translation
 - **WHEN** source fragment contains one or more `\tag{...}` commands
 - **AND** translated fragment drops those tags
-- **THEN** reconstruction MUST fallback the fragment to source content.
+- **THEN** reconstruction MUST append missing source tags to the end of the translated fragment instead of reverting to source content.
 
 #### Scenario: Translated tag moves outside display-math context
 - **WHEN** translated fragment contains `\tag{...}` outside any display-math context
 - **AND** source fragment does not contain out-of-context tags
-- **THEN** reconstruction MUST fallback the fragment to source content.
+- **THEN** reconstruction MUST keep the translated content (to prioritize target-language persistence).
 
 #### Scenario: Source has no tag command
 - **WHEN** source fragment contains no `\tag{...}` commands
@@ -136,7 +132,7 @@ The system SHALL preserve argument shells for sensitive custom macro commands us
 
 #### Scenario: twopartpiecewise command is dropped or count-mismatched
 - **WHEN** translated fragment drops `\twopartpiecewise` commands or changes command count
-- **THEN** reconstruction MUST fallback the fragment to source content.
+- **THEN** reconstruction MUST replace matched commands and append remaining source commands while preserving translated text, instead of falling back the entire fragment.
 
 ### Requirement: Document Tail Completion Safety
 The system SHALL ensure reconstructed output ends with a structurally complete document tail.
@@ -177,6 +173,32 @@ The system SHALL preserve caption command wrappers so translated references rema
 #### Scenario: Caption command structure remains valid
 - **WHEN** translated caption fragment preserves caption command wrappers and valid argument structure
 - **THEN** reconstruction MUST keep translated caption content.
+
+### Requirement: Sensitive Command Pre-Translation Protection
+The system SHALL mask LaTeX commands whose arguments are structurally sensitive and MUST NOT be translated, before sending content to the LLM, and SHALL restore them after translation.
+
+#### Scenario: ACM ccsdesc command protection
+- **WHEN** source content contains `\ccsdesc[...]{...}` commands
+- **THEN** the system MUST replace each matched command with an opaque placeholder before LLM translation
+- **AND** MUST restore the original command after translation completes.
+
+#### Scenario: CCSXML environment protection
+- **WHEN** source content contains `\begin{CCSXML}...\end{CCSXML}` blocks
+- **THEN** the system MUST replace the entire environment block with a single placeholder before LLM translation
+- **AND** MUST restore the original block after translation completes.
+
+#### Scenario: Retranslation protection for structural errors
+- **WHEN** a translation falls back to retranslation due to structural errors
+- **THEN** the system MUST apply sensitive command protection across the combined `[Original]/[Translation]/[Error]` prompt string
+- **AND** MUST unmask the output from the LLM before returning the retranslated content.
+
+#### Scenario: Configurable protection registry
+- **WHEN** a new sensitive command pattern is identified (e.g., from compilation failure analysis)
+- **THEN** the system MUST support adding it to the `PROTECTED_COMMANDS` registry without code changes to the translation pipeline.
+
+#### Scenario: Protection action logging
+- **WHEN** one or more commands are masked during translation
+- **THEN** the system MUST log a structured JSON record of all masked commands per task for maintenance tracking.
 
 ### Requirement: API Rate Limit Resilience (429 Handling)
 The translation service SHALL handle API rate limits (HTTP 429) gracefully with infinite retry and graduated backoff while maintaining system concurrency.

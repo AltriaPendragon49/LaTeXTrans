@@ -88,23 +88,29 @@ def capture_task_config(
     output_dir = Path(settings.task_configs_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"config_{task_id[:8]}_{timestamp}.json"
+    info = _json_safe(additional_info or {})
+    if not isinstance(info, dict):
+        info = {"raw": info}
+
+    arxiv_id = info.get("arxiv_id")
+    safe_arxiv_id = str(arxiv_id).replace("/", "_") if arxiv_id else "unknown_arxiv"
+    
+    now = datetime.now()
+    task_date = now.strftime("%m%d")
+    task_time = now.strftime("%H%M")
+
+    filename = f"{safe_arxiv_id}-{task_id[:6]}-{task_date}-{task_time}.json"
     filepath = output_dir / filename
     tmp_path = output_dir / f".{filename}.tmp"
 
     try:
-        info = _json_safe(additional_info or {})
-        if not isinstance(info, dict):
-            info = {"raw": info}
-
         snapshot = {
             "arxiv_id": info.get("arxiv_id"),
             "is_logged_in": bool(info.get("is_logged_in", False)),
             "metadata": {
                 "task_id": task_id,
-                "captured_at": datetime.now().isoformat(),
-                "timestamp": timestamp,
+                "captured_at": now.isoformat(),
+                "timestamp": f"{task_date}_{task_time}",
             },
             "advanced_config": _json_safe(advanced_config),
             "agent_config": _sanitize_agent_config(agent_config),

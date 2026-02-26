@@ -70,6 +70,9 @@ class LatexParser:
         # Merge short sections to avoid too many sections
         self._merge_short_sections(min_tokens=50)
 
+        # Chunk overly long sections to prevent LLM catastrophic truncation
+        self._chunk_long_sections(max_tokens=4000)
+
         total_sections = len(self.sections_json)
         if on_progress:
             on_progress("parsing", 80, f"Processing {total_sections} sections...")
@@ -215,7 +218,7 @@ class LatexParser:
         """
         def get_nonNone(*args):
             result = [arg for arg in args if arg is not None]
-            assert len(result) == 1
+            assert len(result) >= 1
             return result[0]
         
         full_tex = remove_comments(tex)
@@ -226,10 +229,16 @@ class LatexParser:
             match = pattern.search(full_tex)
             if match is None:
                 break
+            
+            # Groups 1,2: newcommand name; Group 6: newenvironment name
             name1 = match.group(1)
             name2 = match.group(2)
-            name = get_nonNone(name1, name2)
-            n_arguments = match.group(3)
+            env_name = match.group(6)
+            name = get_nonNone(name1, name2, env_name)
+            
+            # Group 3: newcommand args; Group 7: newenvironment args
+            n_arguments = match.group(3) or match.group(7)
+            
             if n_arguments is None:
                 n_arguments = 0
             else:
@@ -349,7 +358,10 @@ class LatexParser:
         """
         Merge sections that are too short to save the number of API requests
         """
-        enc = tiktoken.encoding_for_model("gpt-4")
+        try:
+            enc = tiktoken.get_encoding("o200k_base")
+        except ValueError:
+            enc = tiktoken.get_encoding("cl100k_base")
         merged_sections = []
         i = 0
         sections = self.sections_json
@@ -381,3 +393,104 @@ class LatexParser:
             i = j
 
         self.sections_json = merged_sections
+
+    def _chunk_long_sections(self, max_tokens=4000):
+        """
+        Split sections that exceed max_tokens into smaller sub-chunks based on natural boundaries
+        (paragraphs first, then sentences) to prevent LLM truncation.
+        Tracks previous_context to maintain semantic continuity across LLM calls.
+        """
+        try:
+            enc = tiktoken.get_encoding("o200k_base")
+        except ValueError:
+            enc = tiktoken.get_encoding("cl100k_base")
+        chunked_sections = []
+        
+        for section in self.sections_json:
+            content = section["content"]
+            tokens = len(enc.encode(content))
+            
+            if tokens <= max_tokens:
+                chunked_sections.append(section)
+                continue
+                
+            logger.info(f"Section {section['section']} exceeds {max_tokens} tokens ({tokens} tokens). Splitting...")
+            
+            # 1. Try splitting by paragraph (double newline)
+            parts = re.split(r'(\n{2,})', content)
+            paragraphs = []
+            current_p = ""
+            for part in parts:
+                if re.match(r'\n{2,}', part):
+                    current_p += part
+                    paragraphs.append(current_p)
+                    current_p = ""
+                else:
+                    current_p += part
+            if current_p:
+                paragraphs.append(current_p)
+                
+            # If a single paragraph is still too large, split by sentence boundary
+            refined_parts = []
+            for p in paragraphs:
+                if len(enc.encode(p)) > max_tokens:
+                    # Split by sentence boundary '. ', but preserve the delimiter
+                    sentences = re.split(r'(\.\s+)', p)
+                    current_s = ""
+                    for s in sentences:
+                        if re.match(r'\.\s+', s):
+                            current_s += s
+                            refined_parts.append(current_s)
+                            current_s = ""
+                        else:
+                            current_s += s
+                    if current_s:
+                        refined_parts.append(current_s)
+                else:
+                    refined_parts.append(p)
+
+            # Assemble sub-chunks
+            current_chunk = ""
+            current_chunk_tokens = 0
+            sub_chunk_idx = 1
+            previous_context = ""
+            
+            for part in refined_parts:
+                part_tokens = len(enc.encode(part))
+                
+                # If adding this part exceeds max, finalize the current chunk
+                if current_chunk and (current_chunk_tokens + part_tokens > max_tokens):
+                    new_section = section.copy()
+                    new_section["section"] = f"{section['section']}_chunk_{sub_chunk_idx}"
+                    new_section["content"] = current_chunk
+                    if previous_context:
+                        new_section["previous_context"] = previous_context
+                        
+                    chunked_sections.append(new_section)
+                    sub_chunk_idx += 1
+                    
+                    # Store trailing text of the completed chunk as context
+                    # If it's a multi-paragraph chunk, take the last paragraph roughly (~500 chars)
+                    tail = current_chunk[-1000:]
+                    last_paragraph_match = re.search(r'([^\n]+)$', tail)
+                    if last_paragraph_match:
+                        previous_context = last_paragraph_match.group(1).strip()
+                    else:
+                        previous_context = tail.strip()
+                        
+                    current_chunk = ""
+                    current_chunk_tokens = 0
+                    
+                current_chunk += part
+                current_chunk_tokens += part_tokens
+                
+            # Final remaining chunk
+            if current_chunk:
+                new_section = section.copy()
+                new_section["section"] = f"{section['section']}_chunk_{sub_chunk_idx}"
+                new_section["content"] = current_chunk
+                if previous_context:
+                    new_section["previous_context"] = previous_context
+                chunked_sections.append(new_section)
+                
+        self.sections_json = chunked_sections

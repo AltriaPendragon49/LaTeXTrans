@@ -45,8 +45,9 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     command_error = str(error_report.get("command_error", ""))
     ph_error = str(error_report.get("ph_error", ""))
     bracket_error = str(error_report.get("bracket_error", ""))
+    math_error = str(error_report.get("math_error", ""))
     
-    all_errors = command_error + ph_error + bracket_error
+    all_errors = command_error + ph_error + bracket_error + math_error
     
     # Type A: Resource/configuration missing
     if "not found" in all_errors.lower():
@@ -59,6 +60,14 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     
     # Type C: Missing placeholders (structural issue)
     if "Missing placeholders:" in ph_error:
+        return ERROR_TYPE_C
+
+    # Type C: Math-mode delimiter mismatch (deterministic repair, no LLM retry)
+    if "math_delimiter_mismatch" in math_error:
+        return ERROR_TYPE_C
+
+    # Type C: Residual PROTECTED_CMD placeholder (deterministic restore, no LLM retry)
+    if "protected_cmd_residual" in math_error:
         return ERROR_TYPE_C
     
     # Type B: Default - recoverable errors (bracket issues, extra placeholders, etc.)
@@ -131,9 +140,11 @@ class ValidatorAgent(BaseToolAgent):
         command_error = self._validate_command(part)
         ph_error = self._validate_placeholder(part)
         bracket_error = self._validate_closed_brackets(part)
+        math_error = self._validate_math_delimiters(part)
+        protected_cmd_error = self._validate_protected_cmd_residual(part)
         error_report = {}
 
-        if not command_error and not ph_error and not bracket_error:
+        if not command_error and not ph_error and not bracket_error and not math_error and not protected_cmd_error:
             return None
         else: 
             if "section" in part:
@@ -152,6 +163,10 @@ class ValidatorAgent(BaseToolAgent):
                 error_report["ph_error"] = ph_error
             if bracket_error:
                 error_report["bracket_error"] = bracket_error
+            # Merge math and protected_cmd errors into math_error field
+            math_issues = [e for e in [math_error, protected_cmd_error] if e]
+            if math_issues:
+                error_report["math_error"] = "\n".join(math_issues)
             
             # Add error classification (A/B/C) for targeted handling
             error_report["error_type"] = classify_error(error_report)
@@ -206,6 +221,189 @@ class ValidatorAgent(BaseToolAgent):
         else:
             return None
         
+    # ------------------------------------------------------------------ #
+    # Math-mode delimiter validation & repair (Task 1)                    #
+    # ------------------------------------------------------------------ #
+
+    # Bare math tokens that are illegal in text mode
+    _BARE_MATH_TOKEN_RE = re.compile(
+        r'(?<!\\)(?:_|\^|(?:\\(?:frac|sum|int|prod|sqrt|alpha|beta|gamma|delta|epsilon'
+        r'|theta|lambda|mu|nu|pi|sigma|tau|omega|Omega|infty|partial|nabla|cdot'
+        r'|cdots|ldots|times|pm|mp|leq|geq|neq|approx|sim|simeq|equiv'
+        r'|subseteq|supseteq|subset|supset|in|notin|forall|exists)))'
+    )
+
+    @staticmethod
+    def _extract_math_regions(text: str) -> List[tuple]:
+        """
+        Extract all math regions bounded by $, $$, \[, \( or \begin{math_env}.
+        Returns list of (start, end, is_display) tuples.
+        """
+        regions = []
+        # Pattern components
+        pat_display_dollar = r'(?<!\\)\$\$.*?(?<!\\)\$\$'
+        pat_inline_dollar = r'(?<!\$)\$(?!\$).*?(?<!\\)\$(?!\$)'
+        pat_display_bracket = r'(?<!\\)\\\[.*?(?<!\\)\\\]'
+        pat_inline_paren = r'(?<!\\)\\\(.*?(?<!\\)\\\)'
+        pat_env = r'\\begin\{(equation\*?|align\*?|multline\*?|gather\*?|math|displaymath|eqnarray\*?)\}.*?\\end\{\1\}'
+        
+        regex = re.compile(f'{pat_display_dollar}|{pat_inline_dollar}|{pat_display_bracket}|{pat_inline_paren}|{pat_env}', re.DOTALL)
+        
+        for m in regex.finditer(text):
+            matched_text = m.group(0)
+            is_display = matched_text.startswith('$$') or matched_text.startswith(r'\[') or matched_text.startswith(r'\begin')
+            regions.append((m.start(), m.end(), is_display))
+            
+        return regions
+
+    def _validate_math_delimiters(self, part: Dict[str, Any]) -> Optional[str]:
+        """Validate that translation preserves math-mode delimiters.
+
+        Checks that:
+        1. The number of $ delimiters in translation >= original.
+        2. No bare math tokens (_^\\frac etc.) appear outside $...$ in translation
+           when the original has them inside $...$.
+
+        Returns error string with 'math_delimiter_mismatch' if issue detected.
+        """
+        original = part.get("content") or ""
+        translated = part.get("trans_content") or ""
+        if not original or not translated:
+            return None
+
+        # Count $ characters (rough check, exclude $$)
+        def _count_inline_dollars(text: str) -> int:
+            # Count standalone $ (not part of $$)
+            return len(re.findall(r'(?<!\$)\$(?!\$)', text))
+
+        orig_dollars = _count_inline_dollars(original)
+        trans_dollars = _count_inline_dollars(translated)
+
+        errors = []
+        if trans_dollars < orig_dollars:
+            errors.append(
+                f"math_delimiter_mismatch: original has {orig_dollars} inline $, "
+                f"translation has {trans_dollars}"
+            )
+
+        # Check for bare math tokens outside $ in translation when original has them inside $
+        orig_regions = self._extract_math_regions(original)
+        if orig_regions:
+            # Build a mask of positions inside math environments in translation
+            trans_regions = self._extract_math_regions(translated)
+            inside = set()
+            for s, e, _ in trans_regions:
+                inside.update(range(s, e))
+
+            for m in self._BARE_MATH_TOKEN_RE.finditer(translated):
+                if m.start() not in inside:
+                    errors.append(
+                        f"math_delimiter_mismatch: bare math token '{m.group()}' "
+                        f"at pos {m.start()} is outside $...$ in translation"
+                    )
+                    break  # One sample is enough to trigger repair
+
+            # Severe corruption checks within translated math regions
+            for s, e, _ in trans_regions:
+                math_text = translated[s:e]
+                # Check for unbalanced latex literal braces \{ and \}
+                left_braces = len(re.findall(r'\\\{', math_text))
+                right_braces = len(re.findall(r'\\\}', math_text))
+                if left_braces != right_braces:
+                    errors.append(f"math_delimiter_mismatch: structural corruption detected (unbalanced \\{{ \\}}) in math block: {math_text[:40]}...")
+                    break
+                    
+                # Check for massive English leakage (more than 3 consecutive words not in \text or similar)
+                # Quick heuristic: if we find 3 consecutive space-separated purely alphabetical words > 2 chars each
+                # This catches things like "$g$ fixes $x$" fused inside a math block incorrectly.
+                # But be careful not to trigger on valid math text.
+                # We will rely primarily on the unbalanced braces for now, as it covers the most severe destruction
+                # we've seen (e.g., `\\} = 0$`).
+
+        return "\n".join(errors) if errors else None
+
+    @staticmethod
+    def repair_math_delimiters(original: str, translated: str) -> str:
+        """
+        Repair math-mode delimiter mismatches by copying $ patterns from original.
+
+        Strategy:
+        1. Extract all $ and $$ regions from the original.
+        2. For each missing inline-math region: find the corresponding
+           math content in the translation (by occurrence order) and wrap it.
+        3. For each bare math token in translation not inside $: wrap the
+           smallest span covering it with $...$.
+
+        This is a deterministic structural repair (Type C), not LLM retry.
+        """
+        if not original or not translated:
+            return translated
+
+        # Extract inline $...$ contents from original (in order)
+        inline_re = re.compile(r'(?<!\$)\$(?!\$)(.*?)(?<!\\)\$(?!\$)', re.DOTALL)
+        orig_inline = inline_re.findall(original)
+        trans_inline_matches = list(inline_re.finditer(translated))
+
+        # If translation is missing $ regions, try to inject them
+        if len(orig_inline) > len(trans_inline_matches):
+            # Walk translation, find positions of bare math tokens and wrap them
+            bare_token_re = re.compile(
+                r'(?<!\\)(?:[_^]|(?:\\(?:frac|sqrt|sum|int|prod|alpha|beta|gamma'
+                r'|delta|epsilon|theta|lambda|mu|nu|pi|sigma|tau|omega'
+                r'|Omega|infty|partial|nabla|cdot|times|pm|leq|geq|neq'
+                r'|approx|equiv|forall|exists|in|notin)))'
+            )
+            # Find all math regions to build exclusion mask
+            existing_regions = ValidatorAgent._extract_math_regions(translated)
+            inside = set()
+            for s, e, _ in existing_regions:
+                inside.update(range(s, e))
+
+            result = translated
+            offset = 0
+            for match in bare_token_re.finditer(translated):
+                if match.start() in inside:
+                    continue
+                # Wrap the token and surrounding word in $...$
+                # Expand to include adjacent word characters and math chars
+                s = match.start()
+                e = match.end()
+                # Expand left to include preceding letters/digits/backslash-word
+                allowed_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_^\\{}'
+                while s > 0 and result[s - 1 + offset] in allowed_chars:
+                    s -= 1
+                    if s <= 0:
+                        break
+                # Find end of token group
+                while e < len(result) and result[e + offset] in allowed_chars:
+                    e += 1
+                # Wrap
+                span = result[s:e]
+                wrapped = f'${span}$'
+                result = result[:s] + wrapped + result[e:]
+                inside.update(range(s, e + 2))  # +2 for the two $ chars
+                offset += 2  # Two extra chars added
+                # Removed break to iteratively fix ALL found math tokens in this run
+
+            if result != translated:
+                logger.info(
+                    f"repair_math_delimiters: injected $ around bare math token"
+                )
+                return result
+
+        # If occurrence counts match, just return unmodified
+        return translated
+
+    def _validate_protected_cmd_residual(self, part: Dict[str, Any]) -> Optional[str]:
+        """Check for unreplaced PROTECTED_CMD placeholders in translation."""
+        translated = part.get("trans_content") or ""
+        if re.search(r'PROTECTED_CMD_\d+', translated):
+            return (
+                "protected_cmd_residual: translation contains unreplaced "
+                "PROTECTED_CMD placeholder — unmask restoration may have failed"
+            )
+        return None
+
     def _find_brackets_errors(self, content, org=None):
         """Find unmatched brackets in content"""
         # Only check [] and {} - parentheses () cause false positives

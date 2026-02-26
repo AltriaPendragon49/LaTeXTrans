@@ -210,6 +210,18 @@ Rationale:
 - Some failing runs produce no parseable log error despite no PDF output; treating those as success masks real failures.
 - Fallback normalization ensures status propagation remains truthful.
 
+### 19. Sensitive Command Pre-Translation Protection (Emergency Masking)
+- Maintain a `PROTECTED_COMMANDS` registry in `utils.py` that defines regex patterns for LaTeX commands whose arguments must NEVER be translated.
+- Initial entries: `\ccsdesc[...]{...}`, `\begin{CCSXML}...\end{CCSXML}`, `\received[...]{...}`, `\keywords{...}`.
+- Before each LLM translation call, `mask_sensitive_commands(content)` replaces all matched regions with opaque placeholders (`<PROTECTED_CMD_N>`).
+- After translation, `unmask_sensitive_commands(translated, mapping)` restores original protected regions.
+- All masked commands are logged per-task to `data/protection_log/<task_id>.json` for maintenance tracking and rule expansion.
+
+Rationale:
+- LLM models (GPT-4o, DeepSeek V3, Qwen3) all exhibit unpredictable behavior when deciding whether to translate command arguments that look like natural language.
+- Physical masking before the LLM call eliminates model-dependent variance entirely.
+- The registry is intentionally small (emergency scope) and extensible; the companion `add-llm-compilation-feedback-loop` change will automate rule discovery.
+
 ## Risks and Trade-offs
 - Conservative delimiter restoration may leave some malformed math untouched when mapping is ambiguous.
 - Structured status propagation changes internal interfaces; callers must be updated together.

@@ -95,3 +95,18 @@
   - `ede0e912-2890-4fdd-a8ae-78bd5b2035a5` (`compilation_completed`)
   - `82e683f9-700e-4659-adf5-ec5b4d9ca154` (`compilation_completed`)
   - `28ff3d3c-3f14-43d2-82fc-4c6e93aee1cb` (`compilation_completed`)
+
+## 12. Sensitive Command Pre-Translation Protection (Emergency Regex Masking)
+- [x] 12.1 Create `PROTECTED_COMMANDS` registry in `backend/app/services/latex/utils.py` with initial entries (`\ccsdesc`, `CCSXML` environment, `\received`, `\keywords` for ACM templates).
+- [x] 12.2 Implement `mask_sensitive_commands(content, registry)` → returns `(masked_content, mapping_dict)`.
+- [x] 12.3 Implement `unmask_sensitive_commands(translated_content, mapping_dict)` → returns restored content.
+- [x] 12.4 Integrate masking in `TranslatorAgent._request_llm_for_trans` before sending to LLM, and unmasking on result. Also integrated in `_request_llm_for_trans_with_terms`.
+- [x] 12.5 Add structured JSON logging of all masked commands per task to `data/protection_log/`.
+- [x] 12.6 Add unit tests for mask/unmask round-trip, including edge cases (nested braces, multi-line environments).
+
+## 13. Target Language Persistence & Retranslation Hardening
+- [x] 13.1 Update `restore_display_math_shell_structure` to keep translated text instead of nuclear fallback to English.
+- [x] 13.2 Update `restore_tag_commands` to append missing tags instead of falling back to English.
+- [x] 13.3 Update `restore_twopartpiecewise_commands` to handle mismatches by replacing/appending commands while keeping translated text.
+- [x] 13.4 Apply `mask_sensitive_commands` to the combined `[Original]/[Translation]/[Error]` prompt string in `_request_llm_for_retrans_error_parts`.
+- [x] 13.5 Update relevant unit tests (`test_restore_display_math_shell_structure`, `test_restore_tag_commands`, `test_restore_twopartpiecewise_commands`) to expect the new behavior.

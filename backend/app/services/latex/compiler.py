@@ -595,7 +595,10 @@ def compile_latex(
     try:
         # Use latexmk for intelligent compilation
         # -interaction=nonstopmode: don't stop for missing files etc.
-        # -halt-on-error: stop immediately on first error (prevents error cascade loops)
+        # NOTE: -halt-on-error intentionally OMITTED. LaTeX's nonstopmode error recovery
+        # allows many documents with minor errors (e.g. math formatting, missing glyphs)
+        # to still produce a readable PDF. Halting on first error drastically reduces
+        # the PDF yield for real-world arXiv papers.
         # -outdir: specify output directory
         # -file-line-error: better error messages
         # -synctex=1: for editor integration
@@ -622,7 +625,6 @@ def compile_latex(
             "latexmk",
             f"-{engine}",
             "-interaction=nonstopmode",
-            "-halt-on-error",
             f"-outdir={out_path}",
             "-file-line-error",
             "-synctex=1",
@@ -732,7 +734,7 @@ def _compile_latex_direct(
             cmd = [
                 engine_path,
                 "-interaction=nonstopmode",
-                "-halt-on-error",
+                # NOTE: -halt-on-error omitted — see compile_latex() for rationale.
                 "-output-directory", str(out_path),
                 tex_filename
             ]
@@ -921,7 +923,24 @@ def compile_with_intelligent_fallback(
         else:
             engines = ["pdflatex", "xelatex", "lualatex"]
             logger.info(f"Detected Latin document, using engine order: {engines}")
-    
+
+    # Task 5: Package-aware engine selection — xypdf is incompatible with lualatex.
+    # Detect xypdf usage and skip lualatex to avoid unnecessary failure.
+    try:
+        tex_content_for_pkg_scan = Path(normalized_tex_file).read_text(
+            encoding='utf-8', errors='replace'
+        )[:50_000]
+        if re.search(r'\\usepackage(?:\[[^\]]*\])?\{xypdf\}', tex_content_for_pkg_scan):
+            if "lualatex" in engines:
+                engines = [e for e in engines if e != "lualatex"]
+                logger.info(
+                    "[engine select] xypdf package detected — skipping lualatex "
+                    "(incompatible). Remaining engines: %s",
+                    engines,
+                )
+    except Exception as _scan_err:
+        logger.debug("xypdf package scan failed (non-fatal): %s", _scan_err)
+
     # Collect results from all engines
     results: Dict[str, CompilationResult] = {}
     

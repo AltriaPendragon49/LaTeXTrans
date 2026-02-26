@@ -119,8 +119,8 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
     
     优先级顺序：
     1. 使用作者 API（如果 use_author_api=True）
-    2. 使用系统设置中保存的 API（已登录用户，从数据库解密）
-    3. 使用前端高级配置中传入的 API（访客模式或临时覆盖）
+    2. 使用前端高级配置中传入的 API（访客模式或临时覆盖）
+    3. 使用系统设置中保存的 API（已登录用户，从数据库解密）
     4. 回退到作者 API
     
     Args:
@@ -130,14 +130,32 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
     Returns:
         LLM configuration dictionary for agent
     """
-    # Default: use author's API
+    # Priority 0: Default: use author's API if explicitly requested
     if advanced_config.use_author_api:
         logger.info("Using author's API configuration (use_author_api=True)")
         return settings.get_llm_config()
     
     logger.info(f"Custom API mode: user_id={user_id}, has_custom_api_key_in_request={bool(advanced_config.custom_api_key)}")
     
-    # Priority 1: Try to get user's stored API config from system settings
+    # Priority 1: Check if custom config is provided in request (guest mode or override)
+    if advanced_config.custom_api_key:
+        logger.info("Using API key from request (frontend advanced config)")
+        
+        base_url = (advanced_config.custom_base_url or "").rstrip('/')
+        if base_url and not base_url.endswith('/v1/chat/completions'):
+            base_url = f"{base_url}/v1/chat/completions"
+        
+        logger.info(f"   Base URL: {base_url[:50] if base_url else 'default'}...")
+        logger.info(f"   API Key: {advanced_config.custom_api_key[:8]}...***")
+        
+        return {
+            "base_url": base_url if base_url else None,
+            "api_key": advanced_config.custom_api_key,
+            "model": advanced_config.translation_model,
+            "timeout": 60
+        }
+
+    # Priority 2: Try to get user's stored API config from system settings
     if user_id:
         logger.info(f"Attempting to get API config from system settings for user {user_id}")
         user_api_config = get_user_api_config(user_id)
@@ -161,28 +179,9 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
         else:
             logger.warning(f"No API key found in system settings for user {user_id}")
     
-    # Priority 2: Check if custom config is provided in request (guest mode or override)
-    if advanced_config.custom_api_key:
-        logger.info("Using API key from request (frontend advanced config)")
-        
-        base_url = (advanced_config.custom_base_url or "").rstrip('/')
-        if base_url and not base_url.endswith('/v1/chat/completions'):
-            base_url = f"{base_url}/v1/chat/completions"
-        
-        logger.info(f"   Base URL: {base_url[:50] if base_url else 'default'}...")
-        logger.info(f"   API Key: {advanced_config.custom_api_key[:8]}...***")
-        
-        return {
-            "base_url": base_url if base_url else None,
-            "api_key": advanced_config.custom_api_key,
-            "model": advanced_config.translation_model,
-            "timeout": 60
-        }
-    
     # Final fallback to author's API
     logger.warning("No custom API configuration available, falling back to author's API")
     return settings.get_llm_config()
-
 
 def compute_config_hash(
     arxiv_id: Optional[str],
