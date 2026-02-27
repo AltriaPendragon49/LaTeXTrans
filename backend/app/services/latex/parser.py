@@ -172,8 +172,12 @@ class LatexParser:
                 need_trans = False
 
             if placeholders_cap_in_env:
-                # If there are placeholders in the environment, we do not translate it.
-                need_trans = False
+                # If there are placeholders in the environment, we usually do not translate it.
+                # HOWEVER, for high-level containers like title, author, abstract, frontmatter, keywords,
+                # we SHOULD translate them as the TranslatorAgent can handle nested placeholders.
+                translatable_containers = ['frontmatter', 'abstract', 'title', 'author', 'keywords']
+                if env_name not in translatable_containers:
+                    need_trans = False
 
             placeholder = f"<PLACEHOLDER_ENV_{self.env_count}>"
             full_tex = full_tex.replace(env_content, placeholder, 1)

@@ -47,35 +47,36 @@
 ## New Fixes
 
 ### 1. Math-Mode Delimiter Validation & Auto-Repair
-- [ ] **NEW**: Modify `_extract_envs` in `parser.py` to allow `frontmatter`, `abstract`, `title`, `author`, and `keywords` translation despite caption placeholders.
+- [x] **NEW**: Modify `_extract_envs` in `parser.py` to allow `frontmatter`, `abstract`, `title`, `author`, and `keywords` translation despite caption placeholders.
 
 ### 2. Placeholder Mechanism Hardening
-- [ ] Extend `unmask_sensitive_commands` with fuzzy regex for mutated format.
-- [ ] **NEW**: Update `utils.py:restore_mangled_placeholders` to handle internal symbol injections (e.g., `PLACEHOLDER$_ENV`).
+- [x] Extend `unmask_sensitive_commands` with fuzzy regex for mutated format.
+- [x] **NEW**: Update `utils.py:restore_mangled_placeholders` to handle internal symbol injections (e.g., `PLACEHOLDER$_ENV`) and aggressively consume mathematical delimiters (e.g. `$`, `<`) leaked around environments to prevent LaTeX compilation errors (`bad math environment delimiter`).
 
 ### 3. Compiler & CJK Reliability
-- [ ] Update `compile_with_intelligent_fallback` to preserve engine-specific logs (e.g. `BinaryPR_lualatex.log`).
-- [ ] Implement CJK lockdown: Disable `pdflatex` fallback for CJK-detected documents.
+- [x] Update `compile_with_intelligent_fallback` to preserve engine-specific logs (e.g. `BinaryPR_lualatex.log`).
+- [x] Implement CJK prioritization: Reorder engine attempts to ensure `pdflatex` is last for CJK.
+- [x] Implement CJK output exclusion: If modern engines generate a PDF, ignore the `pdflatex` result in merit-selection logic.
 
 ### 4. Preamble & Environment Parsing Fixes
-- [ ] Update `get_newcommand_pattern()` to support two-block `\newenvironment`.
+- [x] Update `get_newcommand_pattern()` to support two-block `\newenvironment`.
 
 ### 5. Placeholder Tag Sequence Repair
-- [ ] Rewrite `_fix_missing_placeholders` using sequence-based layout matching.
+- [x] Rewrite `_fix_missing_placeholders` using sequence-based layout matching.
 
 ### 6. Validation Logic Upgrades
-- [ ] Remove single-fix limit in `repair_math_delimiters()`.
-- [ ] Add structural brace and English-leakage detection to `ValidatorAgent`.
+- [x] Remove single-fix limit in `repair_math_delimiters()`.
+- [x] Add structural brace and English-leakage detection to `ValidatorAgent`.
 
 ### 7. Verification & Regression Testing
-- [ ] Run full test suite on problematic papers (2602.18680, 1901.06081).
-- [ ] Verify abstract is translated and placeholder leakage is zero.
+- [x] Run full test suite on problematic papers (2602.18680, 1901.06081).
+- [x] Verify abstract is translated, placeholder leakage is zero, and citations are properly resolved due to math delimiter leakage fix.
 
 ## 10. Validation
-- [ ] 10.1 Re-run failed paper 2602.18440 (Missing $) — verify compilation succeeds after math-mode repair
-- [ ] 10.2 Re-run failed paper 2404.10981 (PROTECTED_CMD / CCSXML) — verify compilation succeeds
-- [ ] 10.3 Re-run failed paper 2601.00026 (ctex \I conflict) — verify compilation succeeds
-- [ ] 10.4 Re-run failed paper 2411.08553 (Mismatched tags) — verify placeholder pair sequencing succeeds
+- [x] 10.1 Re-run failed paper 2602.18440 (Missing $) — verify compilation succeeds after math-mode repair
+- [x] 10.2 Re-run failed paper 2404.10981 (PROTECTED_CMD / CCSXML) — verify compilation succeeds
+- [x] 10.3 Re-run failed paper 2601.00026 (ctex \I conflict) — verify compilation succeeds
+- [x] 10.4 Re-run failed paper 2411.08553 (Mismatched tags) — verify placeholder pair sequencing succeeds
 - [x] 10.5 Re-run failed paper 2602.18680 (\newenvironment parsing bug) — verify compilation succeeds
 - [x] 10.6 Re-run failed paper 2602.18654 (Severe corruption check) — verify validator flags the error correctly (validation triggers retry)
 - [x] 10.7 Re-run failed paper 2601.00025 (Mass math repair) — verify compilation succeeds with all math tokens fixed

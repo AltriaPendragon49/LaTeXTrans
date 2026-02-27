@@ -86,13 +86,18 @@
 
 ### Decision 9: CJK-Aware Defensive Fallback and Log Preservation
 **What:** 
-1. Disable `pdflatex` fallback for documents where `target_language` is `zh/ja/ko`.
-2. Archive `.log` files with engine-specific suffixes (e.g., `{jobname}.{engine}.log`) before trying the next engine.
-**Why:** For CJK papers, `pdflatex` produces unreadable "garbled" logs that hide the true failures (like BibTeX missing files). Preserving the `lualatex` log is critical for post-mortem analysis.
+1. Relegate `pdflatex` to the absolute final fallback for documents where `target_language` is `zh/ja/ko`.
+2. If modern engines (`lualatex`, `xelatex`) successfully produced a PDF, the `pdflatex` result SHALL NOT participate in the merit-based selection (e.g. error count comparison), effectively preserving the higher-quality CJK output even if it has more reported "errors" in the log.
+3. Archive `.log` files with engine-specific suffixes (e.g., `{jobname}.{engine}.log`) before trying the next engine.
+**Why:** For CJK papers, `pdflatex` produces unreadable "garbled" logs and visually corrupted PDFs. It is only kept as a "better than nothing" last resort if no other engine creates any file. If a CJK-capable engine works, its output is fundamentally superior.
 
 ### Decision 10: Ultra-Flexible Placeholder Repair
 **What:** Update `restore_mangled_placeholders` to use a non-greedy wildcard `.*?` or a more symbol-inclusive character class for separators between `PLACEHOLDER`, `TYPE`, and `ID`.
 **Why:** Catching `<PLACEHOLDER$_ENV_7>` requires the regex to acknowledge that the LLM may inject math symbols everywhere.
+
+### Decision 11: Greedy Math Wrapper Removal
+**What:** Update `restore_mangled_placeholders` prefix and suffix matching regex to greedily consume any adjacent sequence of `$`, `<`, `>`, `\langle`, and `\rangle`, uncoupling them from the `\s*` spacing matched.
+**Why:** The LLM wrongly categorizes environment placeholders (like `\begin{equation}`) as inline math, wrapping them in `$`. This leaves `$\begin{equation}...$` in the source, triggering fatal LaTeX compilation aborts (`Bad math environment delimiter`) which cascades into missing Bibliography entries (`[?]`). By consuming all adjacent garbage wrappers greedily, the underlying placeholder parses cleanly.
 
 ## Risks / Trade-offs
 - **Math delimiter copy heuristic** may occasionally wrap non-math content in `$...$` → mitigation: only wrap when original also has `$` at same structural position.

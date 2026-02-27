@@ -865,6 +865,7 @@ def _upgrade_outdated_cls_files(tex_dir: str) -> None:
             logger.debug(f"Could not check {filename}: {e}")
 
 
+
 def compile_with_intelligent_fallback(
     tex_file: str, 
     output_dir: str,
@@ -881,22 +882,6 @@ def compile_with_intelligent_fallback(
     5. If perfect compilation (zero errors), return immediately
     6. Otherwise, collect all results and select the best PDF
     7. If all engines fail to produce PDF, return failure with source files
-    
-    Args:
-        tex_file: Path to .tex file
-        output_dir: Output directory
-        preferred_order: Optional list of engines to try in order
-                        e.g., ["xelatex", "lualatex", "pdflatex"]
-                        If not provided, auto-detect based on document language
-    
-    Returns:
-        Dictionary with:
-        - pdf_path: Path to best PDF (None if all failed)
-        - status: "completed" | "completed_with_warnings" | "failed_compilation"
-        - engine: Engine that produced the PDF
-        - error_count: Number of errors in selected PDF
-        - warnings: Warning message if errors present
-        - errors: Combined error details if compilation failed
     """
     logger.info(f"Starting intelligent three-engine compilation for {tex_file}")
 
@@ -908,12 +893,12 @@ def compile_with_intelligent_fallback(
     _upgrade_outdated_cls_files(tex_dir)
     
     # Determine engine order
+    language = detect_document_language(tex_file)
     if preferred_order is not None:
         engines = preferred_order
         logger.info(f"Using custom engine order: {engines}")
     else:
         # Auto-detect language
-        language = detect_document_language(tex_file)
         if language == "cjk":
             engines = ["xelatex", "lualatex", "pdflatex"]
             logger.info(f"Detected CJK document, using engine order: {engines}")
@@ -925,7 +910,6 @@ def compile_with_intelligent_fallback(
             logger.info(f"Detected Latin document, using engine order: {engines}")
 
     # Task 5: Package-aware engine selection — xypdf is incompatible with lualatex.
-    # Detect xypdf usage and skip lualatex to avoid unnecessary failure.
     try:
         tex_content_for_pkg_scan = Path(normalized_tex_file).read_text(
             encoding='utf-8', errors='replace'
@@ -945,11 +929,21 @@ def compile_with_intelligent_fallback(
     results: Dict[str, CompilationResult] = {}
     
     for engine in engines:
+        # Clean engine-specific auxiliary files from previous runs to prevent cross-engine contamination.
+        # e.g., an xelatex .out file containing \HyPL@Entry will crash lualatex and print `0<</S/D>>`.
+        # We explicitly DO NOT clean .bbl because arxiv papers often rely on a pre-provided .bbl file instead of a .bib file.
+        for ext in ['.out', '.aux', '.toc', '.fls', '.fdb_latexmk', '.xdv', '.nav', '.snm']:
+            aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
+            if aux_file.exists():
+                try:
+                    aux_file.unlink()
+                except OSError:
+                    pass
+
         logger.info(f"⚡ Attempting compilation with {engine}...")
         result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
 
         # Preserve each engine PDF under an engine-specific filename.
-        # Later engine attempts may overwrite/remove "<basename>.pdf".
         if result.pdf_path:
             pdf_candidate = Path(result.pdf_path)
             if pdf_candidate.exists():
@@ -958,6 +952,17 @@ def compile_with_intelligent_fallback(
                     shutil.copy2(pdf_candidate, preserved_pdf)
                     result.pdf_path = str(preserved_pdf)
                     logger.info(f"Preserved {engine} PDF snapshot: {preserved_pdf}")
+                    
+                    # Robustness: Preserve each engine LOG snapshot for observability
+                    if result.log_path:
+                        log_candidate = Path(result.log_path)
+                        if log_candidate.exists():
+                            preserved_log = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}_{engine}.log"
+                            try:
+                                shutil.copy2(log_candidate, preserved_log)
+                                logger.info(f"Preserved {engine} LOG snapshot: {preserved_log}")
+                            except Exception as exc:
+                                logger.warning(f"Failed to preserve {engine} LOG snapshot: {exc}")
                 except Exception as exc:
                     logger.warning(
                         f"Failed to preserve {engine} PDF snapshot from {pdf_candidate}: {exc}"
@@ -971,32 +976,43 @@ def compile_with_intelligent_fallback(
 
         results[engine] = result
         
-        # Perfect compilation - return immediately
+        # Perfect compilation - return immediately (unless CJK + pdflatex)
         if result.success and result.error_count == 0:
-            logger.info(f"✅ {engine} produced perfect compilation (zero errors)")
-            return {
-                "pdf_path": result.pdf_path,
-                "status": "completed",
-                "engine": engine,
-                "error_count": 0,
-                "warnings": None,
-                "errors": None
-            }
+            if language == "cjk" and engine == "pdflatex":
+                logger.debug("pdflatex produced 0 errors for CJK; continuing for merit selection")
+                pass
+            else:
+                logger.info(f"✅ {engine} produced perfect compilation (zero errors)")
+                return {
+                    "pdf_path": result.pdf_path,
+                    "status": "completed",
+                    "engine": engine,
+                    "error_count": 0,
+                    "warnings": None,
+                    "errors": None
+                }
     
     # No perfect compilation - select best result
-    # Find all engines that produced PDFs
     engines_with_pdf = [
         (engine, result) 
         for engine, result in results.items() 
         if result.pdf_path is not None and Path(result.pdf_path).exists()
     ]
     
+    # CJK specific: Exclude pdflatex result if modern engines yielded a PDF
+    if language == "cjk":
+        modern_engines_with_pdf = [
+            (e, r) for e, r in engines_with_pdf if e in ["xelatex", "lualatex"]
+        ]
+        if modern_engines_with_pdf:
+            logger.info("Found successfully built PDFs from modern engines for CJK; excluding pdflatex result.")
+            engines_with_pdf = modern_engines_with_pdf
+
     if engines_with_pdf:
         # Sort by error count (ascending)
         engines_with_pdf.sort(key=lambda x: x[1].error_count)
         best_engine, best_result = engines_with_pdf[0]
         
-        # Build comparison string
         comparison = ", ".join(
             f"{engine}: {result.error_count}" 
             for engine, result in results.items()
@@ -1019,7 +1035,6 @@ def compile_with_intelligent_fallback(
     # All engines failed to produce PDF
     logger.error(f"❌ All engines failed to produce PDF: {engines}")
     
-    # Combine error messages
     combined_errors = "Compilation failed with all engines:\n\n"
     for engine, result in results.items():
         combined_errors += f"{engine} ({result.error_count} errors):\n"

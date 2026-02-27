@@ -98,6 +98,8 @@ class LatexConstructor:
             content = restore_math_environment_blocks(original, content)
             content = restore_tag_commands(original, content)
             content = restore_label_commands(original, content)
+            # Robustness: Fix mangled tags nested within the translation
+            content = self._restore_mangled_placeholders(content)
             tex += content + "\n"
         return tex
         
@@ -131,7 +133,12 @@ class LatexConstructor:
             content = restore_tag_commands(original, content)
             content = restore_environment_structure(original, content)
             content = restore_label_commands(original, content)
-            tex = tex.replace(placeholder, content)
+            # Robustness: Fix mangled tags nested within the translation
+            content = self._restore_mangled_placeholders(content)
+            if placeholder not in tex:
+                logger.warning(f"Placeholder {placeholder} not found in tex during environment restoration")
+            else:
+                tex = tex.replace(placeholder, content)
         return tex
              
     def _revert_captions(self, tex: str) -> str:
@@ -149,7 +156,12 @@ class LatexConstructor:
             content = restore_math_environment_blocks(original, content)
             content = restore_tag_commands(original, content)
             content = restore_label_commands(original, content)
-            tex = tex.replace(placeholder, content)
+            # Robustness: Fix mangled tags nested within the translation
+            content = self._restore_mangled_placeholders(content)
+            if placeholder not in tex:
+                logger.warning(f"Placeholder {placeholder} not found in tex during caption restoration")
+            else:
+                tex = tex.replace(placeholder, content)
         return tex                              
     
     def _revert_newcommands(self, tex: str) -> str:
@@ -157,7 +169,10 @@ class LatexConstructor:
         logger.debug(f"Reverting {len(self.newcommands)} newcommands")
         for newcommand in self.newcommands:
             placeholder = newcommand["placeholder"]
-            tex = tex.replace(placeholder, newcommand["content"])
+            if placeholder not in tex:
+                logger.warning(f"Placeholder {placeholder} not found in tex during newcommand restoration")
+            else:
+                tex = tex.replace(placeholder, newcommand["content"])
         return tex
                                           
     def _revert_inputs(self, tex: str):

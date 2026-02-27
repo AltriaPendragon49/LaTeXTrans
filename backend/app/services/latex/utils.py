@@ -1622,6 +1622,9 @@ def add_ctex_package(latex_code, tex_file_path: str = None):
     # in some amsart-class documents, causing `scriptfont ... undefined` errors.
     latex_code = _inject_cjk_math_family_fallback(latex_code)
 
+    # Render stray \begin{CJK} harmless under xeCJK
+    latex_code = _inject_cjk_dummy_environments(latex_code)
+
     return latex_code
 
 
@@ -1654,6 +1657,41 @@ def _inject_cjk_math_family_fallback(latex_code: str) -> str:
             return latex_code[:pos] + "\n" + fallback_block + "\n" + latex_code[pos:]
 
     return _inject_after_documentclass(latex_code, fallback_block)
+
+
+def _inject_cjk_dummy_environments(latex_code: str) -> str:
+    """Inject robust dummy CJK environments for translated documents.
+    
+    Some authors use \\usepackage{CJKutf8} and \\begin{CJK}{UTF8}{gbsn} ... \\end{CJK}
+    to insert CJK characters in an English original. Since the translation uses
+    ctex and runs under xelatex, the CJK environment is undefined and crashes compilation.
+    This injects empty environment definitions to prevent these crashes.
+    """
+    marker = "% Dummy CJK environments for ctex/xeCJK compatibility"
+    if marker in latex_code:
+        return latex_code
+
+    dummy_block = (
+        f"{marker}\n"
+        "\\makeatletter\n"
+        "\\@ifundefined{CJK}{\n"
+        "  \\newenvironment{CJK}[2]{}{}\n"
+        "  \\newenvironment{CJK*}[2]{}{}\n"
+        "}{}\n"
+        "\\makeatother"
+    )
+
+    # Prefer injecting directly after ctex/xeCJK package lines.
+    for pkg_pattern in [
+        r'\\usepackage(?:\[[^\]]*\])?\{ctex\}',
+        r'\\usepackage(?:\[[^\]]*\])?\{xeCJK\}',
+    ]:
+        match = re.search(pkg_pattern, latex_code)
+        if match:
+            pos = match.end()
+            return latex_code[:pos] + "\n" + dummy_block + "\n" + latex_code[pos:]
+
+    return _inject_after_documentclass(latex_code, dummy_block)
 
 
 def _comment_out_pdflatex_commands(latex_code: str) -> str:
@@ -1985,6 +2023,11 @@ def add_cjk_package(latex_code: str, target_language: str = "en", tex_file_path:
     - Latin-extended / English (en, de, fr, es, pt, it, nl, pl, ...):
         Zero-touch pass-through. Preserves native pdflatex packages (T1, inputenc) unharmed.
     """
+    
+    # Globally strip \pdfoutput=1 which is obsolete and breaks LuaTeX (prints "=1" on a blank page).
+    # Since we use latexmk to force PDF output, this primitive is never strictly required.
+    latex_code = re.sub(r'\\pdfoutput\s*=\s*\d+', r'% \\pdfoutput stripped', latex_code)
+    
     lang = target_language.lower()
     if lang in ("zh", "ch"):
         # Chinese: use ctex package
@@ -3161,12 +3204,21 @@ def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
         parts = inner_content.split('_')
         escaped_parts = []
         for p in parts:
-            escaped_p = ''.join([f'(?:{re.escape(c)}|\\\\{re.escape(c)})' for c in p])
+            # Allow optional spaces or common junk between characters in the name (e.g. PLACE HOLDER)
+            char_pattern = r'[_\$§#\* ]*'
+            escaped_p = char_pattern.join([f'(?:{re.escape(c)}|\\\\{re.escape(c)})' for c in p])
             escaped_parts.append(escaped_p)
-        separator = r'(?:_|\\_|\s*_\s*)'
+        separator = r'(?:\\?[_\$§#\* ]|\s)+'
         flexible_inner = separator.join(escaped_parts)
-        prefix = r'(?:<|\\textless|\\langle|\$<\$|<\\\$|\\<|\$)?\s*'
-        suffix = r'\s*(?:>|\\textgreater|\\rangle|\$>\$|\\>\$|\\>|\$)?'
+        
+        # Prevent prefix matching (e.g., `ENV_1` matching `ENV_10` due to optional suffix)
+        # Assumes placeholders end with numbers or letters (e.g., `begin`). 
+        # For numeric endings, the very next char should not be another digit.
+        flexible_inner += r'(?!\s*[0-9])'
+        
+        # Greedily consume any accidental math delimiters ($) or angle brackets added by the LLM
+        prefix = r'(?:[\$<]|\\[\$<]|\\textless|\\langle)*\s*'
+        suffix = r'\s*(?:[\$>]|\\[\$>]|\\textgreater|\\rangle)*'
         pattern = prefix + flexible_inner + suffix
         regex = re.compile(pattern, re.IGNORECASE)
         def replacement(match):
