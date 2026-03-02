@@ -4,23 +4,22 @@
 定义 LaTeXTrans 后端 REST API 接口规范，包括翻译任务管理、文件下载、状态查询等端点。
 ## Requirements
 ### Requirement: Translation Task Initiation
-The system SHALL accept translation requests via REST API and process them asynchronously in the background.
+The system SHALL accept translation requests via REST API and process them asynchronously in the background.  
+During translation initialization, the system SHALL attempt runtime config snapshot capture when enabled, and capture failure SHALL NOT fail the translation task.
 
 #### Scenario: Start translation for uploaded file
 - **WHEN** user sends `POST /translate/{task_id}` for a valid task with uploaded source files
-- **THEN** the system updates task status to "processing", triggers background translation via `CoordinatorAgent`, and returns HTTP 202 with message "Translation started"
+- **THEN** the system updates task status to processing, triggers background translation, and returns HTTP 202
 
-#### Scenario: Start translation for arXiv source
-- **WHEN** user sends `POST /translate/{task_id}` for a task created via arXiv download
-- **THEN** the system identifies the main `.tex` file, initiates translation, and updates task status accordingly
+#### Scenario: Runtime Config Capture Enabled
+- **WHEN** translation initialization has built effective runtime configuration
+- **AND** `ENABLE_TASK_CONFIG_CAPTURE=true`
+- **THEN** the system attempts to persist a config snapshot under `data/task_configs`
 
-#### Scenario: Translation request for invalid task
-- **WHEN** user sends translation request for nonexistent task ID
-- **THEN** the system returns HTTP 404 with error "Task not found"
-
-#### Scenario: Duplicate translation request
-- **WHEN** user sends translation request for a task already in "processing" or "completed" status
-- **THEN** the system returns HTTP 409 with error "Translation already in progress or completed"
+#### Scenario: Runtime Config Capture Failure Is Non-Blocking
+- **WHEN** config snapshot capture fails due to module/path/write/runtime error
+- **THEN** the system logs a warning
+- **AND** translation initialization continues without raising task-fatal error from capture
 
 ### Requirement: Task Status Tracking
 
@@ -91,11 +90,12 @@ The system SHALL expose a health check endpoint to verify backend readiness.
 
 ### Requirement: Advanced Configuration in Translation Request
 
-The web API SHALL support advanced configuration overrides seamlessly.
+The web API SHALL support advanced configuration overrides seamlessly. Prior user-level saved configurations MUST NOT supersede active advanced_config overrides provided with the request.
 
 #### Scenario: 后端处理自定义 API 配置
 - **WHEN** 后端接收到 `use_author_api = false` 的请求或使用系统后台预设配置
-- **THEN** 后端使用 `normalize_base_url` 逻辑处理 `base_url`
+- **THEN** 后端优先读取 `advanced_config.custom_api_key` 进行验证并使用 `normalize_base_url` 逻辑处理 `base_url`
+- **AND** 若找不到前端附带配置且存在 user_id，才降级读取持久化的用户级 `user_api_config`
 - **AND** 若 URL 已包含 `/chat/completions`，则保持原样
 - **AND** 若为短路径（如仅域名或 `/v1`），则自动补全为 `/v1/chat/completions`
 - **AND** 确保对 Nvidia NIM API 等包含完整路径的端点具有 100% 兼容性
@@ -171,25 +171,10 @@ The system SHALL provide real-time task status updates via SSE (Server-Sent Even
 
 > **SSE** is an HTML5 standard technology that allows the server to push data to the client without the client repeatedly initiating requests. Compared to polling, SSE reduces latency from up to 2 seconds to under 100ms, eliminates redundant HTTP requests, and provides smoother user experience.
 
-#### Scenario: SSE connection establishment
-- **WHEN** client sends `GET /api/task/{task_id}/stream`
-- **THEN** the system returns `Content-Type: text/event-stream` response
-- **AND** immediately sends current task status as first event
-
-#### Scenario: SSE progress updates
-- **WHEN** task status, progress, or message changes
-- **THEN** the system pushes an event within 500ms
-- **AND** event data contains full task status JSON
-
-#### Scenario: SSE connection termination
-- **WHEN** task reaches terminal status (completed, failed, completed_with_warnings, failed_compilation)
-- **THEN** the system sends final status event
-- **AND** closes the SSE connection gracefully
-
-#### Scenario: SSE heartbeat
-- **WHEN** task is in progress but no status change occurs
-- **THEN** the system sends a heartbeat comment (`: heartbeat`) every 15 seconds
-- **AND** keeps connection alive
+#### Scenario: Polling fallback and task deletion (NEW)
+- **WHEN** client cannot establish SSE connection and relies on `GET /api/task/{task_id}` polling fallback
+- **AND** the requested task returns HTTP 404 (due to deletion)
+- **THEN** the frontend gracefully terminates the polling loop instead of retrying infinitely.
 
 ### Requirement: Environment Translation Judgment
 The ParserAgent SHALL determine which LaTeX environments need translation with optimized filtering:
@@ -234,4 +219,83 @@ The system SHALL accurately locate the final translated PDF while avoiding deep-
 - **WHEN** resolving a PDF for download or preview
 - **THEN** the system MUST use `_find_translated_pdf` to scan only the top-level output directory
 - **AND** prioritize files matching `{task_id}_translated.pdf`.
+
+### Requirement: Compilation Failure Status Semantics
+The API layer SHALL expose compilation-stage failures as explicit terminal task status `failed_compilation` with actionable summaries.
+
+#### Scenario: Coordinator reports compilation failure
+- **WHEN** translation orchestration returns compile failure (`status=failed_compilation` or missing compiled PDF)
+- **THEN** `/translate` background workflow MUST set task status to `failed_compilation`
+- **AND** MUST store readable compile summary in task `error` and `message` fields.
+
+#### Scenario: Orchestrator returns non-existent PDF path
+- **WHEN** orchestration returns a non-empty `pdf_path` but the file does not exist on disk
+- **THEN** API workflow MUST treat the task as `failed_compilation` (not generic runtime failure)
+- **AND** error summary MUST include the missing path for diagnostics.
+
+#### Scenario: Compilation completes with warnings
+- **WHEN** orchestration reports `completed_with_warnings`
+- **THEN** task status MUST be `completed_with_warnings`
+- **AND** warning details MUST be surfaced to clients.
+
+### Requirement: Translated PDF Resolution Safety
+Download/preview endpoints SHALL resolve translated PDFs deterministically and MUST avoid selecting copied source PDFs.
+
+#### Scenario: Resolve by task log first
+- **WHEN** `task_log.json` contains `compilation_completed` or `compilation_completed_with_warnings` entries with `pdf_path`
+- **THEN** resolver MUST prioritize those paths if they exist under the task output root.
+
+#### Scenario: Safe fallback without deep recursion
+- **WHEN** no valid task-log PDF path is available
+- **THEN** resolver MAY use strict naming-convention fallback only
+- **AND** MUST NOT use unrestricted deep recursive PDF search.
+
+#### Scenario: Nested source PDF exists but translated PDF missing
+- **WHEN** output tree contains copied source PDF in nested source subdirectory
+- **AND** translated PDF is absent
+- **THEN** resolver MUST return no translated PDF instead of returning the nested source PDF.
+
+### Requirement: Terminal State Propagation for Streaming and Polling
+Task status streaming and polling SHALL treat compilation-specific terminal states consistently.
+
+#### Scenario: SSE terminal status includes compilation outcomes
+- **WHEN** task status becomes `completed_with_warnings` or `failed_compilation`
+- **THEN** SSE stream MUST emit terminal complete event and close.
+
+#### Scenario: Frontend polling stops on compilation failure
+- **WHEN** polling receives `failed_compilation`
+- **THEN** client MUST stop polling and render failure UI without "View Result" actions.
+
+### Requirement: Progress UI Feedback for Rate Limits
+The task management system SHALL support atomic progress message updates without altering percentage values to accommodate rate-limiting feedback.
+
+#### Scenario: Atomic message-only update
+- **WHEN** a progress update is received with `percentage=-1`
+- **THEN** the system MUST update only the task's `message` field
+- **AND** MUST preserve the last known `progress` and `stage`.
+
+#### Scenario: Deadlock-free task updates
+- **WHEN** processing an atomic message update
+- **THEN** the system MUST NOT perform re-entrant locking on the task state
+- **AND** MUST ensure UI components (like amber-pulse bars) receive the data promptly.
+
+#### Scenario: Rate-limited visual feedback
+- **WHEN** a task message contains "rate limited"
+- **THEN** frontend components MUST render the progress bar and status text with amber pulsing visual cues
+- **AND** MUST display a global warning banner if the task is in the active processing view.
+
+[Checklist: Delta validation]
+- [x] -1 percentage logic implemented in TaskManager
+- [x] TaskManager deadlock fixed
+- [x] Frontend amber-pulse styles applied to TaskList/Processing
+- [x] Rate limit warning text includes performance suggestion
+
+### Requirement: Persisted Task Recovery
+
+The task manager MUST recover task configurations from the local file system.
+
+#### Scenario: Task missing from Supabase DB
+- **WHEN** a task is not in Supabase
+- **THEN** the backend searches the local file system using the system's valid `outputs_dir` and `uploads_dir` settings
+- **AND** it retrieves metadata gracefully without raising internal setting attribute exceptions.
 

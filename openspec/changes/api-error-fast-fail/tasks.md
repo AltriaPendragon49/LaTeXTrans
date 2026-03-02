@@ -1,4 +1,0 @@
-- [x] Create `api-error-fast-fail` OpenSpec change directory and documentation.
-- [x] Modify `build_llm_config` in `backend/app/api/routes/translate.py` to prioritize `advanced_config.custom_api_key`.
-- [x] Inject `aiohttp.ClientResponseError` catcher for 400, 401, 403, 404 in `TranslatorAgent`'s LLM methods (`_request_llm_for_trans`, `_request_llm_for_retrans_error_parts`, `_request_llm_for_trans_with_terms`, `_request_llm_for_extract_terms`) to skip retry sequences.
-- [x] Run backend tests to verify configurations apply and failures are appropriately caught.

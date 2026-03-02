@@ -33,19 +33,26 @@ The system SHALL update the translation task metadata to reflect the actual util
 - **THEN** 系统返回 HTTP 403 Forbidden 错误
 
 ### Requirement: History Page Display
-前端 SHALL 提供翻译历史页面展示用户的所有翻译任务。
+The system SHALL provide a history page that shows translation tasks currently visible to the user.  
+Failed tasks that were automatically quarantined and deleted from `translation_tasks` SHALL NOT appear in history results.
 
-#### Scenario: 查看历史记录
-- **WHEN** 用户访问 `/history` 页面
-- **THEN** 系统显示任务列表，包含任务 ID、源语言、目标语言、状态、创建时间
+#### Scenario: View History Records
+- **WHEN** the user requests the history page (`/history` or `GET /api/history`)
+- **THEN** the system returns the visible task list with key metadata (task id, languages, status, timestamps)
 
-#### Scenario: 下载历史任务结果
-- **WHEN** 用户在历史记录页面点击某已完成任务的下载按钮
-- **THEN** 系统下载对应的翻译 PDF 或源文件
+#### Scenario: Download Historical Result
+- **WHEN** the user selects a completed task from history
+- **THEN** the system provides the corresponding translated output artifact (for example PDF or source package)
 
-#### Scenario: 查看任务详情
-- **WHEN** 用户点击某任务条目
-- **THEN** 系统显示任务详情，包括完整进度和错误信息
+#### Scenario: Auto-Removed Failed Tasks Are Hidden
+- **WHEN** a task reaches terminal status `failed` or `failed_compilation`
+- **AND** the backend failure-interception flow deletes the row from `translation_tasks`
+- **THEN** `GET /api/history` SHALL NOT return that task
+
+#### Scenario: Cancelled Tasks Do Not Trigger Auto-Removal
+- **WHEN** a task transitions to failed state due to explicit user cancellation
+- **THEN** failure-interception auto-removal SHALL NOT be triggered by quarantine logic
+- **AND** history retention behavior for cancelled tasks remains governed by existing policy
 
 ### Requirement: Task Deletion
 系统 SHALL 在删除任务时仅清理 outputs 和 terms 目录，保留 uploads 目录作为共享缓存。
