@@ -449,6 +449,9 @@ async def run_translation(
             "latex_engine": advanced_config.compile_strategy,
             "use_verification_agent": False,
             "generate_terminology": advanced_config.generate_terminology_table,
+            "enable_compile_first_structural_fallback": settings.enable_compile_first_structural_fallback,
+            "structural_fallback_ratio_cap": settings.structural_fallback_ratio_cap,
+            "structural_fallback_cap_mode": settings.structural_fallback_cap_mode,
             "llm_config": llm_config
         }
         

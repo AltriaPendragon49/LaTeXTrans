@@ -46,8 +46,9 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     ph_error = str(error_report.get("ph_error", ""))
     bracket_error = str(error_report.get("bracket_error", ""))
     math_error = str(error_report.get("math_error", ""))
+    global_ph_error = str(error_report.get("global_ph_error", ""))
     
-    all_errors = command_error + ph_error + bracket_error + math_error
+    all_errors = command_error + ph_error + bracket_error + math_error + global_ph_error
     
     # Type A: Resource/configuration missing
     if "not found" in all_errors.lower():
@@ -68,6 +69,10 @@ def classify_error(error_report: Dict[str, Any]) -> str:
 
     # Type C: Residual PROTECTED_CMD placeholder (deterministic restore, no LLM retry)
     if "protected_cmd_residual" in math_error:
+        return ERROR_TYPE_C
+
+    # Type C: Global input placeholder stack mismatch
+    if global_ph_error:
         return ERROR_TYPE_C
     
     # Type B: Default - recoverable errors (bracket issues, extra placeholders, etc.)
@@ -103,6 +108,8 @@ class ValidatorAgent(BaseToolAgent):
         sections = self.read_file(Path(self.output_dir, "sections_map.json"), "json")
         captions = self.read_file(Path(self.output_dir, "captions_map.json"), "json")
         envs = self.read_file(Path(self.output_dir, "envs_map.json"), "json")
+        inputs_path = Path(self.output_dir, "inputs_map.json")
+        inputs = self.read_file(inputs_path, "json") if inputs_path.exists() else []
 
         self.update_progress(30, "Extracting parts to validate")
         
@@ -127,9 +134,18 @@ class ValidatorAgent(BaseToolAgent):
             error_report = self._validate(part)
             if error_report:
                 errors_report.append(error_report)
-        
-        if errors_report:
-            self.save_file(Path(self.output_dir, "errors_report.json"), "json", errors_report)
+
+        # Global placeholder stack validation for input begin/end tags.
+        global_placeholder_errors = self._validate_global_input_placeholder_stack(
+            sections=sections,
+            inputs=inputs,
+        )
+        if global_placeholder_errors:
+            errors_report.extend(global_placeholder_errors)
+
+        # Always overwrite errors_report.json to avoid stale residual errors from
+        # previous validation rounds.
+        self.save_file(Path(self.output_dir, "errors_report.json"), "json", errors_report)
 
         self.update_progress(100, f"Validation complete: {len(errors_report)} errors found")
         self.log(f"Validation complete for {os.path.basename(self.project_dir)}, remaining errors: {len(errors_report)}")
@@ -227,11 +243,14 @@ class ValidatorAgent(BaseToolAgent):
 
     # Bare math tokens that are illegal in text mode
     _BARE_MATH_TOKEN_RE = re.compile(
-        r'(?<!\\)(?:_|\^|(?:\\(?:frac|sum|int|prod|sqrt|alpha|beta|gamma|delta|epsilon'
+        r'(?<!\\)(?:_|\^)'
+        r'|(?<!\\)\\(?:frac|sum|int|prod|sqrt|alpha|beta|gamma|delta|epsilon'
         r'|theta|lambda|mu|nu|pi|sigma|tau|omega|Omega|infty|partial|nabla|cdot'
         r'|cdots|ldots|times|pm|mp|leq|geq|neq|approx|sim|simeq|equiv'
-        r'|subseteq|supseteq|subset|supset|in|notin|forall|exists)))'
+        r'|subseteq|supseteq|subset|supset|in|notin|forall|exists)'
+        r'(?![A-Za-z])'
     )
+    _PLACEHOLDER_RE = re.compile(r'<PLACEHOLDER_[^>]+>')
 
     @staticmethod
     def _extract_math_regions(text: str) -> List[tuple]:
@@ -255,6 +274,19 @@ class ValidatorAgent(BaseToolAgent):
             regions.append((m.start(), m.end(), is_display))
             
         return regions
+
+    @staticmethod
+    def _extract_placeholder_spans(text: str) -> List[tuple]:
+        """Extract [start, end) spans for placeholders like <PLACEHOLDER_...>."""
+        return [(m.start(), m.end()) for m in ValidatorAgent._PLACEHOLDER_RE.finditer(text)]
+
+    @staticmethod
+    def _index_in_spans(index: int, spans: List[tuple]) -> bool:
+        """Check whether an index belongs to any [start, end) span."""
+        for s, e in spans:
+            if s <= index < e:
+                return True
+        return False
 
     def _validate_math_delimiters(self, part: Dict[str, Any]) -> Optional[str]:
         """Validate that translation preserves math-mode delimiters.
@@ -291,11 +323,14 @@ class ValidatorAgent(BaseToolAgent):
         if orig_regions:
             # Build a mask of positions inside math environments in translation
             trans_regions = self._extract_math_regions(translated)
+            placeholder_spans = self._extract_placeholder_spans(translated)
             inside = set()
             for s, e, _ in trans_regions:
                 inside.update(range(s, e))
 
             for m in self._BARE_MATH_TOKEN_RE.finditer(translated):
+                if self._index_in_spans(m.start(), placeholder_spans):
+                    continue
                 if m.start() not in inside:
                     errors.append(
                         f"math_delimiter_mismatch: bare math token '{m.group()}' "
@@ -348,13 +383,16 @@ class ValidatorAgent(BaseToolAgent):
         if len(orig_inline) > len(trans_inline_matches):
             # Walk translation, find positions of bare math tokens and wrap them
             bare_token_re = re.compile(
-                r'(?<!\\)(?:[_^]|(?:\\(?:frac|sqrt|sum|int|prod|alpha|beta|gamma'
+                r'(?<!\\)(?:[_^])'
+                r'|(?<!\\)\\(?:frac|sqrt|sum|int|prod|alpha|beta|gamma'
                 r'|delta|epsilon|theta|lambda|mu|nu|pi|sigma|tau|omega'
                 r'|Omega|infty|partial|nabla|cdot|times|pm|leq|geq|neq'
-                r'|approx|equiv|forall|exists|in|notin)))'
+                r'|approx|equiv|forall|exists|in|notin)'
+                r'(?![A-Za-z])'
             )
             # Find all math regions to build exclusion mask
             existing_regions = ValidatorAgent._extract_math_regions(translated)
+            placeholder_spans = ValidatorAgent._extract_placeholder_spans(translated)
             inside = set()
             for s, e, _ in existing_regions:
                 inside.update(range(s, e))
@@ -362,6 +400,8 @@ class ValidatorAgent(BaseToolAgent):
             result = translated
             offset = 0
             for match in bare_token_re.finditer(translated):
+                if ValidatorAgent._index_in_spans(match.start(), placeholder_spans):
+                    continue
                 if match.start() in inside:
                     continue
                 # Wrap the token and surrounding word in $...$
@@ -403,6 +443,90 @@ class ValidatorAgent(BaseToolAgent):
                 "PROTECTED_CMD placeholder — unmask restoration may have failed"
             )
         return None
+
+    def _validate_global_input_placeholder_stack(self, sections: List[Dict], inputs: List[Dict]) -> List[Dict]:
+        """Validate global begin/end placeholder stack for extracted \\input blocks."""
+        if not sections or not inputs:
+            return []
+
+        begin_map = {}
+        end_map = {}
+        for item in inputs:
+            begin = item.get("begin")
+            end = item.get("end")
+            if begin and end:
+                begin_map[begin] = item
+                end_map[end] = item
+
+        if not begin_map or not end_map:
+            return []
+
+        section_ranges = []
+        merged_parts = []
+        cursor = 0
+        for sec in sections:
+            sec_id = str(sec.get("section"))
+            content = sec.get("trans_content") or sec.get("content") or ""
+            start = cursor
+            merged_parts.append(content)
+            cursor += len(content)
+            section_ranges.append((start, cursor, sec_id))
+            merged_parts.append("\n")
+            cursor += 1
+        merged_text = "".join(merged_parts)
+
+        def _section_for_pos(pos: int) -> str:
+            for start, end, sec_id in section_ranges:
+                if start <= pos < end:
+                    return sec_id
+            if section_ranges:
+                return section_ranges[-1][2]
+            return "0"
+
+        pattern = re.compile(r"<PLACEHOLDER_[^>]+?_begin>|<PLACEHOLDER_[^>]+?_end>")
+        stack: List[tuple] = []
+        section_issues: Dict[str, List[str]] = {}
+
+        for match in pattern.finditer(merged_text):
+            tag = match.group(0)
+            sec_id = _section_for_pos(match.start())
+
+            if tag in begin_map:
+                stack.append((tag, sec_id))
+                continue
+
+            if tag in end_map:
+                if not stack:
+                    section_issues.setdefault(sec_id, []).append(
+                        f"global_placeholder_stack_mismatch: unmatched end tag {tag}"
+                    )
+                    continue
+
+                begin_tag, begin_sec_id = stack.pop()
+                if end_map[tag] != begin_map.get(begin_tag):
+                    msg = (
+                        f"global_placeholder_stack_mismatch: mismatched tags "
+                        f"{begin_tag} vs {tag}"
+                    )
+                    section_issues.setdefault(begin_sec_id, []).append(msg)
+                    section_issues.setdefault(sec_id, []).append(msg)
+
+        for begin_tag, begin_sec_id in stack:
+            section_issues.setdefault(begin_sec_id, []).append(
+                f"global_placeholder_stack_mismatch: unmatched begin tag {begin_tag}"
+            )
+
+        reports: List[Dict] = []
+        for sec_id, issues in section_issues.items():
+            reports.append(
+                {
+                    "part": "sec",
+                    "num_or_ph": sec_id,
+                    "global_ph_error": "\n".join(sorted(set(issues))),
+                    "error_type": ERROR_TYPE_C,
+                }
+            )
+        return reports
 
     def _find_brackets_errors(self, content, org=None):
         """Find unmatched brackets in content"""

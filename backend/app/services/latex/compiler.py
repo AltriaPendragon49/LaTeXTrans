@@ -52,6 +52,11 @@ def _kill_process_tree(pid: int) -> None:
 # CJK character detection threshold
 CJK_THRESHOLD = 100
 
+# CJK quality-gate threshold:
+# if "Missing character: There is no ..." appears at or above this count,
+# we treat the engine output as quality-degraded for CJK selection.
+CJK_MISSING_CHAR_SEVERE_THRESHOLD = 50
+
 # Maximum content to read for language detection (100KB)
 MAX_DETECTION_CONTENT = 100 * 1024
 
@@ -321,7 +326,10 @@ class CompilationResult:
         log_path: Optional[str] = None,
         error_count: int = 0,
         errors: Optional[List[str]] = None,
-        exit_code: int = 0
+        exit_code: int = 0,
+        quality_issue_count: int = 0,
+        quality_issues: Optional[List[str]] = None,
+        quality_issue_severe: bool = False,
     ):
         self.success = success
         self.pdf_path = pdf_path
@@ -329,6 +337,9 @@ class CompilationResult:
         self.error_count = error_count
         self.errors = errors or []
         self.exit_code = exit_code
+        self.quality_issue_count = quality_issue_count
+        self.quality_issues = quality_issues or []
+        self.quality_issue_severe = quality_issue_severe
 
 
 def _remove_stale_expected_pdf(pdf_path: Path) -> None:
@@ -370,23 +381,34 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
         r"^! Package .* Error",
         r"^! Undefined control sequence",
         r"^! Missing",
+        r"^! File ended while scanning use of .+",
         r"^! Emergency stop",
         r"^! .*Error",
+        r"^Runaway argument\?$",
+        r"^\*\*\* \(job aborted, no legal \\end found\)",
         # -file-line-error format (latexmk default in this project)
         r"^.+:\d+:\s+LaTeX Error:",
         r"^.+:\d+:\s+Package .* Error:",
         r"^.+:\d+:\s+Undefined control sequence\.?$",
         r"^.+:\d+:\s+Missing .+ inserted\.?$",
+        r"^.+:\d+:\s+File ended while scanning use of .+",
         r"^.+:\d+:\s+Extra .+$",
         # Fatal fallback signatures
         r"^.+Fatal error occurred, no output PDF file produced!?$",
         r"^Emergency stop\.$",
     ]
     compiled_patterns = [re.compile(pattern) for pattern in error_patterns]
+    root_cause_hint_patterns = [
+        re.compile(r"^Runaway argument\?$"),
+        re.compile(r"^! File ended while scanning use of .+"),
+        re.compile(r"^.+:\d+:\s+File ended while scanning use of .+"),
+        re.compile(r"^\*\*\* \(job aborted, no legal \\end found\)"),
+    ]
     
     errors = []
     
     try:
+        prev_nonempty = ""
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
                 line = line.strip()
@@ -394,14 +416,66 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
                     continue
 
                 if any(pattern.search(line) for pattern in compiled_patterns):
+                    if "Emergency stop" in line and prev_nonempty:
+                        if any(pattern.search(prev_nonempty) for pattern in root_cause_hint_patterns):
+                            if not errors or errors[-1] != prev_nonempty:
+                                errors.append(prev_nonempty)
                     # Avoid noisy duplicate lines in summaries.
                     if not errors or errors[-1] != line:
                         errors.append(line)
+                prev_nonempty = line
     except Exception as e:
         logger.warning(f"Failed to parse log file {log_path}: {e}")
         return 0, []
     
     return len(errors), errors
+
+
+def parse_log_quality_issues(
+    log_path: str,
+    enable_quality_gate: bool = False,
+    severe_threshold: int = CJK_MISSING_CHAR_SEVERE_THRESHOLD,
+    max_samples: int = 10,
+) -> Tuple[int, List[str], bool]:
+    """
+    Parse LaTeX .log for display-quality issues that do not surface as hard errors.
+
+    Today we specifically track missing glyph diagnostics:
+      "Missing character: There is no ... in font ..."
+
+    Args:
+        log_path: Path to .log file
+        enable_quality_gate: If False, parsing is bypassed (returns zeros)
+        severe_threshold: Count threshold considered severe
+        max_samples: Max sample lines to retain for diagnostics
+
+    Returns:
+        Tuple of (issue_count, sample_lines, is_severe)
+    """
+    if not enable_quality_gate:
+        return 0, [], False
+    if not os.path.exists(log_path):
+        return 0, [], False
+
+    issue_count = 0
+    samples: List[str] = []
+    marker = "Missing character: There is no"
+
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if marker in line:
+                    issue_count += 1
+                    if len(samples) < max_samples:
+                        samples.append(line)
+    except Exception as e:
+        logger.warning(f"Failed to parse quality issues from log {log_path}: {e}")
+        return 0, [], False
+
+    return issue_count, samples, issue_count >= severe_threshold
 
 
 def _extract_content_between_braces(text: str, start_index: int) -> str:
@@ -667,8 +741,15 @@ def compile_latex(
     # Parse errors from log file
     error_count = 0
     errors = []
+    quality_issue_count = 0
+    quality_issues: List[str] = []
+    quality_issue_severe = False
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
+        quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
+            str(log_path),
+            enable_quality_gate=True,
+        )
 
     if (not pdf_exists) and error_count == 0:
         fallback_error = (
@@ -684,6 +765,7 @@ def compile_latex(
         f"latexmk ({engine}) result: "
         f"PDF={'✓' if pdf_exists else '✗'}, "
         f"Errors={error_count}, "
+        f"QualityIssues={quality_issue_count}, "
         f"Exit Code={last_exit_code}"
     )
     
@@ -693,7 +775,10 @@ def compile_latex(
         log_path=str(log_path) if log_path.exists() else None,
         error_count=error_count,
         errors=errors,
-        exit_code=last_exit_code
+        exit_code=last_exit_code,
+        quality_issue_count=quality_issue_count,
+        quality_issues=quality_issues,
+        quality_issue_severe=quality_issue_severe,
     )
 
 
@@ -767,8 +852,15 @@ def _compile_latex_direct(
     
     error_count = 0
     errors = []
+    quality_issue_count = 0
+    quality_issues: List[str] = []
+    quality_issue_severe = False
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
+        quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
+            str(log_path),
+            enable_quality_gate=True,
+        )
 
     if (not pdf_exists) and error_count == 0:
         fallback_error = (
@@ -784,6 +876,7 @@ def _compile_latex_direct(
         f"{engine} compilation result: "
         f"PDF={'✓' if pdf_exists else '✗'}, "
         f"Errors={error_count}, "
+        f"QualityIssues={quality_issue_count}, "
         f"Exit Code={last_exit_code}"
     )
     
@@ -793,7 +886,10 @@ def _compile_latex_direct(
         log_path=str(log_path) if log_path.exists() else None,
         error_count=error_count,
         errors=errors,
-        exit_code=last_exit_code
+        exit_code=last_exit_code,
+        quality_issue_count=quality_issue_count,
+        quality_issues=quality_issues,
+        quality_issue_severe=quality_issue_severe,
     )
 
 
@@ -900,7 +996,7 @@ def compile_with_intelligent_fallback(
     else:
         # Auto-detect language
         if language == "cjk":
-            engines = ["xelatex", "lualatex", "pdflatex"]
+            engines = ["xelatex", "lualatex"]
             logger.info(f"Detected CJK document, using engine order: {engines}")
         elif language == "cyrillic":
             engines = ["xelatex", "lualatex", "pdflatex"]
@@ -914,6 +1010,14 @@ def compile_with_intelligent_fallback(
         tex_content_for_pkg_scan = Path(normalized_tex_file).read_text(
             encoding='utf-8', errors='replace'
         )[:50_000]
+        if re.search(r'\\usepackage(?:\[[^\]]*\])?\{luatexja\}', tex_content_for_pkg_scan):
+            if "lualatex" in engines:
+                engines = ["lualatex"] + [e for e in engines if e != "lualatex"]
+                logger.info(
+                    "[engine select] luatexja package detected — prioritizing lualatex. "
+                    "Engine order: %s",
+                    engines,
+                )
         if re.search(r'\\usepackage(?:\[[^\]]*\])?\{xypdf\}', tex_content_for_pkg_scan):
             if "lualatex" in engines:
                 engines = [e for e in engines if e != "lualatex"]
@@ -931,14 +1035,33 @@ def compile_with_intelligent_fallback(
     for engine in engines:
         # Clean engine-specific auxiliary files from previous runs to prevent cross-engine contamination.
         # e.g., an xelatex .out file containing \HyPL@Entry will crash lualatex and print `0<</S/D>>`.
+        # We intentionally keep `.aux`: removing both `.aux` and `.fdb_latexmk` can cause latexmk/bibtex
+        # to fail with exit code 12 on some arXiv projects, which masks viable fallback engines.
         # We explicitly DO NOT clean .bbl because arxiv papers often rely on a pre-provided .bbl file instead of a .bib file.
-        for ext in ['.out', '.aux', '.toc', '.fls', '.fdb_latexmk', '.xdv', '.nav', '.snm']:
+        for ext in ['.out', '.toc', '.fls', '.fdb_latexmk', '.xdv', '.nav', '.snm']:
             aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
             if aux_file.exists():
                 try:
                     aux_file.unlink()
                 except OSError:
                     pass
+
+        # === Dynamic CJK Engine Preamble Swap ===
+        if language == "cjk":
+            try:
+                tex_content = Path(normalized_tex_file).read_text(encoding='utf-8', errors='replace')
+                original_content = tex_content
+                
+                if engine == "xelatex":
+                    tex_content = re.sub(r'\\usepackage(?:\[[^\]]*\])?\{luatexja\}', r'\\usepackage{xeCJK}', tex_content)
+                elif engine == "lualatex":
+                    tex_content = re.sub(r'\\usepackage(?:\[[^\]]*\])?\{xeCJK\}', r'\\usepackage{luatexja}', tex_content)
+                
+                if tex_content != original_content:
+                    Path(normalized_tex_file).write_text(tex_content, encoding='utf-8')
+                    logger.info(f"Dynamically swapped CJK preamble for {engine} fallback in {normalized_tex_file}")
+            except Exception as swap_err:
+                logger.warning(f"Failed to dynamically swap CJK preamble: {swap_err}")
 
         logger.info(f"⚡ Attempting compilation with {engine}...")
         result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
@@ -976,8 +1099,10 @@ def compile_with_intelligent_fallback(
 
         results[engine] = result
         
-        # Perfect compilation - return immediately (unless CJK + pdflatex)
-        if result.success and result.error_count == 0:
+        effective_quality_issue_count = result.quality_issue_count if language == "cjk" else 0
+
+        # Perfect compilation - return immediately if no hard errors and no CJK quality issues.
+        if result.success and result.error_count == 0 and effective_quality_issue_count == 0:
             if language == "cjk" and engine == "pdflatex":
                 logger.debug("pdflatex produced 0 errors for CJK; continuing for merit selection")
                 pass
@@ -1009,26 +1134,44 @@ def compile_with_intelligent_fallback(
             engines_with_pdf = modern_engines_with_pdf
 
     if engines_with_pdf:
-        # Sort by error count (ascending)
-        engines_with_pdf.sort(key=lambda x: x[1].error_count)
-        best_engine, best_result = engines_with_pdf[0]
-        
-        comparison = ", ".join(
-            f"{engine}: {result.error_count}" 
-            for engine, result in results.items()
+        # Sort by hard errors first, then CJK quality issues.
+        engines_with_pdf.sort(
+            key=lambda x: (
+                x[1].error_count,
+                x[1].quality_issue_count if language == "cjk" else 0,
+            )
         )
+        best_engine, best_result = engines_with_pdf[0]
+
+        if language == "cjk":
+            comparison = ", ".join(
+                f"{engine}: errors={result.error_count}, quality={result.quality_issue_count}"
+                for engine, result in results.items()
+            )
+        else:
+            comparison = ", ".join(
+                f"{engine}: {result.error_count}"
+                for engine, result in results.items()
+            )
         
         logger.warning(
             f"⚠️ Selected {best_engine} PDF with {best_result.error_count} errors "
             f"({comparison})"
         )
-        
+
+        warning_msg = f"Compilation completed with {best_result.error_count} errors using {best_engine}."
+        if language == "cjk" and best_result.quality_issue_count > 0:
+            warning_msg += (
+                f" Detected {best_result.quality_issue_count} CJK missing-character "
+                "quality issues in the chosen engine log."
+            )
+
         return {
             "pdf_path": best_result.pdf_path,
             "status": "completed_with_warnings",
             "engine": best_engine,
             "error_count": best_result.error_count,
-            "warnings": f"Compilation completed with {best_result.error_count} errors using {best_engine}.",
+            "warnings": warning_msg,
             "errors": None
         }
     

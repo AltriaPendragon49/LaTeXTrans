@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional, Callable
 from pathlib import Path
 import asyncio
 import logging
+import traceback
+import hashlib
 
 from .parser_agent import ParserAgent
 from .translator_agent import TranslatorAgent 
@@ -73,6 +75,21 @@ class CoordinatorAgent:
         except Exception as e:
             logger.error(f"Failed to write task log: {e}")
 
+    def _write_stage_failed_log(self, output_dir: str, stage: str, error: Exception) -> None:
+        """Write a normalized stage failure event to task log."""
+        tb = traceback.format_exc()
+        digest = hashlib.sha256(tb.encode("utf-8", errors="replace")).hexdigest()[:16]
+        self._write_task_log(
+            output_dir,
+            "stage_failed",
+            {
+                "stage": stage,
+                "error_type": error.__class__.__name__,
+                "error_message": str(error),
+                "traceback_digest": digest,
+            },
+        )
+
     async def workflow_latextrans_async(self) -> Dict[str, Any]:
         """
         Initializes the tool agent based on the provided agent name key.
@@ -85,76 +102,119 @@ class CoordinatorAgent:
 
         os.makedirs(transed_project_dir, exist_ok=True)
         self._write_task_log(transed_project_dir, "task_started", {"project": base_name, "config": {k: v for k, v in self.config.items() if k != "llm_config"}})
+        validation_warning: Optional[str] = None
 
         # Step 1: Parse LaTeX (10% total progress)
         logger.info(f"Starting LaTeX parsing for {base_name}")
         self.update_progress(5, "Initializing parser")
-        
-        parser_agent = ParserAgent(
-            config=self.config,
-            project_dir=self.project_dir,
-            output_dir=transed_project_dir,
-            on_progress=lambda s, p, m: self.update_progress(5 + int(p * 0.05), m)
-        )
-        await parser_agent.execute()
-        self._write_task_log(transed_project_dir, "parsing_completed")
-        self.update_progress(10, "Parsing completed")
+        try:
+            parser_agent = ParserAgent(
+                config=self.config,
+                project_dir=self.project_dir,
+                output_dir=transed_project_dir,
+                on_progress=lambda s, p, m: self.update_progress(5 + int(p * 0.05), m)
+            )
+            await parser_agent.execute()
+            self._write_task_log(transed_project_dir, "parsing_completed")
+            self.update_progress(10, "Parsing completed")
+        except Exception as e:
+            self._write_stage_failed_log(transed_project_dir, "parse", e)
+            raise
 
         # Step 2: Translate (10% - 70% total progress)
         logger.info("Starting translation")
         self.update_progress(10, "Initializing translator")
-        
-        translator_agent = TranslatorAgent(
-            config=self.config,
-            project_dir=self.project_dir,
-            output_dir=transed_project_dir,
-            trans_mode=self.mode,
-            generate_terminology=self.config.get("generate_terminology", False),
-            on_progress=lambda s, p, m: self.update_progress(-1, m) if p == -1 else self.update_progress(10 + int(p * 0.6), m)
-        )
-        await translator_agent.execute()
-        self._write_task_log(transed_project_dir, "translation_completed")
-        self.update_progress(70, "Translation completed")
+        try:
+            translator_agent = TranslatorAgent(
+                config=self.config,
+                project_dir=self.project_dir,
+                output_dir=transed_project_dir,
+                trans_mode=self.mode,
+                generate_terminology=self.config.get("generate_terminology", False),
+                on_progress=lambda s, p, m: self.update_progress(-1, m) if p == -1 else self.update_progress(10 + int(p * 0.6), m)
+            )
+            await translator_agent.execute()
+            self._write_task_log(transed_project_dir, "translation_completed")
+            self.update_progress(70, "Translation completed")
+        except Exception as e:
+            self._write_stage_failed_log(transed_project_dir, "translate", e)
+            raise
 
         # Step 3: Validate (70% - 75% total progress)
         logger.info("Validating translation")
         self.update_progress(70, "Validating translation")
-        
-        validator_agent = ValidatorAgent(
-            config=self.config,
-            project_dir=self.project_dir,
-            output_dir=transed_project_dir,
-            on_progress=lambda s, p, m: self.update_progress(70 + int(p * 0.05), m)
-        )
-        errors_report = validator_agent.execute()
-        self._write_task_log(transed_project_dir, "validation_completed", {"errors_count": len(errors_report) if errors_report else 0})
-        
-        # Step 4: Retry if needed (75% - 85% total progress)
-        # NOTE: Quick scan mode (mode == 3) skips repair to preserve semantic boundary
-        MAX_RETRIES = 3
-        retry_count = 0
-        
-        if self.mode == 3:
-            # Quick scan mode: skip repair to preserve semantic boundary
-            logger.info("Quick scan mode: skipping error repair to preserve translation boundary")
-            if errors_report:
-                logger.warning(f"Quick scan mode detected {len(errors_report)} validation errors, but repair is disabled")
-        else:
-            # Normal modes: perform repair if errors exist
-            if errors_report:
-                translator_agent.trans_mode = 1
+        try:
+            validator_agent = ValidatorAgent(
+                config=self.config,
+                project_dir=self.project_dir,
+                output_dir=transed_project_dir,
+                on_progress=lambda s, p, m: self.update_progress(70 + int(p * 0.05), m)
+            )
+            errors_report = validator_agent.execute()
+            initial_errors_count = len(errors_report) if errors_report else 0
+            
+            # Step 4: Retry if needed (75% - 85% total progress)
+            # NOTE: Quick scan mode (mode == 3) skips repair to preserve semantic boundary
+            MAX_RETRIES = 3
+            retry_count = 0
+            
+            if self.mode == 3:
+                # Quick scan mode: skip repair to preserve semantic boundary
+                logger.info("Quick scan mode: skipping error repair to preserve translation boundary")
+                if errors_report:
+                    logger.warning(f"Quick scan mode detected {len(errors_report)} validation errors, but repair is disabled")
+            else:
+                # Normal modes: perform repair if errors exist
+                if errors_report:
+                    translator_agent.trans_mode = 1
 
-            while errors_report and retry_count < MAX_RETRIES:
-                logger.info(f"Retrying translation for errors, attempt {retry_count + 1}/{MAX_RETRIES}")
-                self.update_progress(75 + int((retry_count / MAX_RETRIES) * 10), 
-                                   f"Retrying errors (attempt {retry_count + 1}/{MAX_RETRIES})")
-                
-                translator_agent.errors_report = errors_report
-                await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
-                errors_report = validator_agent.execute(errors_report)
-                retry_count += 1
-        
-        self.update_progress(85, "Validation completed")
+                while errors_report and retry_count < MAX_RETRIES:
+                    logger.info(f"Retrying translation for errors, attempt {retry_count + 1}/{MAX_RETRIES}")
+                    self.update_progress(75 + int((retry_count / MAX_RETRIES) * 10), 
+                                       f"Retrying errors (attempt {retry_count + 1}/{MAX_RETRIES})")
+                    
+                    translator_agent.errors_report = errors_report
+                    await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
+                    errors_report = validator_agent.execute(errors_report)
+                    retry_count += 1
+
+            final_errors_count = len(errors_report) if errors_report else 0
+            fallback_count = int(getattr(translator_agent, "structural_fallback_count", 0) or 0)
+            fallback_ratio = float(getattr(translator_agent, "structural_fallback_ratio", 0.0) or 0.0)
+            fallback_cap = float(getattr(translator_agent, "structural_fallback_cap", 0.10) or 0.10)
+            fallback_cap_mode = str(getattr(translator_agent, "structural_fallback_cap_mode", "soft") or "soft")
+            validation_warning = getattr(translator_agent, "structural_fallback_warning", None)
+            self._write_task_log(
+                transed_project_dir,
+                "validation_completed",
+                {
+                    "errors_count": final_errors_count,
+                    "initial_errors_count": initial_errors_count,
+                    "final_errors_count": final_errors_count,
+                    "retry_count": retry_count,
+                    "fallback_count": fallback_count,
+                    "fallback_ratio": round(fallback_ratio, 6),
+                    "fallback_cap": fallback_cap,
+                    "fallback_cap_mode": fallback_cap_mode,
+                },
+            )
+            if validation_warning:
+                self._write_task_log(
+                    transed_project_dir,
+                    "structural_fallback_warning",
+                    {
+                        "warning": validation_warning,
+                        "fallback_count": fallback_count,
+                        "fallback_ratio": round(fallback_ratio, 6),
+                        "fallback_cap": fallback_cap,
+                        "fallback_cap_mode": fallback_cap_mode,
+                    },
+                )
+
+            self.update_progress(85, "Validation completed")
+        except Exception as e:
+            self._write_stage_failed_log(transed_project_dir, "validate", e)
+            raise
 
         # Step 5: Generate PDF (85% - 100% total progress)
         logger.info("Generating PDF")
@@ -170,20 +230,14 @@ class CoordinatorAgent:
         try:
             generation_result = generator_agent.execute()
         except Exception as e:
-            logger.error(f"Failed to generate PDF for {base_name}: {e}")
-            self._write_task_log(
-                transed_project_dir,
-                "compilation_failed",
-                {"error_summary": str(e)}
-            )
-            self.update_progress(100, f"Failed: {e}")
-            return {
-                "status": "failed_compilation",
-                "pdf_path": None,
-                "error_summary": str(e),
-                "warnings": None,
-            }
-        
+            self._write_stage_failed_log(transed_project_dir, "generate", e)
+            raise
+
+        def _merge_warnings(primary: Optional[str], secondary: Optional[str]) -> Optional[str]:
+            if primary and secondary:
+                return f"{primary}\n{secondary}"
+            return primary or secondary
+
         PDF_file_path = generation_result.get("pdf_path")
         if PDF_file_path:
             if not Path(PDF_file_path).exists():
@@ -208,7 +262,7 @@ class CoordinatorAgent:
                     "status": "failed_compilation",
                     "pdf_path": None,
                     "error_summary": error_summary,
-                    "warnings": generation_result.get("warnings"),
+                    "warnings": _merge_warnings(validation_warning, generation_result.get("warnings")),
                 }
 
             new_PDF_path = os.path.join(transed_project_dir, f"{self.target_language}_{base_name}.pdf")
@@ -236,14 +290,16 @@ class CoordinatorAgent:
                     "status": "failed_compilation",
                     "pdf_path": None,
                     "error_summary": error_summary,
-                    "warnings": generation_result.get("warnings"),
+                    "warnings": _merge_warnings(validation_warning, generation_result.get("warnings")),
                 }
             
             # Verify PDF is fully ready before updating status
             from backend.app.services.latex.compiler import verify_pdf_ready
 
             compile_status = generation_result.get("status", "completed")
-            compile_warnings = generation_result.get("warnings")
+            compile_warnings = _merge_warnings(validation_warning, generation_result.get("warnings"))
+            if compile_status == "completed" and compile_warnings:
+                compile_status = "completed_with_warnings"
             if verify_pdf_ready(new_PDF_path):
                 logger.info(f"PDF verified ready: {new_PDF_path}")
                 if compile_status == "completed_with_warnings":
@@ -290,7 +346,7 @@ class CoordinatorAgent:
                 "status": "failed_compilation",
                 "pdf_path": None,
                 "error_summary": error_summary,
-                "warnings": generation_result.get("warnings"),
+                "warnings": _merge_warnings(validation_warning, generation_result.get("warnings")),
             }
 
     def workflow_latextrans(self) -> Dict[str, Any]:

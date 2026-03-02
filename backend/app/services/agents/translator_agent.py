@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
-from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C
+from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ValidatorAgent
 from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
@@ -24,6 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 class TranslatorAgent(BaseToolAgent):
+    @staticmethod
+    def _coerce_bool(value: Any, default: bool = False) -> bool:
+        """Safely coerce env/config style values to bool."""
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return default
+
     def __init__(self, 
                  config: Dict[str, Any], 
                  trans_mode: int = 0,
@@ -57,6 +70,20 @@ class TranslatorAgent(BaseToolAgent):
         self.prev_text = ''
         self.prev_transed_text = ''
         self.currant_content = ''
+        self.enable_compile_first_structural_fallback = self._coerce_bool(
+            config.get("enable_compile_first_structural_fallback", False),
+            default=False,
+        )
+        self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
+        self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
+        if self.structural_fallback_cap_mode not in {"soft", "hard"}:
+            self.structural_fallback_cap_mode = "soft"
+        self.structural_fallback_count = 0
+        self.structural_fallback_candidate_count = 0
+        self.structural_fallback_denominator = 0
+        self.structural_fallback_ratio = 0.0
+        self.structural_fallback_warning: Optional[str] = None
+        self._structural_validator: Optional[ValidatorAgent] = None
 
     async def execute(self, error_retry_count=0, Maxtry=3):
 
@@ -113,6 +140,7 @@ class TranslatorAgent(BaseToolAgent):
                 self.update_progress(100, "Successfully translated sections!")
 
         elif self.trans_mode == 1:
+            self._reset_structural_fallback_metrics()
             async with aiohttp.ClientSession() as session:
                 error_parts = [error_part["num_or_ph"] for error_part in self.errors_report]
                 logger.info(f"Starting retranslating for error parts: {error_parts}, attempt {error_retry_count + 1}/{Maxtry}")
@@ -378,6 +406,120 @@ class TranslatorAgent(BaseToolAgent):
             # else:
             #     print(f"[Warning] Environment placeholder {env_ph} not found.")
 
+    def _reset_structural_fallback_metrics(self) -> None:
+        self.structural_fallback_count = 0
+        self.structural_fallback_candidate_count = 0
+        self.structural_fallback_denominator = 0
+        self.structural_fallback_ratio = 0.0
+        self.structural_fallback_warning = None
+
+    def _compute_structural_fallback_denominator(self, secs: List[Dict], caps: List[Dict], envs: List[Dict]) -> int:
+        sec_count = 0
+        for sec in secs:
+            sec_id = str(sec.get("section"))
+            if sec_id == "-1":
+                continue
+            if sec_id == "0" and not self._section_has_translatable_content(sec.get("content", "")):
+                continue
+            sec_count += 1
+
+        env_count = 0
+        for env in envs:
+            if env.get("need_trans", True):
+                env_count += 1
+
+        denominator = sec_count + len(caps) + env_count
+        return max(denominator, 1)
+
+    def _finalize_structural_fallback_metrics(self) -> None:
+        if self.structural_fallback_denominator <= 0:
+            self.structural_fallback_ratio = 0.0
+        else:
+            self.structural_fallback_ratio = self.structural_fallback_count / self.structural_fallback_denominator
+
+        if self.structural_fallback_ratio > self.structural_fallback_cap:
+            self.structural_fallback_warning = (
+                f"Compile-first structural fallback ratio {self.structural_fallback_ratio:.2%} "
+                f"exceeds cap {self.structural_fallback_cap:.2%} "
+                f"(mode={self.structural_fallback_cap_mode})"
+            )
+            logger.warning(self.structural_fallback_warning)
+
+        if (not self.enable_compile_first_structural_fallback) and self.structural_fallback_candidate_count > 0:
+            logger.info(
+                "Compile-first fallback disabled: %d candidate part(s) detected",
+                self.structural_fallback_candidate_count,
+            )
+
+    def _get_structural_validator(self) -> ValidatorAgent:
+        if self._structural_validator is None:
+            self._structural_validator = ValidatorAgent(
+                config=self.config,
+                project_dir=self.project_dir,
+                output_dir=self.output_dir,
+            )
+        return self._structural_validator
+
+    def _validate_part_after_structural_fix(self, part: Dict) -> Optional[Dict]:
+        """Re-validate one part immediately after structural fix."""
+        try:
+            validator = self._get_structural_validator()
+            return validator._validate(part)
+        except Exception as exc:
+            logger.warning("Immediate post-fix validation failed: %s", exc)
+            return {"math_error": f"post_fix_validation_failed: {exc}"}
+
+    @staticmethod
+    def _summarize_structural_errors(error_report: Dict) -> str:
+        keys = ["command_error", "ph_error", "bracket_error", "math_error", "global_ph_error"]
+        items = []
+        for key in keys:
+            val = error_report.get(key)
+            if val:
+                first_line = str(val).splitlines()[0]
+                items.append(f"{key}={first_line}")
+        return "; ".join(items) if items else "unknown_error"
+
+    def _apply_compile_first_fallback(self, part: Dict, error: Dict, recheck_report: Optional[Dict] = None) -> bool:
+        """Fallback to source text for a part when structural fix remains unsafe."""
+        self.structural_fallback_candidate_count += 1
+        identifier = error.get("num_or_ph", "?")
+        reason = self._summarize_structural_errors(recheck_report or error)
+
+        if not self.enable_compile_first_structural_fallback:
+            logger.warning(
+                "Compile-first fallback candidate detected but disabled for part %s: %s",
+                identifier,
+                reason,
+            )
+            return False
+
+        projected_ratio = (self.structural_fallback_count + 1) / max(self.structural_fallback_denominator, 1)
+        if self.structural_fallback_cap_mode == "hard" and projected_ratio > self.structural_fallback_cap:
+            self.structural_fallback_warning = (
+                f"Compile-first fallback hard cap reached at part {identifier}: "
+                f"{projected_ratio:.2%} > {self.structural_fallback_cap:.2%}"
+            )
+            logger.warning(self.structural_fallback_warning)
+            return False
+
+        part["trans_content"] = part.get("content", "")
+        self.structural_fallback_count += 1
+        logger.warning(
+            "Compile-first fallback applied for part %s (reason: %s)",
+            identifier,
+            reason,
+        )
+
+        if projected_ratio > self.structural_fallback_cap and self.structural_fallback_cap_mode == "soft":
+            self.structural_fallback_warning = (
+                f"Compile-first structural fallback ratio {projected_ratio:.2%} "
+                f"exceeds cap {self.structural_fallback_cap:.2%} (soft mode)"
+            )
+            logger.warning(self.structural_fallback_warning)
+
+        return True
+
     async def _retranslate_error_parts(self, secs, caps, envs, session) -> Any:
         """
         Retranslate error parts with A/B/C error type routing:
@@ -385,94 +527,112 @@ class TranslatorAgent(BaseToolAgent):
         - Type B (recoverable): Allow one translation retry
         - Type C (structural): Apply algorithmic fix without LLM retry
         """
-        async with aiohttp.ClientSession() as session:
-            sem = asyncio.Semaphore(20)
-            
-            completed = 0
-            total = len(self.errors_report)
-            
-            # Group errors by type for efficient processing
-            type_a_errors = []
-            type_b_errors = []
-            type_c_errors = []
-            
-            for error_report in self.errors_report:
-                error_type = error_report.get("error_type", ERROR_TYPE_B)
-                if error_type == ERROR_TYPE_A:
-                    type_a_errors.append(error_report)
-                elif error_type == ERROR_TYPE_C:
-                    type_c_errors.append(error_report)
-                else:
-                    type_b_errors.append(error_report)
-            
-            logger.info(f"Error classification: A={len(type_a_errors)}, B={len(type_b_errors)}, C={len(type_c_errors)}")
-            
-            # Process Type A errors: Degradation (keep existing translation, log warning)
-            for error in type_a_errors:
-                logger.warning(f"Type A error (degradation): {error.get('num_or_ph')} - keeping existing translation")
-                completed += 1
-                progress_pct = int(100 * completed / total) if total > 0 else 100
-                self.update_progress(progress_pct, f"Processed {completed}/{total} (A:degraded)")
-            
-            # Process Type C errors: Algorithmic fix
-            for error in type_c_errors:
-                part = self._find_part_by_error(error, secs, caps, envs)
-                if part:
-                    fixed = self._apply_structural_fix(part, error)
-                    if fixed:
-                        logger.info(f"Type C error fixed algorithmically: {error.get('num_or_ph')}")
+        sem = asyncio.Semaphore(20)
+        completed = 0
+        total = len(self.errors_report)
+        self.structural_fallback_denominator = self._compute_structural_fallback_denominator(secs, caps, envs)
+
+        # Group errors by type for efficient processing
+        type_a_errors = []
+        type_b_errors = []
+        type_c_errors = []
+
+        for error_report in self.errors_report:
+            error_type = error_report.get("error_type", ERROR_TYPE_B)
+            if error_type == ERROR_TYPE_A:
+                type_a_errors.append(error_report)
+            elif error_type == ERROR_TYPE_C:
+                type_c_errors.append(error_report)
+            else:
+                type_b_errors.append(error_report)
+
+        logger.info(f"Error classification: A={len(type_a_errors)}, B={len(type_b_errors)}, C={len(type_c_errors)}")
+
+        # Process Type A errors: Degradation (keep existing translation, log warning)
+        for error in type_a_errors:
+            logger.warning(f"Type A error (degradation): {error.get('num_or_ph')} - keeping existing translation")
+            completed += 1
+            progress_pct = int(100 * completed / total) if total > 0 else 100
+            self.update_progress(progress_pct, f"Processed {completed}/{total} (A:degraded)")
+
+        # Process Type C errors: deterministic fix + immediate validation + compile-first fallback
+        for error in type_c_errors:
+            part = self._find_part_by_error(error, secs, caps, envs)
+            if part:
+                fixed = self._apply_structural_fix(part, error)
+                if fixed:
+                    recheck_report: Optional[Dict] = None
+                    if error.get("global_ph_error"):
+                        # Global stack mismatch cannot be safely re-validated at single-part granularity.
+                        recheck_report = {"global_ph_error": error.get("global_ph_error")}
                     else:
-                        logger.warning(f"Type C fix failed, preserving current translation: {error.get('num_or_ph')}")
-                completed += 1
-                progress_pct = int(100 * completed / total) if total > 0 else 100
-                self.update_progress(progress_pct, f"Processed {completed}/{total} (C:fixed)")
-            
-            # Process Type B errors: Translation retry (existing logic)
-            async def process_type_b_error(error_report):
-                async with sem:
-                    error_message = []
-                    if "command_error" in error_report:
-                        error_message.append(error_report["command_error"])
-                    if "ph_error" in error_report:
-                        error_message.append(error_report["ph_error"])
-                    if "bracket_error" in error_report:
-                        error_message.append(error_report["bracket_error"])
-                    error_message = "\n".join(error_message)
-                    
-                    part_type = error_report["part"]
-                    identifier = error_report["num_or_ph"]
+                        recheck_report = self._validate_part_after_structural_fix(part)
 
-                    if part_type == "sec":
-                        for i, sec in enumerate(secs):
-                            if identifier == sec["section"]:
-                                secs[i] = await self._translate_section(
-                                    section=sec, error_message=error_message, session=session
-                                )
-                                return True
-                    elif part_type == "env":
-                        for i, env in enumerate(envs):
-                            if identifier == env["placeholder"]:
-                                envs[i] = await self._translate_env(
-                                    env=env, error_message=error_message, session=session
-                                )
-                                return True
-                    elif part_type == "cap":
-                        for i, cap in enumerate(caps):
-                            if identifier == cap["placeholder"]:
-                                caps[i] = await self._translate_caption(
-                                    caption=cap, error_message=error_message, session=session
-                                )
-                                return True
-                    return False
+                    if recheck_report:
+                        self._apply_compile_first_fallback(part, error, recheck_report=recheck_report)
+                    else:
+                        logger.info("Type C part fixed and revalidated: %s", error.get("num_or_ph"))
+                else:
+                    logger.warning(f"Type C fix failed, preserving current translation: {error.get('num_or_ph')}")
+            completed += 1
+            progress_pct = int(100 * completed / total) if total > 0 else 100
+            self.update_progress(progress_pct, f"Processed {completed}/{total} (C:fixed)")
 
-            tasks_type_b = [process_type_b_error(error) for error in type_b_errors]
-            for future in asyncio.as_completed(tasks_type_b):
-                result = await future
-                completed += 1
-                progress_pct = int(100 * completed / total) if total > 0 else 100
-                self.update_progress(progress_pct, f"Retranslated {completed}/{total} (B:retry)")
-            
-            logger.info("Completed retranslation of error parts")
+        # Process Type B errors: Translation retry (existing logic)
+        async def process_type_b_error(error_report):
+            async with sem:
+                error_message = []
+                if "command_error" in error_report:
+                    error_message.append(error_report["command_error"])
+                if "ph_error" in error_report:
+                    error_message.append(error_report["ph_error"])
+                if "bracket_error" in error_report:
+                    error_message.append(error_report["bracket_error"])
+                if "global_ph_error" in error_report:
+                    error_message.append(error_report["global_ph_error"])
+                error_message = "\n".join(error_message)
+
+                part_type = error_report["part"]
+                identifier = error_report["num_or_ph"]
+
+                if part_type == "sec":
+                    for i, sec in enumerate(secs):
+                        if identifier == sec["section"]:
+                            secs[i] = await self._translate_section(
+                                section=sec, error_message=error_message, session=session
+                            )
+                            return True
+                elif part_type == "env":
+                    for i, env in enumerate(envs):
+                        if identifier == env["placeholder"]:
+                            envs[i] = await self._translate_env(
+                                env=env, error_message=error_message, session=session
+                            )
+                            return True
+                elif part_type == "cap":
+                    for i, cap in enumerate(caps):
+                        if identifier == cap["placeholder"]:
+                            caps[i] = await self._translate_caption(
+                                caption=cap, error_message=error_message, session=session
+                            )
+                            return True
+                return False
+
+        tasks_type_b = [process_type_b_error(error) for error in type_b_errors]
+        for future in asyncio.as_completed(tasks_type_b):
+            await future
+            completed += 1
+            progress_pct = int(100 * completed / total) if total > 0 else 100
+            self.update_progress(progress_pct, f"Retranslated {completed}/{total} (B:retry)")
+
+        self._finalize_structural_fallback_metrics()
+        logger.info(
+            "Completed retranslation of error parts (fallback_count=%d, ratio=%.4f, cap=%.4f, mode=%s)",
+            self.structural_fallback_count,
+            self.structural_fallback_ratio,
+            self.structural_fallback_cap,
+            self.structural_fallback_cap_mode,
+        )
     
     def _find_part_by_error(self, error: Dict, secs: List, caps: List, envs: List) -> Optional[Dict]:
         """Find the part (section/caption/env) referenced by an error report."""
@@ -571,38 +731,57 @@ class TranslatorAgent(BaseToolAgent):
         pattern = r'<PLACEHOLDER_[^>]+>'
         
         original_phs = re.findall(pattern, original)
+        if not original_phs:
+            return translated
         
         # 1. Before checking translated, restore any LLM-escaped mangled placeholders 
         # that might be hiding as $<$PLACEHOLDER_...>$> or \textless PLACEHOLDER\_... \textgreater
         translated = restore_mangled_placeholders(translated, original_phs)
         
         translated_phs = re.findall(pattern, translated)
-        
-        # Scenario 1: Exact count match but contents differ (spelling error)
-        if len(original_phs) == len(translated_phs) and original_phs != translated_phs:
-            for orig_ph, trans_ph in zip(original_phs, translated_phs):
-                if orig_ph != trans_ph:
-                    logger.debug(f"Correcting misspelled placeholder: {trans_ph} -> {orig_ph}")
-                    translated = translated.replace(trans_ph, orig_ph)
+
+        # If counts already match, normalize by position first.
+        # This repairs misspelled placeholders while preserving original placement.
+        if len(original_phs) == len(translated_phs):
+            if original_phs != translated_phs:
+                logger.debug("Normalizing placeholder sequence by position")
+                index = [0]
+
+                def _replace_with_source_order(_m: re.Match) -> str:
+                    pos = index[0]
+                    if pos >= len(original_phs):
+                        return _m.group(0)
+                    index[0] += 1
+                    return original_phs[pos]
+
+                translated = re.sub(pattern, _replace_with_source_order, translated)
             return translated
-            
+
+        # 2. Remove extra placeholders not present in source to prevent tag stack corruption.
         original_ph_set = set(original_phs)
+        extras = [ph for ph in translated_phs if ph not in original_ph_set]
+        if extras:
+            for ph in sorted(set(extras), key=len, reverse=True):
+                logger.debug(f"Removing extra placeholder: {ph}")
+                translated = translated.replace(ph, " ")
+            translated_phs = re.findall(pattern, translated)
+
         translated_ph_set = set(translated_phs)
-        missing = original_ph_set - translated_ph_set
-        
-        # Scenario 2: Placeholders are missing
+        missing = [ph for ph in original_phs if ph not in translated_ph_set]
+
+        # 4. Restore missing placeholders with begin/end pairing preference.
         for ph in missing:
             if ph in translated:
                 continue
-                
+
             logger.debug(f"Restoring missing placeholder: {ph}")
-            
+
             # Extract base tag name to pair _begin and _end using regex
             base_match = re.match(r'<PLACEHOLDER_(.+?)(?:_(begin|end))?>', ph)
             if base_match:
                 base_name = base_match.group(1)
                 tag_type = base_match.group(2)
-                
+
                 inserted = False
                 if tag_type == "begin":
                     paired_end = f"<PLACEHOLDER_{base_name}_end>"
@@ -618,13 +797,27 @@ class TranslatorAgent(BaseToolAgent):
                         idx = translated.find(paired_begin) + len(paired_begin)
                         translated = translated[:idx] + " " + ph + translated[idx:]
                         inserted = True
-                
+
                 if not inserted:
                     # Fallback: append at the end
                     translated = translated.rstrip() + " " + ph
             else:
                 translated = translated.rstrip() + " " + ph
-                
+
+        # 5. Final order normalization when counts become aligned.
+        translated_phs = re.findall(pattern, translated)
+        if len(original_phs) == len(translated_phs) and original_phs != translated_phs:
+            index = [0]
+
+            def _replace_with_source_order(_m: re.Match) -> str:
+                pos = index[0]
+                if pos >= len(original_phs):
+                    return _m.group(0)
+                index[0] += 1
+                return original_phs[pos]
+
+            translated = re.sub(pattern, _replace_with_source_order, translated)
+
         return translated
 
     async def _translate_section(self, section: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:

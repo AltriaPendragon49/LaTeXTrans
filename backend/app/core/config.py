@@ -154,6 +154,23 @@ class Settings(BaseSettings):
         description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
     )
 
+    # Compile-first structural fallback controls (gray rollout)
+    enable_compile_first_structural_fallback: bool = Field(
+        default=True,
+        env="ENABLE_COMPILE_FIRST_STRUCTURAL_FALLBACK",
+        description="Enable deterministic compile-first fallback for structurally broken translated parts"
+    )
+    structural_fallback_ratio_cap: float = Field(
+        default=0.38,
+        env="STRUCTURAL_FALLBACK_RATIO_CAP",
+        description="Preferred fallback ratio cap (soft/hard behavior controlled by STRUCTURAL_FALLBACK_CAP_MODE)"
+    )
+    structural_fallback_cap_mode: str = Field(
+        default="soft",
+        env="STRUCTURAL_FALLBACK_CAP_MODE",
+        description="Fallback ratio cap mode: soft or hard"
+    )
+
     # Server Settings
     host: str = "0.0.0.0"
     port: int = 8000
