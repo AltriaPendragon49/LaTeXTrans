@@ -6,6 +6,7 @@ import asyncio
 import logging
 import traceback
 import hashlib
+import re
 
 from .parser_agent import ParserAgent
 from .translator_agent import TranslatorAgent 
@@ -183,7 +184,74 @@ class CoordinatorAgent:
             fallback_ratio = float(getattr(translator_agent, "structural_fallback_ratio", 0.0) or 0.0)
             fallback_cap = float(getattr(translator_agent, "structural_fallback_cap", 0.10) or 0.10)
             fallback_cap_mode = str(getattr(translator_agent, "structural_fallback_cap_mode", "soft") or "soft")
+            filtered_code_like_math_tokens = int(
+                getattr(validator_agent, "code_like_filtered_bare_tokens", 0) or 0
+            )
+            fallback_parts = list(getattr(translator_agent, "structural_fallback_parts", []) or [])
+            noop_sections = list(getattr(translator_agent, "noop_sections", []) or [])
+            c1_retry_enforced_once = bool(getattr(translator_agent, "c1_retry_enforced_once", False))
             validation_warning = getattr(translator_agent, "structural_fallback_warning", None)
+
+            fallback_count_full: Optional[int] = None
+            fallback_count_translatable: Optional[int] = None
+            same_content_sections_full: Optional[int] = None
+            same_content_sections_translatable: Optional[int] = None
+            fallback_count_env_math: Optional[int] = None
+            fallback_count_env_list: Optional[int] = None
+            fallback_count_env_other: Optional[int] = None
+            try:
+                import json
+
+                level_a_re = re.compile(
+                    r'\\begin\{(?:table|figure|algorithm|algorithmic|theorem|lemma|proof|definition|tikzpicture|lstlisting|verbatim|minted)\*?\}'
+                )
+
+                def _has_level_a_env(text: str) -> bool:
+                    return bool(level_a_re.search(text or ""))
+
+                sections_path = Path(transed_project_dir) / "sections_map.json"
+                if sections_path.exists():
+                    sections = json.loads(sections_path.read_text(encoding="utf-8"))
+                    normal_sections = [s for s in sections if str(s.get("section", "")) != "-1"]
+
+                    same_full = [
+                        s for s in normal_sections
+                        if (s.get("trans_content") or "") == (s.get("content") or "")
+                    ]
+                    same_trans = [s for s in same_full if not _has_level_a_env(s.get("content") or "")]
+                    same_content_sections_full = len(same_full)
+                    same_content_sections_translatable = len(same_trans)
+
+                    fallback_sections = [
+                        s for s in normal_sections
+                        if s.get("translation_status") == "fallback_source_compile_first"
+                    ]
+                    fallback_sections_translatable = [
+                        s for s in fallback_sections if not _has_level_a_env(s.get("content") or "")
+                    ]
+                    fallback_count_full = len(fallback_sections)
+                    fallback_count_translatable = len(fallback_sections_translatable)
+
+                envs_path = Path(transed_project_dir) / "envs_map.json"
+                if envs_path.exists():
+                    envs = json.loads(envs_path.read_text(encoding="utf-8"))
+                    env_fallbacks = [
+                        e for e in envs
+                        if e.get("translation_status") == "fallback_source_compile_first"
+                    ]
+                    fallback_count_env_math = sum(
+                        1 for e in env_fallbacks if e.get("fallback_subtype") == "math_env_fallback"
+                    )
+                    fallback_count_env_list = sum(
+                        1 for e in env_fallbacks if e.get("fallback_subtype") == "list_env_fallback"
+                    )
+                    fallback_count_env_other = sum(
+                        1 for e in env_fallbacks
+                        if e.get("fallback_subtype") not in {"math_env_fallback", "list_env_fallback"}
+                    )
+            except Exception as metric_exc:
+                logger.warning("Failed to compute dual-scope validation metrics: %s", metric_exc)
+
             self._write_task_log(
                 transed_project_dir,
                 "validation_completed",
@@ -196,6 +264,17 @@ class CoordinatorAgent:
                     "fallback_ratio": round(fallback_ratio, 6),
                     "fallback_cap": fallback_cap,
                     "fallback_cap_mode": fallback_cap_mode,
+                    "filtered_code_like_math_tokens": filtered_code_like_math_tokens,
+                    "fallback_parts": fallback_parts,
+                    "noop_sections": noop_sections,
+                    "c1_retry_enforced_once": c1_retry_enforced_once,
+                    "fallback_count_full": fallback_count_full,
+                    "fallback_count_translatable": fallback_count_translatable,
+                    "same_content_sections_full": same_content_sections_full,
+                    "same_content_sections_translatable": same_content_sections_translatable,
+                    "fallback_count_env_math": fallback_count_env_math,
+                    "fallback_count_env_list": fallback_count_env_list,
+                    "fallback_count_env_other": fallback_count_env_other,
                 },
             )
             if validation_warning:
@@ -232,6 +311,47 @@ class CoordinatorAgent:
         except Exception as e:
             self._write_stage_failed_log(transed_project_dir, "generate", e)
             raise
+
+        if generation_result.get("status") == "structure_invalid":
+            error_text = generation_result.get("error_summary") or "LaTeX structure guard rejected bundle before compilation"
+            failure_reason_code = generation_result.get("failure_reason_code")
+            failure_class = generation_result.get("failure_class") or "structural"
+            guard_phase = generation_result.get("guard_phase") or "precompile"
+            replay_bundle_ref = generation_result.get("replay_bundle_ref")
+            warning_text = validation_warning or generation_result.get("warnings")
+            self._write_task_log(
+                transed_project_dir,
+                f"structure_guard_failed_{guard_phase}",
+                {
+                    "failure_reason_code": failure_reason_code,
+                    "failure_class": failure_class,
+                    "guard_phase": guard_phase,
+                    "replay_bundle_ref": replay_bundle_ref,
+                    "error_summary": error_text,
+                },
+            )
+            self._write_task_log(
+                transed_project_dir,
+                "structure_invalid_aborted",
+                {
+                    "failure_reason_code": failure_reason_code,
+                    "failure_class": failure_class,
+                    "guard_phase": guard_phase,
+                    "replay_bundle_ref": replay_bundle_ref,
+                    "error_summary": error_text,
+                },
+            )
+            self.update_progress(100, "Aborted due to structure guard")
+            return {
+                "status": "structure_invalid",
+                "pdf_path": None,
+                "error_summary": error_text,
+                "warnings": warning_text,
+                "failure_reason_code": failure_reason_code,
+                "failure_class": failure_class,
+                "guard_phase": guard_phase,
+                "replay_bundle_ref": replay_bundle_ref,
+            }
 
         def _merge_warnings(primary: Optional[str], secondary: Optional[str]) -> Optional[str]:
             if primary and secondary:

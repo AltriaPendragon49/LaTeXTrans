@@ -20,6 +20,10 @@ export interface TaskStatus {
     message: string;
     error?: string | null;
     warnings?: string | null;
+    failure_reason_code?: string | null;
+    failure_class?: string | null;
+    guard_phase?: string | null;
+    replay_bundle_ref?: string | null;
     source_available: boolean;
 }
 
@@ -103,7 +107,13 @@ export function useTaskStatusSSE(
                 setError(null);
 
                 // Check for terminal state
-                if (data.status === 'completed' || data.status === 'failed') {
+                if (
+                    data.status === 'completed' ||
+                    data.status === 'completed_with_warnings' ||
+                    data.status === 'failed_compilation' ||
+                    data.status === 'structure_invalid' ||
+                    data.status === 'failed'
+                ) {
                     cleanup();
                     onComplete?.(data);
                 }

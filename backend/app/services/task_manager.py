@@ -70,6 +70,10 @@ class TaskManager:
                 "message": "Task created",
                 "error": None,
                 "warnings": None,
+                "failure_reason_code": None,
+                "failure_class": None,
+                "guard_phase": None,
+                "replay_bundle_ref": None,
                 "source_available": False,
                 "created_at": datetime.utcnow().isoformat(),
                 "completed_at": None,
@@ -106,6 +110,10 @@ class TaskManager:
         message: Optional[str] = None,
         error: Optional[str] = None,
         warnings: Optional[str] = None,
+        failure_reason_code: Optional[str] = None,
+        failure_class: Optional[str] = None,
+        guard_phase: Optional[str] = None,
+        replay_bundle_ref: Optional[str] = None,
         source_available: Optional[bool] = None,
         source_path: Optional[str] = None,
         output_path: Optional[str] = None,
@@ -155,7 +163,8 @@ class TaskManager:
                 if status in [TaskStatus.COMPLETED.value, 
                              TaskStatus.COMPLETED_WITH_WARNINGS.value, 
                              TaskStatus.FAILED.value,
-                             TaskStatus.FAILED_COMPILATION.value]:
+                             TaskStatus.FAILED_COMPILATION.value,
+                             TaskStatus.STRUCTURE_INVALID.value]:
                     task["completed_at"] = datetime.utcnow().isoformat()
                     db_updates["completed_at"] = task["completed_at"]
             
@@ -177,6 +186,18 @@ class TaskManager:
             
             if warnings is not None:
                 task["warnings"] = warnings
+
+            if failure_reason_code is not None:
+                task["failure_reason_code"] = failure_reason_code
+
+            if failure_class is not None:
+                task["failure_class"] = failure_class
+
+            if guard_phase is not None:
+                task["guard_phase"] = guard_phase
+
+            if replay_bundle_ref is not None:
+                task["replay_bundle_ref"] = replay_bundle_ref
             
             if source_available is not None:
                 task["source_available"] = source_available
@@ -237,6 +258,7 @@ class TaskManager:
         failed_statuses = {
             TaskStatus.FAILED.value,
             TaskStatus.FAILED_COMPILATION.value,
+            TaskStatus.STRUCTURE_INVALID.value,
         }
         if status in failed_statuses and task_snapshot is not None:
             self._intercept_failed_task(
@@ -252,6 +274,7 @@ class TaskManager:
             TaskStatus.COMPLETED_WITH_WARNINGS.value,
             TaskStatus.FAILED.value,
             TaskStatus.FAILED_COMPILATION.value,
+            TaskStatus.STRUCTURE_INVALID.value,
         }
         if status in final_statuses:
             self._maybe_send_email_notification(task_id, status, user_id)

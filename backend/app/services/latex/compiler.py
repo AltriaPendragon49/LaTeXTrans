@@ -15,7 +15,7 @@ import logging
 import json
 import shutil
 from pathlib import Path
-from typing import Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 import platform
 import signal
 
@@ -60,6 +60,106 @@ CJK_MISSING_CHAR_SEVERE_THRESHOLD = 50
 # Maximum content to read for language detection (100KB)
 MAX_DETECTION_CONTENT = 100 * 1024
 
+_CJK_TARGET_LANGS = {"zh", "ch", "ja", "ko"}
+_CYRILLIC_TARGET_LANGS = {"ru", "uk", "bg", "sr", "mk", "be"}
+
+
+def _normalize_language_code(language_code: Optional[str]) -> str:
+    if not language_code:
+        return ""
+    code = str(language_code).strip().lower().replace("_", "-")
+    if "-" in code:
+        return code.split("-", 1)[0]
+    return code
+
+
+def map_target_language_to_family(target_language: Optional[str]) -> Optional[str]:
+    """
+    Map target language code to compiler language family.
+
+    Returns:
+        "cjk", "cyrillic", "latin", or None (when not provided).
+    """
+    normalized = _normalize_language_code(target_language)
+    if not normalized:
+        return None
+    if normalized in _CJK_TARGET_LANGS:
+        return "cjk"
+    if normalized in _CYRILLIC_TARGET_LANGS:
+        return "cyrillic"
+    return "latin"
+
+
+_INPUT_INCLUDE_RE = re.compile(r'\\(?:input|include)\{([^}]+)\}')
+
+
+def _resolve_include_tex_path(base_dir: Path, include_name: str) -> Optional[Path]:
+    """Resolve a LaTeX \\input/\\include target to an existing .tex path."""
+    if not include_name:
+        return None
+    raw = include_name.strip()
+    if not raw:
+        return None
+
+    candidate = (base_dir / raw).resolve()
+    if candidate.exists() and candidate.is_file():
+        return candidate
+
+    if not candidate.suffix:
+        with_tex = candidate.with_suffix(".tex")
+        if with_tex.exists() and with_tex.is_file():
+            return with_tex
+
+    return None
+
+
+def collect_detection_content(tex_file: str, max_chars: int = MAX_DETECTION_CONTENT) -> str:
+    """
+    Read main tex + recursively included tex files for language detection.
+
+    The traversal is bounded by `max_chars` and skips repeated files.
+    """
+    visited: set[str] = set()
+
+    def _collect(path: Path, budget: int) -> str:
+        if budget <= 0:
+            return ""
+        key = str(path.resolve())
+        if key in visited:
+            return ""
+        visited.add(key)
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return ""
+
+        chunks: List[str] = []
+        local = content[:budget]
+        chunks.append(local)
+        consumed = len(local)
+        remaining = budget - consumed
+        if remaining <= 0:
+            return "".join(chunks)
+
+        sanitized = _remove_comments(local)
+        for m in _INPUT_INCLUDE_RE.finditer(sanitized):
+            if remaining <= 0:
+                break
+            include_path = _resolve_include_tex_path(path.parent, m.group(1))
+            if not include_path:
+                continue
+            child = _collect(include_path, remaining)
+            if not child:
+                continue
+            chunks.append("\n")
+            chunks.append(child)
+            consumed += 1 + len(child)
+            remaining = budget - consumed
+
+        return "".join(chunks)
+
+    return _collect(Path(tex_file).resolve(), max_chars)
+
 
 def detect_document_language_from_content(content: str) -> str:
     """
@@ -98,7 +198,7 @@ def detect_document_language_from_content(content: str) -> str:
     return "latin"
 
 
-def detect_document_language(tex_file: str) -> str:
+def detect_document_language(tex_file: str, include_inputs: bool = False) -> str:
     """
     Detect the primary language type of a LaTeX document.
     
@@ -115,8 +215,11 @@ def detect_document_language(tex_file: str) -> str:
         "cjk", "cyrillic", or "latin"
     """
     try:
-        with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read(MAX_DETECTION_CONTENT)
+        if include_inputs:
+            content = collect_detection_content(tex_file, MAX_DETECTION_CONTENT)
+        else:
+            with open(tex_file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read(MAX_DETECTION_CONTENT)
         return detect_document_language_from_content(content)
     except Exception as e:
         logger.warning(f"Failed to detect language for {tex_file}: {e}")
@@ -686,7 +789,7 @@ def compile_latex(
             for bib in Path(tex_dir).rglob("*.bib")
         )
         bibtex_flag = "-bibtex" if has_real_bib else "-bibtex-"
-        logger.info(f"Bibliography detection: {'found' if has_real_bib else 'no'} .bib files → using {bibtex_flag}")
+        logger.info(f"Bibliography detection: {'found' if has_real_bib else 'no'} .bib files -> using {bibtex_flag}")
 
         # When no .bib files exist, we must use a fallback to standard thebibliography
         # because modern biblatex v3.3+ cannot parse older biblatex v3.2 .bbl format 
@@ -763,7 +866,7 @@ def compile_latex(
     
     logger.info(
         f"latexmk ({engine}) result: "
-        f"PDF={'✓' if pdf_exists else '✗'}, "
+        f"PDF={'yes' if pdf_exists else 'no'}, "
         f"Errors={error_count}, "
         f"QualityIssues={quality_issue_count}, "
         f"Exit Code={last_exit_code}"
@@ -819,7 +922,7 @@ def _compile_latex_direct(
             cmd = [
                 engine_path,
                 "-interaction=nonstopmode",
-                # NOTE: -halt-on-error omitted — see compile_latex() for rationale.
+                # NOTE: -halt-on-error omitted - see compile_latex() for rationale.
                 "-output-directory", str(out_path),
                 tex_filename
             ]
@@ -874,7 +977,7 @@ def _compile_latex_direct(
     
     logger.info(
         f"{engine} compilation result: "
-        f"PDF={'✓' if pdf_exists else '✗'}, "
+        f"PDF={'yes' if pdf_exists else 'no'}, "
         f"Errors={error_count}, "
         f"QualityIssues={quality_issue_count}, "
         f"Exit Code={last_exit_code}"
@@ -940,7 +1043,7 @@ def _upgrade_outdated_cls_files(tex_dir: str) -> None:
                 file_year = int(year_match.group(1))
                 if file_year < min_year:
                     logger.warning(
-                        f"Removing outdated bundled {filename} (year={file_year}) — "
+                        f"Removing outdated bundled {filename} (year={file_year}) - "
                         f"system has newer version at {system_path}"
                     )
                     cls_file.unlink()
@@ -952,7 +1055,7 @@ def _upgrade_outdated_cls_files(tex_dir: str) -> None:
             system_size = Path(system_path).stat().st_size
             if system_size > bundled_size * 1.1:  # System version is 10%+ larger
                 logger.warning(
-                    f"Removing bundled {filename} (size={bundled_size}B) — "
+                    f"Removing bundled {filename} (size={bundled_size}B) - "
                     f"system version is larger ({system_size}B), likely newer"
                 )
                 cls_file.unlink()
@@ -961,238 +1064,371 @@ def _upgrade_outdated_cls_files(tex_dir: str) -> None:
             logger.debug(f"Could not check {filename}: {e}")
 
 
+_DOCUMENTCLASS_RE = re.compile(r'\\documentclass(?:\[[^\]]*\])?\{[^}]+\}')
+
+
+def _inject_after_documentclass(tex_content: str, snippet: str) -> str:
+    """Inject snippet right after \\documentclass when possible."""
+    m = _DOCUMENTCLASS_RE.search(tex_content)
+    if not m:
+        return snippet + tex_content
+    return tex_content[:m.end()] + snippet + tex_content[m.end():]
+
+
+def _apply_engine_compat_shims(tex_content: str, engine: str, language: str) -> Tuple[str, List[str]]:
+    """
+    Apply deterministic engine-compatibility shims to tex content.
+
+    Returns:
+        (patched_content, [shim_name, ...])
+    """
+    patched = tex_content
+    applied: List[str] = []
+
+    if language == "cjk":
+        if engine == "xelatex":
+            swapped = re.sub(
+                r'\\usepackage(?:\[[^\]]*\])?\{luatexja\}',
+                r'\\usepackage{xeCJK}',
+                patched,
+            )
+            if swapped != patched:
+                patched = swapped
+                applied.append("swap_luatexja_to_xeCJK")
+        elif engine == "lualatex":
+            swapped = re.sub(
+                r'\\usepackage(?:\[[^\]]*\])?\{xeCJK\}',
+                r'\\usepackage{luatexja}',
+                patched,
+            )
+            if swapped != patched:
+                patched = swapped
+                applied.append("swap_xeCJK_to_luatexja")
+
+    if engine in {"xelatex", "lualatex"}:
+        # hwemoji is frequently incompatible with Xe/Lua environments in our runs.
+        if re.search(r'\\usepackage(?:\[[^\]]*\])?\{hwemoji\}', patched):
+            patched = re.sub(
+                r'\\usepackage(?:\[[^\]]*\])?\{hwemoji\}',
+                r'% \\usepackage{hwemoji} % disabled by engine compatibility shim',
+                patched,
+            )
+            applied.append("disable_hwemoji_for_modern_engine")
+            if r"\providecommand{\emoji}[1]{#1}" not in patched:
+                patched = _inject_after_documentclass(
+                    patched,
+                    "\n\\providecommand{\\emoji}[1]{#1}\n",
+                )
+                applied.append("inject_emoji_fallback_macro")
+
+        # Xe/Lua do not define pdfTeX primitives used by some templates.
+        needs_pdftex_noop = (
+            "\\pdfglyphtounicode" in patched or "\\pdfgentounicode" in patched
+        )
+        if needs_pdftex_noop and "\\providecommand{\\pdfglyphtounicode}[2]{}" not in patched:
+            patched = _inject_after_documentclass(
+                patched,
+                "\n\\providecommand{\\pdfglyphtounicode}[2]{}\n"
+                "\\providecommand{\\pdfgentounicode}[1]{}\n",
+            )
+            applied.append("inject_pdftex_primitive_noops")
+
+    return patched, applied
+
+
+def _decide_compiler_language(tex_file: str, target_language: Optional[str]) -> Tuple[str, str]:
+    """
+    Decide compiler language family and explain why.
+    """
+    target_mapped = map_target_language_to_family(target_language)
+    if target_mapped:
+        return target_mapped, f"target_language={target_language}->{target_mapped}"
+
+    detected = detect_document_language(tex_file, include_inputs=True)
+    return detected, "detected_from_main_and_includes"
+
+
 
 def compile_with_intelligent_fallback(
-    tex_file: str, 
+    tex_file: str,
     output_dir: str,
-    preferred_order: Optional[List[str]] = None
+    preferred_order: Optional[List[str]] = None,
+    target_language: Optional[str] = None,
 ) -> Dict:
     """
     Intelligent LaTeX compilation with three-engine fallback strategy
-    
+
     Strategy:
-    1. Detect document language if no preferred_order is specified
-    2. For CJK documents: XeLaTeX → LuaLaTeX → PDFLaTeX
-    3. For Latin documents: PDFLaTeX → XeLaTeX → LuaLaTeX
-    4. Try each engine in order
-    5. If perfect compilation (zero errors), return immediately
-    6. Otherwise, collect all results and select the best PDF
-    7. If all engines fail to produce PDF, return failure with source files
+    1. Decide document language family from target language first, otherwise auto-detect.
+    2. Build engine order from language family or user override.
+    3. Apply deterministic compatibility shims per engine.
+    4. Try each engine in order and pick the best successful PDF.
     """
     logger.info(f"Starting intelligent three-engine compilation for {tex_file}")
 
     normalized_tex_file = str(Path(tex_file).resolve())
     normalized_output_dir = str(Path(output_dir).resolve())
-    
-    # Pre-compilation: remove outdated bundled .cls files that conflict with system TeX Live
+
+    # Pre-compilation: remove outdated bundled .cls files that conflict with system TeX Live.
     tex_dir = str(Path(normalized_tex_file).parent)
     _upgrade_outdated_cls_files(tex_dir)
-    
-    # Determine engine order
-    language = detect_document_language(tex_file)
+
+    language, language_reason = _decide_compiler_language(normalized_tex_file, target_language)
+    mapped_target_language = map_target_language_to_family(target_language)
+    language_decision: Dict[str, Any] = {
+        "target_language": target_language,
+        "target_language_family": mapped_target_language,
+        "resolved_language": language,
+        "reason": language_reason,
+        "detection_scope": (
+            "target_language_override"
+            if mapped_target_language is not None
+            else "main_and_includes"
+        ),
+    }
+
+    engine_order_notes: List[str] = []
     if preferred_order is not None:
-        engines = preferred_order
-        logger.info(f"Using custom engine order: {engines}")
+        engines = list(preferred_order)
+        engine_order_notes.append(f"preferred_order_override={engines}")
     else:
-        # Auto-detect language
         if language == "cjk":
             engines = ["xelatex", "lualatex"]
-            logger.info(f"Detected CJK document, using engine order: {engines}")
+            engine_order_notes.append("language_family=cjk_default_order")
         elif language == "cyrillic":
             engines = ["xelatex", "lualatex", "pdflatex"]
-            logger.info(f"Detected Cyrillic document, using engine order: {engines}")
+            engine_order_notes.append("language_family=cyrillic_default_order")
         else:
             engines = ["pdflatex", "xelatex", "lualatex"]
-            logger.info(f"Detected Latin document, using engine order: {engines}")
+            engine_order_notes.append("language_family=latin_default_order")
 
-    # Task 5: Package-aware engine selection — xypdf is incompatible with lualatex.
+    # De-duplicate while preserving first occurrence.
+    ordered_unique_engines: List[str] = []
+    for candidate in engines:
+        if candidate not in ordered_unique_engines:
+            ordered_unique_engines.append(candidate)
+    engines = ordered_unique_engines
+
+    # Package-aware engine selection:
+    # - keep Xe priority when luatexja is present;
+    # - skip lualatex for xypdf incompatibility.
     try:
-        tex_content_for_pkg_scan = Path(normalized_tex_file).read_text(
-            encoding='utf-8', errors='replace'
-        )[:50_000]
+        tex_content_for_pkg_scan = _remove_comments(
+            collect_detection_content(normalized_tex_file, 50_000)
+        )
         if re.search(r'\\usepackage(?:\[[^\]]*\])?\{luatexja\}', tex_content_for_pkg_scan):
-            if "lualatex" in engines:
-                engines = ["lualatex"] + [e for e in engines if e != "lualatex"]
-                logger.info(
-                    "[engine select] luatexja package detected — prioritizing lualatex. "
-                    "Engine order: %s",
-                    engines,
-                )
+            if "xelatex" in engines:
+                engines = ["xelatex"] + [e for e in engines if e != "xelatex"]
+                engine_order_notes.append("luatexja_detected_keep_xelatex_priority")
         if re.search(r'\\usepackage(?:\[[^\]]*\])?\{xypdf\}', tex_content_for_pkg_scan):
             if "lualatex" in engines:
                 engines = [e for e in engines if e != "lualatex"]
-                logger.info(
-                    "[engine select] xypdf package detected — skipping lualatex "
-                    "(incompatible). Remaining engines: %s",
-                    engines,
-                )
-    except Exception as _scan_err:
-        logger.debug("xypdf package scan failed (non-fatal): %s", _scan_err)
+                engine_order_notes.append("xypdf_detected_skip_lualatex")
+    except Exception as scan_err:
+        logger.debug("Package-aware engine scan failed (non-fatal): %s", scan_err)
+        engine_order_notes.append("package_scan_failed_non_fatal")
 
-    # Collect results from all engines
+    engine_order_reason = "; ".join(engine_order_notes) if engine_order_notes else "default"
+    logger.info(
+        "Compiler language decision=%s, engine_order=%s, reason=%s",
+        language,
+        engines,
+        engine_order_reason,
+    )
+
+    compat_shims_applied: List[Dict[str, Any]] = []
+
+    def _with_diagnostics(payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = dict(payload)
+        payload["language_decision"] = language_decision
+        payload["engine_order_reason"] = engine_order_reason
+        payload["compat_shims_applied"] = compat_shims_applied
+        return payload
+
+    tex_path_obj = Path(normalized_tex_file)
+    original_tex_content: Optional[str] = None
+    try:
+        original_tex_content = tex_path_obj.read_text(encoding="utf-8", errors="replace")
+    except Exception as read_err:
+        logger.warning("Failed to read source tex for compatibility shims: %s", read_err)
+
+    # Collect results from all engines.
     results: Dict[str, CompilationResult] = {}
-    
-    for engine in engines:
-        # Clean engine-specific auxiliary files from previous runs to prevent cross-engine contamination.
-        # e.g., an xelatex .out file containing \HyPL@Entry will crash lualatex and print `0<</S/D>>`.
-        # We intentionally keep `.aux`: removing both `.aux` and `.fdb_latexmk` can cause latexmk/bibtex
-        # to fail with exit code 12 on some arXiv projects, which masks viable fallback engines.
-        # We explicitly DO NOT clean .bbl because arxiv papers often rely on a pre-provided .bbl file instead of a .bib file.
-        for ext in ['.out', '.toc', '.fls', '.fdb_latexmk', '.xdv', '.nav', '.snm']:
-            aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
-            if aux_file.exists():
-                try:
-                    aux_file.unlink()
-                except OSError:
-                    pass
 
-        # === Dynamic CJK Engine Preamble Swap ===
-        if language == "cjk":
-            try:
-                tex_content = Path(normalized_tex_file).read_text(encoding='utf-8', errors='replace')
-                original_content = tex_content
-                
-                if engine == "xelatex":
-                    tex_content = re.sub(r'\\usepackage(?:\[[^\]]*\])?\{luatexja\}', r'\\usepackage{xeCJK}', tex_content)
-                elif engine == "lualatex":
-                    tex_content = re.sub(r'\\usepackage(?:\[[^\]]*\])?\{xeCJK\}', r'\\usepackage{luatexja}', tex_content)
-                
-                if tex_content != original_content:
-                    Path(normalized_tex_file).write_text(tex_content, encoding='utf-8')
-                    logger.info(f"Dynamically swapped CJK preamble for {engine} fallback in {normalized_tex_file}")
-            except Exception as swap_err:
-                logger.warning(f"Failed to dynamically swap CJK preamble: {swap_err}")
+    try:
+        for engine in engines:
+            # Clean engine-specific auxiliary files from previous runs.
+            # We explicitly DO NOT clean .bbl because arxiv papers often rely on pre-provided .bbl files.
+            for ext in [".out", ".toc", ".fls", ".fdb_latexmk", ".xdv", ".nav", ".snm"]:
+                aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
+                if aux_file.exists():
+                    try:
+                        aux_file.unlink()
+                    except OSError:
+                        pass
 
-        logger.info(f"⚡ Attempting compilation with {engine}...")
-        result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
-
-        # Preserve each engine PDF under an engine-specific filename.
-        if result.pdf_path:
-            pdf_candidate = Path(result.pdf_path)
-            if pdf_candidate.exists():
-                preserved_pdf = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}.{engine}.pdf"
-                try:
-                    shutil.copy2(pdf_candidate, preserved_pdf)
-                    result.pdf_path = str(preserved_pdf)
-                    logger.info(f"Preserved {engine} PDF snapshot: {preserved_pdf}")
-                    
-                    # Robustness: Preserve each engine LOG snapshot for observability
-                    if result.log_path:
-                        log_candidate = Path(result.log_path)
-                        if log_candidate.exists():
-                            preserved_log = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}_{engine}.log"
-                            try:
-                                shutil.copy2(log_candidate, preserved_log)
-                                logger.info(f"Preserved {engine} LOG snapshot: {preserved_log}")
-                            except Exception as exc:
-                                logger.warning(f"Failed to preserve {engine} LOG snapshot: {exc}")
-                except Exception as exc:
-                    logger.warning(
-                        f"Failed to preserve {engine} PDF snapshot from {pdf_candidate}: {exc}"
-                    )
-                    result.pdf_path = str(pdf_candidate) if pdf_candidate.exists() else None
-            else:
-                logger.warning(
-                    f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}"
+            applied_shims: List[str] = []
+            if original_tex_content is not None:
+                patched_tex_content, applied_shims = _apply_engine_compat_shims(
+                    original_tex_content,
+                    engine,
+                    language,
                 )
-                result.pdf_path = None
-
-        results[engine] = result
-        
-        effective_quality_issue_count = result.quality_issue_count if language == "cjk" else 0
-
-        # Perfect compilation - return immediately if no hard errors and no CJK quality issues.
-        if result.success and result.error_count == 0 and effective_quality_issue_count == 0:
-            if language == "cjk" and engine == "pdflatex":
-                logger.debug("pdflatex produced 0 errors for CJK; continuing for merit selection")
-                pass
+                try:
+                    tex_path_obj.write_text(patched_tex_content, encoding="utf-8")
+                except Exception as write_err:
+                    logger.warning(
+                        "Failed to write shimmed TeX for engine %s. Error: %s",
+                        engine,
+                        write_err,
+                    )
+                    applied_shims = list(applied_shims) + ["shim_write_failed"]
             else:
-                logger.info(f"✅ {engine} produced perfect compilation (zero errors)")
-                return {
-                    "pdf_path": result.pdf_path,
-                    "status": "completed",
-                    "engine": engine,
-                    "error_count": 0,
-                    "warnings": None,
-                    "errors": None
-                }
-    
-    # No perfect compilation - select best result
-    engines_with_pdf = [
-        (engine, result) 
-        for engine, result in results.items() 
-        if result.pdf_path is not None and Path(result.pdf_path).exists()
-    ]
-    
-    # CJK specific: Exclude pdflatex result if modern engines yielded a PDF
-    if language == "cjk":
-        modern_engines_with_pdf = [
-            (e, r) for e, r in engines_with_pdf if e in ["xelatex", "lualatex"]
+                applied_shims = ["skip_shims_source_unreadable"]
+
+            compat_shims_applied.append({"engine": engine, "shims": applied_shims})
+            if applied_shims:
+                logger.info("Applied compatibility shims for %s: %s", engine, applied_shims)
+
+            logger.info(f"Attempting compilation with {engine}...")
+            result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
+
+            # Preserve each engine PDF under an engine-specific filename.
+            if result.pdf_path:
+                pdf_candidate = Path(result.pdf_path)
+                if pdf_candidate.exists():
+                    preserved_pdf = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}.{engine}.pdf"
+                    try:
+                        shutil.copy2(pdf_candidate, preserved_pdf)
+                        result.pdf_path = str(preserved_pdf)
+                        logger.info(f"Preserved {engine} PDF snapshot: {preserved_pdf}")
+
+                        # Preserve each engine LOG snapshot for observability.
+                        if result.log_path:
+                            log_candidate = Path(result.log_path)
+                            if log_candidate.exists():
+                                preserved_log = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}_{engine}.log"
+                                try:
+                                    shutil.copy2(log_candidate, preserved_log)
+                                    logger.info(f"Preserved {engine} LOG snapshot: {preserved_log}")
+                                except Exception as exc:
+                                    logger.warning(f"Failed to preserve {engine} LOG snapshot: {exc}")
+                    except Exception as exc:
+                        logger.warning(
+                            f"Failed to preserve {engine} PDF snapshot from {pdf_candidate}: {exc}"
+                        )
+                        result.pdf_path = str(pdf_candidate) if pdf_candidate.exists() else None
+                else:
+                    logger.warning(
+                        f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}"
+                    )
+                    result.pdf_path = None
+
+            results[engine] = result
+
+            effective_quality_issue_count = result.quality_issue_count if language == "cjk" else 0
+
+            # Perfect compilation: no hard errors and no CJK quality issues.
+            if result.success and result.error_count == 0 and effective_quality_issue_count == 0:
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("pdflatex produced 0 errors for CJK; continuing for merit selection")
+                else:
+                    logger.info(f"{engine} produced perfect compilation (zero errors)")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": None,
+                            "errors": None,
+                        }
+                    )
+
+        # No perfect compilation - select best result.
+        engines_with_pdf = [
+            (engine, result)
+            for engine, result in results.items()
+            if result.pdf_path is not None and Path(result.pdf_path).exists()
         ]
-        if modern_engines_with_pdf:
-            logger.info("Found successfully built PDFs from modern engines for CJK; excluding pdflatex result.")
-            engines_with_pdf = modern_engines_with_pdf
 
-    if engines_with_pdf:
-        # Sort by hard errors first, then CJK quality issues.
-        engines_with_pdf.sort(
-            key=lambda x: (
-                x[1].error_count,
-                x[1].quality_issue_count if language == "cjk" else 0,
-            )
-        )
-        best_engine, best_result = engines_with_pdf[0]
-
+        # CJK specific: Exclude pdflatex result if modern engines yielded a PDF.
         if language == "cjk":
-            comparison = ", ".join(
-                f"{engine}: errors={result.error_count}, quality={result.quality_issue_count}"
-                for engine, result in results.items()
+            modern_engines_with_pdf = [
+                (e, r) for e, r in engines_with_pdf if e in ["xelatex", "lualatex"]
+            ]
+            if modern_engines_with_pdf:
+                logger.info("Found modern-engine PDFs for CJK; excluding pdflatex result.")
+                engines_with_pdf = modern_engines_with_pdf
+
+        if engines_with_pdf:
+            # Sort by hard errors first, then CJK quality issues.
+            engines_with_pdf.sort(
+                key=lambda x: (
+                    x[1].error_count,
+                    x[1].quality_issue_count if language == "cjk" else 0,
+                )
             )
-        else:
-            comparison = ", ".join(
-                f"{engine}: {result.error_count}"
-                for engine, result in results.items()
+            best_engine, best_result = engines_with_pdf[0]
+
+            if language == "cjk":
+                comparison = ", ".join(
+                    f"{engine}: errors={result.error_count}, quality={result.quality_issue_count}"
+                    for engine, result in results.items()
+                )
+            else:
+                comparison = ", ".join(
+                    f"{engine}: {result.error_count}"
+                    for engine, result in results.items()
+                )
+
+            logger.warning(
+                f"Selected {best_engine} PDF with {best_result.error_count} errors ({comparison})"
             )
-        
-        logger.warning(
-            f"⚠️ Selected {best_engine} PDF with {best_result.error_count} errors "
-            f"({comparison})"
+
+            warning_msg = f"Compilation completed with {best_result.error_count} errors using {best_engine}."
+            if language == "cjk" and best_result.quality_issue_count > 0:
+                warning_msg += (
+                    f" Detected {best_result.quality_issue_count} CJK missing-character "
+                    "quality issues in the chosen engine log."
+                )
+
+            return _with_diagnostics(
+                {
+                    "pdf_path": best_result.pdf_path,
+                    "status": "completed_with_warnings",
+                    "engine": best_engine,
+                    "error_count": best_result.error_count,
+                    "warnings": warning_msg,
+                    "errors": None,
+                }
+            )
+
+        # All engines failed to produce PDF.
+        logger.error(f"All engines failed to produce PDF: {engines}")
+
+        combined_errors = "Compilation failed with all engines:\n\n"
+        for engine, result in results.items():
+            combined_errors += f"{engine} ({result.error_count} errors):\n"
+            combined_errors += "\n".join(result.errors[:10]) + "\n\n"
+
+        total_errors = sum(result.error_count for result in results.values())
+        return _with_diagnostics(
+            {
+                "pdf_path": None,
+                "status": "failed_compilation",
+                "engine": None,
+                "error_count": total_errors,
+                "warnings": None,
+                "errors": combined_errors,
+            }
         )
-
-        warning_msg = f"Compilation completed with {best_result.error_count} errors using {best_engine}."
-        if language == "cjk" and best_result.quality_issue_count > 0:
-            warning_msg += (
-                f" Detected {best_result.quality_issue_count} CJK missing-character "
-                "quality issues in the chosen engine log."
-            )
-
-        return {
-            "pdf_path": best_result.pdf_path,
-            "status": "completed_with_warnings",
-            "engine": best_engine,
-            "error_count": best_result.error_count,
-            "warnings": warning_msg,
-            "errors": None
-        }
-    
-    # All engines failed to produce PDF
-    logger.error(f"❌ All engines failed to produce PDF: {engines}")
-    
-    combined_errors = "Compilation failed with all engines:\n\n"
-    for engine, result in results.items():
-        combined_errors += f"{engine} ({result.error_count} errors):\n"
-        combined_errors += "\n".join(result.errors[:10]) + "\n\n"
-    
-    total_errors = sum(result.error_count for result in results.values())
-    
-    return {
-        "pdf_path": None,
-        "status": "failed_compilation",
-        "engine": None,
-        "error_count": total_errors,
-        "warnings": None,
-        "errors": combined_errors
-    }
+    finally:
+        if original_tex_content is not None:
+            try:
+                tex_path_obj.write_text(original_tex_content, encoding="utf-8")
+            except Exception as restore_err:
+                logger.warning("Failed to restore original TeX source after fallback compile: %s", restore_err)
 
 
 def compile_with_fallback(tex_file: str, output_dir: str) -> Dict:
@@ -1204,8 +1440,8 @@ def compile_with_fallback(tex_file: str, output_dir: str) -> Dict:
     
     Strategy:
     1. Auto-detect document language
-    2. For CJK: XeLaTeX → LuaLaTeX → PDFLaTeX
-    3. For Latin: PDFLaTeX → XeLaTeX → LuaLaTeX
+    2. For CJK: XeLaTeX -> LuaLaTeX -> PDFLaTeX
+    3. For Latin: PDFLaTeX -> XeLaTeX -> LuaLaTeX
     4. Try each engine, return best result
     
     Args:
@@ -1232,7 +1468,7 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
     
     # Perfect compilation - return immediately
     if pdflatex_result.success and pdflatex_result.error_count == 0:
-        logger.info("✅ pdflatex produced perfect compilation (zero errors)")
+        logger.info("pdflatex produced perfect compilation (zero errors)")
         return {
             "pdf_path": pdflatex_result.pdf_path,
             "status": "completed",
@@ -1243,12 +1479,12 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
         }
     
     # Step 2: Try xelatex fallback
-    logger.info("⚡ Attempting xelatex fallback...")
+    logger.info("Attempting xelatex fallback...")
     xelatex_result = compile_latex(tex_file, output_dir, engine="xelatex")
     
     # Perfect xelatex compilation
     if xelatex_result.success and xelatex_result.error_count == 0:
-        logger.info("✅ xelatex produced perfect compilation (zero errors)")
+        logger.info("xelatex produced perfect compilation (zero errors)")
         return {
             "pdf_path": xelatex_result.pdf_path,
             "status": "completed",
@@ -1264,7 +1500,7 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
     
     # Case 1: Only pdflatex produced PDF
     if pdflatex_has_pdf and not xelatex_has_pdf:
-        logger.warning(f"⚠️ Only pdflatex produced PDF (with {pdflatex_result.error_count} errors)")
+        logger.warning(f"Only pdflatex produced PDF (with {pdflatex_result.error_count} errors)")
         return {
             "pdf_path": pdflatex_result.pdf_path,
             "status": "completed_with_warnings",
@@ -1276,7 +1512,7 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
     
     # Case 2: Only xelatex produced PDF
     if xelatex_has_pdf and not pdflatex_has_pdf:
-        logger.warning(f"⚠️ Only xelatex produced PDF (with {xelatex_result.error_count} errors)")
+        logger.warning(f"Only xelatex produced PDF (with {xelatex_result.error_count} errors)")
         return {
             "pdf_path": xelatex_result.pdf_path,
             "status": "completed_with_warnings",
@@ -1296,7 +1532,7 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
             result = xelatex_result
         
         logger.warning(
-            f"⚠️ Selected {engine} PDF with {result.error_count} errors "
+            f"Selected {engine} PDF with {result.error_count} errors "
             f"(pdflatex: {pdflatex_result.error_count}, xelatex: {xelatex_result.error_count})"
         )
         
@@ -1310,7 +1546,7 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
         }
     
     # Case 4: Both failed to produce PDF
-    logger.error("❌ Both pdflatex and xelatex failed to produce PDF")
+    logger.error("Both pdflatex and xelatex failed to produce PDF")
     
     # Combine error messages
     combined_errors = "Compilation failed with both engines:\n\n"
@@ -1357,10 +1593,10 @@ class LaTeXCompiler:
             result = compile_with_fallback(str(main_tex), self.output_latex_dir)
             
             if result["pdf_path"]:
-                logger.info(f"✅ Compilation succeeded: {result['pdf_path']}")
+                logger.info(f"Compilation succeeded: {result['pdf_path']}")
                 return result["pdf_path"]
             else:
-                logger.error(f"❌ Compilation failed: {result.get('errors', 'Unknown error')}")
+                logger.error(f"Compilation failed: {result.get('errors', 'Unknown error')}")
                 raise Exception(result.get("errors", "Compilation failed"))
         
         except Exception as e:

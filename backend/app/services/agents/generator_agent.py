@@ -12,11 +12,14 @@ from typing import Dict, Any, Optional, Callable
 from .base_tool_agent import BaseToolAgent
 from backend.app.services.latex.reconstruct import LatexConstructor
 from backend.app.services.latex.compiler import compile_with_intelligent_fallback, find_main_tex_file
+from backend.app.services.latex.structure_guard import validate_project_structure
 from backend.app.services.latex.utils import apply_formatting_config
 from pathlib import Path
 import os
 import shutil
 import logging
+import json
+from hashlib import sha256
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,49 @@ class GeneratorAgent(BaseToolAgent):
         self.project_dir = project_dir
         self.output_dir = output_dir
         self.latex_engine = config.get("latex_engine", "auto")
+
+    def _write_structure_replay_bundle(
+        self,
+        *,
+        main_tex: str,
+        reason_code: str,
+        guard_phase: str,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        if not self.output_dir:
+            return None
+        replay_path = Path(self.output_dir) / "replay_bundle.json"
+        payload: Dict[str, Any] = {}
+        if replay_path.exists():
+            try:
+                loaded = json.loads(replay_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    payload = loaded
+            except Exception:
+                payload = {}
+
+        try:
+            main_text = Path(main_tex).read_text(encoding="utf-8", errors="replace")
+            main_digest = sha256(main_text.encode("utf-8")).hexdigest()
+        except Exception:
+            main_digest = ""
+
+        payload.update(
+            {
+                "replay_version": payload.get("replay_version", "v1"),
+                "tex_write_decision": "written",
+                "guard_phase": guard_phase,
+                "failure_reason_code": reason_code,
+                "structure_guard_message": message,
+                "main_tex_path": main_tex,
+                "main_tex_digest": main_digest,
+            }
+        )
+        if details:
+            payload["structure_guard_details"] = details
+        replay_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return str(replay_path)
 
     def execute(self) -> Dict[str, Any]:
         """
@@ -126,6 +172,34 @@ class GeneratorAgent(BaseToolAgent):
                 "engine": None,
                 "error_count": 0,
             }
+
+        # Precompile hard gate: reject structurally unsafe bundles before compile.
+        structure_result = validate_project_structure(str(main_tex))
+        if not structure_result.get("ok", False):
+            reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
+            message = str(structure_result.get("message") or "Structure guard rejected LaTeX bundle")
+            details = structure_result.get("details") or {}
+            replay_bundle_ref = self._write_structure_replay_bundle(
+                main_tex=str(main_tex),
+                reason_code=reason_code,
+                guard_phase="precompile",
+                message=message,
+                details=details if isinstance(details, dict) else None,
+            )
+            logger.error("Structure guard rejected compile bundle: %s (%s)", message, reason_code)
+            self.update_progress(100, "Structure guard rejected compile bundle")
+            return {
+                "status": "structure_invalid",
+                "pdf_path": None,
+                "error_summary": message,
+                "warnings": None,
+                "engine": None,
+                "error_count": 0,
+                "failure_reason_code": reason_code,
+                "failure_class": "structural",
+                "guard_phase": "precompile",
+                "replay_bundle_ref": replay_bundle_ref,
+            }
         
         logger.info(f"Compiling {Path(main_tex).name}...")
         
@@ -143,7 +217,8 @@ class GeneratorAgent(BaseToolAgent):
         result = compile_with_intelligent_fallback(
             tex_file=str(main_tex),
             output_dir=transed_latex_dir,
-            preferred_order=preferred_order
+            preferred_order=preferred_order,
+            target_language=target_language,
         )
 
         pdf_file = result.get("pdf_path")

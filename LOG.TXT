@@ -1,395 +1,457 @@
-  Set SMTP_FROM
-  Set LLM_MAX_CONCURRENT_REQUESTS
-Starting uvicorn server...
-INFO:     Started server process [19736]
-INFO:     Waiting for application startup.
-2026-02-27 13:24:06,832 - backend.app.main - INFO - Starting LaTeXTrans Backend v0.1.0
-2026-02-27 13:24:06,832 - backend.app.main - INFO - Data directory: D:\future\antigravity\LaTexTrans\backend\data
-2026-02-27 13:24:06,832 - backend.app.main - INFO - LLM Model: qwen/qwen3-235b-a22b
-2026-02-27 13:24:06,832 - backend.app.services.task_manager - INFO - [TaskQueue] Initialized with max_concurrent=3
-2026-02-27 13:24:06,832 - backend.app.main - INFO - [Startup] TaskQueue initialized (max_concurrent=3)
-2026-02-27 13:24:06,832 - backend.app.main - INFO - [Startup] Orphaned-task cleanup started (runs on startup + every 30 min)
-2026-02-27 13:24:06,833 - backend.app.services.task_manager - INFO - [TaskQueue] Worker started
-2026-02-27 13:24:06,833 - backend.app.main - INFO - [OrphanedCleanup] Running initial cleanup on startup...
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)        
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/settings HTTP/1.1" 200 OK
-2026-02-27 13:24:34,971 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
-2026-02-27 13:24:36,640 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/user_settings?select=%2A "HTTP/2 200 OK"
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/settings HTTP/1.1" 200 OK
-2026-02-27 13:24:43,532 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/auth/v1/user "HTTP/2 200 OK"
-2026-02-27 13:24:44,890 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/user_settings?select=%2A "HTTP/2 200 OK"
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/settings HTTP/1.1" 200 OK
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/arxiv HTTP/1.1" 200 OK
-2026-02-27 13:24:45,805 - backend.app.api.routes.arxiv - INFO - Starting download for arXiv paper: 1901.06081
-2026-02-27 13:24:45,806 - backend.app.api.routes.arxiv - INFO - Authenticated user creating arXiv task: 52180195-e893-4b3b-874f-dd9be92529db
-2026-02-27 13:24:47,541 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-INFO:     2604:4300:a:224::68:35c8:0 - "POST /api/arxiv HTTP/1.1" 200 OK
-2026-02-27 13:24:47,547 - backend.app.services.latex.utils - INFO - [SKIP] Already downloaded: 1901.06081
-2026-02-27 13:24:47,860 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:47,861 - backend.app.api.routes.arxiv - INFO - Successfully downloaded arXiv 1901.06081 to D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_1901.06081\1901.06081
-2026-02-27 13:24:48,216 - backend.app.api.routes.task - INFO - Starting SSE stream for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609/stream HTTP/1.1" 200 OK
-2026-02-27 13:24:49,634 - backend.app.api.routes.task - INFO - SSE stream cancelled for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/translate/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:24:55,709 - backend.app.api.routes.translate - INFO - Translation request for task: 1c625866-2fcf-4a29-9f51-299d37989609
-2026-02-27 13:24:55,709 - backend.app.api.routes.translate - INFO - Authenticated user: 52180195-e893-4b3b-874f-dd9be92529db
-2026-02-27 13:24:56,804 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:57,133 - httpx - INFO - HTTP Request: POST https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks "HTTP/2 201 Created"
-2026-02-27 13:24:57,136 - backend.app.services.task_manager - INFO - [TaskManager] ✅ Persisted task 1c625866-2fcf-4a29-9f51-299d37989609 to Supabase for user 52180195-e893-4b3b-874f-dd9be92529db
-2026-02-27 13:24:57,136 - backend.app.services.task_manager - INFO - [TaskManager] Persisted task 1c625866-2fcf-4a29-9f51-299d37989609 to database
-2026-02-27 13:24:57,137 - backend.app.api.routes.translate - INFO - Computed config_hash for task 1c625866-2fcf-4a29-9f51-299d37989609: 6915f4b81198c69b02a8fd8e8808799c
-2026-02-27 13:24:57,422 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:57,714 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:57,714 - backend.app.api.routes.translate - INFO - Stored config_hash in database for task 1c625866-2fcf-4a29-9f51-299d37989609
-2026-02-27 13:24:57,987 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:57,987 - backend.app.services.task_manager - INFO - [TaskQueue] Enqueued task 1c625866-2fcf-4a29-9f51-299d37989609 (user=52180195-e893-4b3b-874f-dd9be92529db, queue_size=1)
-2026-02-27 13:24:57,987 - backend.app.api.routes.translate - INFO - Task 1c625866-2fcf-4a29-9f51-299d37989609 enqueued via TaskQueue
-INFO:     2604:4300:a:224::68:35c8:0 - "POST /api/translate/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:24:57,989 - backend.app.services.task_manager - INFO - [TaskQueue] Worker picked up task 1c625866-2fcf-4a29-9f51-299d37989609
-2026-02-27 13:24:57,991 - backend.app.api.routes.translate - INFO - Starting translation for task: 1c625866-2fcf-4a29-9f51-299d37989609
-2026-02-27 13:24:57,991 - backend.app.api.routes.translate - INFO - Advanced config: mode=full, compile=auto, user_id=52180195-e893-4b3b-874f-dd9be92529db    
-2026-02-27 13:24:57,991 - backend.app.services.latex_validator - INFO - Validating LaTeX directory: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_1901.06081\1901.06081
-2026-02-27 13:24:57,993 - backend.app.services.latex_validator - INFO - Found 1 .tex files
-2026-02-27 13:24:58,007 - backend.app.services.latex_validator - INFO - Found main file by \documentclass: BinaryPR.tex
-2026-02-27 13:24:58,008 - backend.app.services.latex_validator - INFO - Validation result: valid=True, main_file=BinaryPR.tex
-2026-02-27 13:24:58,009 - backend.app.api.routes.translate - INFO - Using detected main tex file: D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_1901.06081\1901.06081\BinaryPR.tex
-2026-02-27 13:24:58,301 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:58,302 - backend.app.api.routes.translate - INFO - Config hash for task 1c625866-2fcf-4a29-9f51-299d37989609: 6915f4b81198c69b02a8fd8e8808799c
-2026-02-27 13:24:58,636 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?select=output_path&config_hash=eq.6915f4b81198c69b02a8fd8e8808799c&status=eq.completed&task_id=neq.1c625866-2fcf-4a29-9f51-299d37989609&limit=1 "HTTP/2 200 OK"
-2026-02-27 13:24:58,637 - backend.app.api.routes.translate - INFO - No reusable output found, proceeding with translation
-2026-02-27 13:24:58,933 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:58,933 - backend.app.api.routes.translate - INFO - Custom API mode: user_id=52180195-e893-4b3b-874f-dd9be92529db, has_custom_api_key_in_request=False
-2026-02-27 13:24:58,933 - backend.app.api.routes.translate - INFO - Attempting to get API config from system settings for user 52180195-e893-4b3b-874f-dd9be92529db
-2026-02-27 13:24:59,268 - httpx - INFO - HTTP Request: GET https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/user_settings?select=custom_base_url%2Ccustom_api_key_encrypted&user_id=eq.52180195-e893-4b3b-874f-dd9be92529db "HTTP/2 200 OK"  
-2026-02-27 13:24:59,275 - backend.app.core.encryption - INFO - decrypt_api_key: Successfully decrypted API key (length=51, prefix=sk-t...)
-2026-02-27 13:24:59,276 - backend.app.api.routes.translate - INFO - Successfully retrieved user's custom API config for user 52180195-e893-4b3b-874f-dd9be92529db
-2026-02-27 13:24:59,276 - backend.app.api.routes.translate - INFO - ✅ Using user's stored API config from system settings
-2026-02-27 13:24:59,278 - backend.app.api.routes.translate - INFO -    Base URL: https://aicanapi.com/v1/chat/completions...
-2026-02-27 13:24:59,279 - backend.app.api.routes.translate - INFO -    API Key: sk-toEIc...***
-2026-02-27 13:24:59,280 - backend.app.api.routes.translate - INFO - Agent config: mode=0, engine=auto, verify=False
-2026-02-27 13:24:59,291 - backend.app.services.config_capture - INFO - Config captured and saved to: D:\future\antigravity\LaTexTrans\backend\data\task_configs\1901.06081-1c6258-0227-1324.json
-2026-02-27 13:24:59,292 - backend.app.api.routes.translate - INFO - Task config snapshot saved: D:\future\antigravity\LaTexTrans\backend\data\task_configs\1901.06081-1c6258-0227-1324.json
-2026-02-27 13:24:59,293 - backend.app.api.routes.translate - INFO - Running translation workflow for D:\future\antigravity\LaTexTrans\backend\data\uploads\arxiv_1901.06081\1901.06081\BinaryPR.tex
-2026-02-27 13:24:59,299 - backend.app.services.agents.coordinator_agent - INFO - Starting LaTeX parsing for 1901.06081
-2026-02-27 13:24:59,587 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:24:59,589 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Starting parsing for project: 1901.06081
-2026-02-27 13:24:59,900 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:00,173 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:00,174 - backend.app.services.latex.parser - INFO - Starting LaTeX document parsing
-2026-02-27 13:25:00,483 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:00,982 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:01,604 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:01,878 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:02,187 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:02,459 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:02,761 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:03,042 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:03,363 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:03,648 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:03,918 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:04,193 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:04,465 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:04,740 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:05,016 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:05,288 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:05,558 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:05,840 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:06,109 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:06,820 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:07,098 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:07,099 - backend.app.services.latex.parser - INFO - Parsing complete: 17 sections processed
-2026-02-27 13:25:07,100 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Environment filter stats: total=32, need_llm_check=3, skipped_by_type=1, skipped_by_length=0
-2026-02-27 13:25:07,101 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Setting need_trans for 3 environments (parallel)
-2026-02-27 13:25:07,370 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-INFO:     2604:4300:a:224::68:35c8:0 - "OPTIONS /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:07,864 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:08,304 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:08,746 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:09,171 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:09,441 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:09,714 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:09,715 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Successfully parsed 1901.06081
-2026-02-27 13:25:09,715 - backend.app.services.agents.base_tool_agent - INFO - [ParserAgent] Parsed files saved in D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081
-2026-02-27 13:25:09,986 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:09,986 - backend.app.services.agents.coordinator_agent - INFO - Starting translation
-2026-02-27 13:25:10,258 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
+2026-03-03 14:25:11,508 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(71,0)       
+2026-03-03 14:25:11,510 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(74,4)
+2026-03-03 14:25:11,544 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(70,0)
+2026-03-03 14:25:11,546 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(71,0)       
+2026-03-03 14:25:11,546 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(72,4)
+2026-03-03 14:25:11,548 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(75,0)
+2026-03-03 14:25:11,549 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'figure' @(78,0)
+2026-03-03 14:25:11,594 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(70,0)
+2026-03-03 14:25:11,594 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(71,0)       
+2026-03-03 14:25:11,597 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(72,4)
+2026-03-03 14:25:11,598 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(75,0)
+2026-03-03 14:25:11,599 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'figure' @(78,0)
+2026-03-03 14:25:11,664 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(1,0)
+2026-03-03 14:25:11,676 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(65,0)
+2026-03-03 14:25:11,677 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(66,0)       
+2026-03-03 14:25:11,679 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(67,4)
+2026-03-03 14:25:11,713 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(1,0)
+2026-03-03 14:25:11,727 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(65,0)
+2026-03-03 14:25:11,728 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(66,0)       
+2026-03-03 14:25:11,729 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(67,4)
+2026-03-03 14:25:12,049 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:12,054 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(2,4)
+2026-03-03 14:25:12,066 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(2,4)
+2026-03-03 14:25:12,091 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(91,0)
+2026-03-03 14:25:12,091 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(92,0)       
+2026-03-03 14:25:12,092 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(93,4)
+2026-03-03 14:25:12,134 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(91,0)
+2026-03-03 14:25:12,135 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(92,0)       
+2026-03-03 14:25:12,135 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(93,4)
+2026-03-03 14:25:12,991 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:13,076 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(70,0)
+2026-03-03 14:25:13,077 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(71,0)       
+2026-03-03 14:25:13,078 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(74,4)
+2026-03-03 14:25:13,109 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(70,0)
+2026-03-03 14:25:13,110 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(71,0)       
+2026-03-03 14:25:13,112 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(74,4)
+2026-03-03 14:25:13,126 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(1,0)
+2026-03-03 14:25:13,141 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(65,0)
+2026-03-03 14:25:13,142 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(66,0)       
+2026-03-03 14:25:13,143 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(67,4)
+2026-03-03 14:25:13,176 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected mismatching closing brace: '}' @(1,0)
+2026-03-03 14:25:13,189 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(65,0)
+2026-03-03 14:25:13,189 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(66,0)       
+2026-03-03 14:25:13,190 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(67,4)
+2026-03-03 14:25:13,226 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(2,4)
+2026-03-03 14:25:13,239 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(2,4)
+2026-03-03 14:25:13,264 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(32,0)
+2026-03-03 14:25:13,264 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(33,0)       
+2026-03-03 14:25:13,267 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(34,4)
+2026-03-03 14:25:13,269 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'figure*' @(44,0)
+2026-03-03 14:25:13,269 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(46,0)
+2026-03-03 14:25:13,278 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'axis' @(32,0)
+2026-03-03 14:25:13,278 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'tikzpicture' @(33,0)       
+2026-03-03 14:25:13,279 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'subfigure' @(34,4)
+2026-03-03 14:25:13,282 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'figure*' @(44,0)
+2026-03-03 14:25:13,283 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(46,0)
+2026-03-03 14:25:13,302 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validator filtered 168 bare math tokens in code-like spans
+2026-03-03 14:25:13,568 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:13,570 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2504.07951, remaining errors: 0
+2026-03-03 14:25:13,840 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:13,841 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
+2026-03-03 14:25:14,113 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:14,114 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 2504.07951
+2026-03-03 14:25:14,387 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:15,115 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:15,500 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:15,771 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:16,052 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:16,328 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:16,604 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:16,880 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:17,187 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\ab94b784-916a-40ce-b4f2-92a657b58d85\zh_2504.07951\2504.07951    
+2026-03-03 14:25:17,462 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:17,464 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
+2026-03-03 14:25:17,732 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:21,739 - backend.app.services.latex.utils - WARNING - Restored section block due to malformed sectioning command structure
+2026-03-03 14:25:26,750 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:29,441 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:25:59,972 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:26:01,033 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:26:01,328 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:26:01,514 - backend.app.services.latex.utils - INFO - [CJK compat] Patched pdfLaTeX font packages in iccv.sty
+2026-03-03 14:26:01,514 - backend.app.services.latex.utils - INFO - [CJK compat] Patched 1 style file(s) for xelatex+ctex
+2026-03-03 14:26:01,516 - backend.app.services.latex.utils - INFO - Injected \raggedbottom for CJK page-overflow fix
+2026-03-03 14:26:01,517 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\ab94b784-916a-40ce-b4f2-92a657b58d85\zh_2504.07951\2504.07951\main.tex
+2026-03-03 14:26:01,793 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:26:01,795 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
+2026-03-03 14:26:02,080 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:26:02,397 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:26:02,398 - backend.app.services.latex.compiler - INFO - Found main tex from 00README.json: main.tex
+2026-03-03 14:26:02,398 - backend.app.services.agents.generator_agent - INFO - Compiling main.tex...
+2026-03-03 14:26:02,400 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\ab94b784-916a-40ce-b4f2-92a657b58d85\zh_2504.07951\2504.07951\main.tex 
+2026-03-03 14:26:02,427 - backend.app.services.latex.compiler - INFO - Compiler language decision=cjk, engine_order=['xelatex', 'lualatex'], reason=language_family=cjk_default_order
+2026-03-03 14:26:02,430 - backend.app.services.latex.compiler - INFO - Attempting compilation with xelatex...
+2026-03-03 14:26:02,431 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (xelatex)...
+2026-03-03 14:26:02,434 - backend.app.services.latex.compiler - INFO - Bibliography detection: no .bib files -> using -bibtex-
+2026-03-03 14:26:04,695 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) completed with exit code 12
+2026-03-03 14:26:04,707 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) result: PDF=no, Errors=1, QualityIssues=0, Exit Code=12
+2026-03-03 14:26:04,709 - backend.app.services.latex.compiler - INFO - Attempting compilation with lualatex...
+2026-03-03 14:26:04,711 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (lualatex)...
+2026-03-03 14:26:04,713 - backend.app.services.latex.compiler - INFO - Bibliography detection: no .bib files -> using -bibtex-
+2026-03-03 14:26:08,202 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) completed with exit code 12
+2026-03-03 14:26:08,214 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) result: PDF=no, Errors=1, QualityIssues=0, Exit Code=12
+2026-03-03 14:26:08,214 - backend.app.services.latex.compiler - ERROR - All engines failed to produce PDF: ['xelatex', 'lualatex']
+2026-03-03 14:27:13,837 - backend.app.services.task_manager - ERROR - [TaskManager] Failed to sync task ab94b784-916a-40ce-b4f2-92a657b58d85 to Supabase: Server disconnected
+2026-03-03 14:27:13,838 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Failed to compile PDF document
+2026-03-03 14:27:13,838 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Errors: Compilation failed with all engines:
+
+xelatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+lualatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+
+2026-03-03 14:27:13,838 - backend.app.services.agents.coordinator_agent - ERROR - Failed to generate PDF for 2504.07951: Compilation failed with all engines:       
+
+xelatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+lualatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+
+2026-03-03 14:27:14,959 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:27:15,267 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:27:15,269 - backend.app.services.task_manager - INFO - [TaskManager] Quarantined failed output for task ab94b784-916a-40ce-b4f2-92a657b58d85: D:\future\antigravity\LaTexTrans\backend\data\failed_tasks\ab94b784-916a-40ce-b4f2-92a657b58d85
+2026-03-03 14:27:16,064 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.ab94b784-916a-40ce-b4f2-92a657b58d85 "HTTP/2 200 OK"
+2026-03-03 14:27:16,065 - backend.app.services.task_manager - INFO - [TaskManager] Deleted failed task ab94b784-916a-40ce-b4f2-92a657b58d85 from Supabase translation_tasks
+2026-03-03 14:27:16,066 - backend.app.api.routes.translate - WARNING - Translation finished with compilation failure: ab94b784-916a-40ce-b4f2-92a657b58d85
+2026-03-03 14:27:16,066 - backend.app.services.task_manager - INFO - [TaskQueue] Task ab94b784-916a-40ce-b4f2-92a657b58d85 completed, semaphore released
+2026-03-03 14:27:16,067 - backend.app.api.routes.task - INFO - Getting status for task: dfff0ac2-3430-4fda-bbd3-f246b27ad041
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/dfff0ac2-3430-4fda-bbd3-f246b27ad041 HTTP/1.1" 200 OK
+2026-03-03 14:27:16,068 - backend.app.api.routes.task - INFO - Getting status for task: ab94b784-916a-40ce-b4f2-92a657b58d85
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/ab94b784-916a-40ce-b4f2-92a657b58d85 HTTP/1.1" 200 OK
+2026-03-03 14:27:16,069 - backend.app.services.agents.translator_agent - WARNING - LLM request attempt 1/3 failed for <PLACEHOLDER_ENV_15>: . Retrying in 5s...     
+2026-03-03 14:27:16,116 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part 3_4 (reason: command_error=LaTeX command translation error or is missing:)
+2026-03-03 14:27:16,116 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:16,382 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:16,385 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts (fallback_count=3, ratio=0.0517, cap=0.3800, mode=soft)
+2026-03-03 14:27:16,390 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-03-03 14:27:16,391 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\dfff0ac2-3430-4fda-bbd3-f246b27ad041\zh_2503.04565\terminology_table.csv with 218 unique terms
+2026-03-03 14:27:16,391 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 271 terms
+2026-03-03 14:27:16,392 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2503.04565
+2026-03-03 14:27:16,659 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:16,937 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:17,214 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:17,479 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:17,831 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:17,833 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2503.04565, remaining errors: 0
+2026-03-03 14:27:18,112 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:18,113 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
+2026-03-03 14:27:18,508 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:18,509 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 2503.04565
+2026-03-03 14:27:18,776 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:19,045 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:19,318 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:19,582 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:19,858 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:20,130 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:20,401 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:20,678 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:20,768 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\dfff0ac2-3430-4fda-bbd3-f246b27ad041\zh_2503.04565\2503.04565    
+2026-03-03 14:27:21,480 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:21,480 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
+2026-03-03 14:27:21,748 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:22,067 - backend.app.services.latex.utils - WARNING - Restored section block due to malformed sectioning command structure
+2026-03-03 14:27:22,468 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:22,778 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:23,862 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:24,218 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:24,481 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:24,497 - backend.app.services.latex.utils - INFO - [CJK compat] Patched pdfLaTeX font packages in cvpr.sty
+2026-03-03 14:27:24,497 - backend.app.services.latex.utils - INFO - [CJK compat] Patched 1 style file(s) for xelatex+ctex
+2026-03-03 14:27:24,497 - backend.app.services.latex.utils - INFO - Injected \raggedbottom for CJK page-overflow fix
+2026-03-03 14:27:24,498 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\dfff0ac2-3430-4fda-bbd3-f246b27ad041\zh_2503.04565\2503.04565\main.tex
+2026-03-03 14:27:24,989 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:24,990 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
+2026-03-03 14:27:25,255 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:25,530 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:25,532 - backend.app.services.latex.compiler - INFO - Found main tex by documentclass: main.tex
+2026-03-03 14:27:25,532 - backend.app.services.agents.generator_agent - INFO - Compiling main.tex...
+2026-03-03 14:27:25,532 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\dfff0ac2-3430-4fda-bbd3-f246b27ad041\zh_2503.04565\2503.04565\main.tex 
+2026-03-03 14:27:25,559 - backend.app.services.latex.compiler - INFO - Compiler language decision=cjk, engine_order=['xelatex', 'lualatex'], reason=language_family=cjk_default_order
+2026-03-03 14:27:25,560 - backend.app.services.latex.compiler - INFO - Attempting compilation with xelatex...
+2026-03-03 14:27:25,561 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (xelatex)...
+2026-03-03 14:27:25,562 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files -> using -bibtex
+2026-03-03 14:27:29,701 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) completed with exit code 12
+2026-03-03 14:27:29,713 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) result: PDF=no, Errors=2, QualityIssues=0, Exit Code=12
+2026-03-03 14:27:29,716 - backend.app.services.latex.compiler - INFO - Attempting compilation with lualatex...
+2026-03-03 14:27:29,717 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (lualatex)...
+2026-03-03 14:27:29,717 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files -> using -bibtex
+2026-03-03 14:27:36,983 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) completed with exit code 12
+2026-03-03 14:27:36,994 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) result: PDF=no, Errors=1, QualityIssues=0, Exit Code=12
+2026-03-03 14:27:36,994 - backend.app.services.latex.compiler - ERROR - All engines failed to produce PDF: ['xelatex', 'lualatex']
+2026-03-03 14:27:38,247 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:38,248 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Failed to compile PDF document
+2026-03-03 14:27:38,248 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Errors: Compilation failed with all engines:
+
+xelatex (2 errors):
+./sec/5_experiments.tex:62: Package graphics Error: Division by 0.
+./sec/supp/2_.tex:33: Package graphics Error: Division by 0.
+
+lualatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+
+2026-03-03 14:27:38,248 - backend.app.services.agents.coordinator_agent - ERROR - Failed to generate PDF for 2503.04565: Compilation failed with all engines:       
+
+xelatex (2 errors):
+./sec/5_experiments.tex:62: Package graphics Error: Division by 0.
+./sec/supp/2_.tex:33: Package graphics Error: Division by 0.
+
+lualatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+
+2026-03-03 14:27:38,522 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:38,801 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:38,804 - backend.app.services.task_manager - INFO - [TaskManager] Quarantined failed output for task dfff0ac2-3430-4fda-bbd3-f246b27ad041: D:\future\antigravity\LaTexTrans\backend\data\failed_tasks\dfff0ac2-3430-4fda-bbd3-f246b27ad041
+2026-03-03 14:27:39,071 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.dfff0ac2-3430-4fda-bbd3-f246b27ad041 "HTTP/2 200 OK"
+2026-03-03 14:27:39,072 - backend.app.services.task_manager - INFO - [TaskManager] Deleted failed task dfff0ac2-3430-4fda-bbd3-f246b27ad041 from Supabase translation_tasks
+2026-03-03 14:27:39,072 - backend.app.api.routes.translate - WARNING - Translation finished with compilation failure: dfff0ac2-3430-4fda-bbd3-f246b27ad041
+2026-03-03 14:27:39,072 - backend.app.services.task_manager - INFO - [TaskQueue] Task dfff0ac2-3430-4fda-bbd3-f246b27ad041 completed, semaphore released
+2026-03-03 14:27:39,074 - backend.app.api.routes.task - INFO - Getting status for task: dfff0ac2-3430-4fda-bbd3-f246b27ad041
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/dfff0ac2-3430-4fda-bbd3-f246b27ad041 HTTP/1.1" 200 OK
+2026-03-03 14:27:39,076 - backend.app.api.routes.task - INFO - Getting status for task: ab94b784-916a-40ce-b4f2-92a657b58d85
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/ab94b784-916a-40ce-b4f2-92a657b58d85 HTTP/1.1" 200 OK
+2026-03-03 14:27:39,077 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:42,554 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:46,016 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:49,480 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:52,945 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:56,398 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:27:59,875 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:03,439 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:06,896 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:10,362 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:14,284 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:17,742 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:21,656 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:25,115 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:28,589 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:32,055 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:35,950 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:39,405 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:42,870 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:43,885 - backend.app.services.agents.translator_agent - WARNING - LLM env restoration failed: env_restore_failed: missing=['<ENV_BEGIN_2>', '<ENV_BEGIN_1>', '<ENV_END_1>', '<ENV_END_2>']
+2026-03-03 14:28:46,693 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:47,106 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:47,110 - backend.app.services.agents.translator_agent - INFO - Successfully translated sections!
+2026-03-03 14:28:47,381 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:47,387 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\71d12fd5-0f81-4471-bca4-2e587116434e\zh_2503.08429\terminology_table.csv with 112 unique terms
+2026-03-03 14:28:47,387 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 145 terms
+2026-03-03 14:28:47,666 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:47,669 - backend.app.services.agents.coordinator_agent - INFO - Validating translation
+2026-03-03 14:28:47,939 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:47,939 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2503.08429
+2026-03-03 14:28:48,206 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:48,483 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:48,764 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:49,038 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:49,367 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:28:49,382 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:28:49,701 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:49,860 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(11,0)
+2026-03-03 14:28:50,147 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:50,477 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:51,005 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:51,011 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2503.08429, remaining errors: 7
+2026-03-03 14:28:51,011 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 1/3
+2026-03-03 14:28:51,285 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
 Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
-2026-02-27 13:25:10,262 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=0
-2026-02-27 13:25:10,262 - backend.app.services.agents.translator_agent - INFO - Starting translating for project: 1901.06081
-2026-02-27 13:25:10,547 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:10,552 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:11,005 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:11,447 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:12,454 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:12,983 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(7,0)     
-2026-02-27 13:25:12,989 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(7,0)     
-2026-02-27 13:25:14,119 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:14,481 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:15,001 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:16,375 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:16,442 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:18,445 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:20,518 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:20,791 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:20,797 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:22,439 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:24,297 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:24,442 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:24,949 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:25,596 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:26,439 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:27,260 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:28,171 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:28,461 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:30,439 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:31,526 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:32,440 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:34,437 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:35,163 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:35,826 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:36,105 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:36,639 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:38,457 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:39,977 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:40,438 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:42,440 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:44,438 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:46,533 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:46,540 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:47,640 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:47,938 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:47,938 - backend.app.services.agents.translator_agent - INFO - Successfully translated sections!
-2026-02-27 13:25:48,283 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:48,286 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\terminology_table.csv with 128 unique terms
-2026-02-27 13:25:48,287 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 138 terms
-2026-02-27 13:25:48,575 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:48,575 - backend.app.services.agents.coordinator_agent - INFO - Validating translation
-2026-02-27 13:25:49,324 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:49,324 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 1901.06081
-2026-02-27 13:25:49,605 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:49,888 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:50,180 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:50,470 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:51,144 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:51,321 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(7,0)     
-2026-02-27 13:25:51,324 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'document' @(7,0)     
-2026-02-27 13:25:51,621 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:51,944 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:52,294 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:52,296 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 1901.06081, remaining errors: 7       
-2026-02-27 13:25:52,297 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 1/3
-2026-02-27 13:25:52,578 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
-2026-02-27 13:25:52,580 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
-2026-02-27 13:25:52,582 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['1', '3_1', '3_2', '4_1', '4_2', '4_4_1', '4_4_2'], attempt 1/3
-2026-02-27 13:25:52,590 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=7
-2026-02-27 13:25:52,597 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 1
-2026-02-27 13:25:52,916 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:52,920 - backend.app.services.agents.validator_agent - INFO - repair_math_delimiters: injected $ around bare math token
-2026-02-27 13:25:52,923 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_1
-2026-02-27 13:25:52,924 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_1
-2026-02-27 13:25:53,206 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:53,208 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_2
-2026-02-27 13:25:53,208 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_2
-2026-02-27 13:25:53,489 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:53,491 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_1
-2026-02-27 13:25:53,491 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_1
-2026-02-27 13:25:53,765 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:53,767 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_2
-2026-02-27 13:25:53,767 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_2
-2026-02-27 13:25:54,044 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:54,046 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_4_1
-2026-02-27 13:25:54,046 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_4_1
-2026-02-27 13:25:54,327 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:54,328 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_4_2
-2026-02-27 13:25:54,328 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_4_2
-2026-02-27 13:25:54,621 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:54,623 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
-2026-02-27 13:25:54,634 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
-2026-02-27 13:25:54,639 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\terminology_table.csv with 128 unique terms
-2026-02-27 13:25:54,639 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 138 terms
-2026-02-27 13:25:54,639 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 1901.06081
-2026-02-27 13:25:54,925 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:55,206 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:55,485 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:55,762 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:56,439 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:56,442 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 1901.06081, remaining errors: 7       
-2026-02-27 13:25:56,442 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 2/3
-2026-02-27 13:25:57,172 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
-2026-02-27 13:25:57,174 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
-2026-02-27 13:25:57,175 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['1', '3_1', '3_2', '4_1', '4_2', '4_4_1', '4_4_2'], attempt 2/3
-2026-02-27 13:25:57,175 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=7
-2026-02-27 13:25:57,175 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 1
-2026-02-27 13:25:57,450 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:57,466 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_1
-2026-02-27 13:25:57,468 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_1
-2026-02-27 13:25:57,747 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:57,748 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_2
-2026-02-27 13:25:57,748 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_2
-2026-02-27 13:25:58,035 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:58,035 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_1
-2026-02-27 13:25:58,035 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_1
-2026-02-27 13:25:58,782 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:58,783 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_2
-2026-02-27 13:25:58,783 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_2
-2026-02-27 13:25:59,076 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:59,077 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_4_1
-2026-02-27 13:25:59,078 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_4_1
-2026-02-27 13:25:59,378 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:59,379 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_4_2
-2026-02-27 13:25:59,379 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_4_2
-2026-02-27 13:25:59,673 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:25:59,675 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
-2026-02-27 13:25:59,676 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:25:59,684 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
-2026-02-27 13:25:59,687 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\terminology_table.csv with 128 unique terms
-2026-02-27 13:25:59,687 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 138 terms
-2026-02-27 13:25:59,687 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 1901.06081
-2026-02-27 13:26:00,420 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:00,727 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:01,004 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:01,286 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:01,961 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:01,962 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 1901.06081, remaining errors: 7       
-2026-02-27 13:26:01,963 - backend.app.services.agents.coordinator_agent - INFO - Retrying translation for errors, attempt 3/3
-2026-02-27 13:26:02,699 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-Error: Default terminology file not found: [Errno 2] No such file or directory: 'terms/default.csv'
-2026-02-27 13:26:02,702 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
-2026-02-27 13:26:02,702 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['1', '3_1', '3_2', '4_1', '4_2', '4_4_1', '4_4_2'], attempt 3/3
-2026-02-27 13:26:02,702 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C=7
-2026-02-27 13:26:02,702 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 1
-2026-02-27 13:26:02,996 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:02,999 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_1
-2026-02-27 13:26:03,000 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_1
-2026-02-27 13:26:03,287 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:03,287 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 3_2
-2026-02-27 13:26:03,288 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 3_2
-2026-02-27 13:26:03,571 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:03,573 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_1
-2026-02-27 13:26:03,574 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_1
-2026-02-27 13:26:03,851 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:03,853 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_2
-2026-02-27 13:26:03,853 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_2
-2026-02-27 13:26:04,126 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:04,128 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_4_1
-2026-02-27 13:26:04,128 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_4_1
-2026-02-27 13:26:04,411 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:04,411 - backend.app.services.agents.translator_agent - INFO - Applied math-delimiter repair for part 4_4_2
-2026-02-27 13:26:04,411 - backend.app.services.agents.translator_agent - INFO - Type C error fixed algorithmically: 4_4_2
-2026-02-27 13:26:04,687 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:04,687 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts
-2026-02-27 13:26:04,691 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
-2026-02-27 13:26:04,693 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\terminology_table.csv with 128 unique terms
-2026-02-27 13:26:04,695 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 138 terms
-2026-02-27 13:26:04,695 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 1901.06081
-2026-02-27 13:26:04,969 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:05,267 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:05,559 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:05,846 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:06,528 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:06,530 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 1901.06081, remaining errors: 7       
-2026-02-27 13:26:07,451 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:07,451 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
-2026-02-27 13:26:07,731 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:07,733 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 1901.06081
-2026-02-27 13:26:08,016 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:08,290 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:08,579 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:08,859 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:09,137 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:09,416 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:09,694 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:09,977 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:10,043 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081
-2026-02-27 13:26:10,336 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:10,336 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
-2026-02-27 13:26:10,615 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:10,969 - backend.app.services.latex.utils - WARNING - Restored section block due to malformed sectioning command structure
-2026-02-27 13:26:11,253 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:11,581 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:12,015 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:12,331 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:12,622 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:12,626 - backend.app.services.latex.utils - INFO - Injected luatexja for Japanese
-2026-02-27 13:26:12,627 - backend.app.services.latex.utils - INFO - Injected \raggedbottom for CJK page-overflow fix
-2026-02-27 13:26:12,629 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081\BinaryPR.tex
-2026-02-27 13:26:12,943 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:12,945 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
-2026-02-27 13:26:13,220 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:13,493 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:13,496 - backend.app.services.latex.compiler - INFO - Found main tex by documentclass: BinaryPR.tex
-2026-02-27 13:26:13,496 - backend.app.services.agents.generator_agent - INFO - Compiling BinaryPR.tex...
-2026-02-27 13:26:13,496 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081\BinaryPR.tex
-2026-02-27 13:26:13,500 - backend.app.services.latex.compiler - INFO - Detected CJK document, using engine order: ['xelatex', 'lualatex', 'pdflatex']
-2026-02-27 13:26:13,501 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with xelatex...
-2026-02-27 13:26:13,502 - backend.app.services.latex.compiler - INFO - Compiling BinaryPR.tex with latexmk (xelatex)...
-2026-02-27 13:26:13,503 - backend.app.services.latex.compiler - INFO - Bibliography detection: no .bib files → using -bibtex-
-2026-02-27 13:26:15,526 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) completed with exit code 12
-2026-02-27 13:26:15,536 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) result: PDF=✗, Errors=25, Exit Code=12
-2026-02-27 13:26:15,538 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with lualatex...
-2026-02-27 13:26:15,541 - backend.app.services.latex.compiler - INFO - Compiling BinaryPR.tex with latexmk (lualatex)...
-2026-02-27 13:26:15,543 - backend.app.services.latex.compiler - INFO - Bibliography detection: no .bib files → using -bibtex-
-2026-02-27 13:26:21,947 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) completed with exit code 12
-2026-02-27 13:26:21,959 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) result: PDF=✓, Errors=28, Exit Code=12
-2026-02-27 13:26:21,965 - backend.app.services.latex.compiler - INFO - Preserved lualatex PDF snapshot: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081\BinaryPR.lualatex.pdf
-2026-02-27 13:26:21,967 - backend.app.services.latex.compiler - INFO - Preserved lualatex LOG snapshot: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081\BinaryPR_lualatex.log
-2026-02-27 13:26:21,967 - backend.app.services.latex.compiler - INFO - ⚡ Attempting compilation with pdflatex...
-2026-02-27 13:26:21,969 - backend.app.services.latex.compiler - INFO - Removed stale PDF before compilation: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081\BinaryPR.pdf
-2026-02-27 13:26:21,969 - backend.app.services.latex.compiler - INFO - Compiling BinaryPR.tex with latexmk (pdflatex)...
-2026-02-27 13:26:21,970 - backend.app.services.latex.compiler - INFO - Bibliography detection: no .bib files → using -bibtex-
-2026-02-27 13:26:23,680 - backend.app.services.latex.compiler - INFO - latexmk (pdflatex) completed with exit code 12
-2026-02-27 13:26:23,686 - backend.app.services.latex.compiler - INFO - latexmk (pdflatex) result: PDF=✗, Errors=27, Exit Code=12
-2026-02-27 13:26:23,686 - backend.app.services.latex.compiler - INFO - Found successfully built PDFs from modern engines for CJK; excluding pdflatex result.  
-2026-02-27 13:26:23,686 - backend.app.services.latex.compiler - WARNING - ⚠️ Seelected lualatex PDF with 28 errors (xelatex: 25, lualatex: 28, pdflatex: 27)   
-2026-02-27 13:26:24,675 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:24,677 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Successfully generated PDF: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\1901.06081\BinaryPR.lualatex.pdf
-2026-02-27 13:26:24,680 - backend.app.services.latex.compiler - INFO - PDF verified ready: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\ja_1901.06081.pdf (8533427 bytes)        
-2026-02-27 13:26:24,680 - backend.app.services.agents.coordinator_agent - INFO - PDF verified ready: D:\future\antigravity\LaTexTrans\backend\data\outputs\1c625866-2fcf-4a29-9f51-299d37989609\ja_1901.06081\ja_1901.06081.pdf
-2026-02-27 13:26:24,950 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:25,221 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.1c625866-2fcf-4a29-9f51-299d37989609 "HTTP/2 200 OK"
-2026-02-27 13:26:25,221 - backend.app.api.routes.translate - INFO - Translation completed with compilation warnings: 1c625866-2fcf-4a29-9f51-299d37989609     
-2026-02-27 13:26:25,221 - backend.app.services.task_manager - INFO - [TaskQueue] Task 1c625866-2fcf-4a29-9f51-299d37989609 completed, semaphore released      
-2026-02-27 13:26:25,221 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:26:25,222 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:26:25,224 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:26:25,225 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:26:25,226 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:26:25,230 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
-INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/1c625866-2fcf-4a29-9f51-299d37989609 HTTP/1.1" 200 OK
-2026-02-27 13:26:25,231 - backend.app.api.routes.task - INFO - Getting status for task: 1c625866-2fcf-4a29-9f51-299d37989609
+2026-03-03 14:28:51,291 - backend.app.services.agents.translator_agent - INFO - TranslatorAgent executing with trans_mode=1
+2026-03-03 14:28:51,292 - backend.app.services.agents.translator_agent - INFO - Starting retranslating for error parts: ['2+2_1', '2_2', '4_3_chunk_2', '<PLACEHOLDER_CAP_12>', '<PLACEHOLDER_ENV_1>', '<PLACEHOLDER_ENV_13>', '<PLACEHOLDER_ENV_15>'], attempt 1/3
+2026-03-03 14:28:51,293 - backend.app.services.agents.translator_agent - INFO - Error classification: A=0, B=0, C1=4, C2=3
+2026-03-03 14:28:51,294 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part <PLACEHOLDER_ENV_1> (reason: math_error=env_boundary_mismatch: env_restore_failed marker detected)
+2026-03-03 14:28:51,571 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:51,584 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part <PLACEHOLDER_ENV_13> (reason: command_error=LaTeX command translation error or is missing:; math_error=env_boundary_mismatch: env_restore_failed marker detected)
+2026-03-03 14:28:52,083 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:28:52,087 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part <PLACEHOLDER_ENV_15> (reason: command_error=LaTeX command translation error or is missing:; math_error=env_boundary_mismatch: env_restore_failed marker detected)
+2026-03-03 14:28:52,364 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+translate_caption_mode_1
+2026-03-03 14:28:52,369 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:55,834 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:28:59,303 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:02,760 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:06,236 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:07,199 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:29:07,223 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:29:09,700 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:13,155 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:16,619 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:20,088 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:23,558 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:24,578 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part 2+2_1 (reason: command_error=LaTeX command translation error or is missing:)
+2026-03-03 14:29:25,754 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:29:27,038 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:30,514 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:33,977 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:37,455 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:40,936 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:44,424 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:47,878 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:51,348 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:54,832 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:58,307 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:29:59,624 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part <PLACEHOLDER_CAP_12> (reason: command_error=LaTeX command translation error or is missing:)
+2026-03-03 14:30:01,557 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:30:01,785 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:30:05,251 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:30:08,717 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:30:14,081 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:30:20,089 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:30:20,548 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:30:20,563 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:30:20,577 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:30:20,598 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:30:20,611 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part 4_3_chunk_2 (reason: command_error=LaTeX command translation error or is missing:)
+2026-03-03 14:31:09,606 - backend.app.services.task_manager - ERROR - [TaskManager] Failed to sync task 71d12fd5-0f81-4471-bca4-2e587116434e to Supabase: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)     
+2026-03-03 14:31:09,614 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:31:09,681 - backend.app.services.agents.translator_agent - WARNING - Compile-first fallback applied for part 2_2 (reason: command_error=LaTeX command translation error or is missing:)
+2026-03-03 14:31:13,821 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:13,827 - backend.app.services.agents.translator_agent - INFO - Completed retranslation of error parts (fallback_count=7, ratio=0.1842, cap=0.3800, mode=soft)
+2026-03-03 14:31:13,846 - backend.app.services.agents.translator_agent - INFO - Successfully retranslated error parts!
+2026-03-03 14:31:13,851 - backend.app.services.agents.translator_agent - INFO - Terminology table saved to D:\future\antigravity\LaTexTrans\backend\data\outputs\71d12fd5-0f81-4471-bca4-2e587116434e\zh_2503.08429\terminology_table.csv with 119 unique terms
+2026-03-03 14:31:13,851 - backend.app.services.agents.translator_agent - INFO - Terminology table generated with 175 terms
+2026-03-03 14:31:13,852 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Starting validation for project: 2503.08429
+2026-03-03 14:31:14,140 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:15,106 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:15,380 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:15,666 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:15,761 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:31:15,774 - pylatexenc.latexwalker - INFO - Ignoring parse error (tolerant parsing mode): Unexpected closing environment: 'table*' @(4,0)
+2026-03-03 14:31:16,793 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:16,802 - backend.app.services.agents.base_tool_agent - INFO - [ValidatorAgent] Validation complete for 2503.08429, remaining errors: 0
+2026-03-03 14:31:17,134 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:17,146 - backend.app.services.agents.coordinator_agent - INFO - Generating PDF
+2026-03-03 14:31:17,425 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:17,427 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Starting generation for project: 2503.08429
+2026-03-03 14:31:17,743 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:19,042 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:20,042 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:20,319 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:20,606 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:20,901 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:23,237 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:24,253 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:24,354 - backend.app.services.agents.base_tool_agent - INFO - [GeneratorAgent] Created translation directory: D:\future\antigravity\LaTexTrans\backend\data\outputs\71d12fd5-0f81-4471-bca4-2e587116434e\zh_2503.08429\2503.08429    
+2026-03-03 14:31:26,504 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:26,511 - backend.app.services.latex.reconstruct - INFO - Starting LaTeX reconstruction
+2026-03-03 14:31:27,519 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:27,671 - backend.app.services.latex.utils - WARNING - Restored section block due to malformed sectioning command structure
+2026-03-03 14:31:27,954 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:28,273 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:28,726 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:29,045 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:29,325 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:29,349 - backend.app.services.latex.utils - INFO - [CJK compat] Patched pdfLaTeX font packages in cvpr.sty
+2026-03-03 14:31:29,349 - backend.app.services.latex.utils - INFO - [CJK compat] Patched 1 style file(s) for xelatex+ctex
+2026-03-03 14:31:29,350 - backend.app.services.latex.utils - INFO - Injected \raggedbottom for CJK page-overflow fix
+2026-03-03 14:31:29,353 - backend.app.services.latex.reconstruct - INFO - Writing main tex file: D:\future\antigravity\LaTexTrans\backend\data\outputs\71d12fd5-0f81-4471-bca4-2e587116434e\zh_2503.08429\2503.08429\main.tex
+2026-03-03 14:31:29,640 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:29,642 - backend.app.services.latex.reconstruct - INFO - LaTeX reconstruction complete
+2026-03-03 14:31:30,376 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:31,107 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:31,113 - backend.app.services.latex.compiler - INFO - Found main tex by documentclass: main.tex
+2026-03-03 14:31:31,114 - backend.app.services.agents.generator_agent - INFO - Compiling main.tex...
+2026-03-03 14:31:31,114 - backend.app.services.latex.compiler - INFO - Starting intelligent three-engine compilation for D:\future\antigravity\LaTexTrans\backend\data\outputs\71d12fd5-0f81-4471-bca4-2e587116434e\zh_2503.08429\2503.08429\main.tex 
+2026-03-03 14:31:31,134 - backend.app.services.latex.compiler - INFO - Compiler language decision=cjk, engine_order=['xelatex', 'lualatex'], reason=language_family=cjk_default_order
+2026-03-03 14:31:31,143 - backend.app.services.latex.compiler - INFO - Attempting compilation with xelatex...
+2026-03-03 14:31:31,149 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (xelatex)...
+2026-03-03 14:31:31,153 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files -> using -bibtex
+2026-03-03 14:31:34,551 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) completed with exit code 12
+2026-03-03 14:31:34,581 - backend.app.services.latex.compiler - INFO - latexmk (xelatex) result: PDF=no, Errors=1, QualityIssues=0, Exit Code=12
+2026-03-03 14:31:34,590 - backend.app.services.latex.compiler - INFO - Attempting compilation with lualatex...
+2026-03-03 14:31:34,596 - backend.app.services.latex.compiler - INFO - Compiling main.tex with latexmk (lualatex)...
+2026-03-03 14:31:34,599 - backend.app.services.latex.compiler - INFO - Bibliography detection: found .bib files -> using -bibtex
+2026-03-03 14:31:40,862 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) completed with exit code 12
+2026-03-03 14:31:40,896 - backend.app.services.latex.compiler - INFO - latexmk (lualatex) result: PDF=no, Errors=1, QualityIssues=0, Exit Code=12
+2026-03-03 14:31:40,899 - backend.app.services.latex.compiler - ERROR - All engines failed to produce PDF: ['xelatex', 'lualatex']
+2026-03-03 14:31:42,867 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:42,871 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Failed to compile PDF document
+2026-03-03 14:31:42,871 - backend.app.services.agents.base_tool_agent - ERROR - [GeneratorAgent] Errors: Compilation failed with all engines:
+
+xelatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+lualatex (1 errors):
+./preamble.tex:26: LaTeX Error: Command \x already defined.
+
+
+2026-03-03 14:31:42,871 - backend.app.services.agents.coordinator_agent - ERROR - Failed to generate PDF for 2503.08429: Compilation failed with all engines:       
+
+xelatex (1 errors):
+main.tex: compilation failed without parsable log errors (exit code 12)
+
+lualatex (1 errors):
+./preamble.tex:26: LaTeX Error: Command \x already defined.
+
+
+2026-03-03 14:31:43,145 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:43,423 - httpx - INFO - HTTP Request: PATCH https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:43,437 - backend.app.services.task_manager - INFO - [TaskManager] Quarantined failed output for task 71d12fd5-0f81-4471-bca4-2e587116434e: D:\future\antigravity\LaTexTrans\backend\data\failed_tasks\71d12fd5-0f81-4471-bca4-2e587116434e
+2026-03-03 14:31:44,292 - httpx - INFO - HTTP Request: DELETE https://ebfojcotiztnjmxbktta.supabase.co/rest/v1/translation_tasks?task_id=eq.71d12fd5-0f81-4471-bca4-2e587116434e "HTTP/2 200 OK"
+2026-03-03 14:31:44,294 - backend.app.services.task_manager - INFO - [TaskManager] Deleted failed task 71d12fd5-0f81-4471-bca4-2e587116434e from Supabase translation_tasks
+2026-03-03 14:31:44,294 - backend.app.api.routes.translate - WARNING - Translation finished with compilation failure: 71d12fd5-0f81-4471-bca4-2e587116434e
+2026-03-03 14:31:44,294 - backend.app.services.task_manager - INFO - [TaskQueue] Task 71d12fd5-0f81-4471-bca4-2e587116434e completed, semaphore released
+2026-03-03 14:31:44,294 - backend.app.api.routes.task - INFO - Getting status for task: 71d12fd5-0f81-4471-bca4-2e587116434e
+INFO:     2604:4300:a:224::68:35c8:0 - "GET /api/task/71d12fd5-0f81-4471-bca4-2e587116434e HTTP/1.1" 200 OK
+2026-03-03 14:37:27,683 - backend.app.main - INFO - [OrphanedCleanup] Running scheduled cleanup...

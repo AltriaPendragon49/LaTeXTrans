@@ -37,6 +37,10 @@ export interface TaskStatusResponse {
     message: string
     warnings?: string
     error?: string
+    failure_reason_code?: string
+    failure_class?: string
+    guard_phase?: string
+    replay_bundle_ref?: string
     output_path?: string
     logs?: string[]
     advanced_config?: AdvancedConfig

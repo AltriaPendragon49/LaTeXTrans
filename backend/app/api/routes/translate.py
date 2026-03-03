@@ -499,6 +499,10 @@ async def run_translation(
         error_summary = (workflow_result or {}).get("error_summary")
         warning_summary = (workflow_result or {}).get("warnings")
         pdf_path = (workflow_result or {}).get("pdf_path")
+        failure_reason_code = (workflow_result or {}).get("failure_reason_code")
+        failure_class = (workflow_result or {}).get("failure_class")
+        guard_phase = (workflow_result or {}).get("guard_phase")
+        replay_bundle_ref = (workflow_result or {}).get("replay_bundle_ref")
 
         if pdf_path and not Path(pdf_path).exists():
             logger.error(
@@ -507,6 +511,25 @@ async def run_translation(
             workflow_status = "failed_compilation"
             error_summary = error_summary or f"Compilation returned a missing PDF path: {pdf_path}"
             pdf_path = None
+
+        if workflow_status == "structure_invalid":
+            error_text = error_summary or "LaTeX structure guard rejected bundle before compilation"
+            task_manager.update_task(
+                task_id=task_id,
+                status=TaskStatus.STRUCTURE_INVALID.value,
+                progress=100,
+                message=error_text,
+                error=error_text,
+                warnings=warning_summary,
+                output_path=str(output_dir),
+                failure_reason_code=failure_reason_code,
+                failure_class=failure_class or "structural",
+                guard_phase=guard_phase,
+                replay_bundle_ref=replay_bundle_ref,
+                user_id=user_id,
+            )
+            logger.warning(f"Translation aborted by structure guard: {task_id}")
+            return
 
         if workflow_status == "failed_compilation" or not pdf_path:
             error_text = error_summary or "Compilation failed without detailed error output"
@@ -519,6 +542,10 @@ async def run_translation(
                 error=error_text,
                 warnings=warning_summary,
                 output_path=str(output_dir),
+                failure_reason_code=failure_reason_code,
+                failure_class=failure_class,
+                guard_phase=guard_phase,
+                replay_bundle_ref=replay_bundle_ref,
                 user_id=user_id
             )
             logger.warning(f"Translation finished with compilation failure: {task_id}")

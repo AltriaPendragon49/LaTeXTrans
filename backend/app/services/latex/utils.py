@@ -1452,7 +1452,7 @@ def compress_newlines(tex):
 
 def get_env_pattern(command_name):
     """Get the regex pattern for matching environments"""
-    get_command_env = lambda name: rf"\\begin{spaces}\{{(?!document\b|center\b|proof\b|multicols\b)({name})\}}{spaces}({options})?(.*?)\\end{spaces}\{{\1\}}"
+    get_command_env = lambda name: rf"\\begin{spaces}\{{(?!document\b|center\b|multicols\b)({name})\}}{spaces}({options})?(.*?)\\end{spaces}\{{\1\}}"
     command_env = get_command_env(command_name)
     env_pattern = regex.compile(command_env, regex.DOTALL)
     return env_pattern
@@ -3024,7 +3024,20 @@ PROTECTED_COMMANDS: List[re.Pattern] = [
         r'\\keywords\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
         regex.DOTALL,
     ),
+    # Cross-reference and citation key commands must remain immutable.
+    regex.compile(
+        r'\\(?:label|ref|eqref|pageref|autoref|cref|Cref|cite|citet|citep|citealt|citealp|citenum|citeauthor|citeyear)\*?(?![A-Za-z])'
+        r'\s*(?:\[[^\[\]]*\]\s*){0,2}'
+        r'\{(?:[^{}]|\{[^{}]*\})*\}',
+        regex.DOTALL,
+    ),
 ]
+
+# Command-head protection (do not freeze whole command argument):
+# preserves LaTeX macro identity while still allowing argument translation.
+PROTECTED_COMMAND_HEAD_RE = regex.compile(
+    r'\\(?:label|ref|eqref|pageref|autoref|cref|Cref|cite|citet|citep|citealt|citealp|citenum|citeauthor|citeyear)\*?(?![A-Za-z])'
+)
 
 _PLACEHOLDER_PREFIX = "PROTECTED_CMD"
 # Primary exact-match pattern
@@ -3083,6 +3096,9 @@ def mask_sensitive_commands(
     masked = content
     for pattern in registry:
         masked = pattern.sub(_replace, masked)
+
+    # Protect command heads only (arguments remain visible to LLM).
+    masked = PROTECTED_COMMAND_HEAD_RE.sub(_replace, masked)
 
     if mapping:
         logger.debug(
@@ -3226,3 +3242,594 @@ def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
         # print('Compiling:', pattern)
         restored_tex, count = regex.subn(replacement, restored_tex)
     return restored_tex
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — Input-Layer Defense
+# Isolate inline math and pre-escape risky tokens before LLM translation.
+# ---------------------------------------------------------------------------
+
+# Pattern: single-line inline math  $...$  (not $$...$$)
+_INLINE_DOLLAR_RE = re.compile(
+    r'(?<!\$)\$(?!\$)'          # opening $  (not part of $$)
+    r'([^\$\r\n]+?)'            # math content (single line only, non-greedy)
+    r'(?<!\$)\$(?!\$)',         # closing $  (not part of $$)
+)
+
+# Pattern: \(...\)  inline math
+_INLINE_PAREN_RE = re.compile(
+    r'\\\((.+?)\\\)',
+    re.DOTALL,
+)
+
+# Pattern: placeholders and INLMATH tags that should be skipped during _ escaping
+_SKIP_TAG_RE = re.compile(
+    r'<(?:INLMATH|PLACEHOLDER|PROTECTED_CMD|ENV|ENV_BEGIN|ENV_END|ITEM|EQROW|EQCOMMENT)_[^>]+>'
+)
+
+_IDENTIFIER_COMMAND_HEAD_RE = re.compile(
+    r'\\(?:label|ref|eqref|pageref|autoref|cref|Cref|cite|citet|citep|citealt|citealp|citenum|citeauthor|citeyear)\*?(?![A-Za-z])'
+    r'\s*(?:\[[^\[\]]*\]\s*){0,2}\{'
+)
+
+# ---------------------------------------------------------------------------
+# Environment-aware structural isolation (Phase 1-3 extension)
+# ---------------------------------------------------------------------------
+
+# Level-A environments are fully frozen (block replacement).
+LEVEL_A_ENVS: frozenset = frozenset({
+    "table", "figure",
+    "algorithm", "algorithmic",
+    "theorem", "lemma", "proof", "definition",
+    "tikzpicture",
+    "lstlisting", "verbatim", "minted",
+})
+
+_VERB_CMD_RE = regex.compile(
+    r'\\verb\*?(?P<delim>[^A-Za-z0-9\s]).*?(?<!\\)(?P=delim)',
+    regex.DOTALL,
+)
+_ENV_TOKEN_RE = regex.compile(
+    r'\\(?P<kind>begin|end)\s*\{\s*(?P<name>[A-Za-z0-9@*:_-]+)\s*\}'
+)
+_ENV_PLACEHOLDER_RE = re.compile(r'<ENV(?:_BEGIN|_END)?_[^>]+>')
+_EQCOMMENT_PLACEHOLDER_RE = re.compile(r'<EQCOMMENT_[^>]+>')
+_ITEM_PLACEHOLDER_RE = re.compile(r'<ITEM_[^>]+>')
+_EQROW_PLACEHOLDER_RE = re.compile(r'<EQROW_[^>]+>')
+_ANY_PLACEHOLDER_RE = re.compile(r'<[A-Z][A-Z0-9_]*>')
+
+
+def _is_level_a_env(env_name: str) -> bool:
+    normalized = (env_name or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in LEVEL_A_ENVS:
+        return True
+    if normalized.endswith("*") and normalized[:-1] in LEVEL_A_ENVS:
+        return True
+    return False
+
+
+def isolate_env_blocks(text: str) -> Tuple[str, Dict[str, str]]:
+    """
+    Isolate environment structures before LLM translation.
+
+    Level-A:
+      - replace whole ``\\begin{env}...\\end{env}`` blocks with ``<ENV_n>``.
+      - includes ``\\verb``/``\\verb*`` literals as Level-A objects.
+
+    Level-B:
+      - replace boundary commands only:
+        ``\\begin{foo}`` -> ``<ENV_BEGIN_n>``
+        ``\\end{foo}``   -> ``<ENV_END_n>``
+      - inner text remains translatable.
+    """
+    if not text:
+        return text, {}
+
+    env_map: Dict[str, str] = {}
+    counter = [0]
+
+    def _next_placeholder(prefix: str) -> str:
+        counter[0] += 1
+        return f"<{prefix}_{counter[0]}>"
+
+    def _apply_replacements(src: str, reps: List[tuple]) -> str:
+        # reps item: (start, end, placeholder, original)
+        out = src
+        for start, end, placeholder, original in sorted(reps, key=lambda x: x[0], reverse=True):
+            out = out[:start] + placeholder + out[end:]
+            env_map[placeholder] = original
+        return out
+
+    # Step 1: freeze \verb / \verb* literal snippets as Level-A objects.
+    verb_replacements: List[tuple] = []
+    for m in _VERB_CMD_RE.finditer(text):
+        placeholder = _next_placeholder("ENV")
+        verb_replacements.append((m.start(), m.end(), placeholder, m.group(0)))
+    working = _apply_replacements(text, verb_replacements) if verb_replacements else text
+
+    # Step 2: parse begin/end tokens and build matched environment pairs.
+    tokens = list(_ENV_TOKEN_RE.finditer(working))
+    stack: List[Dict[str, Any]] = []
+    pairs: List[Dict[str, Any]] = []
+
+    for token in tokens:
+        kind = token.group("kind")
+        name = token.group("name")
+        if kind == "begin":
+            stack.append({
+                "name": name,
+                "begin_start": token.start(),
+                "begin_end": token.end(),
+            })
+            continue
+
+        # kind == end
+        match_idx: Optional[int] = None
+        for i in range(len(stack) - 1, -1, -1):
+            if stack[i]["name"] == name:
+                match_idx = i
+                break
+        if match_idx is None:
+            continue
+
+        begin_item = stack[match_idx]
+        # Drop the matched opener and any dangling inner unmatched entries.
+        stack = stack[:match_idx]
+        pairs.append({
+            "name": name,
+            "block_start": begin_item["begin_start"],
+            "block_end": token.end(),
+            "begin_start": begin_item["begin_start"],
+            "begin_end": begin_item["begin_end"],
+            "end_start": token.start(),
+            "end_end": token.end(),
+        })
+
+    # Step 3: Level-A full-block replacements (outermost only).
+    level_a_pairs = [p for p in pairs if _is_level_a_env(p["name"])]
+    level_a_pairs.sort(key=lambda p: (p["block_start"], -(p["block_end"] - p["block_start"])))
+    selected_level_a: List[Dict[str, Any]] = []
+    selected_level_a_spans: List[tuple] = []
+    for pair in level_a_pairs:
+        if any(s <= pair["block_start"] and pair["block_end"] <= e for s, e in selected_level_a_spans):
+            continue
+        selected_level_a.append(pair)
+        selected_level_a_spans.append((pair["block_start"], pair["block_end"]))
+
+    env_replacements: List[tuple] = []
+    for pair in selected_level_a:
+        placeholder = _next_placeholder("ENV")
+        original_block = working[pair["block_start"]:pair["block_end"]]
+        env_replacements.append((pair["block_start"], pair["block_end"], placeholder, original_block))
+
+    # Step 4: Level-B boundary replacements (skip anything inside Level-A spans).
+    level_b_pairs = [p for p in pairs if not _is_level_a_env(p["name"])]
+    level_b_pairs.sort(key=lambda p: p["begin_start"])
+    for pair in level_b_pairs:
+        if any(s <= pair["begin_start"] < e for s, e in selected_level_a_spans):
+            continue
+        if any(s < pair["end_end"] <= e for s, e in selected_level_a_spans):
+            continue
+
+        counter[0] += 1
+        begin_placeholder = f"<ENV_BEGIN_{counter[0]}>"
+        end_placeholder = f"<ENV_END_{counter[0]}>"
+        env_replacements.append((
+            pair["begin_start"],
+            pair["begin_end"],
+            begin_placeholder,
+            working[pair["begin_start"]:pair["begin_end"]],
+        ))
+        env_replacements.append((
+            pair["end_start"],
+            pair["end_end"],
+            end_placeholder,
+            working[pair["end_start"]:pair["end_end"]],
+        ))
+
+    if env_replacements:
+        working = _apply_replacements(working, env_replacements)
+
+    return working, env_map
+
+
+def restore_env_blocks(text: str, env_map: Dict[str, str]) -> str:
+    """
+    Restore environment placeholders back to original text.
+    Strict mode:
+      - every placeholder from env_map must appear exactly once
+      - no ENV placeholder residual may remain after restoration
+    """
+    if not text or not env_map:
+        return text
+
+    restored = text
+    missing: List[str] = []
+    duplicated: List[str] = []
+    for placeholder, original in sorted(env_map.items(), key=lambda item: len(item[0]), reverse=True):
+        count = restored.count(placeholder)
+        if count == 0:
+            missing.append(placeholder)
+            continue
+        if count > 1:
+            duplicated.append(placeholder)
+        restored = restored.replace(placeholder, original)
+
+    residual = _ENV_PLACEHOLDER_RE.findall(restored)
+    if missing or duplicated or residual:
+        details = []
+        if missing:
+            details.append(f"missing={missing[:5]}")
+        if duplicated:
+            details.append(f"duplicated={duplicated[:5]}")
+        if residual:
+            details.append(f"residual={residual[:5]}")
+        raise ValueError("env_restore_failed: " + "; ".join(details))
+
+    return restored
+
+
+def _is_escaped_at(text: str, index: int) -> bool:
+    """Return True when text[index] is escaped by an odd number of backslashes."""
+    backslashes = 0
+    i = index - 1
+    while i >= 0 and text[i] == "\\":
+        backslashes += 1
+        i -= 1
+    return (backslashes % 2) == 1
+
+
+def mask_eqnarray_comments_strict(text: str) -> Tuple[str, Dict[str, str]]:
+    """
+    Replace unescaped `%...<EOL>` comments with immutable placeholders.
+
+    The masking is line-local, so comment placeholders never cross line boundaries.
+    """
+    if not text or "%" not in text:
+        return text, {}
+
+    mapping: Dict[str, str] = {}
+    counter = 0
+    out: List[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "%" and not _is_escaped_at(text, i):
+            j = i + 1
+            while j < n and text[j] not in ("\n", "\r"):
+                j += 1
+            counter += 1
+            ph = f"<EQCOMMENT_{counter}>"
+            mapping[ph] = text[i:j]
+            out.append(ph)
+            i = j
+            continue
+        out.append(ch)
+        i += 1
+
+    return "".join(out), mapping
+
+
+def restore_eqnarray_comments_strict(text: str, comment_map: Dict[str, str]) -> str:
+    """Restore `%` comments that were masked by `mask_eqnarray_comments_strict`."""
+    if not text or not comment_map:
+        return text
+
+    restored = text
+    for placeholder, original in sorted(comment_map.items(), key=lambda x: len(x[0]), reverse=True):
+        restored = restored.replace(placeholder, original)
+    return restored
+
+
+def split_eqnarray_rows_strict(body: str) -> Tuple[List[str], List[str]]:
+    """
+    Split eqnarray body by row delimiters.
+
+    Delimiter token is `\\\\` plus optional `*` and optional `[ ... ]` suffix.
+    The delimiter is preserved verbatim for deterministic rebuild.
+    """
+    if body is None:
+        return [""], []
+    if body == "":
+        return [""], []
+
+    rows: List[str] = []
+    separators: List[str] = []
+    start = 0
+    i = 0
+    n = len(body)
+
+    while i < n - 1:
+        if body[i] == "\\" and body[i + 1] == "\\" and not _is_escaped_at(body, i):
+            j = i + 2
+            if j < n and body[j] == "*":
+                j += 1
+            if j < n and body[j] == "[":
+                depth = 1
+                j += 1
+                while j < n and depth > 0:
+                    if body[j] == "[" and not _is_escaped_at(body, j):
+                        depth += 1
+                    elif body[j] == "]" and not _is_escaped_at(body, j):
+                        depth -= 1
+                    j += 1
+            rows.append(body[start:i])
+            separators.append(body[i:j])
+            start = j
+            i = j
+            continue
+        i += 1
+
+    rows.append(body[start:])
+    return rows, separators
+
+
+def rebuild_eqnarray_rows_strict(rows: List[str], separators: List[str]) -> str:
+    """Rebuild eqnarray body from row list and preserved delimiter list."""
+    if not rows:
+        return ""
+    if len(rows) != len(separators) + 1:
+        raise ValueError(
+            f"eqnarray_row_rebuild_mismatch: rows={len(rows)} separators={len(separators)}"
+        )
+    parts: List[str] = [rows[0]]
+    for i, sep in enumerate(separators):
+        parts.append(sep)
+        parts.append(rows[i + 1])
+    return "".join(parts)
+
+
+_EQNARRAY_STRONG_MATH_RE = re.compile(
+    r'(?<!\\)&'
+    r'|\\(?:frac|sum|int|left|right)(?![A-Za-z])'
+    r'|\\begin\{'
+    r'|\\end\{'
+    r'|(?<!\\)\$'
+    r'|\\\('
+    r'|\\\)'
+    r'|\\\['
+    r'|\\\]'
+)
+_NATURAL_LANG_TOKEN_RE = re.compile(r'[A-Za-z]{3,}|[\u4e00-\u9fff]{2,}')
+
+
+def classify_eqnarray_row_kind(row_text: str) -> str:
+    """
+    Classify a split eqnarray row as `math` or `text`.
+
+    Rule (conservative):
+    - any strong-math signal => math
+    - otherwise must contain natural language token => text
+    - else => math
+    """
+    if not row_text:
+        return "math"
+    probe = _EQCOMMENT_PLACEHOLDER_RE.sub(" ", row_text)
+    probe = _ANY_PLACEHOLDER_RE.sub(" ", probe)
+    if _EQNARRAY_STRONG_MATH_RE.search(probe):
+        return "math"
+    if _NATURAL_LANG_TOKEN_RE.search(probe):
+        return "text"
+    return "math"
+
+
+_LIST_ENV_RE = regex.compile(
+    r'(?s)\A(?P<head>\s*\\begin\{(?P<name>enumerate\*?|itemize\*?)\})'
+    r'(?P<body>.*)'
+    r'(?P<tail>\\end\{(?P=name)\}\s*)\Z'
+)
+_ITEM_CMD_RE = regex.compile(
+    r'\\item(?:\s*\[(?:[^\[\]]|\[[^\[\]]*\])*\])?'
+)
+
+
+def anchor_list_items_in_env_body(env_text: str) -> Tuple[str, Dict[str, str], List[str]]:
+    """
+    Anchor `\\item` commands only inside enumerate/itemize body.
+
+    Returns:
+      - anchored env text
+      - token->original item-command mapping
+      - expected token sequence
+    """
+    if not env_text:
+        return env_text, {}, []
+
+    m = _LIST_ENV_RE.match(env_text)
+    if not m:
+        return env_text, {}, []
+
+    item_map: Dict[str, str] = {}
+    tokens: List[str] = []
+    counter = [0]
+
+    def _replace(match: re.Match) -> str:
+        counter[0] += 1
+        token = f"<ITEM_{counter[0]}>"
+        item_map[token] = match.group(0)
+        tokens.append(token)
+        return token
+
+    body = m.group("body")
+    body_anchored = _ITEM_CMD_RE.sub(_replace, body)
+    anchored = f"{m.group('head')}{body_anchored}{m.group('tail')}"
+    return anchored, item_map, tokens
+
+
+def restore_list_items_in_env_body(text: str, item_map: Dict[str, str]) -> str:
+    """Restore anchored `<ITEM_n>` tokens back to their original `\\item` command strings."""
+    if not text or not item_map:
+        return text
+    restored = text
+    for token, original in sorted(item_map.items(), key=lambda x: len(x[0]), reverse=True):
+        restored = restored.replace(token, original)
+    return restored
+
+
+def validate_immutable_placeholder_sequence(
+    text: str,
+    expected_tokens: List[str],
+    token_kind: str,
+) -> Optional[str]:
+    """
+    Validate immutable placeholder count+order exactly match expectation.
+
+    Returns `None` when valid, otherwise an error string.
+    """
+    kind = (token_kind or "").upper()
+    if kind == "ITEM":
+        found = _ITEM_PLACEHOLDER_RE.findall(text or "")
+        error_key = "item_anchor_sequence_mismatch"
+    elif kind == "EQROW":
+        found = _EQROW_PLACEHOLDER_RE.findall(text or "")
+        error_key = "eqrow_placeholder_sequence_mismatch"
+    else:
+        generic_re = re.compile(rf'<{re.escape(kind)}_[^>]+>')
+        found = generic_re.findall(text or "")
+        error_key = "immutable_placeholder_sequence_mismatch"
+
+    if list(expected_tokens or []) == list(found or []):
+        return None
+
+    return f"{error_key}: expected {list(expected_tokens or [])}, found {list(found or [])}"
+
+# Pattern: bare _ that is NOT already escaped (i.e., not preceded by \)
+_BARE_UNDERSCORE_RE = re.compile(r'(?<!\\)_')
+
+
+def isolate_inline_math(text: str) -> tuple:
+    """
+    Phase 1.1 — Replace inline math spans with immutable placeholders.
+
+    Replaces:
+      - ``$...$``  (single-line only, not ``$$...$$``)
+      - ``\\(...\\)``
+
+    with sequentially numbered placeholders of the form ``<INLMATH_01>``.
+
+    Args:
+        text: Raw LaTeX text to process.
+
+    Returns:
+        ``(processed_text, math_map)`` where *math_map* maps each placeholder
+        string back to the original math span so it can be restored later.
+    """
+    if not text:
+        return text, {}
+
+    math_map: dict = {}
+    counter = [0]
+
+    def _replace(original_span: str) -> str:
+        counter[0] += 1
+        placeholder = f"<INLMATH_{counter[0]:02d}>"
+        math_map[placeholder] = original_span
+        return placeholder
+
+    # Replace \(...\) first (they're unambiguous)
+    result = _INLINE_PAREN_RE.sub(lambda m: _replace(m.group(0)), text)
+    # Then replace $...$  (single-line only)
+    result = _INLINE_DOLLAR_RE.sub(lambda m: _replace(m.group(0)), result)
+
+    return result, math_map
+
+
+def restore_inline_math(text: str, math_map: dict) -> str:
+    """
+    Phase 1.1 — Restore inline math placeholders to their original spans.
+
+    Args:
+        text:     Text containing ``<INLMATH_NN>`` placeholders.
+        math_map: The ``{placeholder: original}`` dict from :func:`isolate_inline_math`.
+
+    Returns:
+        Text with all placeholders replaced by the original math content.
+    """
+    if not text or not math_map:
+        return text
+
+    result = text
+    for placeholder, original in math_map.items():
+        result = result.replace(placeholder, original)
+    return result
+
+
+def _extract_identifier_like_arg_spans(text: str) -> List[Tuple[int, int]]:
+    """
+    Extract first-level ``{...}`` spans for identifier-like command arguments.
+
+    These are cross-reference / citation keys and must stay byte-stable.
+    """
+    if not text:
+        return []
+
+    spans: List[Tuple[int, int]] = []
+    for m in _IDENTIFIER_COMMAND_HEAD_RE.finditer(text):
+        brace_start = m.end() - 1
+        depth = 0
+        i = brace_start
+        while i < len(text):
+            ch = text[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    spans.append((brace_start + 1, i))
+                    break
+            i += 1
+    return spans
+
+
+def preprocess_risky_tokens(
+    text: str,
+    math_map: dict,
+    skip_spans: Optional[List[Tuple[int, int]]] = None,
+) -> str:
+    """
+    Phase 1.2 — Pre-escape bare ``_`` outside math and placeholder regions.
+
+    After :func:`isolate_inline_math` has been called, any remaining bare ``_``
+    in *text* is outside a math environment and is therefore a risky token that
+    will trigger a LaTeX text-mode error.  This function deterministically
+    escapes them to ``\\_``.
+
+    Skips:
+      - Characters inside ``<INLMATH_NN>`` placeholders (already isolated).
+      - Characters inside ``<PLACEHOLDER_...>`` or ``<PROTECTED_CMD_...>`` tags.
+      - Characters that are already escaped (``\\_``).
+
+    Args:
+        text:      Text after inline-math isolation (contains ``<INLMATH_NN>`` tags).
+        math_map:  The math map returned by :func:`isolate_inline_math`
+                   (retained for API compatibility).
+        skip_spans: Optional extra ``[(start, end), ...]`` spans to skip.
+
+    Returns:
+        Text with bare ``_`` outside math/placeholder regions escaped to ``\\_``.
+    """
+    if not text or "_" not in text:
+        return text
+
+    # Build a set of character positions that are inside skip-tags
+    skip_positions: set = set()
+    for m in _SKIP_TAG_RE.finditer(text):
+        skip_positions.update(range(m.start(), m.end()))
+    for s, e in _extract_identifier_like_arg_spans(text):
+        skip_positions.update(range(s, e))
+    for s, e in (skip_spans or []):
+        skip_positions.update(range(s, e))
+
+    result_chars = list(text)
+    for m in _BARE_UNDERSCORE_RE.finditer(text):
+        pos = m.start()
+        if pos in skip_positions:
+            continue
+        # Already escaped: the character at pos-1 is backslash
+        # _BARE_UNDERSCORE_RE already uses (?<!\\) so this is handled by the regex.
+        result_chars[pos] = r"\_"
+
+    return "".join(result_chars)

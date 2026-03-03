@@ -22,6 +22,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     COMPLETED_WITH_WARNINGS = "completed_with_warnings"
     FAILED_COMPILATION = "failed_compilation"
+    STRUCTURE_INVALID = "structure_invalid"
     FAILED = "failed"
 
 

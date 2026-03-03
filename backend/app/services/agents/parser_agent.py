@@ -53,6 +53,8 @@ VERBATIM_ENVS: frozenset = frozenset({
     'tikzpicture', 'pgfpicture',
     # Algorithm pseudocode (preserve structure)
     'algorithm', 'algorithm2e', 'algorithmic', 'algorithmicx',
+    # Theorem-like structured blocks (preserve as Level-A)
+    'theorem', 'theorem*', 'lemma', 'lemma*', 'proof', 'proof*', 'definition', 'definition*',
 })
 
 

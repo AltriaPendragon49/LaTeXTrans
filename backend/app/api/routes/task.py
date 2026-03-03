@@ -28,6 +28,10 @@ class TaskStatusResponse(BaseModel):
     message: str
     error: Optional[str] = None
     warnings: Optional[str] = None
+    failure_reason_code: Optional[str] = None
+    failure_class: Optional[str] = None
+    guard_phase: Optional[str] = None
+    replay_bundle_ref: Optional[str] = None
     source_available: bool
     created_at: str
     completed_at: Optional[str] = None
@@ -67,6 +71,10 @@ async def get_task_status(task_id: str):
         message=task["message"],
         error=task.get("error"),
         warnings=task.get("warnings"),
+        failure_reason_code=task.get("failure_reason_code"),
+        failure_class=task.get("failure_class"),
+        guard_phase=task.get("guard_phase"),
+        replay_bundle_ref=task.get("replay_bundle_ref"),
         source_available=task["source_available"],
         created_at=task["created_at"],
         completed_at=task.get("completed_at"),
@@ -180,6 +188,10 @@ async def stream_task_status(task_id: str):
                         "message": current_message,
                         "error": task.get("error"),
                         "warnings": task.get("warnings"),
+                        "failure_reason_code": task.get("failure_reason_code"),
+                        "failure_class": task.get("failure_class"),
+                        "guard_phase": task.get("guard_phase"),
+                        "replay_bundle_ref": task.get("replay_bundle_ref"),
                         "source_available": task.get("source_available", False)
                     }
                     yield f"event: update\ndata: {json.dumps(event_data)}\n\n"
@@ -189,13 +201,17 @@ async def stream_task_status(task_id: str):
                     heartbeat_counter = 0  # Reset heartbeat after update
                 
                 # Check for terminal states
-                if current_status in ("completed", "completed_with_warnings", "failed_compilation", "failed"):
+                if current_status in ("completed", "completed_with_warnings", "failed_compilation", "structure_invalid", "failed"):
                     event_data = {
                         "type": "complete",
                         "task_id": task_id,
                         "status": current_status,
                         "progress": current_progress,
-                        "message": current_message
+                        "message": current_message,
+                        "failure_reason_code": task.get("failure_reason_code"),
+                        "failure_class": task.get("failure_class"),
+                        "guard_phase": task.get("guard_phase"),
+                        "replay_bundle_ref": task.get("replay_bundle_ref"),
                     }
                     yield f"event: complete\ndata: {json.dumps(event_data)}\n\n"
                     break

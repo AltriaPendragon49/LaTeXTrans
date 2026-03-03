@@ -154,7 +154,8 @@ class LatexParser:
             'figure', 'figure*', 'wrapfigure', 'SCfigure', 'tikzpicture', 'CJK', 'scope',
             'tabularx', 'tabulary', 'longtable*', 'sidewaystable', 'table', 'table*', 'tabular', 'tabular*', 'longtable',
             'multline', 'multline*', 'lstlisting', 'tcolorbox', 'thebibliography', 'bibliography', 'bibitem',
-            'algorithm', 'algorithmic', 'algorithmicx', 'algorithm2e', 'algorithmicx*', 'algorithmic*', 'algorithm*'
+            'algorithm', 'algorithmic', 'algorithmicx', 'algorithm2e', 'algorithmicx*', 'algorithmic*', 'algorithm*',
+            'theorem', 'theorem*', 'lemma', 'lemma*', 'proof', 'proof*', 'definition', 'definition*'
         ]
         
         while True:
@@ -403,6 +404,8 @@ class LatexParser:
         Split sections that exceed max_tokens into smaller sub-chunks based on natural boundaries
         (paragraphs first, then sentences) to prevent LLM truncation.
         Tracks previous_context to maintain semantic continuity across LLM calls.
+        Marks chunks that still exceed `max_tokens` after boundary search as
+        `oversize_no_safe_boundary=True` for deterministic source-pass-through gating.
         """
         try:
             enc = tiktoken.get_encoding("o200k_base")
@@ -469,6 +472,10 @@ class LatexParser:
                     new_section["content"] = current_chunk
                     if previous_context:
                         new_section["previous_context"] = previous_context
+                    chunk_tokens = len(enc.encode(current_chunk))
+                    new_section["chunk_token_count"] = chunk_tokens
+                    if chunk_tokens > max_tokens:
+                        new_section["oversize_no_safe_boundary"] = True
                         
                     chunked_sections.append(new_section)
                     sub_chunk_idx += 1
@@ -495,6 +502,10 @@ class LatexParser:
                 new_section["content"] = current_chunk
                 if previous_context:
                     new_section["previous_context"] = previous_context
+                chunk_tokens = len(enc.encode(current_chunk))
+                new_section["chunk_token_count"] = chunk_tokens
+                if chunk_tokens > max_tokens:
+                    new_section["oversize_no_safe_boundary"] = True
                 chunked_sections.append(new_section)
                 
         self.sections_json = chunked_sections

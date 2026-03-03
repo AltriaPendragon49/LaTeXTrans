@@ -1,6 +1,6 @@
-from typing import Dict, Any, List, Optional, Callable, Tuple
+﻿from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
-from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ValidatorAgent
+from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ERROR_TYPE_C1, ERROR_TYPE_C2, ValidatorAgent
 from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
@@ -18,12 +18,57 @@ import time
 import pandas as pd
 import logging
 import json
+from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from collections import Counter
+try:
+    from backend.app.services.latex.token_estimator import (
+        estimate_tokens_v1,
+        safe_limit_v1,
+        SAFE_LIMIT_DIGEST_V1,
+        SAFE_LIMIT_ID_V1,
+        TOKEN_ESTIMATOR_DIGEST_V1,
+        TOKEN_ESTIMATOR_ID_V1,
+    )
+except Exception:
+    # Fallback to keep runtime deterministic even if the helper module is unavailable.
+    from hashlib import sha256
+    from math import ceil, floor
+
+    TOKEN_ESTIMATOR_ID_V1 = "estimate_tokens_v1"
+    SAFE_LIMIT_ID_V1 = "safe_limit_v1"
+    TOKEN_ESTIMATOR_DIGEST_V1 = sha256(
+        f"{TOKEN_ESTIMATOR_ID_V1}:ceil(len(utf8_bytes)/3)".encode("utf-8")
+    ).hexdigest()
+    SAFE_LIMIT_DIGEST_V1 = sha256(
+        f"{SAFE_LIMIT_ID_V1}:max(1, floor(model_context_tokens*0.7)-prompt_reserve_tokens)".encode("utf-8")
+    ).hexdigest()
+
+    def estimate_tokens_v1(text: str) -> int:
+        if not text:
+            return 0
+        return int(ceil(len(text.encode("utf-8")) / 3.0))
+
+    def safe_limit_v1(model_context_tokens: int, prompt_reserve_tokens: int) -> int:
+        ctx = max(int(model_context_tokens or 0), 0)
+        reserve = max(int(prompt_reserve_tokens or 0), 0)
+        return max(1, int(floor(ctx * 0.7) - reserve))
 
 logger = logging.getLogger(__name__)
 
 
 class TranslatorAgent(BaseToolAgent):
+    STATUS_TRANSLATED = "translated"
+    STATUS_TRANSLATED_AFTER_NOOP_RETRY = "translated_after_noop_retry"
+    STATUS_FALLBACK_SOURCE_COMPILE_FIRST = "fallback_source_compile_first"
+    STATUS_FALLBACK_SOURCE_API_FAILURE = "fallback_source_api_failure"
+    STATUS_SOURCE_PASS_THROUGH = "source_pass_through"
+    STATUS_MATH_PRESERVED = "math_preserved"
+    FALLBACK_SUBTYPE_NONE = "none"
+    FALLBACK_SUBTYPE_MATH_ENV = "math_env_fallback"
+    FALLBACK_SUBTYPE_LIST_ENV = "list_env_fallback"
+    FALLBACK_SUBTYPE_OTHER_ENV = "other_env_fallback"
+
     @staticmethod
     def _coerce_bool(value: Any, default: bool = False) -> bool:
         """Safely coerce env/config style values to bool."""
@@ -64,7 +109,7 @@ class TranslatorAgent(BaseToolAgent):
         self.errors_report = errors_report if errors_report is not None else []
         self.trans_mode = trans_mode if trans_mode is not None else 0
         self.generate_terminology = generate_terminology
-        self.terminology_table = []  # 存储术语对: [(源术语, 译术语), ...]
+        self.terminology_table = []  # 瀛樺偍鏈瀵? [(婧愭湳璇? 璇戞湳璇?, ...]
         self.term_dict = {}
         self.summary = ''
         self.prev_text = ''
@@ -84,6 +129,316 @@ class TranslatorAgent(BaseToolAgent):
         self.structural_fallback_ratio = 0.0
         self.structural_fallback_warning: Optional[str] = None
         self._structural_validator: Optional[ValidatorAgent] = None
+        self._section_retry_counts: Dict[str, int] = {}
+        self._c1_retried_parts: set[str] = set()
+        self._api_fallback_parts: Dict[str, str] = {}
+        self.c1_retry_enforced_once = False
+        self.structural_fallback_parts: List[str] = []
+        self.noop_sections: List[str] = []
+        self._oversize_downgrade_events: List[Dict[str, Any]] = []
+        (
+            self.model_context_tokens,
+            self.prompt_reserve_tokens,
+            self.safe_input_limit,
+        ) = self._resolve_safe_limit_config()
+
+    @staticmethod
+    def _part_retry_key(part_type: str, identifier: str) -> str:
+        return f"part:{part_type}:{identifier}"
+
+    @staticmethod
+    def _resolve_positive_int(value: Any, default: int) -> int:
+        try:
+            parsed = int(value)
+            return parsed if parsed > 0 else int(default)
+        except (TypeError, ValueError):
+            return int(default)
+
+    def _resolve_safe_limit_config(self) -> Tuple[int, int, int]:
+        llm_cfg = self.config.get("llm_config", {}) or {}
+        default_context = 128000
+        default_reserve = 4096
+
+        model_context_tokens = self._resolve_positive_int(
+            self.config.get("model_context_tokens")
+            or self.config.get("llm_context_tokens")
+            or llm_cfg.get("model_context_tokens")
+            or llm_cfg.get("context_window")
+            or llm_cfg.get("max_context_tokens"),
+            default_context,
+        )
+        prompt_reserve_tokens = self._resolve_positive_int(
+            self.config.get("prompt_reserve_tokens")
+            or self.config.get("llm_prompt_reserve_tokens")
+            or llm_cfg.get("prompt_reserve_tokens")
+            or llm_cfg.get("reserve_tokens"),
+            default_reserve,
+        )
+        safe_input_limit = safe_limit_v1(model_context_tokens, prompt_reserve_tokens)
+        return model_context_tokens, prompt_reserve_tokens, safe_input_limit
+
+    @staticmethod
+    def _extract_chunk_index(section_id: str) -> Optional[int]:
+        if not section_id:
+            return None
+        m = re.search(r"_chunk_(\d+)$", section_id)
+        if not m:
+            return None
+        try:
+            return int(m.group(1))
+        except (TypeError, ValueError):
+            return None
+
+    def _evaluate_oversize_downgrade(self, section: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not section.get("oversize_no_safe_boundary"):
+            return None
+        content = section.get("content", "") or ""
+        estimated_tokens = estimate_tokens_v1(content)
+        if estimated_tokens <= self.safe_input_limit:
+            return None
+
+        section_id = str(section.get("section", ""))
+        return {
+            "section_id": section_id,
+            "chunk_id": self._extract_chunk_index(section_id),
+            "strategy": "source_pass_through",
+            "reason": "oversize_no_safe_boundary",
+            "token_estimator_id": TOKEN_ESTIMATOR_ID_V1,
+            "token_estimator_digest": TOKEN_ESTIMATOR_DIGEST_V1,
+            "estimated_tokens": estimated_tokens,
+            "safe_limit_id": SAFE_LIMIT_ID_V1,
+            "safe_limit_digest": SAFE_LIMIT_DIGEST_V1,
+            "model_context_tokens": self.model_context_tokens,
+            "prompt_reserve_tokens": self.prompt_reserve_tokens,
+            "safe_input_limit": self.safe_input_limit,
+        }
+
+    def _record_oversize_downgrade(self, metadata: Dict[str, Any]) -> None:
+        if not metadata:
+            return
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": "oversize_chunk_downgraded",
+            **metadata,
+        }
+        self._oversize_downgrade_events.append(event)
+
+    def _flush_oversize_downgrade_events(self) -> None:
+        if not self._oversize_downgrade_events or not self.output_dir:
+            return
+
+        output_dir = Path(self.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        events = list(self._oversize_downgrade_events)
+        self._oversize_downgrade_events.clear()
+
+        task_log_path = output_dir / "task_log.json"
+        task_logs: List[Dict[str, Any]] = []
+        if task_log_path.exists():
+            try:
+                loaded = json.loads(task_log_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    task_logs = loaded
+            except Exception as exc:
+                logger.warning("Failed to load existing task log for oversize events: %s", exc)
+        task_logs.extend(events)
+        try:
+            task_log_path.write_text(
+                json.dumps(task_logs, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist oversize task log events: %s", exc)
+
+        replay_path = output_dir / "replay_bundle.json"
+        replay_bundle: Dict[str, Any] = {}
+        if replay_path.exists():
+            try:
+                loaded = json.loads(replay_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    replay_bundle = loaded
+            except Exception as exc:
+                logger.warning("Failed to load replay bundle for oversize events: %s", exc)
+
+        replay_bundle.setdefault("replay_version", "v1")
+        replay_bundle.setdefault("token_estimator_id", TOKEN_ESTIMATOR_ID_V1)
+        replay_bundle.setdefault("token_estimator_digest", TOKEN_ESTIMATOR_DIGEST_V1)
+        replay_bundle.setdefault("safe_limit_id", SAFE_LIMIT_ID_V1)
+        replay_bundle.setdefault("safe_limit_digest", SAFE_LIMIT_DIGEST_V1)
+        replay_bundle.setdefault("model_context_tokens", self.model_context_tokens)
+        replay_bundle.setdefault("prompt_reserve_tokens", self.prompt_reserve_tokens)
+        replay_bundle.setdefault("safe_input_limit", self.safe_input_limit)
+        replay_bundle.setdefault("oversize_chunk_downgrades", [])
+        if isinstance(replay_bundle["oversize_chunk_downgrades"], list):
+            replay_bundle["oversize_chunk_downgrades"].extend(events)
+        else:
+            replay_bundle["oversize_chunk_downgrades"] = list(events)
+        try:
+            replay_path.write_text(
+                json.dumps(replay_bundle, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist replay bundle oversize events: %s", exc)
+
+    def _mark_api_fallback(self, part_type: str, identifier: str, reason: str) -> None:
+        key = self._part_retry_key(part_type, identifier)
+        self._api_fallback_parts[key] = reason
+
+    def _clear_api_fallback(self, part_type: str, identifier: str) -> None:
+        key = self._part_retry_key(part_type, identifier)
+        self._api_fallback_parts.pop(key, None)
+
+    def _record_noop_section(self, section_id: str) -> None:
+        if section_id not in self.noop_sections:
+            self.noop_sections.append(section_id)
+
+    def _sync_section_retry_count(self, section_id: str, section: Dict[str, Any]) -> None:
+        if section_id not in self._section_retry_counts:
+            raw = section.get("translation_retry_count", 0)
+            try:
+                self._section_retry_counts[section_id] = int(raw or 0)
+            except (TypeError, ValueError):
+                self._section_retry_counts[section_id] = 0
+
+    def _increment_section_retry_count(self, section_id: str, delta: int = 1) -> None:
+        current = int(self._section_retry_counts.get(section_id, 0) or 0)
+        self._section_retry_counts[section_id] = current + max(delta, 0)
+
+    def _update_section_metadata(
+        self,
+        section: Dict[str, Any],
+        *,
+        status: Optional[str] = None,
+        no_op_detected: Optional[bool] = None,
+        fallback_reason: Optional[str] = None,
+    ) -> None:
+        section_id = str(section.get("section", ""))
+        if not section_id:
+            return
+        self._sync_section_retry_count(section_id, section)
+        section["translation_retry_count"] = int(self._section_retry_counts.get(section_id, 0) or 0)
+        if status:
+            section["translation_status"] = status
+        if no_op_detected is not None:
+            section["no_op_detected"] = bool(no_op_detected)
+        if fallback_reason:
+            section["fallback_reason"] = fallback_reason
+        elif status in {self.STATUS_TRANSLATED, self.STATUS_TRANSLATED_AFTER_NOOP_RETRY}:
+            section.pop("fallback_reason", None)
+
+    def _update_env_metadata(
+        self,
+        env: Dict[str, Any],
+        *,
+        status: Optional[str] = None,
+        fallback_reason: Optional[str] = None,
+        fallback_subtype: Optional[str] = None,
+        row_fallback_count: Optional[int] = None,
+    ) -> None:
+        if status:
+            env["translation_status"] = status
+        if fallback_reason:
+            env["fallback_reason"] = fallback_reason
+        elif status in {self.STATUS_TRANSLATED, self.STATUS_MATH_PRESERVED}:
+            env.pop("fallback_reason", None)
+        if fallback_subtype is not None:
+            env["fallback_subtype"] = fallback_subtype
+        if row_fallback_count is not None:
+            env["row_fallback_count"] = max(int(row_fallback_count), 0)
+        elif "row_fallback_count" not in env:
+            env["row_fallback_count"] = 0
+
+    @staticmethod
+    def _normalize_env_name(env_name: str) -> str:
+        return (env_name or "").strip().lower()
+
+    def _infer_env_fallback_subtype(self, env: Dict[str, Any]) -> str:
+        env_name = self._normalize_env_name(str(env.get("env_name", "")))
+        if env_name in {"eqnarray", "eqnarray*"}:
+            return self.FALLBACK_SUBTYPE_MATH_ENV
+        if env_name in {"enumerate", "enumerate*", "itemize", "itemize*"}:
+            return self.FALLBACK_SUBTYPE_LIST_ENV
+        return self.FALLBACK_SUBTYPE_OTHER_ENV
+
+    @staticmethod
+    def _env_row_retry_key(placeholder: str, row_idx: int) -> str:
+        return f"part:env:{placeholder}:row:{row_idx}"
+
+    @staticmethod
+    def _is_noop_translation(original: str, translated: str) -> bool:
+        if not original or not translated:
+            return False
+        normalized_src = re.sub(r"\s+", " ", original).strip()
+        normalized_tgt = re.sub(r"\s+", " ", translated).strip()
+        if not normalized_src or not normalized_tgt:
+            return False
+        similarity = SequenceMatcher(None, normalized_src, normalized_tgt).ratio()
+        cjk_count = len(re.findall(r"[\u4e00-\u9fff]", translated))
+        en_words = len(re.findall(r"\b[A-Za-z]{3,}\b", translated))
+        return similarity >= 0.97 and cjk_count < 16 and en_words >= 80
+
+    def _prepare_llm_payload_text(self, text: str) -> Tuple[str, Dict[str, Any]]:
+        isolated_math_text, math_map = isolate_inline_math(text)
+        isolated_env_text, env_map = isolate_env_blocks(isolated_math_text)
+        masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
+        preprocessed_text = preprocess_risky_tokens(masked_text, math_map)
+        masked_text = preprocessed_text
+        return masked_text, {"math_map": math_map, "env_map": env_map, "mask_mapping": mask_mapping}
+
+    def _restore_llm_output_text(self, raw_text: str, context: Dict[str, Any]) -> str:
+        math_map = context.get("math_map", {}) if context else {}
+        env_map = context.get("env_map", {}) if context else {}
+        mask_mapping = context.get("mask_mapping", {}) if context else {}
+        try:
+            unmasked = unmask_sensitive_commands(raw_text, mask_mapping)
+        except Exception:
+            unmasked = raw_text
+
+        try:
+            env_restored = restore_env_blocks(unmasked, env_map)
+        except Exception as env_exc:
+            logger.warning("LLM env restoration failed: %s", env_exc)
+            env_restored = f"{unmasked}\n<ENV_RESTORE_FAILED>"
+
+        try:
+            return restore_inline_math(env_restored, math_map)
+        except Exception:
+            return env_restored
+
+    def _escape_bare_underscores_in_text_mode(self, text: str) -> str:
+        if not text or "_" not in text:
+            return text
+
+        validator_cls = ValidatorAgent
+        placeholder_spans = validator_cls._extract_placeholder_spans(text)
+        env_placeholder_spans = validator_cls._extract_env_placeholder_spans(text)
+        item_placeholder_spans = validator_cls._extract_item_placeholder_spans(text)
+        eqrow_placeholder_spans = validator_cls._extract_eqrow_placeholder_spans(text)
+        safe_arg_spans = validator_cls._extract_safe_command_arg_spans(text)
+        math_regions = validator_cls._extract_math_regions(text)
+        math_spans = [(s, e) for s, e, _ in math_regions]
+
+        def _in_any_span(index: int, spans: List[tuple]) -> bool:
+            for s, e in spans:
+                if s <= index < e:
+                    return True
+            return False
+
+        return re.sub(
+            r"(?<!\\)_",
+            lambda m: (
+                "_"
+                if _in_any_span(m.start(), placeholder_spans)
+                or _in_any_span(m.start(), env_placeholder_spans)
+                or _in_any_span(m.start(), item_placeholder_spans)
+                or _in_any_span(m.start(), eqrow_placeholder_spans)
+                or _in_any_span(m.start(), safe_arg_spans)
+                or _in_any_span(m.start(), math_spans)
+                else r"\_"
+            ),
+            text,
+        )
 
     async def execute(self, error_retry_count=0, Maxtry=3):
 
@@ -253,6 +608,9 @@ class TranslatorAgent(BaseToolAgent):
             self._save_terminology_table()
             logger.info(f"Terminology table generated with {len(self.terminology_table)} terms")
 
+        # Persist deterministic oversize downgrade evidence for replay and observability.
+        self._flush_oversize_downgrade_events()
+
     def _section_has_translatable_content(self, content: str) -> bool:
         """
         Check if a section (especially section 0) contains translatable text.
@@ -292,7 +650,7 @@ class TranslatorAgent(BaseToolAgent):
         placeholders_cap = re.findall(placeholder_pattern_cap, section["content"])
         placeholders_env = re.findall(placeholder_pattern_env, section["content"])
 
-        # ── Phase 1: Translate section body ──────────────────────────────────
+        # 鈹€鈹€ Phase 1: Translate section body 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         # Section -1 is LaTeX preamble, never translate.
         # Section 0 may contain main body text, translate if it has translatable content.
         if section["section"] == "-1":
@@ -305,8 +663,20 @@ class TranslatorAgent(BaseToolAgent):
         else:
             section = await self._translate_section(section, session)
 
-        # ── Phase 2: Translate all environments concurrently ─────────────────
-        # Build a lookup: placeholder → index in envs list.
+        if (
+            section.get("translation_status") == self.STATUS_SOURCE_PASS_THROUGH
+            or (
+                section.get("translated") is False
+                and section.get("downgrade_reason") == "oversize_no_safe_boundary"
+            )
+        ):
+            # Hard constraint: oversize source-pass-through chunks bypass
+            # env/caption secondary translation chains.
+            assert section.get("trans_content", "") == section.get("content", "")
+            return section
+
+        # 鈹€鈹€ Phase 2: Translate all environments concurrently 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Build a lookup: placeholder 鈫?index in envs list.
         env_ph_to_idx = {env["placeholder"]: i for i, env in enumerate(envs)}
 
         async def _translate_env_by_ph(placeholder: str):
@@ -322,7 +692,7 @@ class TranslatorAgent(BaseToolAgent):
         if placeholders_env:
             await asyncio.gather(*[_translate_env_by_ph(ph) for ph in placeholders_env])
 
-        # ── Phase 3: Translate all captions concurrently ─────────────────────
+        # 鈹€鈹€ Phase 3: Translate all captions concurrently 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         # Remove duplicates while preserving order (captions from section + from envs).
         placeholders_cap = list(dict.fromkeys(placeholders_cap))
 
@@ -412,6 +782,7 @@ class TranslatorAgent(BaseToolAgent):
         self.structural_fallback_denominator = 0
         self.structural_fallback_ratio = 0.0
         self.structural_fallback_warning = None
+        self.structural_fallback_parts = []
 
     def _compute_structural_fallback_denominator(self, secs: List[Dict], caps: List[Dict], envs: List[Dict]) -> int:
         sec_count = 0
@@ -480,6 +851,19 @@ class TranslatorAgent(BaseToolAgent):
                 items.append(f"{key}={first_line}")
         return "; ".join(items) if items else "unknown_error"
 
+    @staticmethod
+    def _is_level_a_related_error(error_report: Dict[str, Any]) -> bool:
+        payload = " ".join(
+            str(error_report.get(k, ""))
+            for k in ("command_error", "ph_error", "bracket_error", "math_error", "global_ph_error")
+        ).lower()
+        return (
+            "level_a_env_placeholder_residual" in payload
+            or "env_boundary_mismatch" in payload
+            or "env_restore_failed" in payload
+            or "<env_restore_failed>" in payload
+        )
+
     def _apply_compile_first_fallback(self, part: Dict, error: Dict, recheck_report: Optional[Dict] = None) -> bool:
         """Fallback to source text for a part when structural fix remains unsafe."""
         self.structural_fallback_candidate_count += 1
@@ -505,6 +889,28 @@ class TranslatorAgent(BaseToolAgent):
 
         part["trans_content"] = part.get("content", "")
         self.structural_fallback_count += 1
+        if identifier not in self.structural_fallback_parts:
+            self.structural_fallback_parts.append(identifier)
+
+        if "section" in part:
+            err_type = str(error.get("error_type", "C2"))
+            reason_tag = "math_delimiter_mismatch" if "math_delimiter_mismatch" in reason else "structural_validation_failed"
+            fallback_reason = f"compile_first_structural_fallback:{err_type}_{reason_tag}"
+            self._update_section_metadata(
+                part,
+                status=self.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+                fallback_reason=fallback_reason,
+            )
+        elif "env_name" in part:
+            err_type = str(error.get("error_type", "C2"))
+            fallback_reason = f"compile_first_structural_fallback:{err_type}_{reason}"
+            self._update_env_metadata(
+                part,
+                status=self.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+                fallback_reason=fallback_reason,
+                fallback_subtype=self._infer_env_fallback_subtype(part),
+            )
+
         logger.warning(
             "Compile-first fallback applied for part %s (reason: %s)",
             identifier,
@@ -535,18 +941,25 @@ class TranslatorAgent(BaseToolAgent):
         # Group errors by type for efficient processing
         type_a_errors = []
         type_b_errors = []
-        type_c_errors = []
+        type_c1_errors = []  # C1: local/contained -- 1 LLM retry then deterministic fix
+        type_c2_errors = []  # C2: global/structural -- deterministic fix only, no LLM retry
 
         for error_report in self.errors_report:
             error_type = error_report.get("error_type", ERROR_TYPE_B)
             if error_type == ERROR_TYPE_A:
                 type_a_errors.append(error_report)
-            elif error_type == ERROR_TYPE_C:
-                type_c_errors.append(error_report)
+            elif error_type in (ERROR_TYPE_C1,):
+                type_c1_errors.append(error_report)
+            elif error_type in (ERROR_TYPE_C, ERROR_TYPE_C2):
+                # ERROR_TYPE_C is legacy (pre-subclassification) -- treat as C2
+                type_c2_errors.append(error_report)
             else:
                 type_b_errors.append(error_report)
 
-        logger.info(f"Error classification: A={len(type_a_errors)}, B={len(type_b_errors)}, C={len(type_c_errors)}")
+        logger.info(
+            f"Error classification: A={len(type_a_errors)}, B={len(type_b_errors)}, "
+            f"C1={len(type_c1_errors)}, C2={len(type_c2_errors)}"
+        )
 
         # Process Type A errors: Degradation (keep existing translation, log warning)
         for error in type_a_errors:
@@ -555,10 +968,16 @@ class TranslatorAgent(BaseToolAgent):
             progress_pct = int(100 * completed / total) if total > 0 else 100
             self.update_progress(progress_pct, f"Processed {completed}/{total} (A:degraded)")
 
-        # Process Type C errors: deterministic fix + immediate validation + compile-first fallback
-        for error in type_c_errors:
+        # Process Type C2 errors: deterministic fix only (no LLM retry)
+        for error in type_c2_errors:
             part = self._find_part_by_error(error, secs, caps, envs)
             if part:
+                if self._is_level_a_related_error(error):
+                    self._apply_compile_first_fallback(part, error, recheck_report=error)
+                    completed += 1
+                    progress_pct = int(100 * completed / total) if total > 0 else 100
+                    self.update_progress(progress_pct, f"Processed {completed}/{total} (C2:fallback)")
+                    continue
                 fixed = self._apply_structural_fix(part, error)
                 if fixed:
                     recheck_report: Optional[Dict] = None
@@ -571,12 +990,100 @@ class TranslatorAgent(BaseToolAgent):
                     if recheck_report:
                         self._apply_compile_first_fallback(part, error, recheck_report=recheck_report)
                     else:
-                        logger.info("Type C part fixed and revalidated: %s", error.get("num_or_ph"))
+                        logger.info("Type C2 part fixed and revalidated: %s", error.get("num_or_ph"))
                 else:
-                    logger.warning(f"Type C fix failed, preserving current translation: {error.get('num_or_ph')}")
+                    logger.warning(f"Type C2 fix failed, preserving current translation: {error.get('num_or_ph')}")
             completed += 1
             progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Processed {completed}/{total} (C:fixed)")
+            self.update_progress(progress_pct, f"Processed {completed}/{total} (C2:fixed)")
+
+        # Process Type C1 errors: 1 controlled LLM retry, then deterministic fix
+        async def process_type_c1_error(error_report):
+            """C1: try a single targeted LLM retry with restoration instructions, then fix."""
+            async with sem:
+                if self._is_level_a_related_error(error_report):
+                    part = self._find_part_by_error(error_report, secs, caps, envs)
+                    if part:
+                        self._apply_compile_first_fallback(part, error_report, recheck_report=error_report)
+                    return
+                ph_error = error_report.get("ph_error", "")
+                math_error = error_report.get("math_error", "")
+                restoration_hint = (
+                    "CRITICAL: Restore all LaTeX placeholders and math delimiters exactly as in the source. "
+                )
+                if ph_error:
+                    restoration_hint += f"Missing elements: {ph_error}. "
+                if math_error:
+                    restoration_hint += f"Math issue: {math_error}."
+
+                part_type = error_report["part"]
+                identifier = error_report["num_or_ph"]
+                part_key = self._part_retry_key(part_type, identifier)
+                attempted_llm_retry = False
+
+                # Enforce "max 1 LLM retry per part" for C1 end-to-end.
+                if part_key in self._c1_retried_parts:
+                    self.c1_retry_enforced_once = True
+                    logger.info("C1 retry already consumed for %s, skipping additional LLM retry", part_key)
+                else:
+                    # Reserve retry slot before awaiting to avoid duplicate retries under concurrency.
+                    self._c1_retried_parts.add(part_key)
+                    retried = False
+                    if part_type == "sec":
+                        for i, sec in enumerate(secs):
+                            if identifier == sec["section"]:
+                                secs[i] = await self._translate_section(
+                                    section=sec, error_message=restoration_hint, session=session
+                                )
+                                retried = True
+                                break
+                    elif part_type == "env":
+                        for i, env in enumerate(envs):
+                            if identifier == env["placeholder"]:
+                                envs[i] = await self._translate_env(
+                                    env=env, error_message=restoration_hint, session=session
+                                )
+                                retried = True
+                                break
+                    elif part_type == "cap":
+                        for i, cap in enumerate(caps):
+                            if identifier == cap["placeholder"]:
+                                caps[i] = await self._translate_caption(
+                                    caption=cap, error_message=restoration_hint, session=session
+                                )
+                                retried = True
+                                break
+
+                    if not retried:
+                        self._c1_retried_parts.discard(part_key)
+                        logger.warning("C1 retry: part not found: %s", identifier)
+                        return
+                    attempted_llm_retry = True
+
+                # After the LLM retry, apply deterministic fix as safety net
+                part = self._find_part_by_error(error_report, secs, caps, envs)
+                if part:
+                    recheck_report = self._validate_part_after_structural_fix(part)
+                    if recheck_report:
+                        # Still broken after retry -> apply structural fix
+                        self._apply_structural_fix(part, error_report)
+                        recheck2 = self._validate_part_after_structural_fix(part)
+                        if recheck2:
+                            self._apply_compile_first_fallback(part, error_report, recheck_report=recheck2)
+                        else:
+                            logger.info("C1 part fixed after retry+structural: %s", identifier)
+                    else:
+                        if attempted_llm_retry:
+                            logger.info("C1 part resolved by LLM retry: %s", identifier)
+                        else:
+                            logger.info("C1 part resolved without additional LLM retry: %s", identifier)
+
+        tasks_c1 = [process_type_c1_error(error) for error in type_c1_errors]
+        for future in asyncio.as_completed(tasks_c1):
+            await future
+            completed += 1
+            progress_pct = int(100 * completed / total) if total > 0 else 100
+            self.update_progress(progress_pct, f"Processed {completed}/{total} (C1:retry+fix)")
 
         # Process Type B errors: Translation retry (existing logic)
         async def process_type_b_error(error_report):
@@ -658,8 +1165,8 @@ class TranslatorAgent(BaseToolAgent):
         Apply algorithmic fix for Type C structural consistency errors.
 
         Strategies:
-        1. Token补齐: Restore missing LaTeX commands from original
-        2. Placeholder恢复: Restore missing placeholders from original
+        1. Token琛ラ綈: Restore missing LaTeX commands from original
+        2. Placeholder鎭㈠: Restore missing placeholders from original
         3. Math delimiter repair: Fix missing/extra $ delimiters using original as reference
         4. Fallback: Keep existing translation if available, else use original
 
@@ -680,7 +1187,10 @@ class TranslatorAgent(BaseToolAgent):
             # Strategy 2: Restore missing placeholders
             fixed = self._fix_missing_placeholders(original, fixed)
 
-            # Strategy 3: Repair math-mode delimiters ($ / $$)
+            # Strategy 3: Escape bare underscores in text mode first.
+            fixed = self._escape_bare_underscores_in_text_mode(fixed)
+
+            # Strategy 4: Repair math-mode delimiters ($ / $$)
             # Triggered when the error report contains a math_delimiter_mismatch.
             math_error = error.get("math_error", "") or ""
             if "math_delimiter_mismatch" in math_error:
@@ -821,89 +1331,170 @@ class TranslatorAgent(BaseToolAgent):
         return translated
 
     async def _translate_section(self, section: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
-        
+
         transed_section = section.copy()
-        section_num = section["section"]
+        section_num = str(section.get("section", ""))
         previous_context = section.get("previous_context")
-        
-        async def fetch_translation(use_context: bool) -> str:
+        self._sync_section_retry_count(section_num, transed_section)
+
+        if section.get("oversize_no_safe_boundary"):
+            # Persist deterministic gate inputs for audit/replay even when the
+            # section does not trigger downgrade.
+            estimated_tokens = estimate_tokens_v1(section.get("content", "") or "")
+            transed_section["token_estimator_id"] = TOKEN_ESTIMATOR_ID_V1
+            transed_section["token_estimator_digest"] = TOKEN_ESTIMATOR_DIGEST_V1
+            transed_section["estimated_tokens"] = int(estimated_tokens)
+            transed_section["safe_limit_id"] = SAFE_LIMIT_ID_V1
+            transed_section["safe_limit_digest"] = SAFE_LIMIT_DIGEST_V1
+            transed_section["model_context_tokens"] = int(self.model_context_tokens)
+            transed_section["prompt_reserve_tokens"] = int(self.prompt_reserve_tokens)
+            transed_section["safe_input_limit"] = int(self.safe_input_limit)
+
+        oversize_downgrade = self._evaluate_oversize_downgrade(section)
+        if oversize_downgrade:
+            transed_section["trans_content"] = section.get("content", "")
+            transed_section["translated"] = False
+            transed_section["downgrade_reason"] = "oversize_no_safe_boundary"
+            transed_section["oversize_downgrade_strategy"] = "source_pass_through"
+            transed_section["oversize_no_safe_boundary"] = True
+            transed_section["token_estimator_id"] = TOKEN_ESTIMATOR_ID_V1
+            transed_section["token_estimator_digest"] = TOKEN_ESTIMATOR_DIGEST_V1
+            transed_section["estimated_tokens"] = int(oversize_downgrade["estimated_tokens"])
+            transed_section["safe_limit_id"] = SAFE_LIMIT_ID_V1
+            transed_section["safe_limit_digest"] = SAFE_LIMIT_DIGEST_V1
+            transed_section["model_context_tokens"] = int(self.model_context_tokens)
+            transed_section["prompt_reserve_tokens"] = int(self.prompt_reserve_tokens)
+            transed_section["safe_input_limit"] = int(self.safe_input_limit)
+            self._update_section_metadata(
+                transed_section,
+                status=self.STATUS_SOURCE_PASS_THROUGH,
+                no_op_detected=False,
+                fallback_reason="oversize_no_safe_boundary",
+            )
+            self._record_oversize_downgrade(oversize_downgrade)
+            assert transed_section.get("translation_status") == self.STATUS_SOURCE_PASS_THROUGH
+            assert transed_section.get("translated") is False
+            return transed_section
+
+        async def fetch_translation(use_context: bool, extra_instruction: Optional[str] = None) -> Optional[str]:
             ctx = previous_context if use_context else None
-            
-            if self.trans_mode == 0 or self.trans_mode == 3:
+            prompt_suffix = ""
+            if error_message:
+                prompt_suffix += f"\n[Error Correction Requirement]\n{error_message}"
+            if extra_instruction:
+                prompt_suffix += f"\n[Strict Translation Requirement]\n{extra_instruction}"
+
+            if self.trans_mode in (0, 3):
                 return await self._request_llm_for_trans(
-                    self.prompts["section_system_prompt"],
+                    self.prompts["section_system_prompt"] + prompt_suffix,
                     section["content"],
                     fail_part=section_num,
                     type="sec",
                     session=session,
-                    previous_context=ctx
+                    previous_context=ctx,
                 )
-            elif self.trans_mode == 2:
+            if self.trans_mode == 2:
                 if not self.term_dict:
                     return await self._request_llm_for_trans(
-                        self.prompts["section_system_prompt"],
+                        self.prompts["section_system_prompt"] + prompt_suffix,
                         section["content"],
                         fail_part=section_num,
                         type="sec",
                         session=session,
-                        previous_context=ctx
+                        previous_context=ctx,
                     )
-                else:
-                    return await self._request_llm_for_trans_with_terms(
-                        self.prompts["section_system_prompt_with_dict"],
-                        section["content"], 
-                        fail_part=section_num,
-                        type="sec",
-                        session=session,
-                        previous_context=ctx
-                    )
+                return await self._request_llm_for_trans_with_terms(
+                    self.prompts["section_system_prompt_with_dict"] + prompt_suffix,
+                    section["content"],
+                    fail_part=section_num,
+                    type="sec",
+                    session=session,
+                    previous_context=ctx,
+                )
             return None
 
-        # Execute base translation with anti-leakage downgrade loop
         if self.trans_mode in [0, 2, 3]:
-            # Attempt 1: With Context
             result = await fetch_translation(use_context=True)
-            
-            # Leakage Check
+
             if result and "<REFERENCE_CONTEXT>" in result:
-                logger.warning(f"⚠️ Prompt leakage detected in {section_num}. Retrying...")
-                # Attempt 2: Retry with Context
+                logger.warning(f"Prompt leakage detected in {section_num}. Retrying with context.")
+                self._increment_section_retry_count(section_num)
                 result = await fetch_translation(use_context=True)
-                
+
                 if result and "<REFERENCE_CONTEXT>" in result:
-                    logger.warning(f"🚨 Persistent leakage in {section_num}. Downgrading context...")
-                    # Attempt 3: Downgrade (No Context)
+                    logger.warning(f"Persistent leakage in {section_num}. Downgrading context.")
+                    self._increment_section_retry_count(section_num)
                     result = await fetch_translation(use_context=False)
-                    
-            transed_section["trans_content"] = result if result is not None else section["content"]
+
+            translated_text = result if result is not None else section["content"]
+            no_op_detected = False
+            no_op_retry_success = False
+
+            if self._is_noop_translation(section["content"], translated_text):
+                no_op_detected = True
+                self._record_noop_section(section_num)
+                self._increment_section_retry_count(section_num)
+                force_retry_hint = (
+                    "The previous output is too similar to the source and appears untranslated. "
+                    "Translate all natural-language English sentences into the target language. "
+                    "Keep LaTeX commands/placeholders/math unchanged."
+                )
+                retry_result = await fetch_translation(use_context=False, extra_instruction=force_retry_hint)
+                if retry_result is not None:
+                    translated_text = retry_result
+                no_op_retry_success = not self._is_noop_translation(section["content"], translated_text)
+
+            transed_section["trans_content"] = translated_text
+
+            api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
+            status = self.STATUS_TRANSLATED
+            fallback_reason = None
+            if api_fallback_reason:
+                status = self.STATUS_FALLBACK_SOURCE_API_FAILURE
+                fallback_reason = api_fallback_reason
+            elif no_op_detected and no_op_retry_success:
+                status = self.STATUS_TRANSLATED_AFTER_NOOP_RETRY
+
+            self._update_section_metadata(
+                transed_section,
+                status=status,
+                no_op_detected=no_op_detected,
+                fallback_reason=fallback_reason,
+            )
 
         elif self.trans_mode == 1:
+            self._increment_section_retry_count(section_num)
             transed_section["trans_content"] = await self._request_llm_for_retrans_error_parts(
-            self.prompts["retrans_error_parts_system_prompt"],
-            part=transed_section,
-            error_message=error_message,
-            fail_part=section_num,
-            type="sec",
-            session=session)
+                self.prompts["retrans_error_parts_system_prompt"],
+                part=transed_section,
+                error_message=error_message,
+                fail_part=section_num,
+                type="sec",
+                session=session,
+            )
+            api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
+            self._update_section_metadata(
+                transed_section,
+                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                no_op_detected=bool(transed_section.get("no_op_detected", False)),
+                fallback_reason=api_fallback_reason,
+            )
 
-        # Terminology Extraction execution...
         if self.trans_mode == 2:
             try:
                 if self.update_term == True:
                     src_text = self._extract_text_from_tex(transed_section["content"])
                     tgt_text = self._extract_text_from_tex(transed_section.get("trans_content") or transed_section["content"])
-                    term_text = await self._request_llm_for_extract_terms(self.prompts["extract_terminology_system_prompt"],
-                                                            src_text,
-                                                            tgt_text,
-                                                            session=session
-                                                            )
-
-                    # self._updated_term_dict(term_text)
+                    term_text = await self._request_llm_for_extract_terms(
+                        self.prompts["extract_terminology_system_prompt"],
+                        src_text,
+                        tgt_text,
+                        session=session,
+                    )
                     self._updated_term_dict_v2(term_text)
-            except Exception as e:
+            except Exception:
                 return transed_section
-        
-        # Extract terminology if enabled (for all modes except mode 2 which does its own extraction)
+
         if self.generate_terminology and self.trans_mode != 2:
             try:
                 src_text = self._extract_text_from_tex(transed_section["content"])
@@ -913,7 +1504,7 @@ class TranslatorAgent(BaseToolAgent):
                     self.terminology_table.extend(terms)
             except Exception as e:
                 logger.warning(f"Failed to extract terminology from section: {e}")
-        
+
         return transed_section
 
     async def _translate_caption(self, caption: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
@@ -930,7 +1521,7 @@ class TranslatorAgent(BaseToolAgent):
                                                         session=session
                                                         )
         elif self.trans_mode == 1:
-            """先不改"""
+            # Keep mode-1 caption retranslation behavior unchanged.
             print("translate_caption_mode_1")
             transed_caption["trans_content"] = await self._request_llm_for_retrans_error_parts(self.prompts["retrans_error_parts_system_prompt"],
                                                                                          part=transed_caption,
@@ -970,77 +1561,350 @@ class TranslatorAgent(BaseToolAgent):
 
         return transed_caption
 
+    async def _request_env_translation(
+        self,
+        *,
+        env: Dict[str, Any],
+        text: str,
+        placeholder: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> str:
+        prompt_suffix = ""
+        if error_message:
+            prompt_suffix += f"\n[Error Correction Requirement]\n{error_message}"
+
+        if self.trans_mode == 1:
+            retry_part = {
+                "content": text,
+                "trans_content": env.get("trans_content", text),
+            }
+            return await self._request_llm_for_retrans_error_parts(
+                self.prompts["retrans_error_parts_system_prompt"],
+                part=retry_part,
+                error_message=error_message or "",
+                fail_part=placeholder,
+                type="env",
+                session=session,
+            )
+
+        if self.trans_mode in (0, 3):
+            return await self._request_llm_for_trans(
+                self.prompts["env_system_prompt"] + prompt_suffix,
+                text,
+                fail_part=placeholder,
+                type="env",
+                session=session,
+            )
+
+        if self.trans_mode == 2:
+            if self.term_dict:
+                return await self._request_llm_for_trans_with_terms(
+                    self.prompts["env_system_prompt_with_dict"] + prompt_suffix,
+                    text,
+                    fail_part=placeholder,
+                    type="env",
+                    session=session,
+                )
+            return await self._request_llm_for_trans(
+                self.prompts["env_system_prompt"] + prompt_suffix,
+                text,
+                fail_part=placeholder,
+                type="env",
+                session=session,
+            )
+
+        return text
+
+    async def _translate_eqnarray_env(
+        self,
+        env: Dict[str, Any],
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        transed_env = env.copy()
+        placeholder = env["placeholder"]
+        content = env.get("content", "")
+        self._update_env_metadata(
+            transed_env,
+            status=self.STATUS_TRANSLATED,
+            fallback_subtype=self.FALLBACK_SUBTYPE_NONE,
+            row_fallback_count=0,
+        )
+
+        masked_content, comment_map = mask_eqnarray_comments_strict(content)
+        match = re.match(
+            r'(?s)\A(?P<head>\s*\\begin\{eqnarray\*?\})(?P<body>.*?)(?P<tail>\\end\{eqnarray\*?\}\s*)\Z',
+            masked_content,
+        )
+        if not match:
+            transed_env["trans_content"] = await self._request_env_translation(
+                env=env,
+                text=content,
+                placeholder=placeholder,
+                session=session,
+                error_message=error_message,
+            )
+            api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+            self._update_env_metadata(
+                transed_env,
+                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                fallback_reason=api_fallback_reason,
+                fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
+                row_fallback_count=0,
+            )
+            return transed_env
+
+        head = match.group("head")
+        body = match.group("body")
+        tail = match.group("tail")
+        rows, separators = split_eqnarray_rows_strict(body)
+        row_kinds = [classify_eqnarray_row_kind(row) for row in rows]
+        text_row_indices = [idx for idx, kind in enumerate(row_kinds) if kind == "text"]
+
+        if not text_row_indices:
+            rebuilt = rebuild_eqnarray_rows_strict(rows, separators)
+            restored = restore_eqnarray_comments_strict(f"{head}{rebuilt}{tail}", comment_map)
+            transed_env["trans_content"] = restored
+            self._update_env_metadata(
+                transed_env,
+                status=self.STATUS_MATH_PRESERVED,
+                fallback_subtype=self.FALLBACK_SUBTYPE_NONE,
+                row_fallback_count=0,
+            )
+            return transed_env
+
+        translated_rows = list(rows)
+        row_fallback_count = 0
+
+        for row_idx in text_row_indices:
+            source_row = rows[row_idx]
+            row_key = self._env_row_retry_key(placeholder, row_idx)
+            token = f"<EQROW_{row_idx}>"
+            payload = f"{token} {source_row}"
+            expected_tokens = [token]
+            translated_row_core: Optional[str] = None
+            mismatch_error: Optional[str] = None
+
+            for attempt in range(2):
+                retry_hint = (
+                    "Keep immutable EQROW placeholder tokens unchanged with exact count and order."
+                    if attempt == 1 else None
+                )
+                merged_error = "\n".join(
+                    part for part in [error_message, retry_hint] if part
+                ) or None
+                candidate = await self._request_env_translation(
+                    env=env,
+                    text=payload,
+                    placeholder=placeholder,
+                    session=session,
+                    error_message=merged_error,
+                )
+                mismatch_error = validate_immutable_placeholder_sequence(
+                    candidate,
+                    expected_tokens,
+                    "EQROW",
+                )
+                if mismatch_error:
+                    if row_key in self._c1_retried_parts:
+                        self.c1_retry_enforced_once = True
+                        break
+                    self._c1_retried_parts.add(row_key)
+                    continue
+
+                token_index = candidate.find(token)
+                if token_index < 0:
+                    mismatch_error = "eqrow_placeholder_sequence_mismatch: token not found after validation"
+                    if row_key in self._c1_retried_parts:
+                        self.c1_retry_enforced_once = True
+                        break
+                    self._c1_retried_parts.add(row_key)
+                    continue
+
+                row_translation = (candidate[:token_index] + candidate[token_index + len(token):]).strip()
+                if row_translation:
+                    translated_row_core = row_translation
+                else:
+                    translated_row_core = source_row.strip()
+                break
+
+            if translated_row_core is None:
+                row_fallback_count += 1
+                translated_rows[row_idx] = source_row
+                logger.warning(
+                    "Eqnarray row fallback applied for %s row=%d (%s)",
+                    placeholder,
+                    row_idx,
+                    mismatch_error or "unknown_row_error",
+                )
+                continue
+
+            leading_ws = re.match(r"^\s*", source_row).group(0)
+            trailing_ws = re.search(r"\s*$", source_row).group(0)
+            translated_rows[row_idx] = f"{leading_ws}{translated_row_core.strip()}{trailing_ws}"
+
+        rebuilt_body = rebuild_eqnarray_rows_strict(translated_rows, separators)
+        rebuilt_env = f"{head}{rebuilt_body}{tail}"
+        restored_env = restore_eqnarray_comments_strict(rebuilt_env, comment_map)
+        transed_env["trans_content"] = restored_env
+
+        api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+        if api_fallback_reason:
+            self._update_env_metadata(
+                transed_env,
+                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                fallback_reason=api_fallback_reason,
+                fallback_subtype=self.FALLBACK_SUBTYPE_MATH_ENV,
+                row_fallback_count=row_fallback_count,
+            )
+            return transed_env
+
+        self._update_env_metadata(
+            transed_env,
+            status=self.STATUS_TRANSLATED,
+            fallback_subtype=self.FALLBACK_SUBTYPE_MATH_ENV if row_fallback_count > 0 else self.FALLBACK_SUBTYPE_NONE,
+            row_fallback_count=row_fallback_count,
+        )
+        return transed_env
+
+    async def _translate_list_env(
+        self,
+        env: Dict[str, Any],
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        transed_env = env.copy()
+        placeholder = env["placeholder"]
+        anchored_text, item_map, expected_tokens = anchor_list_items_in_env_body(env.get("content", ""))
+        if not expected_tokens:
+            transed_env["trans_content"] = await self._request_env_translation(
+                env=env,
+                text=env.get("content", ""),
+                placeholder=placeholder,
+                session=session,
+                error_message=error_message,
+            )
+            api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+            self._update_env_metadata(
+                transed_env,
+                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                fallback_reason=api_fallback_reason,
+                fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
+                row_fallback_count=0,
+            )
+            return transed_env
+
+        list_retry_key = self._part_retry_key("env", f"{placeholder}:list")
+        last_mismatch: Optional[str] = None
+        last_candidate: Optional[str] = None
+        for attempt in range(2):
+            strict_hint = (
+                "Do not reorder/remove ITEM placeholders. Preserve ITEM token count and sequence exactly."
+                if attempt == 1 else None
+            )
+            merged_error = "\n".join(part for part in [error_message, strict_hint] if part) or None
+            candidate = await self._request_env_translation(
+                env=env,
+                text=anchored_text,
+                placeholder=placeholder,
+                session=session,
+                error_message=merged_error,
+            )
+            last_candidate = candidate
+            mismatch = validate_immutable_placeholder_sequence(candidate, expected_tokens, "ITEM")
+            if not mismatch:
+                restored = restore_list_items_in_env_body(candidate, item_map)
+                transed_env["trans_content"] = restored
+                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                self._update_env_metadata(
+                    transed_env,
+                    status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                    fallback_reason=api_fallback_reason,
+                    fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
+                    row_fallback_count=0,
+                )
+                return transed_env
+            last_mismatch = mismatch
+            if list_retry_key in self._c1_retried_parts:
+                self.c1_retry_enforced_once = True
+                break
+            self._c1_retried_parts.add(list_retry_key)
+
+        transed_env["trans_content"] = last_candidate or env.get("content", "")
+        fallback_error = {
+            "part": "env",
+            "num_or_ph": placeholder,
+            "error_type": ERROR_TYPE_C1,
+            "math_error": last_mismatch or "item_anchor_sequence_mismatch: unknown",
+        }
+        self._apply_compile_first_fallback(
+            transed_env,
+            fallback_error,
+            recheck_report=fallback_error,
+        )
+        self._update_env_metadata(
+            transed_env,
+            fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV,
+            row_fallback_count=0,
+        )
+        return transed_env
+
     async def _translate_env(self, env: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
         """
         Translates an environment block (env) based on whether translation is needed.
         """
         transed_env = env.copy()
         placeholder = env["placeholder"]
-        if self.trans_mode == 0: # sum
-            if env["need_trans"]:
-                transed_env["trans_content"] = await self._request_llm_for_trans(self.prompts["env_system_prompt"],
-                                                            env["content"], 
-                                                            fail_part=placeholder,
-                                                            type="env",
-                                                            session=session
-                                                            )                
-            else:
-                transed_env["trans_content"] = env["content"]
-        elif self.trans_mode == 1:
-                transed_env["trans_content"] = await self._request_llm_for_retrans_error_parts(pm.retrans_error_parts_system_prompt,
-                                                                                         part=transed_env,
-                                                                                         error_message=error_message,
-                                                                                         fail_part=placeholder,
-                                                                                         type="env",
-                                                                                         session = session)
-        elif self.trans_mode == 2: # dict or sum+dict
-            if not self.term_dict:
-                if env["need_trans"]:
-                    transed_env["trans_content"] = await self._request_llm_for_trans(self.prompts["env_system_prompt"],
-                                                            env["content"], 
-                                                            fail_part=placeholder,
-                                                            type="env",
-                                                            session=session
-                                                            )
-                else:
-                    transed_env["trans_content"] = env["content"]
-            else:
-                if env["need_trans"]:
-                    transed_env["trans_content"] = await self._request_llm_for_trans_with_terms(self.prompts["env_system_prompt_with_dict"],
-                                                                                            env["content"],
-                                                                                            fail_part=placeholder,
-                                                                                            type="env",
-                                                                                            session=session)
-                else:
-                    transed_env["trans_content"] = env["content"]
+        env_name = self._normalize_env_name(str(env.get("env_name", "")))
+        need_trans = bool(env.get("need_trans", True))
 
-            if env["need_trans"]:
-                try:
-                    if self.update_term == True:
-                        src_text = self._extract_text_from_tex(transed_env["content"])
-                        tgt_text = self._extract_text_from_tex(transed_env["trans_content"])
-                        text = await self._request_llm_for_extract_terms(pm.extract_terminology_system_prompt,
-                                                                src_text,
-                                                                tgt_text,
-                                                                session=session
-                                                                )
+        self._update_env_metadata(
+            transed_env,
+            status=self.STATUS_TRANSLATED,
+            fallback_subtype=self.FALLBACK_SUBTYPE_NONE,
+            row_fallback_count=0,
+        )
 
-                            # self._updated_term_dict(term_text)
-                        self._updated_term_dict_v2(text)
-                except Exception as e:
-                    return transed_env
+        if not need_trans:
+            transed_env["trans_content"] = env.get("content", "")
+            return transed_env
 
-        elif self.trans_mode == 3:
-            # Quick scan mode: translate if needed (same as mode 0)
-            if env["need_trans"]:
-                transed_env["trans_content"] = await self._request_llm_for_trans(self.prompts["env_system_prompt"],
-                                                            env["content"], 
-                                                            fail_part=placeholder,
-                                                            type="env",
-                                                            session=session
-                                                            )                
-            else:
-                transed_env["trans_content"] = env["content"]
+        if env_name in {"eqnarray", "eqnarray*"}:
+            transed_env = await self._translate_eqnarray_env(env, session, error_message=error_message)
+        elif env_name in {"enumerate", "enumerate*", "itemize", "itemize*"}:
+            transed_env = await self._translate_list_env(env, session, error_message=error_message)
+        else:
+            transed_env["trans_content"] = await self._request_env_translation(
+                env=env,
+                text=env.get("content", ""),
+                placeholder=placeholder,
+                session=session,
+                error_message=error_message,
+            )
+            api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+            self._update_env_metadata(
+                transed_env,
+                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                fallback_reason=api_fallback_reason,
+                fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
+                row_fallback_count=0,
+            )
+
+        if self.trans_mode == 2 and need_trans:
+            try:
+                if self.update_term:
+                    src_text = self._extract_text_from_tex(transed_env["content"])
+                    tgt_text = self._extract_text_from_tex(transed_env.get("trans_content") or transed_env["content"])
+                    text = await self._request_llm_for_extract_terms(
+                        pm.extract_terminology_system_prompt,
+                        src_text,
+                        tgt_text,
+                        session=session,
+                    )
+                    self._updated_term_dict_v2(text)
+            except Exception:
+                return transed_env
 
         return transed_env
 
@@ -1052,8 +1916,15 @@ class TranslatorAgent(BaseToolAgent):
                                      session: aiohttp.ClientSession,
                                      previous_context: Optional[str] = None) -> str:
 
-        # --- Task 12.4: Mask sensitive commands before sending to LLM ---
-        masked_text, _mask_mapping = mask_sensitive_commands(text)
+        prepared_text = text
+        llm_context: Dict[str, Any] = {"math_map": {}, "env_map": {}, "mask_mapping": {}}
+        try:
+            prepared_text, llm_context = self._prepare_llm_payload_text(text)
+        except Exception as prep_exc:
+            logger.warning("LLM payload preparation failed for %s: %s", fail_part, prep_exc)
+            masked_text, mask_mapping = mask_sensitive_commands(text)
+            prepared_text = masked_text
+            llm_context = {"math_map": {}, "env_map": {}, "mask_mapping": mask_mapping}
         
         # Inject Reference Context Template if available
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
@@ -1064,7 +1935,7 @@ class TranslatorAgent(BaseToolAgent):
             "model": f"{self.model}",
             "messages": [
                 {"role": "system", "content": f"{system_prompt}"},
-                {"role": "user", "content": f"{masked_text}"}
+                {"role": "user", "content": f"{prepared_text}"}
             ],
             "temperature": 0.7,
             "max_new_tokens": 8192
@@ -1086,7 +1957,7 @@ class TranslatorAgent(BaseToolAgent):
                             # Read Retry-After before exiting response context
                             retry_after_raw = response.headers.get("Retry-After", "")
                             rate_limit_hits += 1
-                            # Graduated backoff: ≤3 quick, 4-9 progressive, >9 infinite with warning
+                            # Graduated backoff: 鈮? quick, 4-9 progressive, >9 infinite with warning
                             if rate_limit_hits <= 3:
                                 wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
                             elif rate_limit_hits <= 9:
@@ -1094,14 +1965,14 @@ class TranslatorAgent(BaseToolAgent):
                             else:
                                 wait = 60
                             logger.warning(
-                                f"⏳ API rate limited (429) for {fail_part}, "
+                                f"鈴?API rate limited (429) for {fail_part}, "
                                 f"waiting {wait}s (429 count: {rate_limit_hits})"
                             )
                             # Only show frontend warning after 9 consecutive 429s
                             if rate_limit_hits > 9:
                                 self.update_progress(
                                     -1,
-                                    f"⏳ API rate limited, retrying until API recovers. "
+                                    f"鈴?API rate limited, retrying until API recovers. "
                                     f"Consider using your own API key for better performance. "
                                     f"(429 count: {rate_limit_hits}, waiting {wait}s)"
                                 )
@@ -1109,9 +1980,9 @@ class TranslatorAgent(BaseToolAgent):
                             response.raise_for_status()
                             result = await response.json()
                             raw_result = result["choices"][0]["message"]["content"].strip()
-                            # --- Task 12.4: Restore masked commands after translation ---
-                            restored = unmask_sensitive_commands(raw_result, _mask_mapping)
-                            self._log_protection_actions(_mask_mapping, fail_part)
+                            restored = self._restore_llm_output_text(raw_result, llm_context)
+                            self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
+                            self._clear_api_fallback(type, str(fail_part))
                             return restored
                 # --- Semaphore RELEASED here ---
                 # Sleep for 429 outside semaphore so other tasks can proceed
@@ -1120,7 +1991,7 @@ class TranslatorAgent(BaseToolAgent):
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"❌ Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    logger.error(f"鉂?Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
                     self.have_fail_parts = True
                     if type == 'sec':
                         self.fail_section_nums.append(fail_part)
@@ -1128,6 +1999,7 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_caption_phs.append(fail_part)
                     else:
                         self.fail_env_phs.append(fail_part)
+                    self._mark_api_fallback(type, str(fail_part), f"api_request_failed_http_{e.status}")
                     return text
 
                 network_failures += 1
@@ -1144,7 +2016,8 @@ class TranslatorAgent(BaseToolAgent):
                     else:
                         self.fail_env_phs.append(fail_part)
 
-                    logger.error(f"❌ Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
+                    logger.error(f"鉂?Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
+                    self._mark_api_fallback(type, str(fail_part), "api_request_failed_after_3_attempts")
                     # Return original (unmasked) text on ultimate failure
                     return text
 
@@ -1157,8 +2030,15 @@ class TranslatorAgent(BaseToolAgent):
                                           session: aiohttp.ClientSession,
                                           previous_context: Optional[str] = None) -> str:
 
-        # --- Task 12.4: Mask sensitive commands before sending to LLM ---
-        masked_text, _mask_mapping = mask_sensitive_commands(text)
+        prepared_text = text
+        llm_context: Dict[str, Any] = {"math_map": {}, "env_map": {}, "mask_mapping": {}}
+        try:
+            prepared_text, llm_context = self._prepare_llm_payload_text(text)
+        except Exception as prep_exc:
+            logger.warning("LLM payload preparation failed for %s: %s", fail_part, prep_exc)
+            masked_text, mask_mapping = mask_sensitive_commands(text)
+            prepared_text = masked_text
+            llm_context = {"math_map": {}, "env_map": {}, "mask_mapping": mask_mapping}
         
         # Inject Reference Context Template if available
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
@@ -1174,7 +2054,7 @@ class TranslatorAgent(BaseToolAgent):
                 },
                 {
                     "role": "user",
-                    "content": f"[Current LaTeX Paragraph]:\n{masked_text}"
+                    "content": f"[Current LaTeX Paragraph]:\n{prepared_text}"
                 }
             ],
             "temperature": 0.7,
@@ -1204,13 +2084,13 @@ class TranslatorAgent(BaseToolAgent):
                             else:
                                 wait = 60
                             logger.warning(
-                                f"⏳ API rate limited (429) for {fail_part}, "
+                                f"鈴?API rate limited (429) for {fail_part}, "
                                 f"waiting {wait}s (429 count: {rate_limit_hits})"
                             )
                             if rate_limit_hits > 9:
                                 self.update_progress(
                                     -1,
-                                    f"⏳ API rate limited, retrying until API recovers. "
+                                    f"鈴?API rate limited, retrying until API recovers. "
                                     f"Consider using your own API key for better performance. "
                                     f"(429 count: {rate_limit_hits}, waiting {wait}s)"
                                 )
@@ -1218,9 +2098,9 @@ class TranslatorAgent(BaseToolAgent):
                             response.raise_for_status()
                             result = await response.json()
                             raw_result = result["choices"][0]["message"]["content"].strip()
-                            # --- Task 12.4: Restore masked commands after translation ---
-                            restored = unmask_sensitive_commands(raw_result, _mask_mapping)
-                            self._log_protection_actions(_mask_mapping, fail_part)
+                            restored = self._restore_llm_output_text(raw_result, llm_context)
+                            self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
+                            self._clear_api_fallback(type, str(fail_part))
                             return restored
                 # --- Semaphore RELEASED here ---
                 await asyncio.sleep(wait)
@@ -1228,7 +2108,7 @@ class TranslatorAgent(BaseToolAgent):
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"❌ Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    logger.error(f"鉂?Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
                     self.have_fail_parts = True
                     if type == 'sec':
                         self.fail_section_nums.append(fail_part)
@@ -1236,6 +2116,7 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_caption_phs.append(fail_part)
                     else:
                         self.fail_env_phs.append(fail_part)
+                    self._mark_api_fallback(type, str(fail_part), f"api_request_failed_http_{e.status}")
                     return text
 
                 network_failures += 1
@@ -1252,7 +2133,8 @@ class TranslatorAgent(BaseToolAgent):
                     else:
                         self.fail_env_phs.append(fail_part)
 
-                    logger.error(f"❌ Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
+                    logger.error(f"鉂?Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
+                    self._mark_api_fallback(type, str(fail_part), "api_request_failed_after_3_attempts")
                     # Return original (unmasked) text on ultimate failure
                     return text
 
@@ -1310,13 +2192,13 @@ class TranslatorAgent(BaseToolAgent):
                             else:
                                 wait = 60
                             logger.warning(
-                                f"⏳ API rate limited (429) for {fail_part}, "
+                                f"鈴?API rate limited (429) for {fail_part}, "
                                 f"waiting {wait}s (429 count: {rate_limit_hits})"
                             )
                             if rate_limit_hits > 9:
                                 self.update_progress(
                                     -1,
-                                    f"⏳ API rate limited, retrying until API recovers. "
+                                    f"鈴?API rate limited, retrying until API recovers. "
                                     f"Consider using your own API key for better performance. "
                                     f"(429 count: {rate_limit_hits}, waiting {wait}s)"
                                 )
@@ -1326,6 +2208,7 @@ class TranslatorAgent(BaseToolAgent):
                             raw_result = result["choices"][0]["message"]["content"].strip()
                             # --- Restore masked commands after retranslation ---
                             restored = unmask_sensitive_commands(raw_result, _mask_mapping)
+                            self._clear_api_fallback(type, str(fail_part))
                             return restored
                 # --- Semaphore RELEASED here ---
                 await asyncio.sleep(wait)
@@ -1333,7 +2216,7 @@ class TranslatorAgent(BaseToolAgent):
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"❌ Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    logger.error(f"鉂?Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
                     self.have_fail_parts = True
                     if type == 'sec':
                         self.fail_section_nums.append(fail_part)
@@ -1341,6 +2224,7 @@ class TranslatorAgent(BaseToolAgent):
                         self.fail_caption_phs.append(fail_part)
                     else:
                         self.fail_env_phs.append(fail_part)
+                    self._mark_api_fallback(type, str(fail_part), f"api_request_failed_http_{e.status}")
                     return part.get("trans_content") or part.get("content", "")
 
                 network_failures += 1
@@ -1357,7 +2241,8 @@ class TranslatorAgent(BaseToolAgent):
                     else:
                         self.fail_env_phs.append(fail_part)
 
-                    logger.error(f"❌ Failed to retranslate error parts after 3 attempts, returning previous translation: {fail_part}. {e}")
+                    logger.error(f"鉂?Failed to retranslate error parts after 3 attempts, returning previous translation: {fail_part}. {e}")
+                    self._mark_api_fallback(type, str(fail_part), "api_request_failed_after_3_attempts")
                     # Return original (unmasked) text on ultimate failure
                     return part.get("trans_content") or part.get("content", "")
 
@@ -1402,7 +2287,7 @@ class TranslatorAgent(BaseToolAgent):
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"❌ Fatal API error {e.status} during term extraction: {getattr(e, 'message', str(e))}. Aborting retries.")
+                    logger.error(f"鉂?Fatal API error {e.status} during term extraction: {getattr(e, 'message', str(e))}. Aborting retries.")
                     return "N/A"
 
                 wait = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s
@@ -1694,7 +2579,7 @@ class TranslatorAgent(BaseToolAgent):
             logger.warning("Terminology table is empty, skipping save")
             return
         
-        # 去重
+        # 鍘婚噸
         unique_terms = list(dict.fromkeys(self.terminology_table))
         
         term_file = Path(self.output_dir) / "terminology_table.csv"
@@ -1721,7 +2606,7 @@ class TranslatorAgent(BaseToolAgent):
             return []
         
         try:
-            # 使用现有的术语提取逻辑
+            # 浣跨敤鐜版湁鐨勬湳璇彁鍙栭€昏緫
             term_text = await self._request_llm_for_extract_terms(
                 self.prompts["extract_terminology_system_prompt"],
                 src_text,
@@ -1729,7 +2614,7 @@ class TranslatorAgent(BaseToolAgent):
                 session=session
             )
             
-            # 解析返回的术语文本为术语对列表
+            # 瑙ｆ瀽杩斿洖鐨勬湳璇枃鏈负鏈瀵瑰垪琛?
             terms = self._parse_terminology_text(term_text)
             return terms
         except Exception as e:
@@ -1750,7 +2635,7 @@ class TranslatorAgent(BaseToolAgent):
             line = line.strip()
             if not line:
                 continue
-            # 尝试多种分隔符
+            # 灏濊瘯澶氱鍒嗛殧绗?
             for sep in [':', '：', '|', '-', '->']:
                 if sep in line:
                     parts = line.split(sep, 1)

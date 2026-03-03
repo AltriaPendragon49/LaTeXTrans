@@ -13,6 +13,10 @@ from .base_tool_agent import BaseToolAgent
 from pathlib import Path
 from collections import Counter
 from pylatexenc.latexwalker import LatexWalker
+from backend.app.services.latex.utils import (
+    anchor_list_items_in_env_body,
+    validate_immutable_placeholder_sequence,
+)
 import os
 import re
 import logging
@@ -22,25 +26,31 @@ logger = logging.getLogger(__name__)
 # Error type constants
 ERROR_TYPE_A = "A"  # Resource/config missing - handle with degradation
 ERROR_TYPE_B = "B"  # Recoverable syntax errors - allow one retry
-ERROR_TYPE_C = "C"  # Structural consistency errors - algorithmic fix required
+ERROR_TYPE_C = "C"  # Structural consistency errors - algorithmic fix required (legacy alias)
+ERROR_TYPE_C1 = "C1"  # Structural: Local/Contained -- 1 LLM retry allowed
+ERROR_TYPE_C2 = "C2"  # Structural: Global/Structural -- NO LLM retry
 
 
 def classify_error(error_report: Dict[str, Any]) -> str:
     """
-    Classify validation error into A/B/C types.
+    Classify validation error into A/B/C1/C2 types.
     
     Type A: Resource/config missing (e.g., files not found)
-           → Handle with degradation, don't interrupt flow
+           -> Handle with degradation, don't interrupt flow
     Type B: Recoverable syntax errors (e.g., unescaped special chars)
-           → Allow one translation retry
-    Type C: Structural consistency errors (e.g., 'expected X, found Y')
-           → Requires algorithmic fix, LLM retry won't help
+           -> Allow one translation retry
+    Type C1: Structural errors - Local/Contained
+            -> Single placeholder loss or isolated math mismatch (no global issue)
+            -> Allow exactly 1 targeted LLM retry with restoration instructions
+    Type C2: Structural errors - Global/Structural
+            -> Multiple placeholder losses, global stack mismatch, or env collapse
+            -> Deterministic fix only - NO LLM retry
     
     Args:
         error_report: Error report dictionary with command_error, ph_error, bracket_error
         
     Returns:
-        Error type string: "A", "B", or "C"
+        Error type string: "A", "B", "C1", or "C2"
     """
     command_error = str(error_report.get("command_error", ""))
     ph_error = str(error_report.get("ph_error", ""))
@@ -54,29 +64,63 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     if "not found" in all_errors.lower():
         return ERROR_TYPE_A
     
-    # Type C: Structural consistency errors (expected X, found Y pattern)
-    # These are token count mismatches that can't be fixed by LLM retry
-    if re.search(r"expected \d+, found \d+", all_errors):
-        return ERROR_TYPE_C
-    
-    # Type C: Missing placeholders (structural issue)
-    if "Missing placeholders:" in ph_error:
-        return ERROR_TYPE_C
+    # -------------------------------------------------------------------------
+    # Determine if this is a structural (C) error and C1 or C2.
+    # -------------------------------------------------------------------------
 
-    # Type C: Math-mode delimiter mismatch (deterministic repair, no LLM retry)
-    if "math_delimiter_mismatch" in math_error:
-        return ERROR_TYPE_C
-
-    # Type C: Residual PROTECTED_CMD placeholder (deterministic restore, no LLM retry)
-    if "protected_cmd_residual" in math_error:
-        return ERROR_TYPE_C
-
-    # Type C: Global input placeholder stack mismatch
+    # C2 trigger: Global placeholder stack mismatch -> always C2
     if global_ph_error:
-        return ERROR_TYPE_C
-    
+        return ERROR_TYPE_C2
+
+    # Immutable placeholder mismatches are explicit structural signals.
+    if "eqrow_placeholder_sequence_mismatch" in math_error:
+        return ERROR_TYPE_C2
+    if "item_anchor_sequence_mismatch" in math_error:
+        return ERROR_TYPE_C1
+    if "list_env_item_order_mismatch" in math_error:
+        return ERROR_TYPE_C1
+
+    # Count expected/found mismatch occurrences across ALL error fields
+    count_mismatches = re.findall(r"expected \d+, found \d+", all_errors)
+    if count_mismatches:
+        # Multiple distinct command mismatches -> C2 (structural collapse)
+        if len(count_mismatches) > 1:
+            return ERROR_TYPE_C2
+        # Single command mismatch, no global stack error -> C1
+        return ERROR_TYPE_C1
+
+    # Count missing placeholders: C1 if exactly one, C2 if more
+    if "Missing placeholders:" in ph_error:
+        # Extract count of distinct missing placeholder names
+        missing_section = ph_error.split("Missing placeholders:", 1)[1]
+        # Each missing placeholder is separated by ", "
+        missing_items = [p.strip() for p in missing_section.split(",") if p.strip()]
+        # Filter to only real placeholder tokens (start with <)
+        ph_tokens = [p for p in missing_items if p.startswith("<")]
+        if len(ph_tokens) <= 1:
+            return ERROR_TYPE_C1
+        return ERROR_TYPE_C2
+
+    # Math-mode delimiter mismatch (isolated, no global error) -> C1
+    if "level_a_env_placeholder_residual" in math_error:
+        return ERROR_TYPE_C2
+    if "env_boundary_mismatch" in math_error:
+        return ERROR_TYPE_C2
+    if "env_restore_failed" in math_error:
+        return ERROR_TYPE_C2
+
+    # Math-mode delimiter mismatch (isolated, no global error) -> C1
+    if "math_delimiter_mismatch" in math_error:
+        return ERROR_TYPE_C1
+
+    # Residual PROTECTED_CMD placeholder (isolated) -> C1
+    if "protected_cmd_residual" in math_error:
+        return ERROR_TYPE_C1
+
     # Type B: Default - recoverable errors (bracket issues, extra placeholders, etc.)
     return ERROR_TYPE_B
+
+
 
 
 
@@ -91,6 +135,7 @@ class ValidatorAgent(BaseToolAgent):
         self.config = config
         self.project_dir = project_dir
         self.output_dir = output_dir
+        self.code_like_filtered_bare_tokens = 0
 
     def execute(self, errors_report: Optional[List[Dict]] = None) -> List[Dict]:
         """
@@ -104,6 +149,7 @@ class ValidatorAgent(BaseToolAgent):
         """
         self.log(f"Starting validation for project: {os.path.basename(self.project_dir)}")
         self.update_progress(10, "Loading JSON maps")
+        self.code_like_filtered_bare_tokens = 0
         
         sections = self.read_file(Path(self.output_dir, "sections_map.json"), "json")
         captions = self.read_file(Path(self.output_dir, "captions_map.json"), "json")
@@ -147,6 +193,12 @@ class ValidatorAgent(BaseToolAgent):
         # previous validation rounds.
         self.save_file(Path(self.output_dir, "errors_report.json"), "json", errors_report)
 
+        if self.code_like_filtered_bare_tokens:
+            self.log(
+                f"Validator filtered {self.code_like_filtered_bare_tokens} bare math tokens in code-like spans",
+                level="info",
+            )
+
         self.update_progress(100, f"Validation complete: {len(errors_report)} errors found")
         self.log(f"Validation complete for {os.path.basename(self.project_dir)}, remaining errors: {len(errors_report)}")
         return errors_report
@@ -157,10 +209,22 @@ class ValidatorAgent(BaseToolAgent):
         ph_error = self._validate_placeholder(part)
         bracket_error = self._validate_closed_brackets(part)
         math_error = self._validate_math_delimiters(part)
+        env_boundary_error = self._validate_env_boundaries(part)
         protected_cmd_error = self._validate_protected_cmd_residual(part)
+        immutable_placeholder_error = self._validate_immutable_placeholders(part)
+        list_structure_error = self._validate_list_item_structure(part)
         error_report = {}
 
-        if not command_error and not ph_error and not bracket_error and not math_error and not protected_cmd_error:
+        if (
+            not command_error
+            and not ph_error
+            and not bracket_error
+            and not math_error
+            and not env_boundary_error
+            and not protected_cmd_error
+            and not immutable_placeholder_error
+            and not list_structure_error
+        ):
             return None
         else: 
             if "section" in part:
@@ -180,7 +244,17 @@ class ValidatorAgent(BaseToolAgent):
             if bracket_error:
                 error_report["bracket_error"] = bracket_error
             # Merge math and protected_cmd errors into math_error field
-            math_issues = [e for e in [math_error, protected_cmd_error] if e]
+            math_issues = [
+                e
+                for e in [
+                    math_error,
+                    env_boundary_error,
+                    protected_cmd_error,
+                    immutable_placeholder_error,
+                    list_structure_error,
+                ]
+                if e
+            ]
             if math_issues:
                 error_report["math_error"] = "\n".join(math_issues)
             
@@ -251,6 +325,10 @@ class ValidatorAgent(BaseToolAgent):
         r'(?![A-Za-z])'
     )
     _PLACEHOLDER_RE = re.compile(r'<PLACEHOLDER_[^>]+>')
+    _MATH_PLACEHOLDER_RE = re.compile(r'<INLMATH_[^>]+>')
+    _ENV_PLACEHOLDER_RE = re.compile(r'<ENV(?:_BEGIN|_END)?_[^>]+>')
+    _ITEM_PLACEHOLDER_RE = re.compile(r'<ITEM_[^>]+>')
+    _EQROW_PLACEHOLDER_RE = re.compile(r'<EQROW_[^>]+>')
 
     @staticmethod
     def _extract_math_regions(text: str) -> List[tuple]:
@@ -279,6 +357,124 @@ class ValidatorAgent(BaseToolAgent):
     def _extract_placeholder_spans(text: str) -> List[tuple]:
         """Extract [start, end) spans for placeholders like <PLACEHOLDER_...>."""
         return [(m.start(), m.end()) for m in ValidatorAgent._PLACEHOLDER_RE.finditer(text)]
+
+    @staticmethod
+    def _extract_math_placeholder_spans(text: str) -> List[tuple]:
+        """Extract [start, end) spans for inline-math placeholders."""
+        return [(m.start(), m.end()) for m in ValidatorAgent._MATH_PLACEHOLDER_RE.finditer(text)]
+
+    @staticmethod
+    def _extract_env_placeholder_spans(text: str) -> List[tuple]:
+        """Extract [start, end) spans for environment placeholders."""
+        return [(m.start(), m.end()) for m in ValidatorAgent._ENV_PLACEHOLDER_RE.finditer(text)]
+
+    @staticmethod
+    def _extract_item_placeholder_spans(text: str) -> List[tuple]:
+        """Extract [start, end) spans for list item placeholders."""
+        return [(m.start(), m.end()) for m in ValidatorAgent._ITEM_PLACEHOLDER_RE.finditer(text)]
+
+    @staticmethod
+    def _extract_eqrow_placeholder_spans(text: str) -> List[tuple]:
+        """Extract [start, end) spans for eqnarray row placeholders."""
+        return [(m.start(), m.end()) for m in ValidatorAgent._EQROW_PLACEHOLDER_RE.finditer(text)]
+
+    @staticmethod
+    def _extract_safe_command_arg_spans(text: str) -> List[tuple]:
+        """
+        Extract first-level {...} argument spans for safe cross-reference commands.
+        Underscores inside these arguments are valid text keys, not math leakage.
+        """
+        safe_cmd_re = re.compile(
+            r'\\(?:ref|eqref|label|pageref|autoref|cite|citet|citep|citealt|Cref|cref)\*?\s*\{'
+        )
+        spans: List[tuple] = []
+
+        for m in safe_cmd_re.finditer(text):
+            brace_start = m.end() - 1
+            depth = 0
+            i = brace_start
+            while i < len(text):
+                ch = text[i]
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        spans.append((brace_start + 1, i))
+                        break
+                i += 1
+
+        return spans
+
+    @staticmethod
+    def _extract_code_like_spans(text: str) -> List[tuple]:
+        """
+        Extract spans that are code-like (tikz/pgfplots style regions).
+
+        Bare `_`/`^` tokens in these spans are often valid plotting syntax and
+        should not be treated as leaked math delimiters.
+        """
+        if not text:
+            return []
+
+        spans: List[tuple] = []
+
+        env_re = re.compile(
+            r'\\begin\{(?:tikzpicture|axis|semilogyaxis|loglogaxis|groupplot)\*?\}.*?'
+            r'\\end\{(?:tikzpicture|axis|semilogyaxis|loglogaxis|groupplot)\*?\}',
+            re.DOTALL,
+        )
+        for m in env_re.finditer(text):
+            spans.append((m.start(), m.end()))
+
+        # Typical pgfplots commands where `_` and `^` are data/expression syntax.
+        line_cmd_re = re.compile(r'\\(?:addplot\+?|addplot3\+?|addlegendimage)(?![A-Za-z])')
+        for m in line_cmd_re.finditer(text):
+            line_end = text.find("\n", m.start())
+            if line_end == -1:
+                line_end = len(text)
+            spans.append((m.start(), line_end))
+
+        # Commands with structured argument blocks.
+        head_cmd_re = re.compile(r'\\(?:pgfmathparse|pgfplotstableread|pgfplotsset|tikzset)(?![A-Za-z])')
+
+        def _consume_balanced(src: str, start: int, open_ch: str, close_ch: str) -> int:
+            if start >= len(src) or src[start] != open_ch:
+                return start
+            depth = 0
+            i = start
+            while i < len(src):
+                ch = src[i]
+                if ch == "\\":
+                    i += 2
+                    continue
+                if ch == open_ch:
+                    depth += 1
+                elif ch == close_ch:
+                    depth -= 1
+                    if depth == 0:
+                        return i + 1
+                i += 1
+            return len(src)
+
+        for m in head_cmd_re.finditer(text):
+            i = m.end()
+            while i < len(text):
+                while i < len(text) and text[i].isspace():
+                    i += 1
+                if i < len(text) and text[i] == "[":
+                    i = _consume_balanced(text, i, "[", "]")
+                    continue
+                break
+
+            if i < len(text) and text[i] == "{":
+                end = _consume_balanced(text, i, "{", "}")
+            else:
+                line_end = text.find("\n", m.start())
+                end = len(text) if line_end == -1 else line_end
+            spans.append((m.start(), end))
+
+        return spans
 
     @staticmethod
     def _index_in_spans(index: int, spans: List[tuple]) -> bool:
@@ -324,12 +520,32 @@ class ValidatorAgent(BaseToolAgent):
             # Build a mask of positions inside math environments in translation
             trans_regions = self._extract_math_regions(translated)
             placeholder_spans = self._extract_placeholder_spans(translated)
+            math_placeholder_spans = self._extract_math_placeholder_spans(translated)
+            env_placeholder_spans = self._extract_env_placeholder_spans(translated)
+            item_placeholder_spans = self._extract_item_placeholder_spans(translated)
+            eqrow_placeholder_spans = self._extract_eqrow_placeholder_spans(translated)
+            safe_arg_spans = self._extract_safe_command_arg_spans(translated)
+            code_like_spans = self._extract_code_like_spans(translated)
             inside = set()
             for s, e, _ in trans_regions:
                 inside.update(range(s, e))
 
+            filtered_code_like_tokens = 0
             for m in self._BARE_MATH_TOKEN_RE.finditer(translated):
                 if self._index_in_spans(m.start(), placeholder_spans):
+                    continue
+                if self._index_in_spans(m.start(), math_placeholder_spans):
+                    continue
+                if self._index_in_spans(m.start(), env_placeholder_spans):
+                    continue
+                if self._index_in_spans(m.start(), item_placeholder_spans):
+                    continue
+                if self._index_in_spans(m.start(), eqrow_placeholder_spans):
+                    continue
+                if self._index_in_spans(m.start(), safe_arg_spans):
+                    continue
+                if self._index_in_spans(m.start(), code_like_spans):
+                    filtered_code_like_tokens += 1
                     continue
                 if m.start() not in inside:
                     errors.append(
@@ -337,6 +553,9 @@ class ValidatorAgent(BaseToolAgent):
                         f"at pos {m.start()} is outside $...$ in translation"
                     )
                     break  # One sample is enough to trigger repair
+
+            if filtered_code_like_tokens:
+                self.code_like_filtered_bare_tokens += filtered_code_like_tokens
 
             # Severe corruption checks within translated math regions
             for s, e, _ in trans_regions:
@@ -357,6 +576,134 @@ class ValidatorAgent(BaseToolAgent):
 
         return "\n".join(errors) if errors else None
 
+    def _validate_env_boundaries(self, part: Dict[str, Any]) -> Optional[str]:
+        """Validate ENV placeholders are fully restored and boundary tags are balanced."""
+        translated = part.get("trans_content") or ""
+        if not translated:
+            return None
+
+        if "<ENV_RESTORE_FAILED>" in translated:
+            return "env_boundary_mismatch: env_restore_failed marker detected"
+
+        level_a_residual = re.findall(r'<ENV_\d+>', translated)
+        if level_a_residual:
+            return (
+                "level_a_env_placeholder_residual: unresolved Level-A ENV placeholders: "
+                + ", ".join(level_a_residual[:5])
+            )
+
+        token_re = re.compile(r'<ENV_(BEGIN|END)_(\d+)>')
+        tokens = list(token_re.finditer(translated))
+        if not tokens:
+            return None
+
+        stack: List[str] = []
+        for m in tokens:
+            kind = m.group(1)
+            idx = m.group(2)
+            if kind == "BEGIN":
+                stack.append(idx)
+            else:
+                if not stack:
+                    return f"env_boundary_mismatch: unexpected END token ENV_END_{idx}"
+                top = stack.pop()
+                if top != idx:
+                    return (
+                        "env_boundary_mismatch: crossed boundary tokens "
+                        f"ENV_BEGIN_{top} ... ENV_END_{idx}"
+                    )
+
+        if stack:
+            return (
+                "env_boundary_mismatch: unclosed BEGIN token(s): "
+                + ", ".join(f"ENV_BEGIN_{idx}" for idx in stack[:5])
+            )
+        return "env_boundary_mismatch: unresolved ENV_BEGIN/ENV_END placeholders remain"
+
+    def _validate_immutable_placeholders(self, part: Dict[str, Any]) -> Optional[str]:
+        """
+        Validate ITEM/EQROW immutable placeholders are not dropped/reordered.
+
+        For regular translated output, expected list is usually empty. This still
+        catches residual placeholder leakage (found != expected).
+        """
+        original = part.get("content") or ""
+        translated = part.get("trans_content") or ""
+        if not translated:
+            return None
+
+        errors: List[str] = []
+        expected_item = self._ITEM_PLACEHOLDER_RE.findall(original)
+        item_error = validate_immutable_placeholder_sequence(translated, expected_item, "ITEM")
+        if item_error:
+            errors.append(item_error)
+
+        expected_eqrow = self._EQROW_PLACEHOLDER_RE.findall(original)
+        eqrow_error = validate_immutable_placeholder_sequence(translated, expected_eqrow, "EQROW")
+        if eqrow_error:
+            errors.append(eqrow_error)
+
+        return "\n".join(errors) if errors else None
+
+    def _validate_list_item_structure(self, part: Dict[str, Any]) -> Optional[str]:
+        """Validate enumerate/itemize structure and item anchors for list environments."""
+        env_name = str(part.get("env_name", "") or "").lower()
+        if env_name not in {"enumerate", "enumerate*", "itemize", "itemize*"}:
+            return None
+
+        original = part.get("content") or ""
+        translated = part.get("trans_content") or ""
+        if not translated:
+            return None
+
+        _, _, src_tokens = anchor_list_items_in_env_body(original)
+        _, _, tgt_tokens = anchor_list_items_in_env_body(translated)
+        if len(src_tokens) != len(tgt_tokens):
+            return (
+                "list_env_item_order_mismatch: item count mismatch "
+                f"(expected {len(src_tokens)}, found {len(tgt_tokens)})"
+            )
+
+        item_cmd_re = re.compile(r'\\item(?:\s*\[[^\]]*\])?')
+        src_item_cmds = item_cmd_re.findall(original)
+        tgt_item_cmds = item_cmd_re.findall(translated)
+        if len(src_item_cmds) != len(tgt_item_cmds):
+            return (
+                "list_env_item_order_mismatch: item command count mismatch "
+                f"(expected {len(src_item_cmds)}, found {len(tgt_item_cmds)})"
+            )
+
+        token_re = re.compile(
+            r'\\begin\{(?:enumerate|itemize)\*?\}'
+            r'|\\end\{(?:enumerate|itemize)\*?\}'
+            r'|\\item(?:\s*\[[^\]]*\])?'
+        )
+        stack: List[str] = []
+        for m in token_re.finditer(translated):
+            token = m.group(0)
+            if token.startswith(r"\begin{"):
+                name = token[len(r"\begin{"):-1]
+                stack.append(name)
+                continue
+            if token.startswith(r"\end{"):
+                name = token[len(r"\end{"):-1]
+                if not stack:
+                    return "list_env_item_order_mismatch: unexpected list end token"
+                top = stack.pop()
+                if top != name:
+                    return (
+                        "list_env_item_order_mismatch: crossed list nesting "
+                        f"(begin={top}, end={name})"
+                    )
+                continue
+            if not stack:
+                return "list_env_item_order_mismatch: item command outside list boundary"
+
+        if stack:
+            return "list_env_item_order_mismatch: unclosed list environment boundary"
+
+        return None
+
     @staticmethod
     def repair_math_delimiters(original: str, translated: str) -> str:
         """
@@ -372,6 +719,10 @@ class ValidatorAgent(BaseToolAgent):
         This is a deterministic structural repair (Type C), not LLM retry.
         """
         if not original or not translated:
+            return translated
+
+        # Do not run math repair over unresolved environment placeholders.
+        if ValidatorAgent._extract_env_placeholder_spans(translated):
             return translated
 
         # Extract inline $...$ contents from original (in order)
@@ -393,6 +744,12 @@ class ValidatorAgent(BaseToolAgent):
             # Find all math regions to build exclusion mask
             existing_regions = ValidatorAgent._extract_math_regions(translated)
             placeholder_spans = ValidatorAgent._extract_placeholder_spans(translated)
+            math_placeholder_spans = ValidatorAgent._extract_math_placeholder_spans(translated)
+            env_placeholder_spans = ValidatorAgent._extract_env_placeholder_spans(translated)
+            item_placeholder_spans = ValidatorAgent._extract_item_placeholder_spans(translated)
+            eqrow_placeholder_spans = ValidatorAgent._extract_eqrow_placeholder_spans(translated)
+            safe_arg_spans = ValidatorAgent._extract_safe_command_arg_spans(translated)
+            code_like_spans = ValidatorAgent._extract_code_like_spans(translated)
             inside = set()
             for s, e, _ in existing_regions:
                 inside.update(range(s, e))
@@ -401,6 +758,18 @@ class ValidatorAgent(BaseToolAgent):
             offset = 0
             for match in bare_token_re.finditer(translated):
                 if ValidatorAgent._index_in_spans(match.start(), placeholder_spans):
+                    continue
+                if ValidatorAgent._index_in_spans(match.start(), math_placeholder_spans):
+                    continue
+                if ValidatorAgent._index_in_spans(match.start(), env_placeholder_spans):
+                    continue
+                if ValidatorAgent._index_in_spans(match.start(), item_placeholder_spans):
+                    continue
+                if ValidatorAgent._index_in_spans(match.start(), eqrow_placeholder_spans):
+                    continue
+                if ValidatorAgent._index_in_spans(match.start(), safe_arg_spans):
+                    continue
+                if ValidatorAgent._index_in_spans(match.start(), code_like_spans):
                     continue
                 if match.start() in inside:
                     continue
