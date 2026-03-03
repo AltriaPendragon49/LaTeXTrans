@@ -196,12 +196,16 @@ class LatexConstructor:
                 pos = match.end()
             elif tag in end_map:
                 if not stack:
-                    logger.error(f"Unmatched end tag: {tag}")
-                    raise ValueError(f"Unmatched end tag: {tag}")
+                    logger.warning(f"Unmatched end tag found and skipped: {tag}")
+                    pos = match.end()
+                    continue
+                
                 begin_tag, begin_pos = stack.pop()
                 if end_map[tag] != begin_map[begin_tag]:
-                    logger.error(f"Mismatched tags: {begin_tag} vs {tag}")
-                    raise ValueError(f"Mismatched tags: {begin_tag} vs {tag}")
+                    logger.warning(f"Mismatched tags: {begin_tag} vs {tag}, skipping end tag")
+                    stack.append((begin_tag, begin_pos))
+                    pos = match.end()
+                    continue
 
                 input_info = begin_map[begin_tag]
                 end_pos = match.end()

@@ -406,6 +406,12 @@ class LatexParser:
         Tracks previous_context to maintain semantic continuity across LLM calls.
         Marks chunks that still exceed `max_tokens` after boundary search as
         `oversize_no_safe_boundary=True` for deterministic source-pass-through gating.
+
+        Structure-Aware Split Invariant (OpenSpec: structure-aware-chunking):
+        Before finalizing a split point, we verify via `_is_safe_split_boundary`
+        that the current chunk ends at brace depth 0 and outside any \\begin...\\end
+        environment. If the boundary is unsafe, we defer the split and accumulate
+        more text, ultimately flagging the overall chunk as oversize_no_safe_boundary.
         """
         try:
             enc = tiktoken.get_encoding("o200k_base")
@@ -456,7 +462,7 @@ class LatexParser:
                 else:
                     refined_parts.append(p)
 
-            # Assemble sub-chunks
+            # Assemble sub-chunks — only split at brace-depth-zero boundaries
             current_chunk = ""
             current_chunk_tokens = 0
             sub_chunk_idx = 1
@@ -465,32 +471,40 @@ class LatexParser:
             for part in refined_parts:
                 part_tokens = len(enc.encode(part))
                 
-                # If adding this part exceeds max, finalize the current chunk
+                # If adding this part exceeds max, check whether the
+                # boundary before `part` is a safe split point (brace depth == 0
+                # and not inside a \begin...\end environment).
                 if current_chunk and (current_chunk_tokens + part_tokens > max_tokens):
-                    new_section = section.copy()
-                    new_section["section"] = f"{section['section']}_chunk_{sub_chunk_idx}"
-                    new_section["content"] = current_chunk
-                    if previous_context:
-                        new_section["previous_context"] = previous_context
-                    chunk_tokens = len(enc.encode(current_chunk))
-                    new_section["chunk_token_count"] = chunk_tokens
-                    if chunk_tokens > max_tokens:
-                        new_section["oversize_no_safe_boundary"] = True
+                    if self._is_safe_split_boundary(current_chunk):
+                        new_section = section.copy()
+                        new_section["section"] = f"{section['section']}_chunk_{sub_chunk_idx}"
+                        new_section["content"] = current_chunk
+                        if previous_context:
+                            new_section["previous_context"] = previous_context
+                        chunk_tokens = len(enc.encode(current_chunk))
+                        new_section["chunk_token_count"] = chunk_tokens
+                        if chunk_tokens > max_tokens:
+                            new_section["oversize_no_safe_boundary"] = True
+                            
+                        chunked_sections.append(new_section)
+                        sub_chunk_idx += 1
                         
-                    chunked_sections.append(new_section)
-                    sub_chunk_idx += 1
-                    
-                    # Store trailing text of the completed chunk as context
-                    # If it's a multi-paragraph chunk, take the last paragraph roughly (~500 chars)
-                    tail = current_chunk[-1000:]
-                    last_paragraph_match = re.search(r'([^\n]+)$', tail)
-                    if last_paragraph_match:
-                        previous_context = last_paragraph_match.group(1).strip()
+                        # Store trailing text of the completed chunk as context
+                        tail = current_chunk[-1000:]
+                        last_paragraph_match = re.search(r'([^\n]+)$', tail)
+                        if last_paragraph_match:
+                            previous_context = last_paragraph_match.group(1).strip()
+                        else:
+                            previous_context = tail.strip()
+                            
+                        current_chunk = ""
+                        current_chunk_tokens = 0
                     else:
-                        previous_context = tail.strip()
-                        
-                    current_chunk = ""
-                    current_chunk_tokens = 0
+                        # Not a safe boundary — accumulate and defer the split decision.
+                        logger.debug(
+                            f"Section {section['section']}: skipping split at unsafe boundary "
+                            f"(brace depth > 0 or inside environment). Accumulating."
+                        )
                     
                 current_chunk += part
                 current_chunk_tokens += part_tokens
@@ -509,3 +523,50 @@ class LatexParser:
                 chunked_sections.append(new_section)
                 
         self.sections_json = chunked_sections
+
+    @staticmethod
+    def _is_safe_split_boundary(text: str) -> bool:
+        """
+        Return True iff the end of `text` is a safe LaTeX split boundary:
+        - The brace depth (counting { vs }) must be 0.
+        - We must not be inside any \\begin{...}...\\end{...} environment.
+
+        This ensures we never split \\textbf{long text} mid-brace or separate
+        a \\begin from its matching \\end.
+        """
+        depth = 0
+        env_stack = []  # stack of environment names currently open
+
+        i = 0
+        while i < len(text):
+            ch = text[i]
+
+            if ch == '\\':
+                # Look for \begin{name} and \end{name}
+                begin_m = re.match(r'\\begin\s*\{([^}]*)\}', text[i:])
+                if begin_m:
+                    env_stack.append(begin_m.group(1))
+                    i += begin_m.end()
+                    continue
+
+                end_m = re.match(r'\\end\s*\{([^}]*)\}', text[i:])
+                if end_m:
+                    env_name = end_m.group(1)
+                    if env_stack and env_stack[-1] == env_name:
+                        env_stack.pop()
+                    i += end_m.end()
+                    continue
+
+                i += 1
+            elif ch == '{':
+                depth += 1
+                i += 1
+            elif ch == '}':
+                depth -= 1
+                i += 1
+            else:
+                i += 1
+
+        return depth == 0 and len(env_stack) == 0
+
+

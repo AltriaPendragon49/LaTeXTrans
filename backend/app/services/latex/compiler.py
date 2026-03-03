@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List
 import platform
 import signal
+from .sanitizer import try_sanitize_images_in_errors, apply_precompile_sanitization
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,11 @@ CJK_MISSING_CHAR_SEVERE_THRESHOLD = 50
 
 # Maximum content to read for language detection (100KB)
 MAX_DETECTION_CONTENT = 100 * 1024
+
+# Maximum number of image-sanitizer rounds before giving up.
+# Each round repairs only *newly discovered* corrupted PDFs, so the loop is
+# monotonically convergent.  This constant is a hard safety cap.
+MAX_SANITIZE_ROUNDS = 20
 
 _CJK_TARGET_LANGS = {"zh", "ch", "ja", "ko"}
 _CYRILLIC_TARGET_LANGS = {"ru", "uk", "bg", "sr", "mk", "be"}
@@ -490,17 +496,25 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
         r"^Runaway argument\?$",
         r"^\*\*\* \(job aborted, no legal \\end found\)",
         # -file-line-error format (latexmk default in this project)
-        r"^.+:\d+:\s+LaTeX Error:",
-        r"^.+:\d+:\s+Package .* Error:",
-        r"^.+:\d+:\s+Undefined control sequence\.?$",
-        r"^.+:\d+:\s+Missing .+ inserted\.?$",
-        r"^.+:\d+:\s+File ended while scanning use of .+",
-        r"^.+:\d+:\s+Extra .+$",
+        # Note: LuaLaTeX sometimes starts these lines with an opening '(',
+        # so we allow an optional leading '(' via the \(? prefix.
+        r"^\(?\s*.+:\d+:\s+LaTeX Error:",
+        r"^\(?\s*.+:\d+:\s+Package .* Error:",
+        r"^\(?\s*.+:\d+:\s+Undefined control sequence\.?$",
+        r"^\(?\s*.+:\d+:\s+Missing .+ inserted\.?$",
+        r"^\(?\s*.+:\d+:\s+File ended while scanning use of .+",
+        r"^\(?\s*.+:\d+:\s+Extra .+$",
+        r"^\(?\s*>?.+:\d+:\s*(?:fatal\s+)?error:",
         # Fatal fallback signatures
         r"^.+Fatal error occurred, no output PDF file produced!?$",
         r"^Emergency stop\.$",
+        # Specific triggers (image-related, may span continuation lines)
+        r"reading image failed",
+        r"pdf inclusion",
     ]
-    compiled_patterns = [re.compile(pattern) for pattern in error_patterns]
+    compiled_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in error_patterns]
+    # Patterns that indicate this line is a continuation (image errors often wrap)
+    _IMAGE_ERROR_KEYWORDS = ("reading image failed", "pdf inclusion")
     root_cause_hint_patterns = [
         re.compile(r"^Runaway argument\?$"),
         re.compile(r"^! File ended while scanning use of .+"),
@@ -513,20 +527,49 @@ def parse_log_errors(log_path: str) -> Tuple[int, List[str]]:
     try:
         prev_nonempty = ""
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+            all_lines = [l.rstrip('\n\r') for l in f]
+        
+        i = 0
+        while i < len(all_lines):
+            line = all_lines[i].strip()
+            i += 1
+            if not line:
+                continue
 
-                if any(pattern.search(line) for pattern in compiled_patterns):
-                    if "Emergency stop" in line and prev_nonempty:
-                        if any(pattern.search(prev_nonempty) for pattern in root_cause_hint_patterns):
-                            if not errors or errors[-1] != prev_nonempty:
-                                errors.append(prev_nonempty)
-                    # Avoid noisy duplicate lines in summaries.
-                    if not errors or errors[-1] != line:
-                        errors.append(line)
-                prev_nonempty = line
+            if any(pattern.search(line) for pattern in compiled_patterns):
+                # Join continuation lines — LaTeX logs wrap at ~79 chars.
+                # For image-related errors, keep merging forward until the
+                # full keyword appears or we hit a blank line / new error.
+                merged = line
+                look_ahead_limit = 4  # safety cap: never merge more than 4 lines
+                merges = 0
+                while i < len(all_lines) and merges < look_ahead_limit:
+                    next_line = all_lines[i].strip()
+                    if not next_line:
+                        break  # blank line terminates continuation
+                    if any(pattern.search(next_line) for pattern in compiled_patterns):
+                        # Only skip the merge if the next line is a *new* error,
+                        # not the continuation of the current image error.
+                        if any(kw in merged.lower() for kw in _IMAGE_ERROR_KEYWORDS):
+                            break  # image error already complete
+                        if not any(kw in (merged + next_line).lower() for kw in _IMAGE_ERROR_KEYWORDS):
+                            break  # unrelated new error
+                    merged = merged + next_line
+                    i += 1
+                    merges += 1
+                    # Stop early if the image-error keyword is now complete
+                    if any(kw in merged.lower() for kw in _IMAGE_ERROR_KEYWORDS):
+                        break
+                line = merged
+
+                if "Emergency stop" in line and prev_nonempty:
+                    if any(pattern.search(prev_nonempty) for pattern in root_cause_hint_patterns):
+                        if not errors or errors[-1] != prev_nonempty:
+                            errors.append(prev_nonempty)
+                # Avoid noisy duplicate lines in summaries.
+                if not errors or errors[-1] != line:
+                    errors.append(line)
+            prev_nonempty = line
     except Exception as e:
         logger.warning(f"Failed to parse log file {log_path}: {e}")
         return 0, []
@@ -1168,10 +1211,7 @@ def compile_with_intelligent_fallback(
 
     normalized_tex_file = str(Path(tex_file).resolve())
     normalized_output_dir = str(Path(output_dir).resolve())
-
-    # Pre-compilation: remove outdated bundled .cls files that conflict with system TeX Live.
     tex_dir = str(Path(normalized_tex_file).parent)
-    _upgrade_outdated_cls_files(tex_dir)
 
     language, language_reason = _decide_compiler_language(normalized_tex_file, target_language)
     mapped_target_language = map_target_language_to_family(target_language)
@@ -1238,11 +1278,39 @@ def compile_with_intelligent_fallback(
 
     compat_shims_applied: List[Dict[str, Any]] = []
 
+    # ---------------------------------------------------------------------------
+    # STAGE 0: Pre-Compile Sanitization (Incompatible Package Filtering)
+    # ---------------------------------------------------------------------------
+    # Scans and comments out packages known to crash modern engines in CJK mode.
+    # ---------------------------------------------------------------------------
+    precompile_warnings: List[str] = []
+    if language == "cjk":
+        logger.info("Stage 0 (pre-compile): scanning all .tex files for incompatible packages...")
+        for tex_path in list(Path(tex_dir).rglob("*.tex")):
+            try:
+                content = tex_path.read_text(encoding="utf-8", errors="replace")
+                sanitizer_output, round_warnings = apply_precompile_sanitization(content)
+                if round_warnings:
+                    tex_path.write_text(sanitizer_output, encoding="utf-8")
+                    precompile_warnings.extend(round_warnings)
+                    logger.info("Stage 0: sanitized %s (%d package(s) filtered)", tex_path.name, len(round_warnings))
+            except Exception as e:
+                logger.warning("Stage 0: failed to process %s: %s", tex_path.name, e)
+
     def _with_diagnostics(payload: Dict[str, Any]) -> Dict[str, Any]:
         payload = dict(payload)
         payload["language_decision"] = language_decision
         payload["engine_order_reason"] = engine_order_reason
         payload["compat_shims_applied"] = compat_shims_applied
+
+        # Merge Stage 0 (Pre-compile) warnings if they exist
+        if precompile_warnings:
+            existing_warnings = payload.get("warnings")
+            prefix = "[Stage 0: Pre-compile Sanitization] " + "; ".join(precompile_warnings)
+            if existing_warnings:
+                payload["warnings"] = prefix + " | " + str(existing_warnings)
+            else:
+                payload["warnings"] = prefix
         return payload
 
     tex_path_obj = Path(normalized_tex_file)
@@ -1252,46 +1320,216 @@ def compile_with_intelligent_fallback(
     except Exception as read_err:
         logger.warning("Failed to read source tex for compatibility shims: %s", read_err)
 
-    # Collect results from all engines.
+    # ---------------------------------------------------------------------------
+    # Tiered Compilation Strategy (OpenSpec: tiered-compilation)
+    # ---------------------------------------------------------------------------
+    # Stage 0 – Pristine:  attempt every engine as-is, no source modifications.
+    # Stage 1 – Shimmed:   apply engine-compat shims but do NOT delete .cls files.
+    # Stage 2 – Invasive:  call _upgrade_outdated_cls_files + biblatex fallback.
+    #                       Only reached when both Stage 0 and Stage 1 fail.
+    # ---------------------------------------------------------------------------
+
+    # Collect results from all engines, keyed by (stage, engine).
     results: Dict[str, CompilationResult] = {}
 
-    try:
-        for engine in engines:
-            # Clean engine-specific auxiliary files from previous runs.
-            # We explicitly DO NOT clean .bbl because arxiv papers often rely on pre-provided .bbl files.
-            for ext in [".out", ".toc", ".fls", ".fdb_latexmk", ".xdv", ".nav", ".snm"]:
-                aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
-                if aux_file.exists():
-                    try:
-                        aux_file.unlink()
-                    except OSError:
-                        pass
+    def _clean_aux_files():
+        """Clean engine-specific auxiliary files from previous runs."""
+        for ext in [".out", ".toc", ".fls", ".fdb_latexmk", ".xdv", ".nav", ".snm"]:
+            aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
+            if aux_file.exists():
+                try:
+                    aux_file.unlink()
+                except OSError:
+                    pass
 
-            applied_shims: List[str] = []
-            if original_tex_content is not None:
-                patched_tex_content, applied_shims = _apply_engine_compat_shims(
-                    original_tex_content,
-                    engine,
-                    language,
+    def _preserve_pdf_and_log(
+        result: CompilationResult, engine: str, stage_label: str
+    ) -> CompilationResult:
+        """Copy engine PDF/log to a stable snapshot file and update result paths."""
+        if result.pdf_path:
+            pdf_candidate = Path(result.pdf_path)
+            if pdf_candidate.exists():
+                preserved_pdf = (
+                    Path(normalized_output_dir)
+                    / f"{Path(normalized_tex_file).stem}.{engine}.{stage_label}.pdf"
+                )
+                try:
+                    shutil.copy2(pdf_candidate, preserved_pdf)
+                    result.pdf_path = str(preserved_pdf)
+                    logger.info(f"Preserved {engine} ({stage_label}) PDF snapshot: {preserved_pdf}")
+                    if result.log_path:
+                        log_candidate = Path(result.log_path)
+                        if log_candidate.exists():
+                            preserved_log = (
+                                Path(normalized_output_dir)
+                                / f"{Path(normalized_tex_file).stem}_{engine}_{stage_label}.log"
+                            )
+                            try:
+                                shutil.copy2(log_candidate, preserved_log)
+                            except Exception:
+                                pass
+                except Exception as exc:
+                    logger.warning(f"Failed to preserve {engine} PDF snapshot: {exc}")
+                    result.pdf_path = str(pdf_candidate) if pdf_candidate.exists() else None
+            else:
+                logger.warning(f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}")
+                result.pdf_path = None
+        return result
+
+    def _is_perfect(result: CompilationResult) -> bool:
+        """Return True iff the compilation is error-free (and CJK quality-OK)."""
+        effective_quality = result.quality_issue_count if language == "cjk" else 0
+        return result.success and result.error_count == 0 and effective_quality == 0
+
+    try:
+        # ------------------------------------------------------------------ #
+        # STAGE 0: Pristine — no modifications to user source whatsoever.      #
+        # ------------------------------------------------------------------ #
+        logger.info("Stage 0 (pristine): attempting compilation without source modifications.")
+        for engine in engines:
+            _clean_aux_files()
+            logger.info(f"Stage 0 – attempting engine {engine}...")
+            result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
+            result = _preserve_pdf_and_log(result, engine, "stage0")
+            compat_shims_applied.append({"engine": engine, "stage": 0, "shims": []})
+            results[f"stage0_{engine}"] = result
+            if _is_perfect(result):
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("Stage 0 pdflatex perfect for CJK; still trying modern engines")
+                else:
+                    logger.info(f"Stage 0: {engine} produced perfect compilation.")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": None,
+                            "errors": None,
+                        }
+                    )
+
+        # ------------------------------------------------------------------ #
+        # STAGE 1: Shimmed — apply engine compatibility shims, no .cls delete. #
+        # ------------------------------------------------------------------ #
+        logger.info(
+            "Stage 0 did not produce a perfect result. "
+            "Stage 1 (shimmed): applying engine compatibility shims."
+        )
+        for engine in engines:
+            if original_tex_content is None:
+                applied_shims_list: List[str] = ["skip_shims_source_unreadable"]
+            else:
+                patched_tex_content, applied_shims_list = _apply_engine_compat_shims(
+                    original_tex_content, engine, language
+                )
+                if patched_tex_content != original_tex_content:
+                    try:
+                        tex_path_obj.write_text(patched_tex_content, encoding="utf-8")
+                    except Exception as write_err:
+                        logger.warning(
+                            "Stage 1: failed to write shimmed TeX for engine %s: %s", engine, write_err
+                        )
+                        applied_shims_list = list(applied_shims_list) + ["shim_write_failed"]
+                else:
+                    # No shims needed for this engine; skip to avoid re-running same compile.
+                    logger.debug(f"Stage 1: no shims for {engine}, skipping.")
+                    continue
+
+            _clean_aux_files()
+            compat_shims_applied.append({"engine": engine, "stage": 1, "shims": applied_shims_list})
+            if applied_shims_list:
+                logger.info("Stage 1 – applied shims for %s: %s", engine, applied_shims_list)
+            logger.info(f"Stage 1 – attempting engine {engine}...")
+            result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
+            result = _preserve_pdf_and_log(result, engine, "stage1")
+            results[f"stage1_{engine}"] = result
+            if _is_perfect(result):
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("Stage 1 pdflatex perfect for CJK; still trying modern engines")
+                else:
+                    logger.info(f"Stage 1 (shimmed): {engine} produced perfect compilation.")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": None,
+                            "errors": None,
+                        }
+                    )
+
+        # ------------------------------------------------------------------ #
+        # STAGE 2: Invasive — upgrade cls files + biblatex fallback.           #
+        # Only reached when Stage 0 and Stage 1 produced no perfect result.   #
+        # ------------------------------------------------------------------ #
+        logger.warning(
+            "Stage 0 and Stage 1 did not produce a perfect result. "
+            "Stage 2 (invasive): upgrading cls files and running biblatex fallback."
+        )
+        _upgrade_outdated_cls_files(tex_dir)
+        compat_shims_applied.append({"engine": "*", "stage": 2, "shims": ["upgrade_cls_files"]})
+
+        for engine in engines:
+            if original_tex_content is None:
+                applied_shims_list = ["skip_shims_source_unreadable"]
+            else:
+                patched_tex_content, applied_shims_list = _apply_engine_compat_shims(
+                    original_tex_content, engine, language
                 )
                 try:
                     tex_path_obj.write_text(patched_tex_content, encoding="utf-8")
                 except Exception as write_err:
                     logger.warning(
-                        "Failed to write shimmed TeX for engine %s. Error: %s",
-                        engine,
-                        write_err,
+                        "Stage 2: failed to write shimmed TeX for engine %s: %s", engine, write_err
                     )
-                    applied_shims = list(applied_shims) + ["shim_write_failed"]
-            else:
-                applied_shims = ["skip_shims_source_unreadable"]
+                    applied_shims_list = list(applied_shims_list) + ["shim_write_failed"]
 
-            compat_shims_applied.append({"engine": engine, "shims": applied_shims})
-            if applied_shims:
-                logger.info("Applied compatibility shims for %s: %s", engine, applied_shims)
-
-            logger.info(f"Attempting compilation with {engine}...")
+            _clean_aux_files()
+            compat_shims_applied.append({"engine": engine, "stage": 2, "shims": applied_shims_list})
+            logger.info(f"Stage 2 – attempting engine {engine}...")
             result = compile_latex(normalized_tex_file, normalized_output_dir, engine=engine)
+            result = _preserve_pdf_and_log(result, engine, "stage2")
+            results[f"stage2_{engine}"] = result
+            if _is_perfect(result):
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("Stage 2 pdflatex perfect for CJK; continuing for merit selection")
+                else:
+                    logger.info(f"Stage 2 (invasive): {engine} produced perfect compilation (DEGRADED).")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": "Stage 2 (invasive) was used: user .cls files may have been modified.",
+                            "errors": None,
+                        }
+                    )
+
+        # All three stages and all engines have been exhausted.
+        # Fall through to best-effort selection on whatever PDFs we have.
+        engine_result_items = [
+            (k.split("_", 1)[1], v) for k, v in results.items()
+        ]  # strip stage prefix
+
+        # Build a deduplicated (engine, result) list preferring later stages.
+        dedup: Dict[str, CompilationResult] = {}
+        for eng, res in engine_result_items:
+            if eng not in dedup or (dedup[eng].pdf_path is None and res.pdf_path is not None):
+                dedup[eng] = res
+        # Use this for best-effort selection below.
+        result_items_for_selection = list(dedup.items())
+        result_items_for_selection_with_pdf = [
+            (eng, res)
+            for eng, res in result_items_for_selection
+            if res.pdf_path is not None and Path(res.pdf_path).exists()
+        ]
+
+        # Also expose the raw per-engine results on the path the old code used.
+        for eng, res in dedup.items():
+            results[eng] = res
 
             # Preserve each engine PDF under an engine-specific filename.
             if result.pdf_path:
@@ -1345,12 +1583,162 @@ def compile_with_intelligent_fallback(
                         }
                     )
 
-        # No perfect compilation - select best result.
-        engines_with_pdf = [
-            (engine, result)
-            for engine, result in results.items()
-            if result.pdf_path is not None and Path(result.pdf_path).exists()
-        ]
+        # -------------------------------------------------------------------
+        # STAGE 3: Iterative Image Sanitizer
+        #
+        # Triggered when image-related errors appear in ANY engine log.
+        # Invariants:
+        #   A) Compilation-failure driven — never runs when compilation succeeded.
+        #   B) Original files are never modified (Ghostscript writes *.sanitized.pdf).
+        #   C) Monotonic convergence — sanitized_files only grows; each PDF is
+        #      distilled at most once; loop exits immediately when no new files
+        #      are discovered.
+        # -------------------------------------------------------------------
+        all_error_lines: List[str] = []
+        for res in dedup.values():
+            all_error_lines.extend(res.errors)
+
+        _IMAGE_TRIGGERS = ("reading image failed", "pdf inclusion")
+        if any(any(kw in ln.lower() for kw in _IMAGE_TRIGGERS) for ln in all_error_lines):
+            logger.warning(
+                "Stage 3 (image sanitizer): detected PDF inclusion errors — "
+                "entering iterative repair loop (max %d rounds).",
+                MAX_SANITIZE_ROUNDS,
+            )
+
+            # Accumulated set of original PDF paths that have been repaired
+            # across all rounds.  Grows monotonically; never shrinks.
+            sanitized_files: set = set()
+            # All sanitized *output* paths for the final warning message.
+            all_sanitized_outputs: List[Path] = []
+
+            # Pick the best engine from Stage 2: prefer the one with fewest errors
+            # that produced a PDF; fall back to whichever engine ran last.
+            best_s2_engine = engines[-1]
+            if result_items_for_selection_with_pdf:
+                best_s2_engine = min(
+                    result_items_for_selection_with_pdf,
+                    key=lambda x: x[1].error_count,
+                )[0]
+            elif result_items_for_selection:
+                best_s2_engine = min(
+                    result_items_for_selection,
+                    key=lambda x: x[1].error_count,
+                )[0]
+
+            # The error lines to scan at the start of each round (seeded with
+            # Stage 2 errors; updated with each round's compilation result).
+            round_error_lines = all_error_lines
+            current_round_result: Optional[CompilationResult] = None
+
+            for round_idx in range(MAX_SANITIZE_ROUNDS):
+                # Short-circuit A: no image errors in this round's log.
+                has_image_error = any(
+                    any(kw in ln.lower() for kw in _IMAGE_TRIGGERS)
+                    for ln in round_error_lines
+                )
+                if not has_image_error:
+                    logger.info(
+                        "Stage 3 round %d: no image errors detected; exiting loop.",
+                        round_idx,
+                    )
+                    break
+
+                newly_sanitized_outputs, any_new, newly_sanitized_originals = try_sanitize_images_in_errors(
+                    round_error_lines,
+                    Path(tex_dir),
+                    already_sanitized=sanitized_files,
+                )
+
+                # Short-circuit B: all detected bad PDFs were already repaired.
+                if not any_new:
+                    logger.info(
+                        "Stage 3 round %d: no new corrupted PDFs discovered (short-circuit).",
+                        round_idx,
+                    )
+                    break
+
+                # Merge newly repaired files into the global accumulator.
+                sanitized_files.update(newly_sanitized_originals)
+                all_sanitized_outputs.extend(newly_sanitized_outputs)
+                logger.info(
+                    "Stage 3 round %d: repaired %d new PDF(s) — cumulative total %d.",
+                    round_idx,
+                    len(newly_sanitized_originals),
+                    len(sanitized_files),
+                )
+
+                # Recompile with the best single engine.
+                _clean_aux_files()
+                logger.info(
+                    "Stage 3 round %d — retrying engine %s after image sanitization...",
+                    round_idx,
+                    best_s2_engine,
+                )
+                current_round_result = compile_latex(
+                    normalized_tex_file, normalized_output_dir, engine=best_s2_engine
+                )
+                current_round_result = _preserve_pdf_and_log(
+                    current_round_result, best_s2_engine, f"stage3_r{round_idx}"
+                )
+                results[f"stage3_r{round_idx}_{best_s2_engine}"] = current_round_result
+
+                if _is_perfect(current_round_result):
+                    logger.info(
+                        "Stage 3 round %d: %s produced perfect compilation.",
+                        round_idx, best_s2_engine,
+                    )
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": current_round_result.pdf_path,
+                            "status": "completed_with_warnings",
+                            "engine": best_s2_engine,
+                            "error_count": 0,
+                            "warnings": (
+                                f"Stage 3 (image sanitizer) repaired "
+                                f"{len(all_sanitized_outputs)} corrupted PDF image(s) "
+                                f"across {round_idx + 1} round(s): "
+                                + ", ".join(p.name for p in all_sanitized_outputs)
+                            ),
+                            "errors": None,
+                        }
+                    )
+
+                if (
+                    current_round_result.pdf_path
+                    and current_round_result.error_count < sum(
+                        res.error_count for res in dedup.values()
+                    )
+                ):
+                    logger.info(
+                        "Stage 3 round %d: %s reduced errors; accepting best-effort PDF.",
+                        round_idx, best_s2_engine,
+                    )
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": current_round_result.pdf_path,
+                            "status": "completed_with_warnings",
+                            "engine": best_s2_engine,
+                            "error_count": current_round_result.error_count,
+                            "warnings": (
+                                f"Stage 3 (image sanitizer) partially repaired "
+                                f"{len(all_sanitized_outputs)} image(s) across "
+                                f"{round_idx + 1} round(s). "
+                                f"{current_round_result.error_count} residual error(s)."
+                            ),
+                            "errors": None,
+                        }
+                    )
+
+                # Feed this round's errors into the next round.
+                round_error_lines = current_round_result.errors
+
+
+        # -------------------------------------------------------------------
+        # Best-effort fallback: if Stage 3 didn't succeed (or wasn't needed),
+        # return the PDF with fewest errors produced by any stage 0-2 engine.
+        # -------------------------------------------------------------------
+        engines_with_pdf = result_items_for_selection_with_pdf
 
         # CJK specific: Exclude pdflatex result if modern engines yielded a PDF.
         if language == "cjk":
@@ -1362,7 +1750,6 @@ def compile_with_intelligent_fallback(
                 engines_with_pdf = modern_engines_with_pdf
 
         if engines_with_pdf:
-            # Sort by hard errors first, then CJK quality issues.
             engines_with_pdf.sort(
                 key=lambda x: (
                     x[1].error_count,
@@ -1373,13 +1760,12 @@ def compile_with_intelligent_fallback(
 
             if language == "cjk":
                 comparison = ", ".join(
-                    f"{engine}: errors={result.error_count}, quality={result.quality_issue_count}"
-                    for engine, result in results.items()
+                    f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}"
+                    for eng, res in dedup.items()
                 )
             else:
                 comparison = ", ".join(
-                    f"{engine}: {result.error_count}"
-                    for engine, result in results.items()
+                    f"{eng}: {res.error_count}" for eng, res in dedup.items()
                 )
 
             logger.warning(
@@ -1404,15 +1790,16 @@ def compile_with_intelligent_fallback(
                 }
             )
 
-        # All engines failed to produce PDF.
-        logger.error(f"All engines failed to produce PDF: {engines}")
+        # All engines and all stages (including image sanitizer) failed.
 
-        combined_errors = "Compilation failed with all engines:\n\n"
-        for engine, result in results.items():
-            combined_errors += f"{engine} ({result.error_count} errors):\n"
-            combined_errors += "\n".join(result.errors[:10]) + "\n\n"
+        logger.error(f"All stages and engines failed to produce PDF: {engines}")
 
-        total_errors = sum(result.error_count for result in results.values())
+        combined_errors = "Compilation failed with all engines across all stages:\n\n"
+        for eng, res in dedup.items():
+            combined_errors += f"{eng} ({res.error_count} errors):\n"
+            combined_errors += "\n".join(res.errors[:10]) + "\n\n"
+
+        total_errors = sum(res.error_count for res in dedup.values())
         return _with_diagnostics(
             {
                 "pdf_path": None,

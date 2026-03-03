@@ -117,6 +117,10 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     if "protected_cmd_residual" in math_error:
         return ERROR_TYPE_C1
 
+    # Dollar sign escaped by LLM (e.g., $x$ -> \$x\$) -> C1, allow one retry
+    if "escaped_dollar_leak" in math_error:
+        return ERROR_TYPE_C1
+
     # Type B: Default - recoverable errors (bracket issues, extra placeholders, etc.)
     return ERROR_TYPE_B
 
@@ -213,6 +217,7 @@ class ValidatorAgent(BaseToolAgent):
         protected_cmd_error = self._validate_protected_cmd_residual(part)
         immutable_placeholder_error = self._validate_immutable_placeholders(part)
         list_structure_error = self._validate_list_item_structure(part)
+        escaped_dollar_error = self._validate_escaped_dollar_leak(part)
         error_report = {}
 
         if (
@@ -224,6 +229,7 @@ class ValidatorAgent(BaseToolAgent):
             and not protected_cmd_error
             and not immutable_placeholder_error
             and not list_structure_error
+            and not escaped_dollar_error
         ):
             return None
         else: 
@@ -252,6 +258,7 @@ class ValidatorAgent(BaseToolAgent):
                     protected_cmd_error,
                     immutable_placeholder_error,
                     list_structure_error,
+                    escaped_dollar_error,
                 ]
                 if e
             ]
@@ -299,6 +306,33 @@ class ValidatorAgent(BaseToolAgent):
         
         return "\n".join(errors) if errors else None
         
+    def _validate_escaped_dollar_leak(self, part: Dict[str, Any]) -> Optional[str]:
+        """Detect when LLM incorrectly escaped $ as \\$ outside math context.
+        
+        The LLM sometimes mistakes inline math delimiters for currency symbols
+        and escapes them: $x^2$ becomes \\$x^2\\$.  This produces 'Missing $
+        inserted' errors during LaTeX compilation.  Comparing the count of
+        literal ``\\$`` in the translation against the original is a reliable
+        symptom check.
+        """
+        trans = part.get("trans_content") or ""
+        # Fast exit: if there is no escaped dollar in the translation, no problem.
+        if r"\$" not in trans:
+            return None
+
+        orig = part.get("content") or ""
+        # Count raw `\$` occurrences using a simple str.count — no false positives.
+        orig_escaped = orig.count(r"\$")
+        trans_escaped = trans.count(r"\$")
+
+        if trans_escaped > orig_escaped:
+            excess = trans_escaped - orig_escaped
+            return (
+                f"escaped_dollar_leak: translation contains {excess} extra"
+                f" \\$ (LLM escaped inline math delimiters as currency signs)"
+            )
+        return None
+
     def _validate_closed_brackets(self, part: Dict[str, Any]) -> Optional[str]:
         """Validate brackets are properly closed"""
         content = part.get("content") or ""
