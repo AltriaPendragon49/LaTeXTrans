@@ -154,28 +154,24 @@ arXiv 论文上传目录 SHALL 以 arxiv_id 为 key 存储，支持跨任务共�
 
 ### Requirement: Failed Output Quarantine
 The system SHALL quarantine failed task outputs into `data/failed_tasks`, and SHALL move only `outputs/{task_id}` artifacts.  
-The system SHALL NOT move `terms/{task_id}` and SHALL NOT move or delete upload cache artifacts as part of this quarantine behavior.
+The system SHALL NOT move `terms/{task_id}` and SHALL NOT move or delete upload cache artifacts as part of this quarantine behavior.  
+After quarantine, the system SHALL perform scoped replay-evidence reference rewrite so replay references remain reachable from the new quarantine root.
 
 #### Scenario: Quarantine Failed Task Output
 - **WHEN** task status is updated to `failed` or `failed_compilation`
 - **THEN** the system moves `data/outputs/{task_id}` to `data/failed_tasks/{task_id}`
-- **AND** the quarantined files remain available for debugging
+- **AND** the quarantined files remain available for debugging.
 
-#### Scenario: Avoid Overwriting Existing Quarantine Folder
-- **WHEN** `data/failed_tasks/{task_id}` already exists
-- **THEN** the system writes to a new timestamp-suffixed quarantine folder
-- **AND** the system MUST NOT overwrite existing quarantined evidence
+#### Scenario: Scoped replay reference rewrite after quarantine
+- **WHEN** output quarantine succeeds
+- **THEN** replay references under old task root (`.../outputs/{task_id}/...`) are rewritten to the new failed root
+- **AND** rewrite applies only to scoped evidence fields (`replay_bundle_ref`, `main_tex_path`, and bundle keys ending `_path`/`_ref` when in-scope)
+- **AND** unrelated absolute paths MUST remain unchanged.
 
-#### Scenario: Move Outputs Only
-- **WHEN** failed-task quarantine runs
-- **THEN** the system processes only `outputs/{task_id}`
-- **AND** the system SHALL NOT move `terms/{task_id}`
-- **AND** the system SHALL NOT move or delete `uploads` data
-
-#### Scenario: Cancelled Task Skips Failed Quarantine
-- **WHEN** a task is marked as cancelled and later reaches a failed terminal state
-- **THEN** the system skips failed-output quarantine
-- **AND** the original output directory remains unchanged by this feature
+#### Scenario: Evidence chain warning without status mutation
+- **WHEN** rewritten `replay_bundle_ref` or `main_tex_path` is unreachable
+- **THEN** the system writes `evidence_chain_broken=true` and a warning event in task log
+- **AND** task terminal status semantics remain unchanged.
 
 ### Requirement: Runtime Task Config Snapshot Storage
 The system SHALL persist runtime translation config snapshots under `data/task_configs` when config capture is enabled.  

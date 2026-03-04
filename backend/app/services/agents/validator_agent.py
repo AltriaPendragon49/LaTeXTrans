@@ -10,6 +10,7 @@ Adapted from prototype system with:
 
 from typing import Dict, Any, List, Optional, Callable
 from .base_tool_agent import BaseToolAgent
+from .pipeline_invariants import SpeculativeRepairForbiddenError
 from pathlib import Path
 from collections import Counter
 from pylatexenc.latexwalker import LatexWalker
@@ -740,102 +741,10 @@ class ValidatorAgent(BaseToolAgent):
 
     @staticmethod
     def repair_math_delimiters(original: str, translated: str) -> str:
-        """
-        Repair math-mode delimiter mismatches by copying $ patterns from original.
-
-        Strategy:
-        1. Extract all $ and $$ regions from the original.
-        2. For each missing inline-math region: find the corresponding
-           math content in the translation (by occurrence order) and wrap it.
-        3. For each bare math token in translation not inside $: wrap the
-           smallest span covering it with $...$.
-
-        This is a deterministic structural repair (Type C), not LLM retry.
-        """
-        if not original or not translated:
-            return translated
-
-        # Do not run math repair over unresolved environment placeholders.
-        if ValidatorAgent._extract_env_placeholder_spans(translated):
-            return translated
-
-        # Extract inline $...$ contents from original (in order)
-        inline_re = re.compile(r'(?<!\$)\$(?!\$)(.*?)(?<!\\)\$(?!\$)', re.DOTALL)
-        orig_inline = inline_re.findall(original)
-        trans_inline_matches = list(inline_re.finditer(translated))
-
-        # If translation is missing $ regions, try to inject them
-        if len(orig_inline) > len(trans_inline_matches):
-            # Walk translation, find positions of bare math tokens and wrap them
-            bare_token_re = re.compile(
-                r'(?<!\\)(?:[_^])'
-                r'|(?<!\\)\\(?:frac|sqrt|sum|int|prod|alpha|beta|gamma'
-                r'|delta|epsilon|theta|lambda|mu|nu|pi|sigma|tau|omega'
-                r'|Omega|infty|partial|nabla|cdot|times|pm|leq|geq|neq'
-                r'|approx|equiv|forall|exists|in|notin)'
-                r'(?![A-Za-z])'
-            )
-            # Find all math regions to build exclusion mask
-            existing_regions = ValidatorAgent._extract_math_regions(translated)
-            placeholder_spans = ValidatorAgent._extract_placeholder_spans(translated)
-            math_placeholder_spans = ValidatorAgent._extract_math_placeholder_spans(translated)
-            env_placeholder_spans = ValidatorAgent._extract_env_placeholder_spans(translated)
-            item_placeholder_spans = ValidatorAgent._extract_item_placeholder_spans(translated)
-            eqrow_placeholder_spans = ValidatorAgent._extract_eqrow_placeholder_spans(translated)
-            safe_arg_spans = ValidatorAgent._extract_safe_command_arg_spans(translated)
-            code_like_spans = ValidatorAgent._extract_code_like_spans(translated)
-            inside = set()
-            for s, e, _ in existing_regions:
-                inside.update(range(s, e))
-
-            result = translated
-            offset = 0
-            for match in bare_token_re.finditer(translated):
-                if ValidatorAgent._index_in_spans(match.start(), placeholder_spans):
-                    continue
-                if ValidatorAgent._index_in_spans(match.start(), math_placeholder_spans):
-                    continue
-                if ValidatorAgent._index_in_spans(match.start(), env_placeholder_spans):
-                    continue
-                if ValidatorAgent._index_in_spans(match.start(), item_placeholder_spans):
-                    continue
-                if ValidatorAgent._index_in_spans(match.start(), eqrow_placeholder_spans):
-                    continue
-                if ValidatorAgent._index_in_spans(match.start(), safe_arg_spans):
-                    continue
-                if ValidatorAgent._index_in_spans(match.start(), code_like_spans):
-                    continue
-                if match.start() in inside:
-                    continue
-                # Wrap the token and surrounding word in $...$
-                # Expand to include adjacent word characters and math chars
-                s = match.start()
-                e = match.end()
-                # Expand left to include preceding letters/digits/backslash-word
-                allowed_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_^\\{}'
-                while s > 0 and result[s - 1 + offset] in allowed_chars:
-                    s -= 1
-                    if s <= 0:
-                        break
-                # Find end of token group
-                while e < len(result) and result[e + offset] in allowed_chars:
-                    e += 1
-                # Wrap
-                span = result[s:e]
-                wrapped = f'${span}$'
-                result = result[:s] + wrapped + result[e:]
-                inside.update(range(s, e + 2))  # +2 for the two $ chars
-                offset += 2  # Two extra chars added
-                # Removed break to iteratively fix ALL found math tokens in this run
-
-            if result != translated:
-                logger.info(
-                    f"repair_math_delimiters: injected $ around bare math token"
-                )
-                return result
-
-        # If occurrence counts match, just return unmodified
-        return translated
+        """Spec invariant: speculative math delimiter repair must be unreachable."""
+        raise SpeculativeRepairForbiddenError(
+            "forbidden: speculative repair in repair_math_delimiters"
+        )
 
     def _validate_protected_cmd_residual(self, part: Dict[str, Any]) -> Optional[str]:
         """Check for unreplaced PROTECTED_CMD placeholders in translation."""

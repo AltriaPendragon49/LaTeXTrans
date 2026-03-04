@@ -10,8 +10,19 @@ Adapted from prototype system with:
 
 from typing import Dict, Any, Optional, Callable, List
 from .base_tool_agent import BaseToolAgent
+from .pipeline_invariants import (
+    PipelineInvariantViolation,
+    assert_no_long_raw_span,
+    assert_no_raw_structure,
+)
 from backend.app.services.latex import prompts as pm
 from backend.app.services.latex.parser import LatexParser
+from backend.app.services.latex.utils import (
+    isolate_env_blocks,
+    isolate_inline_math,
+    mask_sensitive_commands,
+    preprocess_risky_tokens,
+)
 from backend.app.core.config import get_settings
 from pathlib import Path
 import os
@@ -76,6 +87,24 @@ class ParserAgent(BaseToolAgent):
         self.model = config.get("llm_config", {}).get("model", llm_config["model"])
         self.base_url = config.get("llm_config", {}).get("base_url", llm_config["base_url"])
         self.API_KEY = config.get("llm_config", {}).get("api_key", llm_config["api_key"])
+
+    @staticmethod
+    def _prepare_llm_payload_text(text: str) -> str:
+        isolated_math_text, math_map = isolate_inline_math(text)
+        isolated_env_text, _env_map = isolate_env_blocks(isolated_math_text)
+        masked_text, _mask_mapping = mask_sensitive_commands(isolated_env_text)
+        return preprocess_risky_tokens(masked_text, math_map)
+
+    def _prepare_env_judge_payload_text(self, env_text: str) -> str:
+        prepared = self._prepare_llm_payload_text(env_text or "")
+        assert_no_raw_structure(prepared, context="parser_env_judge")
+        assert_no_long_raw_span(
+            prepared,
+            env_text or "",
+            min_span=200,
+            context="parser_env_judge",
+        )
+        return prepared
 
     async def execute(self) -> Any:
         """Execute parsing task (async version with parallel LLM calls)"""
@@ -147,6 +176,12 @@ class ParserAgent(BaseToolAgent):
         """
         Request LLM API to determine if environment needs translation
         """
+        try:
+            payload_text = self._prepare_env_judge_payload_text(text)
+        except PipelineInvariantViolation as inv:
+            logger.error("Env-judge payload invariant violation: %s (%s)", inv, inv.error_code)
+            return True
+
         payload = {
             "model": f"{self.model}",
             "messages": [
@@ -156,7 +191,7 @@ class ParserAgent(BaseToolAgent):
                 },
                 {
                     "role": "user", 
-                    "content": f"{text}"
+                    "content": payload_text
                 }
             ],
             "temperature": 0,
@@ -200,11 +235,17 @@ class ParserAgent(BaseToolAgent):
         Async version: Request LLM API to determine if environment needs translation.
         Uses aiohttp and semaphore for concurrent control.
         """
+        try:
+            payload_text = self._prepare_env_judge_payload_text(text)
+        except PipelineInvariantViolation as inv:
+            logger.error("Async env-judge payload invariant violation: %s (%s)", inv, inv.error_code)
+            return True
+
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
+                {"role": "user", "content": payload_text}
             ],
             "temperature": 0,
             "max_tokens": 50

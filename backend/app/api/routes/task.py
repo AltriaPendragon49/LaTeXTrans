@@ -32,6 +32,7 @@ class TaskStatusResponse(BaseModel):
     failure_class: Optional[str] = None
     guard_phase: Optional[str] = None
     replay_bundle_ref: Optional[str] = None
+    evidence_chain_broken: Optional[bool] = None
     source_available: bool
     created_at: str
     completed_at: Optional[str] = None
@@ -75,6 +76,7 @@ async def get_task_status(task_id: str):
         failure_class=task.get("failure_class"),
         guard_phase=task.get("guard_phase"),
         replay_bundle_ref=task.get("replay_bundle_ref"),
+        evidence_chain_broken=task.get("evidence_chain_broken"),
         source_available=task["source_available"],
         created_at=task["created_at"],
         completed_at=task.get("completed_at"),
@@ -192,6 +194,7 @@ async def stream_task_status(task_id: str):
                         "failure_class": task.get("failure_class"),
                         "guard_phase": task.get("guard_phase"),
                         "replay_bundle_ref": task.get("replay_bundle_ref"),
+                        "evidence_chain_broken": task.get("evidence_chain_broken"),
                         "source_available": task.get("source_available", False)
                     }
                     yield f"event: update\ndata: {json.dumps(event_data)}\n\n"
@@ -212,6 +215,7 @@ async def stream_task_status(task_id: str):
                         "failure_class": task.get("failure_class"),
                         "guard_phase": task.get("guard_phase"),
                         "replay_bundle_ref": task.get("replay_bundle_ref"),
+                        "evidence_chain_broken": task.get("evidence_chain_broken"),
                     }
                     yield f"event: complete\ndata: {json.dumps(event_data)}\n\n"
                     break

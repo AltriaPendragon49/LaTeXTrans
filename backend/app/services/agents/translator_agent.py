@@ -1,6 +1,11 @@
 ﻿from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
 from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ERROR_TYPE_C1, ERROR_TYPE_C2, ValidatorAgent
+from .pipeline_invariants import (
+    PipelineInvariantViolation,
+    SpeculativeRepairForbiddenError,
+    assert_no_raw_structure,
+)
 from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
@@ -405,6 +410,130 @@ class TranslatorAgent(BaseToolAgent):
             return restore_inline_math(env_restored, math_map)
         except Exception:
             return env_restored
+
+    def _register_llm_part_failure(self, part_type: str, identifier: str) -> None:
+        self.have_fail_parts = True
+        if part_type == "sec":
+            self.fail_section_nums.append(identifier)
+        elif part_type == "cap":
+            self.fail_caption_phs.append(identifier)
+        else:
+            self.fail_env_phs.append(identifier)
+
+    @staticmethod
+    def _sanitize_retrans_error_message(error_message: str) -> str:
+        text = error_message or ""
+        # Ensure diagnostic context never leaks raw structural delimiters.
+        text = text.replace(r"\begin{", "<BEGIN_TOKEN{")
+        text = text.replace(r"\end{", "<END_TOKEN{")
+        text = re.sub(r"(?<!\\)\$", r"\\$", text)
+        return text
+
+    async def _call_llm_with_freeze(
+        self,
+        *,
+        system_prompt: str,
+        user_text: str,
+        fail_part: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        fallback_text: str,
+        include_glossary: bool = False,
+        user_prefix: str = "",
+    ) -> str:
+        prepared_text, llm_context = self._prepare_llm_payload_text(user_text)
+        user_content = f"{user_prefix}{prepared_text}"
+        assert_no_raw_structure(user_content, context=f"translator:{part_type}:{fail_part}")
+
+        system_content = system_prompt
+        if include_glossary:
+            system_content = (
+                f"{system_prompt}\n"
+                "When translating, you must strictly use the following glossary for substitution. "
+                "This is the highest priority rule to ensure the consistency of terms throughout the text.\n"
+                f"<Glossary>:\n{self.term_dict}\n"
+                "Now, please translate the following new paragraph. Maintain the terminology from the glossary provided."
+            )
+
+        payload = {
+            "model": f"{self.model}",
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": 0.7,
+            "max_new_tokens": 8192,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        _timeout = aiohttp.ClientTimeout(total=180)
+        rate_limit_hits = 0
+        network_failures = 0
+        while True:
+            try:
+                async with global_llm_semaphore:
+                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                        if response.status == 429:
+                            retry_after_raw = response.headers.get("Retry-After", "")
+                            rate_limit_hits += 1
+                            if rate_limit_hits <= 3:
+                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
+                            elif rate_limit_hits <= 9:
+                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)
+                            else:
+                                wait = 60
+                            logger.warning(
+                                f"⚠ API rate limited (429) for {fail_part}, "
+                                f"waiting {wait}s (429 count: {rate_limit_hits})"
+                            )
+                            if rate_limit_hits > 9:
+                                self.update_progress(
+                                    -1,
+                                    "⚠ API rate limited, retrying until API recovers. "
+                                    "Consider using your own API key for better performance. "
+                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)",
+                                )
+                        else:
+                            response.raise_for_status()
+                            result = await response.json()
+                            raw_result = result["choices"][0]["message"]["content"].strip()
+                            restored = self._restore_llm_output_text(raw_result, llm_context)
+                            self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
+                            self._clear_api_fallback(part_type, str(fail_part))
+                            return restored
+                await asyncio.sleep(wait)
+                continue
+            except PipelineInvariantViolation:
+                raise
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if isinstance(exc, aiohttp.ClientResponseError) and exc.status in (400, 401, 403, 404):
+                    logger.error(
+                        f"❌ Fatal API error {exc.status} for {fail_part}: "
+                        f"{getattr(exc, 'message', str(exc))}. Aborting retries."
+                    )
+                    self._register_llm_part_failure(part_type, str(fail_part))
+                    self._mark_api_fallback(part_type, str(fail_part), f"api_request_failed_http_{exc.status}")
+                    return fallback_text
+
+                network_failures += 1
+                backoff = 5 * (2 ** (network_failures - 1))
+                if network_failures < 3:
+                    logger.warning(
+                        f"LLM request attempt {network_failures}/3 failed for {fail_part}: {exc}. "
+                        f"Retrying in {backoff}s..."
+                    )
+                    await asyncio.sleep(backoff)
+                else:
+                    self._register_llm_part_failure(part_type, str(fail_part))
+                    logger.error(
+                        f"❌ Failed to translate text after 3 attempts, returning fallback for {fail_part}. {exc}"
+                    )
+                    self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_after_3_attempts")
+                    return fallback_text
 
     def _escape_bare_underscores_in_text_mode(self, text: str) -> str:
         if not text or "_" not in text:
@@ -968,34 +1097,14 @@ class TranslatorAgent(BaseToolAgent):
             progress_pct = int(100 * completed / total) if total > 0 else 100
             self.update_progress(progress_pct, f"Processed {completed}/{total} (A:degraded)")
 
-        # Process Type C2 errors: deterministic fix only (no LLM retry)
+        # Process Type C2 errors: no speculative repair; direct compile-first fallback.
         for error in type_c2_errors:
             part = self._find_part_by_error(error, secs, caps, envs)
             if part:
-                if self._is_level_a_related_error(error):
-                    self._apply_compile_first_fallback(part, error, recheck_report=error)
-                    completed += 1
-                    progress_pct = int(100 * completed / total) if total > 0 else 100
-                    self.update_progress(progress_pct, f"Processed {completed}/{total} (C2:fallback)")
-                    continue
-                fixed = self._apply_structural_fix(part, error)
-                if fixed:
-                    recheck_report: Optional[Dict] = None
-                    if error.get("global_ph_error"):
-                        # Global stack mismatch cannot be safely re-validated at single-part granularity.
-                        recheck_report = {"global_ph_error": error.get("global_ph_error")}
-                    else:
-                        recheck_report = self._validate_part_after_structural_fix(part)
-
-                    if recheck_report:
-                        self._apply_compile_first_fallback(part, error, recheck_report=recheck_report)
-                    else:
-                        logger.info("Type C2 part fixed and revalidated: %s", error.get("num_or_ph"))
-                else:
-                    logger.warning(f"Type C2 fix failed, preserving current translation: {error.get('num_or_ph')}")
+                self._apply_compile_first_fallback(part, error, recheck_report=error)
             completed += 1
             progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Processed {completed}/{total} (C2:fixed)")
+            self.update_progress(progress_pct, f"Processed {completed}/{total} (C2:fallback)")
 
         # Process Type C1 errors: 1 controlled LLM retry, then deterministic fix
         async def process_type_c1_error(error_report):
@@ -1060,18 +1169,12 @@ class TranslatorAgent(BaseToolAgent):
                         return
                     attempted_llm_retry = True
 
-                # After the LLM retry, apply deterministic fix as safety net
+                # After the LLM retry, route directly to compile-first fallback if still broken.
                 part = self._find_part_by_error(error_report, secs, caps, envs)
                 if part:
                     recheck_report = self._validate_part_after_structural_fix(part)
                     if recheck_report:
-                        # Still broken after retry -> apply structural fix
-                        self._apply_structural_fix(part, error_report)
-                        recheck2 = self._validate_part_after_structural_fix(part)
-                        if recheck2:
-                            self._apply_compile_first_fallback(part, error_report, recheck_report=recheck2)
-                        else:
-                            logger.info("C1 part fixed after retry+structural: %s", identifier)
+                        self._apply_compile_first_fallback(part, error_report, recheck_report=recheck_report)
                     else:
                         if attempted_llm_retry:
                             logger.info("C1 part resolved by LLM retry: %s", identifier)
@@ -1083,7 +1186,7 @@ class TranslatorAgent(BaseToolAgent):
             await future
             completed += 1
             progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Processed {completed}/{total} (C1:retry+fix)")
+            self.update_progress(progress_pct, f"Processed {completed}/{total} (C1:retry+fallback)")
 
         # Process Type B errors: Translation retry (existing logic)
         async def process_type_b_error(error_report):
@@ -1162,15 +1265,8 @@ class TranslatorAgent(BaseToolAgent):
     
     def _apply_structural_fix(self, part: Dict, error: Dict) -> bool:
         """
-        Apply algorithmic fix for Type C structural consistency errors.
-
-        Strategies:
-        1. Token琛ラ綈: Restore missing LaTeX commands from original
-        2. Placeholder鎭㈠: Restore missing placeholders from original
-        3. Math delimiter repair: Fix missing/extra $ delimiters using original as reference
-        4. Fallback: Keep existing translation if available, else use original
-
-        Returns True if fix was successful (or fallback applied).
+        Apply non-speculative local normalization for structural errors.
+        NOTE: speculative structural repair is forbidden by invariant.
         """
         original = part.get("content", "")
         translated = part.get("trans_content", "")
@@ -1181,32 +1277,16 @@ class TranslatorAgent(BaseToolAgent):
             return True
 
         try:
-            # Strategy 1: Restore missing LaTeX commands
+            # Keep only safe normalization that does not inject structure tokens.
             fixed = self._fix_missing_commands(original, translated)
-
-            # Strategy 2: Restore missing placeholders
-            fixed = self._fix_missing_placeholders(original, fixed)
-
-            # Strategy 3: Escape bare underscores in text mode first.
             fixed = self._escape_bare_underscores_in_text_mode(fixed)
-
-            # Strategy 4: Repair math-mode delimiters ($ / $$)
-            # Triggered when the error report contains a math_delimiter_mismatch.
-            math_error = error.get("math_error", "") or ""
-            if "math_delimiter_mismatch" in math_error:
-                from .validator_agent import ValidatorAgent as _VA
-                repaired = _VA.repair_math_delimiters(original, fixed)
-                if repaired is not None:
-                    fixed = repaired
-                    logger.info(
-                        "Applied math-delimiter repair for part %s",
-                        error.get("num_or_ph", "?"),
-                    )
 
             part["trans_content"] = fixed
             return True
 
         except Exception as e:
+            if isinstance(e, PipelineInvariantViolation):
+                raise
             logger.warning(f"Structural fix failed: {e}")
             # Fallback: keep existing translation if available
             if translated:
@@ -1237,98 +1317,10 @@ class TranslatorAgent(BaseToolAgent):
         return translated
     
     def _fix_missing_placeholders(self, original: str, translated: str) -> str:
-        """Restore missing placeholders from original to translated content."""
-        pattern = r'<PLACEHOLDER_[^>]+>'
-        
-        original_phs = re.findall(pattern, original)
-        if not original_phs:
-            return translated
-        
-        # 1. Before checking translated, restore any LLM-escaped mangled placeholders 
-        # that might be hiding as $<$PLACEHOLDER_...>$> or \textless PLACEHOLDER\_... \textgreater
-        translated = restore_mangled_placeholders(translated, original_phs)
-        
-        translated_phs = re.findall(pattern, translated)
-
-        # If counts already match, normalize by position first.
-        # This repairs misspelled placeholders while preserving original placement.
-        if len(original_phs) == len(translated_phs):
-            if original_phs != translated_phs:
-                logger.debug("Normalizing placeholder sequence by position")
-                index = [0]
-
-                def _replace_with_source_order(_m: re.Match) -> str:
-                    pos = index[0]
-                    if pos >= len(original_phs):
-                        return _m.group(0)
-                    index[0] += 1
-                    return original_phs[pos]
-
-                translated = re.sub(pattern, _replace_with_source_order, translated)
-            return translated
-
-        # 2. Remove extra placeholders not present in source to prevent tag stack corruption.
-        original_ph_set = set(original_phs)
-        extras = [ph for ph in translated_phs if ph not in original_ph_set]
-        if extras:
-            for ph in sorted(set(extras), key=len, reverse=True):
-                logger.debug(f"Removing extra placeholder: {ph}")
-                translated = translated.replace(ph, " ")
-            translated_phs = re.findall(pattern, translated)
-
-        translated_ph_set = set(translated_phs)
-        missing = [ph for ph in original_phs if ph not in translated_ph_set]
-
-        # 4. Restore missing placeholders with begin/end pairing preference.
-        for ph in missing:
-            if ph in translated:
-                continue
-
-            logger.debug(f"Restoring missing placeholder: {ph}")
-
-            # Extract base tag name to pair _begin and _end using regex
-            base_match = re.match(r'<PLACEHOLDER_(.+?)(?:_(begin|end))?>', ph)
-            if base_match:
-                base_name = base_match.group(1)
-                tag_type = base_match.group(2)
-
-                inserted = False
-                if tag_type == "begin":
-                    paired_end = f"<PLACEHOLDER_{base_name}_end>"
-                    if paired_end in translated:
-                        # Insert right before the paired end
-                        idx = translated.find(paired_end)
-                        translated = translated[:idx] + ph + " " + translated[idx:]
-                        inserted = True
-                elif tag_type == "end":
-                    paired_begin = f"<PLACEHOLDER_{base_name}_begin>"
-                    if paired_begin in translated:
-                        # Insert right after the paired begin
-                        idx = translated.find(paired_begin) + len(paired_begin)
-                        translated = translated[:idx] + " " + ph + translated[idx:]
-                        inserted = True
-
-                if not inserted:
-                    # Fallback: append at the end
-                    translated = translated.rstrip() + " " + ph
-            else:
-                translated = translated.rstrip() + " " + ph
-
-        # 5. Final order normalization when counts become aligned.
-        translated_phs = re.findall(pattern, translated)
-        if len(original_phs) == len(translated_phs) and original_phs != translated_phs:
-            index = [0]
-
-            def _replace_with_source_order(_m: re.Match) -> str:
-                pos = index[0]
-                if pos >= len(original_phs):
-                    return _m.group(0)
-                index[0] += 1
-                return original_phs[pos]
-
-            translated = re.sub(pattern, _replace_with_source_order, translated)
-
-        return translated
+        """Spec invariant: speculative placeholder repair must be unreachable."""
+        raise SpeculativeRepairForbiddenError(
+            "forbidden: speculative repair in _fix_missing_placeholders"
+        )
 
     async def _translate_section(self, section: Dict[str, Any], session: aiohttp.ClientSession, error_message=None) -> Dict[str, Any]:
 
@@ -1915,111 +1907,30 @@ class TranslatorAgent(BaseToolAgent):
                                      type: str,
                                      session: aiohttp.ClientSession,
                                      previous_context: Optional[str] = None) -> str:
-
-        prepared_text = text
-        llm_context: Dict[str, Any] = {"math_map": {}, "env_map": {}, "mask_mapping": {}}
-        try:
-            prepared_text, llm_context = self._prepare_llm_payload_text(text)
-        except Exception as prep_exc:
-            logger.warning("LLM payload preparation failed for %s: %s", fail_part, prep_exc)
-            masked_text, mask_mapping = mask_sensitive_commands(text)
-            prepared_text = masked_text
-            llm_context = {"math_map": {}, "env_map": {}, "mask_mapping": mask_mapping}
-        
         # Inject Reference Context Template if available
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
             template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
             system_prompt += template.format(context=previous_context)
-
-        payload = {
-            "model": f"{self.model}",
-            "messages": [
-                {"role": "system", "content": f"{system_prompt}"},
-                {"role": "user", "content": f"{prepared_text}"}
-            ],
-            "temperature": 0.7,
-            "max_new_tokens": 8192
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        _timeout = aiohttp.ClientTimeout(total=180)
-        rate_limit_hits = 0    # Consecutive 429 count
-        network_failures = 0   # Non-429 failure count (max 3)
-        while True:
-            try:
-                async with global_llm_semaphore:
-                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
-                        if response.status == 429:
-                            # Read Retry-After before exiting response context
-                            retry_after_raw = response.headers.get("Retry-After", "")
-                            rate_limit_hits += 1
-                            # Graduated backoff: 鈮? quick, 4-9 progressive, >9 infinite with warning
-                            if rate_limit_hits <= 3:
-                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
-                            elif rate_limit_hits <= 9:
-                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)  # 35s, 40s, ... 60s
-                            else:
-                                wait = 60
-                            logger.warning(
-                                f"鈴?API rate limited (429) for {fail_part}, "
-                                f"waiting {wait}s (429 count: {rate_limit_hits})"
-                            )
-                            # Only show frontend warning after 9 consecutive 429s
-                            if rate_limit_hits > 9:
-                                self.update_progress(
-                                    -1,
-                                    f"鈴?API rate limited, retrying until API recovers. "
-                                    f"Consider using your own API key for better performance. "
-                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)"
-                                )
-                        else:
-                            response.raise_for_status()
-                            result = await response.json()
-                            raw_result = result["choices"][0]["message"]["content"].strip()
-                            restored = self._restore_llm_output_text(raw_result, llm_context)
-                            self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
-                            self._clear_api_fallback(type, str(fail_part))
-                            return restored
-                # --- Semaphore RELEASED here ---
-                # Sleep for 429 outside semaphore so other tasks can proceed
-                await asyncio.sleep(wait)
-                continue
-
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"鉂?Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
-                    self.have_fail_parts = True
-                    if type == 'sec':
-                        self.fail_section_nums.append(fail_part)
-                    elif type == 'cap':
-                        self.fail_caption_phs.append(fail_part)
-                    else:
-                        self.fail_env_phs.append(fail_part)
-                    self._mark_api_fallback(type, str(fail_part), f"api_request_failed_http_{e.status}")
-                    return text
-
-                network_failures += 1
-                backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
-                if network_failures < 3:
-                    logger.warning(f"LLM request attempt {network_failures}/3 failed for {fail_part}: {e}. Retrying in {backoff}s...")
-                    await asyncio.sleep(backoff)
-                else:
-                    self.have_fail_parts = True
-                    if type == 'sec':
-                        self.fail_section_nums.append(fail_part)
-                    elif type == 'cap':
-                        self.fail_caption_phs.append(fail_part)
-                    else:
-                        self.fail_env_phs.append(fail_part)
-
-                    logger.error(f"鉂?Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
-                    self._mark_api_fallback(type, str(fail_part), "api_request_failed_after_3_attempts")
-                    # Return original (unmasked) text on ultimate failure
-                    return text
+        try:
+            return await self._call_llm_with_freeze(
+                system_prompt=system_prompt,
+                user_text=text,
+                fail_part=fail_part,
+                part_type=type,
+                session=session,
+                fallback_text=text,
+                include_glossary=False,
+            )
+        except PipelineInvariantViolation as inv:
+            logger.error(
+                "LLM payload invariant violation for %s (%s): %s",
+                fail_part,
+                inv.error_code,
+                inv,
+            )
+            self._register_llm_part_failure(type, str(fail_part))
+            self._mark_api_fallback(type, str(fail_part), f"invariant_{inv.error_code.lower()}")
+            return text
 
 
     async def _request_llm_for_trans_with_terms(self,
@@ -2029,114 +1940,31 @@ class TranslatorAgent(BaseToolAgent):
                                           type: str,
                                           session: aiohttp.ClientSession,
                                           previous_context: Optional[str] = None) -> str:
-
-        prepared_text = text
-        llm_context: Dict[str, Any] = {"math_map": {}, "env_map": {}, "mask_mapping": {}}
-        try:
-            prepared_text, llm_context = self._prepare_llm_payload_text(text)
-        except Exception as prep_exc:
-            logger.warning("LLM payload preparation failed for %s: %s", fail_part, prep_exc)
-            masked_text, mask_mapping = mask_sensitive_commands(text)
-            prepared_text = masked_text
-            llm_context = {"math_map": {}, "env_map": {}, "mask_mapping": mask_mapping}
-        
         # Inject Reference Context Template if available
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
             template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
             system_prompt += template.format(context=previous_context)
-
-        payload = {
-            "model": f"{self.model}",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": f"{system_prompt}\nWhen translating, you must strictly use the following glossary for substitution. This is the highest priority rule to ensure the consistency of terms throughout the text.\n<Glossary>:\n{self.term_dict}\nNow, please translate the following new paragraph. Maintain the terminology from the glossary provided."
-                },
-                {
-                    "role": "user",
-                    "content": f"[Current LaTeX Paragraph]:\n{prepared_text}"
-                }
-            ],
-            "temperature": 0.7,
-            # "max_length": 100000,
-            "max_new_tokens": 8192
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        _timeout = aiohttp.ClientTimeout(total=180)
-        rate_limit_hits = 0    # Consecutive 429 count
-        network_failures = 0   # Non-429 failure count (max 3)
-        while True:
-            try:
-                async with global_llm_semaphore:
-                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
-                        if response.status == 429:
-                            retry_after_raw = response.headers.get("Retry-After", "")
-                            rate_limit_hits += 1
-                            if rate_limit_hits <= 3:
-                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
-                            elif rate_limit_hits <= 9:
-                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)
-                            else:
-                                wait = 60
-                            logger.warning(
-                                f"鈴?API rate limited (429) for {fail_part}, "
-                                f"waiting {wait}s (429 count: {rate_limit_hits})"
-                            )
-                            if rate_limit_hits > 9:
-                                self.update_progress(
-                                    -1,
-                                    f"鈴?API rate limited, retrying until API recovers. "
-                                    f"Consider using your own API key for better performance. "
-                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)"
-                                )
-                        else:
-                            response.raise_for_status()
-                            result = await response.json()
-                            raw_result = result["choices"][0]["message"]["content"].strip()
-                            restored = self._restore_llm_output_text(raw_result, llm_context)
-                            self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
-                            self._clear_api_fallback(type, str(fail_part))
-                            return restored
-                # --- Semaphore RELEASED here ---
-                await asyncio.sleep(wait)
-                continue
-
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"鉂?Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
-                    self.have_fail_parts = True
-                    if type == 'sec':
-                        self.fail_section_nums.append(fail_part)
-                    elif type == 'cap':
-                        self.fail_caption_phs.append(fail_part)
-                    else:
-                        self.fail_env_phs.append(fail_part)
-                    self._mark_api_fallback(type, str(fail_part), f"api_request_failed_http_{e.status}")
-                    return text
-
-                network_failures += 1
-                backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
-                if network_failures < 3:
-                    logger.warning(f"LLM request attempt {network_failures}/3 failed for {fail_part}: {e}. Retrying in {backoff}s...")
-                    await asyncio.sleep(backoff)
-                else:
-                    self.have_fail_parts = True
-                    if type == 'sec':
-                        self.fail_section_nums.append(fail_part)
-                    elif type == 'cap':
-                        self.fail_caption_phs.append(fail_part)
-                    else:
-                        self.fail_env_phs.append(fail_part)
-
-                    logger.error(f"鉂?Failed to translate text after 3 attempts, returning original: {fail_part}. {e}")
-                    self._mark_api_fallback(type, str(fail_part), "api_request_failed_after_3_attempts")
-                    # Return original (unmasked) text on ultimate failure
-                    return text
+        try:
+            return await self._call_llm_with_freeze(
+                system_prompt=system_prompt,
+                user_text=text,
+                fail_part=fail_part,
+                part_type=type,
+                session=session,
+                fallback_text=text,
+                include_glossary=True,
+                user_prefix="[Current LaTeX Paragraph]:\n",
+            )
+        except PipelineInvariantViolation as inv:
+            logger.error(
+                "LLM payload invariant violation (with terms) for %s (%s): %s",
+                fail_part,
+                inv.error_code,
+                inv,
+            )
+            self._register_llm_part_failure(type, str(fail_part))
+            self._mark_api_fallback(type, str(fail_part), f"invariant_{inv.error_code.lower()}")
+            return text
 
 
     async def _request_llm_for_retrans_error_parts(self,
@@ -2146,105 +1974,33 @@ class TranslatorAgent(BaseToolAgent):
                                                    fail_part: str,
                                                    type: str,
                                                    session: aiohttp.ClientSession) -> str:
-
-        # --- Mask sensitive commands in the combined prompt ---
-        # We mask the full user_prompt (original + translation + error) as one
-        # string to avoid placeholder index collisions between original and
-        # translation, since both could contain the same CCSXML / \\ccsdesc.
-        raw_user_prompt = f"[Original]:\n{part['content']}\n[Translation]:\n{part.get('trans_content', '')}\n[Error]:\n{error_message}"
-        user_prompt, _mask_mapping = mask_sensitive_commands(raw_user_prompt)
-        payload = {
-            "model": f"{self.model}",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": f"{system_prompt}\nWhen translating, you must strictly use the following glossary for substitution. This is the highest priority rule to ensure the consistency of terms throughout the text.\n<Glossary>:\n{self.term_dict}\nNow, please translate the following new paragraph. Maintain the terminology from the glossary provided."
-                },
-                {
-                    "role": "user",
-                    "content": f"{user_prompt}"
-                }
-            ],
-            "temperature": 0.7,
-            # "max_length": 100000,
-            "max_new_tokens": 8192
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        _timeout = aiohttp.ClientTimeout(total=180)
-        rate_limit_hits = 0    # Consecutive 429 count
-        network_failures = 0   # Non-429 failure count (max 3)
-        while True:
-            try:
-                async with global_llm_semaphore:
-                    async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
-                        if response.status == 429:
-                            retry_after_raw = response.headers.get("Retry-After", "")
-                            rate_limit_hits += 1
-                            if rate_limit_hits <= 3:
-                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
-                            elif rate_limit_hits <= 9:
-                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)
-                            else:
-                                wait = 60
-                            logger.warning(
-                                f"鈴?API rate limited (429) for {fail_part}, "
-                                f"waiting {wait}s (429 count: {rate_limit_hits})"
-                            )
-                            if rate_limit_hits > 9:
-                                self.update_progress(
-                                    -1,
-                                    f"鈴?API rate limited, retrying until API recovers. "
-                                    f"Consider using your own API key for better performance. "
-                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)"
-                                )
-                        else:
-                            response.raise_for_status()
-                            result = await response.json()
-                            raw_result = result["choices"][0]["message"]["content"].strip()
-                            # --- Restore masked commands after retranslation ---
-                            restored = unmask_sensitive_commands(raw_result, _mask_mapping)
-                            self._clear_api_fallback(type, str(fail_part))
-                            return restored
-                # --- Semaphore RELEASED here ---
-                await asyncio.sleep(wait)
-                continue
-
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                if isinstance(e, aiohttp.ClientResponseError) and e.status in (400, 401, 403, 404):
-                    logger.error(f"鉂?Fatal API error {e.status} for {fail_part}: {getattr(e, 'message', str(e))}. Aborting retries.")
-                    self.have_fail_parts = True
-                    if type == 'sec':
-                        self.fail_section_nums.append(fail_part)
-                    elif type == 'cap':
-                        self.fail_caption_phs.append(fail_part)
-                    else:
-                        self.fail_env_phs.append(fail_part)
-                    self._mark_api_fallback(type, str(fail_part), f"api_request_failed_http_{e.status}")
-                    return part.get("trans_content") or part.get("content", "")
-
-                network_failures += 1
-                backoff = 5 * (2 ** (network_failures - 1))  # 5s, 10s, 20s
-                if network_failures < 3:
-                    logger.warning(f"LLM request attempt {network_failures}/3 failed for {fail_part}: {e}. Retrying in {backoff}s...")
-                    await asyncio.sleep(backoff)
-                else:
-                    self.have_fail_parts = True
-                    if type == 'sec':
-                        self.fail_section_nums.append(fail_part)
-                    elif type == 'cap':
-                        self.fail_caption_phs.append(fail_part)
-                    else:
-                        self.fail_env_phs.append(fail_part)
-
-                    logger.error(f"鉂?Failed to retranslate error parts after 3 attempts, returning previous translation: {fail_part}. {e}")
-                    self._mark_api_fallback(type, str(fail_part), "api_request_failed_after_3_attempts")
-                    # Return original (unmasked) text on ultimate failure
-                    return part.get("trans_content") or part.get("content", "")
+        safe_error_message = self._sanitize_retrans_error_message(error_message or "")
+        raw_user_prompt = (
+            f"[Original]:\n{part.get('content', '')}\n"
+            f"[Translation]:\n{part.get('trans_content', '')}\n"
+            f"[Error]:\n{safe_error_message}"
+        )
+        fallback_text = part.get("trans_content") or part.get("content", "")
+        try:
+            return await self._call_llm_with_freeze(
+                system_prompt=system_prompt,
+                user_text=raw_user_prompt,
+                fail_part=fail_part,
+                part_type=type,
+                session=session,
+                fallback_text=fallback_text,
+                include_glossary=True,
+            )
+        except PipelineInvariantViolation as inv:
+            logger.error(
+                "Retrans payload invariant violation for %s (%s): %s",
+                fail_part,
+                inv.error_code,
+                inv,
+            )
+            self._register_llm_part_failure(type, str(fail_part))
+            self._mark_api_fallback(type, str(fail_part), f"invariant_{inv.error_code.lower()}")
+            return fallback_text
 
     async def _request_llm_for_extract_terms(self, system_prompt, src, tgt,
                                        session: aiohttp.ClientSession) -> str:

@@ -519,30 +519,6 @@ The system SHALL ensure that translated CJK documents have correct physical page
 - [x] Inline-math regex excludes $$...$$ display blocks
 - [x] No-PDF/0-error fallback compile normalization implemented
 
-### Requirement: Math-Mode Delimiter Consistency Validation
-
-The system SHALL validate that translated content preserves the same number and structural pattern of math-mode delimiters (`$...$` and `$$...$$`) as the original content.
-
-#### Scenario: Detecting missing math delimiters
-- **WHEN** `ValidatorAgent` compares original and translated content of a section, environment, or caption
-- **AND** the translation has fewer `$` delimiters than the original
-- **THEN** the system SHALL flag a Type C (structural) error with detail `math_delimiter_mismatch`
-- **AND** invoke `_repair_math_delimiters()` to copy delimiter patterns from original to translation
-
-#### Scenario: Repairing bare math tokens in text mode
-- **WHEN** the translated content contains bare math tokens (`_`, `^`, `\frac`, `\sum`, `\int`, etc.) outside any `$...$` context
-- **AND** the original content has those same tokens enclosed in `$...$`
-- **THEN** the system SHALL wrap the bare tokens in `$...$` by copying the delimiter boundaries from the original
-
-#### Scenario: Protecting display math environments
-- **WHEN** the translated content contains bare math tokens
-- **AND** those tokens already reside inside a display math environment (e.g. `\[...\]`, `\(...\)`, `\begin{equation}...\end{equation}`)
-- **THEN** the system SHALL NOT wrap the tokens in `$...$` preventing invalid nested math modes
-
-#### Scenario: No false positives on already-valid translations
-- **WHEN** translated content has the same `$` count and pattern as the original
-- **THEN** no math-delimiter error SHALL be reported
-
 ### Requirement: Non-Translatable Environment Exclusion
 
 The system SHALL preserve designated structural environments verbatim without sending their contents to the LLM for translation.
@@ -629,20 +605,6 @@ The system SHALL prioritize CJK-compatible engines (`lualatex`, `xelatex`) for C
 - **THEN** the system SHALL maintain the standard multi-engine priority loop
 - **AND** `pdflatex` SHALL remain a primary candidate for compilation.
 
-### Requirement: Intelligent Placeholder Recovery
-
-The system SHALL intelligently recover `\input` and environment placeholder tags to prevent reconstruction exceptions from mismatched tag stacks.
-
-#### Scenario: Healing misspelled tags sequentially
-- **WHEN** `_fix_missing_placeholders` evaluates that the translation outputted the exact same number of placeholder tags as the source
-- **AND** some tag strings mismatch (e.g. typographical error)
-- **THEN** the system SHALL apply sequential replacement pairing the original and translated placeholders by order of appearance.
-
-#### Scenario: Paired anchor restoring
-- **WHEN** a `_begin` tag is missing but its corresponding `_end` tag is present
-- **THEN** the system SHALL safely insert the missing `_begin` tag immediately prior to the `_end` tag
-- **AND** vice versa for a missing `_end` tag relative to its `_begin` anchor.
-
 ### Requirement: Precise Preamble Definition Extraction
 
 The system SHALL correctly extract and preserve `\newenvironment` definitions including both begin and end code blocks without truncation.
@@ -685,4 +647,13 @@ The system SHALL configure LaTeX packages based on the target translation langua
 - **WHEN** the target language is `en`, `de`, `fr`, `es`, `it`, etc.
 - **THEN** the system MUST NOT modify the document preamble's existing font, encoding, or pdfLaTeX primitive commands (Zero-Touch)
 - **AND** MUST NOT call `_comment_out_pdflatex_commands`
+
+### Requirement: Typed Invariant Violations for Forbidden Repair Paths
+Speculative repair entrypoints that remain for compatibility MUST be sealed by typed invariant exceptions.
+
+#### Scenario: Forbidden repair function is called
+1. Given runtime reaches a sealed speculative repair function
+2. When the function is invoked
+3. Then it MUST raise a typed invariant exception
+4. And the exception MUST include a stable error code for observability/replay.
 

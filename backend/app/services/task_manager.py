@@ -12,8 +12,13 @@ Supports dual-layer storage:
 import uuid
 import asyncio
 import threading
+import queue
+import time
 import logging
 import shutil
+import json
+import re
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Union, List
@@ -21,6 +26,122 @@ from backend.app.core.config import TaskStatus, CompilationStage, get_settings
 from backend.app.core.supabase_client import get_supabase_admin_client
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Runtime State Decoupling: Flush Throttle Configuration
+# ---------------------------------------------------------------------------
+
+#: Minimum seconds between time-throttled (non-semantic) Supabase flushes.
+#: Semantic transitions (status / stage changes) always flush immediately.
+FLUSH_INTERVAL: float = 5.0
+
+#: Fields whose change constitutes a *semantic transition* and must always
+#: trigger an immediate Supabase flush.
+_SEMANTIC_FLUSH_FIELDS = frozenset({"status", "stage"})
+
+
+class SupabaseFlusher:
+    """
+    Non-blocking, thread-safe Supabase flush worker with **coalescing**.
+
+    Workers call ``enqueue`` to submit ``(task_id, db_updates)`` pairs.
+    A background daemon thread drains the pending dict and writes to Supabase,
+    ensuring the calling thread is never blocked by network I/O.
+
+    Coalescing (last-write-wins per task_id)
+    ----------------------------------------
+    Instead of a FIFO queue, the flusher maintains a ``_pending`` dict:
+    ``task_id -> merged db_updates``.  If the same task_id is enqueued
+    multiple times before the worker wakes, the updates are merged
+    field-by-field (later enqueue wins per field).  This eliminates
+    redundant Supabase writes under retry / error storms.
+
+    Thread-safety contract
+    ----------------------
+    * ``_pending`` and ``_drain_events`` are protected by ``_lock``.
+    * ``_has_work`` (``threading.Event``) is used for wakeup --- always
+      safe to set from any thread.
+    * ``enqueue`` never blocks.
+    """
+
+    def __init__(self, writer):
+        """
+        Parameters
+        ----------
+        writer:
+            Callable ``(task_id: str, updates: dict) -> None`` that performs
+            the actual Supabase write.  Injected from TaskManager so tests
+            can monkeypatch ``TaskManager._persist_task_update``.
+        """
+        self._writer = writer
+        self._lock = threading.Lock()
+        self._pending: dict = {}          # task_id -> merged db_updates
+        self._drain_events: list = []     # threading.Events waiting for idle
+        self._has_work = threading.Event()
+        self._stop = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name="supabase-flusher",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def enqueue(self, task_id: str, db_updates: dict) -> None:
+        """
+        Merge ``db_updates`` into the pending dict for ``task_id`` and wake
+        the flusher thread.  Always returns immediately (non-blocking).
+        Field-level last-write-wins: later enqueue overwrites earlier per key.
+        """
+        with self._lock:
+            if task_id in self._pending:
+                self._pending[task_id].update(db_updates)
+            else:
+                self._pending[task_id] = dict(db_updates)
+        self._has_work.set()
+
+    def drain(self, timeout: float = 2.0) -> None:
+        """
+        Block until all currently pending items have been flushed.
+        Intended for use in tests only.
+        """
+        done = threading.Event()
+        with self._lock:
+            if not self._pending:
+                return  # nothing pending, already idle
+            self._drain_events.append(done)
+        self._has_work.set()
+        done.wait(timeout=timeout)
+
+    def _run(self) -> None:
+        """Background worker -- wakes on _has_work, drains pending dict, writes."""
+        while not self._stop:
+            self._has_work.wait()
+            self._has_work.clear()
+
+            # Snapshot and clear atomically
+            with self._lock:
+                snapshot = dict(self._pending)
+                self._pending.clear()
+                drain_events = list(self._drain_events)
+                self._drain_events.clear()
+
+            for task_id, updates in snapshot.items():
+                try:
+                    self._writer(task_id, updates)
+                except Exception as exc:  # pragma: no cover
+                    logger.error(
+                        "[SupabaseFlusher] Failed to flush task %s: %s",
+                        task_id, exc, exc_info=True,
+                    )
+
+            # Signal all drain() waiters
+            for event in drain_events:
+                event.set()
+
+    def shutdown(self) -> None:  # pragma: no cover
+        """Request graceful shutdown."""
+        self._stop = True
+        self._has_work.set()
 
 
 class TaskManager:
@@ -32,6 +153,10 @@ class TaskManager:
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._cancelled_tasks: set = set()  # Track cancelled tasks
         self._lock = threading.Lock()
+        # SupabaseFlusher: background daemon thread that drains the flush queue.
+        # We pass a lambda so that tests can monkeypatch `self._persist_task_update`
+        # after construction and the flusher will pick up the patched version.
+        self._flusher = SupabaseFlusher(writer=lambda tid, upd: self._persist_task_update(tid, upd))
     
     def create_task(
         self, 
@@ -74,6 +199,7 @@ class TaskManager:
                 "failure_class": None,
                 "guard_phase": None,
                 "replay_bundle_ref": None,
+                "evidence_chain_broken": False,
                 "source_available": False,
                 "created_at": datetime.utcnow().isoformat(),
                 "completed_at": None,
@@ -88,6 +214,8 @@ class TaskManager:
                 "target_language": target_language,
                 "failure_intercepted": False,
                 "failed_output_path": None,
+                # Runtime flush tracking — not exposed to API / Supabase
+                "_last_flush_time": time.monotonic(),
             }
         
         # 2. Register guest tasks for TTL tracking
@@ -114,6 +242,7 @@ class TaskManager:
         failure_class: Optional[str] = None,
         guard_phase: Optional[str] = None,
         replay_bundle_ref: Optional[str] = None,
+        evidence_chain_broken: Optional[bool] = None,
         source_available: Optional[bool] = None,
         source_path: Optional[str] = None,
         output_path: Optional[str] = None,
@@ -155,6 +284,10 @@ class TaskManager:
                 return False
             
             task = self._tasks[task_id]
+
+            # ── Capture old semantic fields BEFORE mutation ──────────────
+            _old_status = task.get("status")
+            _old_stage = task.get("stage")
             
             if status is not None:
                 task["status"] = status
@@ -198,6 +331,9 @@ class TaskManager:
 
             if replay_bundle_ref is not None:
                 task["replay_bundle_ref"] = replay_bundle_ref
+
+            if evidence_chain_broken is not None:
+                task["evidence_chain_broken"] = bool(evidence_chain_broken)
             
             if source_available is not None:
                 task["source_available"] = source_available
@@ -250,10 +386,40 @@ class TaskManager:
             if user_id is None:
                 user_id = task.get("user_id")
             task_snapshot = task.copy()
-        
-        # Sync to Supabase if user_id exists and we have updates
+
+        # ── Throttled Supabase flush ─────────────────────────────────────
+        # Only authenticated tasks have a Supabase record to update.
         if user_id and db_updates:
-            self._persist_task_update(task_id, db_updates)
+            # A *semantic transition* means the VALUE actually changed,
+            # not just that the key is present in db_updates.
+            status_changed = ("status" in db_updates and db_updates["status"] != _old_status)
+            stage_changed = ("stage" in db_updates and db_updates["stage"] != _old_stage)
+            is_semantic = status_changed or stage_changed
+
+            if is_semantic:
+                # Semantic transition (status / stage VALUE changed) → immediate flush
+                logger.debug(
+                    "[FLUSH] task=%s SEMANTIC flush: status %s→%s, stage %s→%s",
+                    task_id, _old_status, db_updates.get("status"), _old_stage, db_updates.get("stage"),
+                )
+                self._flusher.enqueue(task_id, db_updates)
+                with self._lock:
+                    if task_id in self._tasks:
+                        self._tasks[task_id]["_last_flush_time"] = time.monotonic()
+            else:
+                # Value-only change (progress / message) → time-throttled flush
+                with self._lock:
+                    last = self._tasks.get(task_id, {}).get("_last_flush_time", 0.0)
+                elapsed = time.monotonic() - last
+                if elapsed >= FLUSH_INTERVAL:
+                    logger.debug(
+                        "[FLUSH] task=%s THROTTLED flush after %.1fs, keys=%s",
+                        task_id, elapsed, list(db_updates.keys()),
+                    )
+                    self._flusher.enqueue(task_id, db_updates)
+                    with self._lock:
+                        if task_id in self._tasks:
+                            self._tasks[task_id]["_last_flush_time"] = time.monotonic()
 
         failed_statuses = {
             TaskStatus.FAILED.value,
@@ -349,6 +515,187 @@ class TaskManager:
         logger.info(f"[TaskManager] Quarantined failed output for task {task_id}: {dest_dir}")
         return str(dest_dir)
 
+    @staticmethod
+    def _rewrite_scoped_absolute_path(value: Any, old_root: Path, new_root: Path) -> Any:
+        if not isinstance(value, str):
+            return value
+        candidate = value.strip()
+        if not candidate:
+            return value
+
+        is_abs = os.path.isabs(candidate) or bool(re.match(r"^[A-Za-z]:[\\/]", candidate)) or candidate.startswith("\\\\")
+        if not is_abs:
+            return value
+
+        old_norm = os.path.normcase(os.path.normpath(str(old_root)))
+        val_norm = os.path.normcase(os.path.normpath(candidate))
+        if val_norm == old_norm:
+            return str(new_root)
+
+        prefix = old_norm + os.sep
+        if not val_norm.startswith(prefix):
+            return value
+
+        rel = os.path.relpath(candidate, str(old_root))
+        return str((new_root / rel).resolve())
+
+    def _write_task_log_event(
+        self,
+        task_log_path: Path,
+        *,
+        event: str,
+        payload: Optional[Dict[str, Any]] = None,
+        dedupe_key: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        entries: List[Dict[str, Any]] = []
+        if task_log_path.exists():
+            try:
+                loaded = json.loads(task_log_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    entries = loaded
+            except Exception:
+                entries = []
+
+        if dedupe_key:
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("event") != event:
+                    continue
+                if all(entry.get(k) == v for k, v in dedupe_key.items()):
+                    return
+
+        row: Dict[str, Any] = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "event": event,
+        }
+        if payload:
+            row.update(payload)
+        entries.append(row)
+        task_log_path.parent.mkdir(parents=True, exist_ok=True)
+        task_log_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _rewrite_replay_evidence_after_quarantine(
+        self,
+        *,
+        task_id: str,
+        task_snapshot: Dict[str, Any],
+        old_task_root: Path,
+        new_task_root: Path,
+    ) -> Dict[str, Any]:
+        old_root = old_task_root.resolve()
+        new_root = new_task_root.resolve()
+
+        replay_refs: set[str] = set()
+        task_log_paths = sorted(new_root.rglob("task_log.json"))
+
+        for task_log_path in task_log_paths:
+            changed = False
+            entries: List[Dict[str, Any]] = []
+            try:
+                loaded = json.loads(task_log_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    entries = loaded
+            except Exception as exc:
+                logger.warning("[TaskManager] Failed loading task log for replay rewrite (%s): %s", task_log_path, exc)
+                continue
+
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                ref_value = entry.get("replay_bundle_ref")
+                rewritten_ref = self._rewrite_scoped_absolute_path(ref_value, old_root, new_root)
+                if rewritten_ref != ref_value:
+                    entry["replay_bundle_ref"] = rewritten_ref
+                    changed = True
+                if isinstance(entry.get("replay_bundle_ref"), str):
+                    replay_refs.add(entry["replay_bundle_ref"])
+
+            if changed:
+                task_log_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        replay_bundle_ref = task_snapshot.get("replay_bundle_ref")
+        rewritten_task_ref = self._rewrite_scoped_absolute_path(replay_bundle_ref, old_root, new_root)
+        if isinstance(rewritten_task_ref, str):
+            replay_refs.add(rewritten_task_ref)
+
+        bundle_paths: set[Path] = set()
+        for ref in replay_refs:
+            try:
+                p = Path(ref)
+                if p.exists() and p.is_file():
+                    bundle_paths.add(p)
+            except Exception:
+                continue
+        for bundled in new_root.rglob("replay_bundle.json"):
+            if bundled.is_file():
+                bundle_paths.add(bundled)
+
+        missing_paths: List[str] = []
+        main_tex_paths: List[Path] = []
+
+        for bundle_path in sorted(bundle_paths):
+            changed_bundle = False
+            try:
+                payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("[TaskManager] Failed loading replay bundle for rewrite (%s): %s", bundle_path, exc)
+                continue
+            if not isinstance(payload, dict):
+                continue
+
+            for key, value in list(payload.items()):
+                if not isinstance(value, str):
+                    continue
+                if key == "main_tex_path" or key.endswith("_path") or key.endswith("_ref"):
+                    rewritten = self._rewrite_scoped_absolute_path(value, old_root, new_root)
+                    if rewritten != value:
+                        payload[key] = rewritten
+                        changed_bundle = True
+
+            main_tex = payload.get("main_tex_path")
+            if isinstance(main_tex, str):
+                main_path = Path(main_tex)
+                if not main_path.is_absolute():
+                    main_path = (bundle_path.parent / main_tex).resolve()
+                main_tex_paths.append(main_path)
+
+            if changed_bundle:
+                bundle_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        if isinstance(rewritten_task_ref, str):
+            ref_path = Path(rewritten_task_ref)
+            if not ref_path.exists():
+                missing_paths.append(str(ref_path))
+
+        for main_path in main_tex_paths:
+            if not main_path.exists():
+                missing_paths.append(str(main_path))
+
+        evidence_chain_broken = bool(missing_paths)
+        if evidence_chain_broken:
+            warning_payload = {
+                "evidence_chain_broken": True,
+                "task_id": task_id,
+                "missing_paths": sorted(set(missing_paths)),
+            }
+            if task_log_paths:
+                warning_log = task_log_paths[0]
+            else:
+                warning_log = new_root / "task_log.json"
+            self._write_task_log_event(
+                warning_log,
+                event="evidence_chain_warning",
+                payload=warning_payload,
+                dedupe_key={"task_id": task_id, "missing_paths": warning_payload["missing_paths"]},
+            )
+
+        return {
+            "replay_bundle_ref": rewritten_task_ref if isinstance(rewritten_task_ref, str) else None,
+            "evidence_chain_broken": evidence_chain_broken,
+            "missing_paths": sorted(set(missing_paths)),
+        }
+
     def _delete_failed_task_from_supabase(self, task_id: str) -> bool:
         """Delete failed task row from Supabase translation_tasks table."""
         try:
@@ -392,12 +739,28 @@ class TaskManager:
             # Mark immediately for idempotence across repeated failure updates.
             current_task["failure_intercepted"] = True
             current_task.setdefault("failed_output_path", None)
+            current_task.setdefault("evidence_chain_broken", False)
+
+        settings = get_settings()
+        source_task_root = Path(latest_snapshot.get("output_path") or settings.outputs_dir / task_id)
 
         quarantined_output_path: Optional[str] = None
+        replay_rewrite_result: Optional[Dict[str, Any]] = None
         try:
             quarantined_output_path = self._quarantine_failed_output(task_id, latest_snapshot)
         except Exception as e:
             logger.error(f"[TaskManager] Failed output quarantine for task {task_id}: {e}", exc_info=True)
+
+        if quarantined_output_path:
+            try:
+                replay_rewrite_result = self._rewrite_replay_evidence_after_quarantine(
+                    task_id=task_id,
+                    task_snapshot=latest_snapshot,
+                    old_task_root=source_task_root,
+                    new_task_root=Path(quarantined_output_path),
+                )
+            except Exception as exc:
+                logger.error(f"[TaskManager] Failed replay evidence rewrite for task {task_id}: {exc}", exc_info=True)
 
         try:
             self._delete_failed_task_from_supabase(task_id)
@@ -410,6 +773,12 @@ class TaskManager:
                 if current_task is not None:
                     current_task["failed_output_path"] = quarantined_output_path
                     current_task["output_path"] = quarantined_output_path
+                    if replay_rewrite_result and replay_rewrite_result.get("replay_bundle_ref"):
+                        current_task["replay_bundle_ref"] = replay_rewrite_result["replay_bundle_ref"]
+                    if replay_rewrite_result is not None:
+                        current_task["evidence_chain_broken"] = bool(
+                            replay_rewrite_result.get("evidence_chain_broken", False)
+                        )
 
     def _maybe_send_email_notification(
         self, task_id: str, status: str, user_id: Optional[str]
