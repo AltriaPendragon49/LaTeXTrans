@@ -698,6 +698,11 @@ async def start_translation(
 
     # Enqueue translation via TaskQueue
     if tq:
+        # Compute token_hash for per-bucket routing isolation
+        _llm_cfg = build_llm_config(request.advanced_config, user_id)
+        _api_key = (_llm_cfg.get("api_key") or "").encode()
+        token_hash = hashlib.md5(_api_key).hexdigest()
+
         async def translation_factory():
             await run_translation(
                 task_id=task_id,
@@ -707,8 +712,8 @@ async def start_translation(
                 user_id=user_id
             )
 
-        await tq.enqueue(task_id, translation_factory, user_id)
-        logger.info(f"Task {task_id} enqueued via TaskQueue")
+        await tq.enqueue(task_id, translation_factory, user_id, token_hash)
+        logger.info(f"Task {task_id} enqueued via TaskQueue (token_hash={token_hash[:8]}...)")
     else:
         # Fallback: direct asyncio.create_task (TaskQueue not initialized)
         logger.warning("TaskQueue not initialized, falling back to direct asyncio.create_task")
@@ -886,6 +891,11 @@ async def batch_translate(
             # ✅ Launch download + enqueue in background (non-blocking).
             # This prevents the HTTP request from blocking for minutes while
             # downloading arXiv source packages over the network.
+            # Compute token_hash for bucket routing (same key as for single-task enqueue)
+            _batch_llm_cfg = build_llm_config(request.advanced_config, user_id)
+            _batch_token_hash = hashlib.md5(
+                (_batch_llm_cfg.get("api_key") or "").encode()
+            ).hexdigest()
             asyncio.create_task(
                 _download_and_enqueue(
                     task_id=task_id,
@@ -895,6 +905,7 @@ async def batch_translate(
                     target_language=request.target_language,
                     advanced_config=request.advanced_config,
                     tq=tq,
+                    token_hash=_batch_token_hash,
                 )
             )
             logger.info(f"[BatchTranslate] Created task {task_id} for arxiv_id={arxiv_id}, download started in background")
@@ -927,6 +938,7 @@ async def _download_and_enqueue(
     target_language: str,
     advanced_config,
     tq,
+    token_hash: str = "default",
 ):
     """
     Background coroutine: download arXiv source and enqueue translation.
@@ -991,7 +1003,7 @@ async def _download_and_enqueue(
                 return factory
 
             factory = await make_factory(task_id, user_id, source_language, target_language, advanced_config)
-            await tq.enqueue(task_id, factory, user_id)
+            await tq.enqueue(task_id, factory, user_id, token_hash)
         else:
             asyncio.create_task(
                 run_translation(

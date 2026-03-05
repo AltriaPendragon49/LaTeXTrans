@@ -1,28 +1,21 @@
-# Design: LangGraph Agent Evolution
+# 设计：LangGraph 代理演进
 
-## Goals
-- Migrating the monolithic translation coordinator to a `StateGraph`.
-- Enabling structural diagnostics for complex compilation failures.
-- Maintaining strict functional parity with the deterministic hardening baseline.
+## 目标
+- 将单体翻译协调器迁移到单一的 `StateGraph` 架构。
+- 按严格阶段顺序，为复杂的编译失败启用受控且显式的结构化诊断。
+- 保持与确定性加固基线的严格功能对等。
 
-## Non-Goals
-- Character-level regex fixing within LLM nodes.
-- Infinite retry loops.
-- Re-introduction of model-side structural responsibility.
+## 非目标
+- 双架构并行或新旧机制对比（shadow run / A-B run / side-by-side verification）。
+- LLM 节点内的字符级正则表达式修复。
+- 无限重试循环。
+- 重新引入模型侧的结构化责任。
+- 在基础迁移阶段引入任何新智能行为。
 
-## Decisions
-- **Decision: Separate Orchestration from Legacy Coordinator**.
-    - **Why**: Allows side-by-side verification and easy rollback.
-- **Decision: State-First Architecture**.
-    - **Why**: Ensures all data transformations are traceable and recoverable.
-
-## Tasks: LangGraph Agent Evolution
-
-### Phase 1: Functional Parity Migration
-- [ ] Scaffold the `StateGraph` for the baseline translation lifecycle (Parse -> Translate -> Validate -> Compile).
-- [ ] Establish strict state typing and wire existing methods into nodes without adding new LLM retry loops.
-- [ ] Verify 1:1 functional parity on test documents (including CJK and `dummy_test`).
-
-### Phase 2: Intelligent Diagnostics Expansion
-- [ ] Implement the `CompilationDiagnosticNode` for high-level structure/package reasoning.
-- [ ] Emit structured diagnostic payload including error type, location, repair path, and final compile status.
+## 决策
+- **决策：降低迁移耦合，采用单一架构直接接管**。
+    - **原因**：避免维护两套编排引擎的复杂性。彻底抛弃双路对比思维，通过人工重跑一篇已通过的论文来完成验证，确保其行为、失败语义与降级路径的一致性。
+- **决策：状态优先架构与执行权分离**。
+    - **原因**：将执行路由权（顺序与失败分支）完全交给 StateGraph；确保所有数据转换都是可追溯且可恢复的。
+- **决策：严控功能蔓延（No Scope Creep）**。
+    - **原因**：通过强制的节点级 schema 与基础设施准入，预防在迁移架构时隐式混入任何推测性修复逻辑。现有 agent 前期不全量 node 化，仅依靠 StateGraph 作执行边界。

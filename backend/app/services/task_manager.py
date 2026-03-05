@@ -1011,7 +1011,8 @@ class TaskManager:
     
     def cancel_task(self, task_id: str) -> bool:
         """
-        Mark a task as cancelled (for interrupting running tasks)
+        Cancel a task: forcibly interrupt the running asyncio.Task (if any),
+        then mark the in-memory record as failed.
         
         Args:
             task_id: Task ID
@@ -1019,10 +1020,21 @@ class TaskManager:
         Returns:
             True if task exists and was marked as cancelled
         """
+        # Step 1: Kill the running coroutine via the queue's cancel_execution()
+        # This must happen BEFORE acquiring _lock so the worker's finally block
+        # can update _user_task_count (which also uses the same module-level tq).
+        try:
+            if task_queue is not None:
+                task_queue.cancel_execution(task_id)
+        except Exception as exc:
+            logger.warning(
+                f"[TaskManager] cancel_task: cancel_execution raised for {task_id}: {exc}"
+            )
+
+        # Step 2: Update in-memory state
         with self._lock:
             if task_id in self._tasks:
                 self._cancelled_tasks.add(task_id)
-                # Update task status to failed
                 task = self._tasks[task_id]
                 task["status"] = TaskStatus.FAILED.value
                 task["message"] = "Task cancelled by user"
@@ -1079,7 +1091,23 @@ class TaskManager:
                     error_msg = f"Failed to delete {dir_path}: {str(e)}"
                     errors.append(error_msg)
                     logger.error(f"[TaskManager] {error_msg}")
-        
+
+        # Delete task_configs/{task_id}.json (runtime config snapshot)
+        # These files accumulate silently without cleanup — remove them here.
+        try:
+            task_config_file = Path(settings.task_configs_dir) / f"{task_id}.json"
+            if task_config_file.exists():
+                task_config_file.unlink()
+                deleted_dirs.append(str(task_config_file))
+                logger.info(f"[TaskManager] Deleted task config: {task_config_file}")
+        except AttributeError:
+            # settings.task_configs_dir not available (older config), skip gracefully
+            logger.debug(f"[TaskManager] task_configs_dir not configured, skipping config cleanup for {task_id}")
+        except Exception as e:
+            error_msg = f"Failed to delete task config for {task_id}: {str(e)}"
+            errors.append(error_msg)
+            logger.warning(f"[TaskManager] {error_msg}")
+
         # Delete from memory cache and cancelled set
         with self._lock:
             if task_id in self._tasks:
@@ -1498,112 +1526,257 @@ class GuestTaskTracker:
 
 class TaskQueue:
     """
-    Asyncio-native FIFO task queue with global concurrency limit and per-user quota.
-    Must be initialized in an async context via initialize().
+    Asyncio-native per-token-hash isolated task queue with per-user quota.
+
+    Architecture: Token-Isolated Multi-Bucket
+    -----------------------------------------
+    Each unique ``token_hash`` gets its own:
+      - ``asyncio.Queue``     → FIFO lane, invisible to other tokens
+      - ``asyncio.Semaphore`` → concurrency cap = ``max_concurrent``
+      - background ``_worker`` coroutine → lazily created, NEVER exits
+
+    Worker lifecycle: lazy-create on first enqueue, persist forever.
+    This eliminates the enqueue-vs-spawn race that occurs if idle workers exit.
+
+    Must be initialized in an async context via ``initialize()``.
     """
 
     def __init__(self, max_concurrent: int = 3):
         self._max_concurrent = max_concurrent
-        self._semaphore: Optional[asyncio.Semaphore] = None
-        self._queue: Optional[asyncio.Queue] = None
-        self._active_tasks: Dict[str, asyncio.Task] = {}
-        self._user_task_count: Dict[str, int] = {}  # user_id -> active task count
-        self._worker_task: Optional[asyncio.Task] = None
-        self._lock = asyncio.Lock()
+        # Per-token-hash buckets (lazily populated)
+        self._queues: Dict[str, asyncio.Queue] = {}
+        self._semaphores: Dict[str, asyncio.Semaphore] = {}
+        self._workers: Dict[str, asyncio.Task] = {}
+        # Cross-bucket shared state
+        self._active_tasks: Dict[str, asyncio.Task] = {}  # task_id -> asyncio.Task
+        self._skipped: set = set()                         # task_ids to discard on dequeue
+        self._user_task_count: Dict[str, int] = {}        # user_id -> active count
+        self._init_lock: Optional[asyncio.Lock] = None    # created in initialize()
 
     async def initialize(self):
-        """Initialize the queue and start the background worker."""
-        self._semaphore = asyncio.Semaphore(self._max_concurrent)
-        self._queue = asyncio.Queue()
-        self._worker_task = asyncio.create_task(self._worker())
+        """Initialize shared lock (must be called inside an async context)."""
+        self._init_lock = asyncio.Lock()
         logger.info(f"[TaskQueue] Initialized with max_concurrent={self._max_concurrent}")
+
+    # ------------------------------------------------------------------
+    # Internal: lazy bucket creation
+    # ------------------------------------------------------------------
+
+    async def _ensure_bucket(self, token_hash: str) -> None:
+        """
+        Lazily create the queue, semaphore, and worker for *token_hash*.
+        No-op if the bucket already exists.  Protected by _init_lock.
+        """
+        if token_hash in self._queues:
+            return
+        async with self._init_lock:
+            # Double-check after acquiring lock
+            if token_hash in self._queues:
+                return
+            self._queues[token_hash] = asyncio.Queue()
+            self._semaphores[token_hash] = asyncio.Semaphore(self._max_concurrent)
+            worker = asyncio.create_task(self._worker(token_hash))
+            self._workers[token_hash] = worker
+            logger.info(
+                f"[TaskQueue] Created bucket for token_hash={token_hash[:8]}... "
+                f"(max_concurrent={self._max_concurrent})"
+            )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     async def enqueue(
         self,
         task_id: str,
-        coro_factory,  # Callable that returns a coroutine
-        user_id: Optional[str] = None
+        coro_factory,
+        user_id: Optional[str] = None,
+        token_hash: str = "default",
     ):
         """
-        Enqueue a translation task.
+        Enqueue a translation task into the bucket for *token_hash*.
 
         Args:
             task_id: Task ID
             coro_factory: Async callable (no args) that runs the translation
-            user_id: Optional user ID for quota tracking
+            user_id: Optional user ID for per-user quota tracking
+            token_hash: MD5 hex digest of the LLM API key; determines routing bucket
         """
         # Update task status to QUEUED
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.QUEUED.value,
             message="Task queued, waiting for available slot",
-            user_id=user_id
+            user_id=user_id,
         )
 
         # Increment user quota counter
         if user_id:
-            async with self._lock:
-                self._user_task_count[user_id] = self._user_task_count.get(user_id, 0) + 1
+            async with self._init_lock:
+                self._user_task_count[user_id] = (
+                    self._user_task_count.get(user_id, 0) + 1
+                )
 
-        # Put into queue
-        await self._queue.put((task_id, coro_factory, user_id))
-        logger.info(f"[TaskQueue] Enqueued task {task_id} (user={user_id}, queue_size={self._queue.qsize()})")
+        # Ensure bucket exists (lazy creation)
+        await self._ensure_bucket(token_hash)
+
+        await self._queues[token_hash].put((task_id, coro_factory, user_id))
+        logger.info(
+            f"[TaskQueue] Enqueued task {task_id} "
+            f"(token={token_hash[:8]}..., user={user_id}, "
+            f"bucket_size={self._queues[token_hash].qsize()})"
+        )
+
+    def cancel_execution(self, task_id: str) -> bool:
+        """
+        Forcibly cancel *task_id*.
+
+        - If the task is currently **running**: calls ``asyncio.Task.cancel()`` on it.
+        - If the task is **queued but not yet running**: adds it to ``_skipped`` so
+          the worker discards it on the next dequeue.
+
+        Returns:
+            True if the task was found (running or queued), False otherwise.
+        """
+        running_task = self._active_tasks.get(task_id)
+        if running_task is not None and not running_task.done():
+            running_task.cancel()
+            logger.info(f"[TaskQueue] cancel_execution: cancelled running task {task_id}")
+            return True
+
+        # Not running — mark as skipped so the worker drops it when dequeued
+        self._skipped.add(task_id)
+        logger.info(
+            f"[TaskQueue] cancel_execution: task {task_id} not yet running, "
+            f"added to _skipped"
+        )
+        return True
 
     def get_user_active_count(self, user_id: str) -> int:
         """Get the number of active (queued + running) tasks for a user."""
         return self._user_task_count.get(user_id, 0)
 
     def get_status(self) -> Dict[str, Any]:
-        """Return current queue status."""
+        """Return aggregated queue status across all token buckets."""
         active_count = len(self._active_tasks)
-        queue_size = self._queue.qsize() if self._queue else 0
+        queue_size = sum(q.qsize() for q in self._queues.values())
         return {
             "active_count": active_count,
             "queue_size": queue_size,
             "max_concurrent": self._max_concurrent,
             "total_pending": active_count + queue_size,
+            "bucket_count": len(self._queues),
         }
 
-    async def _worker(self):
-        """Background worker that consumes the queue and runs translations."""
-        logger.info("[TaskQueue] Worker started")
+    # ------------------------------------------------------------------
+    # Internal: per-token worker (lives forever)
+    # ------------------------------------------------------------------
+
+    async def _worker(self, token_hash: str):
+        """
+        Background worker for *token_hash* bucket.
+
+        Lifecycle invariant: NEVER exits while the application is running.
+        The ``while True`` loop ensures the worker persists even when the queue
+        empties — eliminating the enqueue-vs-spawn race condition.
+        """
+        logger.info(f"[TaskQueue] Worker started for token_hash={token_hash[:8]}...")
         while True:
             try:
-                task_id, coro_factory, user_id = await self._queue.get()
-                logger.info(f"[TaskQueue] Worker picked up task {task_id}")
+                task_id, coro_factory, user_id = await self._queues[token_hash].get()
+                logger.info(
+                    f"[TaskQueue] Worker({token_hash[:8]}...) picked up task {task_id}"
+                )
 
-                # Acquire semaphore (blocks if max_concurrent reached)
-                await self._semaphore.acquire()
+                # --- Skip check for queued-only cancellations ---
+                if task_id in self._skipped:
+                    self._skipped.discard(task_id)
+                    self._queues[token_hash].task_done()
+                    logger.info(
+                        f"[TaskQueue] Task {task_id} was in _skipped, discarding."
+                    )
+                    # Decrement user quota for skipped task
+                    if user_id:
+                        async with self._init_lock:
+                            count = self._user_task_count.get(user_id, 1)
+                            if count <= 1:
+                                self._user_task_count.pop(user_id, None)
+                            else:
+                                self._user_task_count[user_id] = count - 1
+                    continue
 
-                # Run translation as asyncio task
-                async def run_and_release(tid, factory, uid):
+                # Acquire bucket semaphore (blocks when bucket is at capacity)
+                await self._semaphores[token_hash].acquire()
+
+                # --- Second skip check ---
+                # Handles the race: cancel_execution() called while worker was
+                # waiting for the semaphore (task was already dequeued but not
+                # yet running, so it ended up in _skipped after the first check).
+                if task_id in self._skipped:
+                    self._skipped.discard(task_id)
+                    self._semaphores[token_hash].release()
+                    self._queues[token_hash].task_done()
+                    logger.info(
+                        f"[TaskQueue] Task {task_id} skipped after semaphore acquire "
+                        f"(cancelled while waiting for slot)."
+                    )
+                    if user_id:
+                        async with self._init_lock:
+                            count = self._user_task_count.get(user_id, 1)
+                            if count <= 1:
+                                self._user_task_count.pop(user_id, None)
+                            else:
+                                self._user_task_count[user_id] = count - 1
+                    continue
+
+                async def run_and_release(tid, factory, uid, th):
                     try:
                         await factory()
+                    except asyncio.CancelledError:
+                        logger.info(
+                            f"[TaskQueue] Task {tid} was cancelled "
+                            f"(CancelledError), releasing slot."
+                        )
+                        raise  # re-raise so asyncio scheduler finalises correctly
                     except Exception as e:
-                        logger.error(f"[TaskQueue] Task {tid} raised exception: {e}", exc_info=True)
+                        logger.error(
+                            f"[TaskQueue] Task {tid} raised exception: {e}",
+                            exc_info=True,
+                        )
                     finally:
-                        self._semaphore.release()
-                        # Decrement user quota
+                        # ABSOLUTE RELEASE — always runs regardless of outcome
+                        self._semaphores[th].release()
                         if uid:
-                            async with self._lock:
+                            async with self._init_lock:
                                 count = self._user_task_count.get(uid, 1)
                                 if count <= 1:
                                     self._user_task_count.pop(uid, None)
                                 else:
                                     self._user_task_count[uid] = count - 1
-                        # Remove from active tasks
                         self._active_tasks.pop(tid, None)
-                        logger.info(f"[TaskQueue] Task {tid} completed, semaphore released")
+                        logger.info(
+                            f"[TaskQueue] Task {tid} finished, "
+                            f"semaphore slot released for token={th[:8]}..."
+                        )
 
-                t = asyncio.create_task(run_and_release(task_id, coro_factory, user_id))
+                t = asyncio.create_task(
+                    run_and_release(task_id, coro_factory, user_id, token_hash)
+                )
                 self._active_tasks[task_id] = t
-                self._queue.task_done()
+                self._queues[token_hash].task_done()
+
 
             except asyncio.CancelledError:
-                logger.info("[TaskQueue] Worker cancelled")
+                # The worker itself was cancelled (e.g. process shutdown) — exit cleanly
+                logger.info(
+                    f"[TaskQueue] Worker for token_hash={token_hash[:8]}... cancelled"
+                )
                 break
             except Exception as e:
-                logger.error(f"[TaskQueue] Worker error: {e}", exc_info=True)
+                logger.error(
+                    f"[TaskQueue] Worker({token_hash[:8]}...) error: {e}",
+                    exc_info=True,
+                )
 
 
 # Global instances
