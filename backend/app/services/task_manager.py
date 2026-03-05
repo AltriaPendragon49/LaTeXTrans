@@ -762,10 +762,10 @@ class TaskManager:
             except Exception as exc:
                 logger.error(f"[TaskManager] Failed replay evidence rewrite for task {task_id}: {exc}", exc_info=True)
 
-        try:
-            self._delete_failed_task_from_supabase(task_id)
-        except Exception as e:
-            logger.error(f"[TaskManager] Failed Supabase cleanup for task {task_id}: {e}", exc_info=True)
+        # NOTE: We intentionally do NOT delete the failed task from Supabase.
+        # Supabase is the sole authority for terminal states. Deleting the record
+        # causes the history page to show a stale "Waiting" state permanently.
+        # (fix-task-status-sync: Task 1)
 
         if quarantined_output_path:
             with self._lock:
@@ -1296,6 +1296,9 @@ class TaskManager:
                         "translation_model": db_task.get("translation_model"),
                         "generate_terminology_table": db_task.get("generate_glossary", True),
                         "use_author_api": db_task.get("use_author_api", True),
+                        # fix-task-status-sync Task 2: Restore email notification preference
+                        # so post-restart tasks can still send email on completion.
+                        "email_notification": db_task.get("email_notification", False),
                     },
                     "latex_validation": None,
                     "arxiv_id": db_task.get("arxiv_id"),

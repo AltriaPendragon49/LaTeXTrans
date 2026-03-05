@@ -11,11 +11,12 @@ const steps = [
     { id: "download", label: "Downloading Source" },
     { id: "extract", label: "Extracting Files" },
     { id: "translate", label: "Translating Content" },
+    { id: "validate", label: "Validating Results" },
     { id: "compile", label: "Compiling PDF" }
 ]
 
 export default function ProcessingPage() {
-    const { taskId: storeTaskId, status, logs, pollStatus, stopPolling, setTaskId, taskWarnings, error } = useStore()
+    const { taskId: storeTaskId, status, message: storeMessage, progress, logs, pollStatus, stopPolling, setTaskId, taskWarnings, error } = useStore()
     const [searchParams] = useSearchParams()
     const navigate = useNavigate()
     const { user } = useAuth()
@@ -44,13 +45,50 @@ export default function ProcessingPage() {
     const canPreview = normalizedStatus === 'completed' || normalizedStatus === 'completed_with_warnings'
     const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'failed_compilation'
 
+    // Determine sub-stage from storeMessage to give fine-grained progress
+    let subStage = "Running..."
+    let isValidating = false
+
+    if (storeMessage) {
+        if (progress >= 95 || storeMessage.includes("Validating translation") || storeMessage.includes("Processed") || storeMessage.includes("Retranslated") || storeMessage.includes("Structure invariant")) {
+            isValidating = true;
+        }
+
+        const matchB = storeMessage.match(/Retranslated (\d+\/\d+) \(B:retry\)/);
+        const matchC1 = storeMessage.match(/Processed (\d+\/\d+) \(C1:/);
+        const matchC2 = storeMessage.match(/Processed (\d+\/\d+) \(C2:/);
+        const matchA = storeMessage.match(/Processed (\d+\/\d+) \(A:/);
+        const matchTranslate = storeMessage.match(/Translated (\d+\/\d+)/);
+
+        if (matchB) {
+            subStage = `Retrying failed sections (${matchB[1]})`;
+        } else if (matchC1) {
+            subStage = `Restoring LaTeX structure (${matchC1[1]})`;
+        } else if (matchC2) {
+            subStage = `Applying fallback translations (${matchC2[1]})`;
+        } else if (matchA) {
+            subStage = `Restoring LaTeX environments (${matchA[1]})`;
+        } else if (storeMessage.includes("Validating translation results") || storeMessage.includes("Structure invariant")) {
+            subStage = "Verifying structure integrity";
+        } else if (matchTranslate) {
+            subStage = `Translating (${matchTranslate[1]})`;
+        } else if (storeMessage.includes("Compiling") || storeMessage.includes("PDF")) {
+            subStage = "Preparing PDF compilation";
+        } else {
+            subStage = storeMessage;
+        }
+    }
+
     // Derive current step from status message or status enum
     let currentStepIndex = 0
     if (normalizedStatus === 'downloading') currentStepIndex = 0
-    else if (normalizedStatus === 'processing' || normalizedStatus === 'started') currentStepIndex = 2
-    else if (normalizedStatus === 'failed_compilation') currentStepIndex = 3
-    else if (normalizedStatus === 'failed') currentStepIndex = 2
-    else if (canPreview) currentStepIndex = 4
+    else if (normalizedStatus === 'processing' || normalizedStatus === 'started') {
+        currentStepIndex = 2
+        if (isValidating) currentStepIndex = 3
+    }
+    else if (normalizedStatus === 'failed_compilation') currentStepIndex = 4
+    else if (normalizedStatus === 'failed') currentStepIndex = isValidating ? 3 : 2
+    else if (canPreview) currentStepIndex = 5
 
     // 使用 effectiveTaskId 替代 taskId 用于下载链接
     const activeTaskId = effectiveTaskId
@@ -132,7 +170,7 @@ export default function ProcessingPage() {
                                                 <span className={`text-sm font-medium ${isActive ? "text-indigo-600" : isCompleted ? "text-emerald-600" : isFailedStep ? "text-red-600" : "text-slate-500"}`}>
                                                     {step.label}
                                                 </span>
-                                                {isActive && <span className="text-xs text-muted-foreground animate-pulse">Running...</span>}
+                                                {isActive && <span className="text-xs text-muted-foreground animate-pulse">{subStage}</span>}
                                                 {isFailedStep && <span className="text-xs text-red-600">Failed</span>}
                                             </div>
                                         </div>
@@ -158,8 +196,8 @@ export default function ProcessingPage() {
                             ) : (
                                 <div className="text-center space-y-2">
                                     <RotateCw className="h-16 w-16 text-indigo-500 animate-spin mx-auto" />
-                                    <p className="text-sm text-muted-foreground">Processing...</p>
-                                    <p className="text-xs text-slate-400">{status}</p>
+                                    <p className="text-sm font-medium text-foreground">{subStage}</p>
+                                    <p className="text-xs text-slate-400 capitalize">{normalizedStatus === 'processing' && isValidating ? 'validating results' : normalizedStatus}</p>
                                     {logs.length > 0 && logs[logs.length - 1]?.includes("rate limited") && (
                                         <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 animate-pulse">
                                             <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />

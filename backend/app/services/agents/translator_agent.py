@@ -471,32 +471,37 @@ class TranslatorAgent(BaseToolAgent):
         }
 
         _timeout = aiohttp.ClientTimeout(total=180)
+        # ── Rate-limit (429) handling ────────────────────────────────────────
+        # NOTE: global_llm_semaphore is an INFRA GUARD only (prevents system
+        # overload). It has no authority over Phase 2 business scheduling.
+        # 429 retry is strictly bounded: at most MAX_429_RETRIES attempts.
+        # After that, we fall back to source text. Infinite retry is FORBIDDEN.
+        MAX_429_RETRIES = 3
         rate_limit_hits = 0
         network_failures = 0
-        while True:
+
+        while rate_limit_hits <= MAX_429_RETRIES and network_failures <= 3:
             try:
-                async with global_llm_semaphore:
+                async with global_llm_semaphore:  # Infra Guard — system survival only
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
-                            retry_after_raw = response.headers.get("Retry-After", "")
                             rate_limit_hits += 1
-                            if rate_limit_hits <= 3:
-                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
-                            elif rate_limit_hits <= 9:
-                                wait = min(30 + (rate_limit_hits - 3) * 5, 60)
-                            else:
-                                wait = 60
+                            if rate_limit_hits > MAX_429_RETRIES:
+                                logger.warning(
+                                    f"⚠ API rate limited (429) for {fail_part}: exceeded max retries "
+                                    f"({MAX_429_RETRIES}). Returning fallback."
+                                )
+                                self._register_llm_part_failure(part_type, str(fail_part))
+                                self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_429_max_retries")
+                                return fallback_text
+                            retry_after_raw = response.headers.get("Retry-After", "")
+                            wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
                             logger.warning(
                                 f"⚠ API rate limited (429) for {fail_part}, "
-                                f"waiting {wait}s (429 count: {rate_limit_hits})"
+                                f"waiting {wait}s (attempt {rate_limit_hits}/{MAX_429_RETRIES})"
                             )
-                            if rate_limit_hits > 9:
-                                self.update_progress(
-                                    -1,
-                                    "⚠ API rate limited, retrying until API recovers. "
-                                    "Consider using your own API key for better performance. "
-                                    f"(429 count: {rate_limit_hits}, waiting {wait}s)",
-                                )
+                            await asyncio.sleep(wait)
+                            continue
                         else:
                             response.raise_for_status()
                             result = await response.json()
@@ -505,8 +510,6 @@ class TranslatorAgent(BaseToolAgent):
                             self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
                             self._clear_api_fallback(part_type, str(fail_part))
                             return restored
-                await asyncio.sleep(wait)
-                continue
             except PipelineInvariantViolation:
                 raise
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
@@ -534,6 +537,12 @@ class TranslatorAgent(BaseToolAgent):
                     )
                     self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_after_3_attempts")
                     return fallback_text
+
+        # Should not normally be reached; defensive fallback
+        self._register_llm_part_failure(part_type, str(fail_part))
+        self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_429_max_retries")
+        return fallback_text
+
 
     def _escape_bare_underscores_in_text_mode(self, text: str) -> str:
         if not text or "_" not in text:
@@ -862,6 +871,8 @@ class TranslatorAgent(BaseToolAgent):
                                 caps: List[Dict[str, Any]], 
                                 envs: List[Dict[str, Any]],
                                 session: aiohttp.ClientSession) -> Any:
+        # Local import to avoid circular deps at module load.
+        from backend.app.services.translation.downgrade_handler import DOWNGRADE_STATUS
         sec_nums = self.fail_section_nums[:]
         cap_phs = self.fail_caption_phs[:]
         env_phs = self.fail_env_phs[:]
@@ -885,6 +896,10 @@ class TranslatorAgent(BaseToolAgent):
                     continue
                 if sec_num in sec_dict:
                     i = sec_dict[sec_num]
+                    # ── Phase 3 Guard: skip deterministically downgraded sections ──
+                    if secs[i].get("translation_status") == DOWNGRADE_STATUS:
+                        logger.info("Maxtry guard: skipping downgraded section %s", sec_num)
+                        continue
                     secs[i] = await self._translate_section(secs[i], session)
             # else:
             #     print(f"[Warning] Section {sec_num} not found.")
@@ -893,7 +908,11 @@ class TranslatorAgent(BaseToolAgent):
             for cap_ph in cap_phs:
                 if cap_ph in cap_dict:
                     i = cap_dict[cap_ph]
-                    caps[i] = await self._translate_caption(caps[i], session) 
+                    # ── Phase 3 Guard: skip deterministically downgraded captions ──
+                    if caps[i].get("translation_status") == DOWNGRADE_STATUS:
+                        logger.info("Maxtry guard: skipping downgraded caption %s", cap_ph)
+                        continue
+                    caps[i] = await self._translate_caption(caps[i], session)
             # else:
             #     print(f"[Warning] Caption placeholder {cap_ph} not found.")
         if env_phs:
@@ -901,7 +920,13 @@ class TranslatorAgent(BaseToolAgent):
             for env_ph in env_phs:
                 if env_ph in env_dict:
                     i = env_dict[env_ph]
-                    envs[i] = await self._translate_env(envs[i], session) 
+                    # ── Phase 3 Guard: skip deterministically downgraded envs ──────
+                    # Envs with DOWNGRADE_STATUS are final (Phase 2 queue timeout or
+                    # 429 limit). Maxtry MUST NOT re-consume their repair opportunity.
+                    if envs[i].get("translation_status") == DOWNGRADE_STATUS:
+                        logger.info("Maxtry guard: skipping downgraded env %s", env_ph)
+                        continue
+                    envs[i] = await self._translate_env(envs[i], session)
             # else:
             #     print(f"[Warning] Environment placeholder {env_ph} not found.")
 

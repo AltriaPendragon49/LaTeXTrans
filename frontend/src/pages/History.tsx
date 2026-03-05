@@ -57,12 +57,20 @@ interface HistoryResponse {
 }
 
 // Status badge styling
+// fix-task-status-sync Task 3: Map all terminal failure states to the red "Failed" badge.
+// structure_invalid and failed_compilation must NOT fall through to the yellow "pending" default.
 const statusStyles: Record<string, string> = {
     pending: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
     processing: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
     completed: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
+    completed_with_warnings: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
     failed: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+    failed_compilation: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+    structure_invalid: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
 }
+
+// Terminal failure statuses — clicking these should navigate to preview/details, not processing.
+const TERMINAL_FAIL_STATUSES = new Set(['failed', 'failed_compilation', 'structure_invalid'])
 
 export default function HistoryPage() {
     const navigate = useNavigate()
@@ -319,6 +327,10 @@ export default function HistoryPage() {
         // Navigate based on task status
         if (task.status === 'completed' || task.status === 'completed_with_warnings') {
             navigate('/preview')
+        } else if (TERMINAL_FAIL_STATUSES.has(task.status)) {
+            // fix-task-status-sync Task 3: Terminal failures stay in history; navigate to
+            // processing page so user can see the failure details/reason.
+            navigate(`/processing?taskId=${task.task_id}`)
         } else {
             // 直接将 taskId 放入 URL 参数，避免依赖 store 异步更新
             navigate(`/processing?taskId=${task.task_id}`)
@@ -452,10 +464,14 @@ export default function HistoryPage() {
                                         </div>
 
                                         <div className="flex items-center gap-2">
-                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusStyles[task.status] || statusStyles.pending}`}>
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusStyles[task.status] || statusStyles.failed}`}>
                                                 {task.status === 'completed' ? '已完成' :
-                                                    task.status === 'processing' ? '处理中' :
-                                                        task.status === 'failed' ? '失败' : '等待中'}
+                                                    task.status === 'completed_with_warnings' ? '完成(有警告)' :
+                                                        task.status === 'processing' ? '处理中' :
+                                                            task.status === 'failed' ? '失败' :
+                                                                task.status === 'failed_compilation' ? '编译失败' :
+                                                                    task.status === 'structure_invalid' ? '结构无效' :
+                                                                        task.status === 'pending' ? '等待中' : task.status}
                                             </span>
 
                                             {!selectionMode && (

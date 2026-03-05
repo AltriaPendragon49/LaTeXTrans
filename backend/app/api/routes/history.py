@@ -14,10 +14,68 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from supabase import Client
+import asyncio
+import json
+import logging
+from pathlib import Path
 
 from backend.app.core.auth import get_supabase_client_from_request
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Lazy task-log status reconciliation
+# ---------------------------------------------------------------------------
+# Maps task_log.json terminal events to canonical task status values.
+# Used to repair tasks whose Supabase status was never flushed (e.g., after
+# a process crash). The LAST matching event in the log wins.
+_TASK_LOG_TERMINAL_EVENT_MAP: Dict[str, str] = {
+    "compilation_completed": "completed",
+    "compilation_completed_with_warnings": "completed_with_warnings",
+    "compilation_failed": "failed_compilation",
+    "structure_invalid_aborted": "structure_invalid",
+}
+
+
+def _infer_status_from_task_log(output_path: Optional[str]) -> Optional[str]:
+    """
+    Inspect local task_log.json under *output_path* and return the canonical
+    terminal status inferred from the last terminal event, or None if no
+    terminal event is found or the log is missing/malformed.
+
+    Looks for the log in:
+        <output_path>/task_log.json          (root-level, legacy)
+        <output_path>/<any_subdir>/task_log.json  (normal layout)
+    """
+    if not output_path:
+        return None
+    root = Path(output_path)
+    if not root.is_dir():
+        return None
+
+    candidates: List[Path] = []
+    root_log = root / "task_log.json"
+    if root_log.is_file():
+        candidates.append(root_log)
+    for child in root.iterdir():
+        if child.is_dir():
+            child_log = child / "task_log.json"
+            if child_log.is_file():
+                candidates.append(child_log)
+
+    inferred: Optional[str] = None
+    for log_path in candidates:
+        try:
+            entries = json.loads(log_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for entry in entries:
+            event = entry.get("event", "")
+            if event in _TASK_LOG_TERMINAL_EVENT_MAP:
+                inferred = _TASK_LOG_TERMINAL_EVENT_MAP[event]
+    return inferred
+
 
 
 class TaskHistoryItem(BaseModel):
@@ -103,7 +161,7 @@ async def get_user_history(
         query = supabase.table("translation_tasks").select(
             """task_id, source_type, arxiv_id, translation_mode, status, progress, 
                created_at, completed_at, source_language, target_language, 
-               compile_strategy, translation_model, 
+               compile_strategy, translation_model, output_path,
                generate_glossary, use_author_api, formatting""",
             count="exact"
         )
@@ -117,14 +175,39 @@ async def get_user_history(
         
         result = query.execute()
         
-        tasks = [
-            TaskHistoryItem(
+        # Non-terminal statuses that might need reconciliation from local task_log.
+        _NON_TERMINAL = {"pending", "processing", "queued"}
+
+        # Collect tasks that need Supabase status correction (fire-and-forget).
+        _corrections: List[tuple] = []  # [(task_id, corrected_status)]
+
+        tasks = []
+        for task in result.data:
+            db_status: str = task["status"]
+            effective_status = db_status
+            effective_progress = task.get("progress", 0)
+
+            # Lazy reconciliation: if the task is stuck in a non-terminal state,
+            # check the local task_log.json for the true terminal status.
+            # This repairs tasks whose Supabase flush was lost on process crash.
+            if db_status in _NON_TERMINAL:
+                inferred = _infer_status_from_task_log(task.get("output_path"))
+                if inferred:
+                    logger.info(
+                        f"[history] Reconciling task {task['task_id']}: "
+                        f"DB status={db_status!r} -> inferred={inferred!r} from task_log"
+                    )
+                    effective_status = inferred
+                    effective_progress = 100
+                    _corrections.append((task["task_id"], inferred))
+
+            tasks.append(TaskHistoryItem(
                 task_id=task["task_id"],
                 source_type=task["source_type"],
                 arxiv_id=task.get("arxiv_id"),
                 translation_mode=task.get("translation_mode", "full"),
-                status=task["status"],
-                progress=task.get("progress", 0),
+                status=effective_status,
+                progress=effective_progress,
                 created_at=task["created_at"],
                 completed_at=task.get("completed_at"),
                 source_language=task.get("source_language", "en"),
@@ -134,12 +217,25 @@ async def get_user_history(
                 generate_glossary=task.get("generate_glossary", True),
                 use_author_api=task.get("use_author_api", True),
                 formatting=task.get("formatting"),
-            )
-            for task in result.data
-        ]
-        
+            ))
+
+        # Fire-and-forget: write corrections back to Supabase in the background.
+        if _corrections:
+            async def _apply_corrections(corrections: List[tuple], client: Client) -> None:
+                for tid, corrected_status in corrections:
+                    try:
+                        client.table("translation_tasks").update({
+                            "status": corrected_status,
+                            "progress": 100,
+                        }).eq("task_id", tid).execute()
+                        logger.info(f"[history] Supabase status corrected: {tid} -> {corrected_status}")
+                    except Exception as exc:
+                        logger.warning(f"[history] Failed to correct status for {tid}: {exc}")
+
+            asyncio.create_task(_apply_corrections(_corrections, supabase))
+
         total = result.count or 0
-        
+
         return TaskHistoryResponse(
             tasks=tasks,
             total=total,
