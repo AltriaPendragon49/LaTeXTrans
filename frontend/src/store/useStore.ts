@@ -215,7 +215,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     translation_mode: settings.translation_mode || 'full',
                     compile_strategy: settings.compile_strategy || 'auto',
                     generate_terminology_table: settings.generate_glossary ?? true,
-                    translation_model: settings.translation_model || 'qwen/qwen3-235b-a22b',
+                    translation_model: settings.translation_model || 'deepseek-ai/deepseek-v3.2',
                     use_author_api: settings.use_author_api ?? true,
                     custom_base_url: settings.custom_base_url || undefined,
                     // Note: API key is not returned for security

@@ -20,8 +20,10 @@ import logging
 from pathlib import Path
 
 from backend.app.core.auth import get_supabase_client_from_request
+from backend.app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+_settings = get_settings()
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
@@ -174,6 +176,13 @@ async def get_user_history(
         query = query.order("created_at", desc=True).range(offset, offset + page_size - 1)
         
         result = query.execute()
+
+        # DEBUG: trace what RLS returns for each task
+        for _t in (result.data or []):
+            logger.info(
+                f"[history][DEBUG-RLS] task={_t['task_id'][:30]}... "
+                f"status={_t['status']!r} output_path={_t.get('output_path', 'N/A')!r}"
+            )
         
         # Non-terminal statuses that might need reconciliation from local task_log.
         _NON_TERMINAL = {"pending", "processing", "queued"}
@@ -191,15 +200,24 @@ async def get_user_history(
             # check the local task_log.json for the true terminal status.
             # This repairs tasks whose Supabase flush was lost on process crash.
             if db_status in _NON_TERMINAL:
-                inferred = _infer_status_from_task_log(task.get("output_path"))
+                # Use output_path from DB; if missing, fall back to the
+                # canonical convention: outputs_dir / task_id.
+                # This is critical for batch tasks and crash-recovered tasks
+                # whose output_path was never flushed to Supabase.
+                db_output_path = task.get("output_path")
+                resolved_output_path = db_output_path or str(
+                    _settings.outputs_dir / task["task_id"]
+                )
+                inferred = _infer_status_from_task_log(resolved_output_path)
                 if inferred:
                     logger.info(
                         f"[history] Reconciling task {task['task_id']}: "
-                        f"DB status={db_status!r} -> inferred={inferred!r} from task_log"
+                        f"DB status={db_status!r} -> inferred={inferred!r} from task_log "
+                        f"(output_path_source={'db' if db_output_path else 'inferred'})"
                     )
                     effective_status = inferred
                     effective_progress = 100
-                    _corrections.append((task["task_id"], inferred))
+                    _corrections.append((task["task_id"], inferred, resolved_output_path if not db_output_path else None))
 
             tasks.append(TaskHistoryItem(
                 task_id=task["task_id"],
@@ -220,15 +238,26 @@ async def get_user_history(
             ))
 
         # Fire-and-forget: write corrections back to Supabase in the background.
+        # Each tuple is (task_id, corrected_status, inferred_output_path_or_None).
+        # inferred_output_path is set only when DB had no output_path, so we
+        # opportunistically patch it in the same write to avoid future re-inferences.
         if _corrections:
             async def _apply_corrections(corrections: List[tuple], client: Client) -> None:
-                for tid, corrected_status in corrections:
+                for correction in corrections:
+                    tid, corrected_status = correction[0], correction[1]
+                    inferred_path = correction[2] if len(correction) > 2 else None
                     try:
-                        client.table("translation_tasks").update({
+                        patch: Dict[str, Any] = {
                             "status": corrected_status,
                             "progress": 100,
-                        }).eq("task_id", tid).execute()
-                        logger.info(f"[history] Supabase status corrected: {tid} -> {corrected_status}")
+                        }
+                        if inferred_path:
+                            patch["output_path"] = inferred_path
+                        client.table("translation_tasks").update(patch).eq("task_id", tid).execute()
+                        logger.info(
+                            f"[history] Supabase corrected: {tid} -> {corrected_status}"
+                            + (f" (output_path patched: {inferred_path})" if inferred_path else "")
+                        )
                     except Exception as exc:
                         logger.warning(f"[history] Failed to correct status for {tid}: {exc}")
 

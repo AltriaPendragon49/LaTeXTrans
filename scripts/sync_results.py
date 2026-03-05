@@ -40,8 +40,12 @@ class ResultSyncer:
                 if not arxiv_id or not task_id:
                     continue
                 
-                t_id_short = task_id[:8]
-                self.arxiv_to_task_id.setdefault(arxiv_id, set()).add(t_id_short)
+                # Extract the UUID segment (last component after last "-" group)
+                # New format: prefix-MMDD-HHmm-<full_uuid>
+                # Fall back to full task_id when format is unexpected.
+                parts = task_id.rsplit("-", maxsplit=5)
+                t_id_uuid = parts[-1] if len(parts) >= 5 else task_id
+                self.arxiv_to_task_id.setdefault(arxiv_id, set()).add(t_id_uuid)
 
                 # Only process the latest result for categorization
                 if arxiv_id in processed_arxivs:
@@ -93,7 +97,7 @@ class ResultSyncer:
                         print(f"Error reading log {log_path}: {e}")
 
                 self.task_results[arxiv_id] = {
-                    'task_id': t_id_short,
+                    'task_id': t_id_uuid,
                     'status': status,
                     'error': error_msg,
                     'pdf_path': pdf_found,

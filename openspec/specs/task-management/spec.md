@@ -1,10 +1,10 @@
-# 任务管理与标识规范补丁 (task-management-id)
+# task-management Specification
 
-用于系统内新任务生命周期发起期间的特征保障，同时杜绝下游脚本引发的越界错误解析。
-
-## MODIFIED Requirements
-
-#### Requirement: 生成具有全局信息穿透特征的复合任务标识 (task_id)
+## Purpose
+TBD - created by archiving change refactor-task-id-format. Update Purpose after archive.
+## Requirements
+### Requirement: 复合任务标识生成规范
+系统 MUST 生成具有全局信息穿透特征的复合任务标识 (task_id)。
 
 - 禁止在业务网关或文件创建流使用裸字符串形式的 UUID (例如: `a1b2c3d4-xxxx-xxxx-xxxx-...`)。
 - 必须基于当前请求上下文附加资源来源：`{arxiv_id_or_upload}-{MMDD}-{HHmm}-{full_UUID}`。
@@ -18,3 +18,4 @@
 #### Scenario: 后置离线同步脚本进行结果校验解析
 - **WHEN** 脚本 sync_results.py 进行批次结果捞取
 - **THEN** 脚本正确通过分隔符 `-` 提取 UUID，不发生前缀截断错误
+

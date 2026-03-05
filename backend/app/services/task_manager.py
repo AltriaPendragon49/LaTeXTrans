@@ -181,9 +181,16 @@ class TaskManager:
             persist_to_db: Whether to immediately persist to database (default: False)
         
         Returns:
-            Task ID (UUID string)
+            Task ID in format ``{prefix}-MMDD-HHmm-{full_uuid}`` where
+            prefix is a sanitised arxiv_id or "upload" for local uploads.
         """
-        task_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+        prefix = (
+            re.sub(r"[^A-Za-z0-9.\-]", "_", str(arxiv_id))
+            if arxiv_id
+            else "upload"
+        )
+        task_id = f"{prefix}-{now.strftime('%m%d')}-{now.strftime('%H%M')}-{uuid.uuid4()}"
         
         # 1. Create in-memory cache (for all tasks)
         with self._lock:

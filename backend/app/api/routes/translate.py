@@ -388,6 +388,7 @@ async def run_translation(
             status=TaskStatus.PROCESSING.value,
             progress=0,
             message="Checking for reusable output...",
+            output_path=str(output_dir),  # eagerly written for lazy reconciliation
             user_id=user_id
         )
         

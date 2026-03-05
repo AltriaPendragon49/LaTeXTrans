@@ -93,13 +93,10 @@ def capture_task_config(
         info = {"raw": info}
 
     arxiv_id = info.get("arxiv_id")
-    safe_arxiv_id = str(arxiv_id).replace("/", "_") if arxiv_id else "unknown_arxiv"
     
     now = datetime.now()
-    task_date = now.strftime("%m%d")
-    task_time = now.strftime("%H%M")
 
-    filename = f"{safe_arxiv_id}-{task_id[:6]}-{task_date}-{task_time}.json"
+    filename = f"{task_id}.json"
     filepath = output_dir / filename
     tmp_path = output_dir / f".{filename}.tmp"
 
@@ -110,7 +107,7 @@ def capture_task_config(
             "metadata": {
                 "task_id": task_id,
                 "captured_at": now.isoformat(),
-                "timestamp": f"{task_date}_{task_time}",
+                "timestamp": now.strftime("%m%d_%H%M"),
             },
             "advanced_config": _json_safe(advanced_config),
             "agent_config": _sanitize_agent_config(agent_config),

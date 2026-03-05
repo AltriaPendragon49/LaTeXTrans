@@ -99,7 +99,7 @@ class AdvancedConfig(BaseModel):
         description="Generate terminology reference table (CSV)"
     )
     translation_model: str = Field(
-        default="qwen/qwen3-235b-a22b", 
+        default="deepseek-ai/deepseek-v3.2", 
         description="Translation LLM model name"
     )
     
