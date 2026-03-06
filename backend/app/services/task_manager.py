@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Union, List
 from backend.app.core.config import TaskStatus, CompilationStage, get_settings
 from backend.app.core.supabase_client import get_supabase_admin_client
+from backend.app.core.timezone_utils import get_cst_now, get_cst_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,7 @@ class TaskManager:
             Task ID in format ``{prefix}-MMDD-HHmm-{full_uuid}`` where
             prefix is a sanitised arxiv_id or "upload" for local uploads.
         """
-        now = datetime.utcnow()
+        now = get_cst_now()
         prefix = (
             re.sub(r"[^A-Za-z0-9.\-]", "_", str(arxiv_id))
             if arxiv_id
@@ -208,7 +209,8 @@ class TaskManager:
                 "replay_bundle_ref": None,
                 "evidence_chain_broken": False,
                 "source_available": False,
-                "created_at": datetime.utcnow().isoformat(),
+                "guardian_intercepted": False,
+                "created_at": get_cst_now_iso(),
                 "completed_at": None,
                 "source_type": source_type,
                 "source_path": None,
@@ -305,7 +307,7 @@ class TaskManager:
                              TaskStatus.FAILED.value,
                              TaskStatus.FAILED_COMPILATION.value,
                              TaskStatus.STRUCTURE_INVALID.value]:
-                    task["completed_at"] = datetime.utcnow().isoformat()
+                    task["completed_at"] = get_cst_now_iso()
                     db_updates["completed_at"] = task["completed_at"]
             
             if progress is not None:
@@ -573,7 +575,7 @@ class TaskManager:
                     return
 
         row: Dict[str, Any] = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": get_cst_now_iso(),
             "event": event,
         }
         if payload:

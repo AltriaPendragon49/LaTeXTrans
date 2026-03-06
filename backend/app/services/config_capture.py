@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 from backend.app.core.config import get_settings
+from backend.app.core.timezone_utils import get_cst_now
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ def capture_task_config(
 
     arxiv_id = info.get("arxiv_id")
     
-    now = datetime.now()
+    now = get_cst_now()
 
     filename = f"{task_id}.json"
     filepath = output_dir / filename

@@ -61,13 +61,18 @@ The system SHALL orchestrate parsing, translation, validation, and compilation e
 - **THEN** it operates within scope
 - **AND** the system MUST PREVENT the agent from executing character-level syntax fixes or entering infinite retry cycles.
 
+#### Scenario: Phase 4b Intelligent Diagnostic Activation
+- **WHEN** compilation fails and the pipeline enters the finalization stage
+- **THEN** the system MUST activate the `CompilationDiagnosticNode` by default (unless `use_compilation_diagnostics` is explicitly disabled)
+- **AND** the node MUST remain isolated from the source LaTeX files.
+
 ### Requirement: Structured Diagnostic Output
-The diagnostic node SHALL emit formalized failure reports post-compilation to aid system maintainers.
+The diagnostic node SHALL emit formalized failure reports post-compilation to aid system maintainers and downstream consumers.
 
 #### Scenario: Emitting the Diagnostic Payload
 - **WHEN** a compilation failure limits out or reaches an unrecoverable state
-- **THEN** the Agent MUST generate a diagnostic object
-- **AND** the response MUST include: the error type, exact location/chunk, the sequence of repair steps attempted (e.g. LLM Retry -> Regex Escape -> Local Fallback), and the final compile status.
+- **THEN** the Agent MUST generate a `DiagnosticReport` Pydantic object
+- **AND** the report MUST include: `task_id`, `error_count`, `root_cause_category`, `suggestions` (predefined action whitelist), `confidence`, and `is_actionable` flag.
 
 ### Requirement: Translation Outcome Observability
 The system SHALL persist per-section translation outcome metadata and validation-level fallback diagnostics for every task run without changing external API request/response contracts.
@@ -181,14 +186,6 @@ The coordinator SHALL persist env fallback subtype counters in the `validation_c
 #### Scenario: Env fallback subtype counters are emitted
 - **WHEN** `validation_completed` is written
 - **THEN** payload MUST include `fallback_count_env_math`, `fallback_count_env_list`, and `fallback_count_env_other` when available.
-
-### Requirement: Phase4 Deferred Status
-The change scope SHALL treat Phase1-3 as the implemented baseline and SHALL keep Phase4 LangGraph work explicitly deferred.
-
-#### Scenario: Scope boundary for this change
-- **WHEN** evaluating completion status for `refactor-agent-langgraph`
-- **THEN** Phase1-3 requirements and evidence MUST be used as the current acceptance basis
-- **AND** Phase4 items MUST remain documented as deferred, not completed.
 
 ### Requirement: Deterministic Oversize Safe Input Gate
 The system SHALL make oversize downgrade decisions with a versioned, replayable safe-input-limit function and persist all related gate inputs.

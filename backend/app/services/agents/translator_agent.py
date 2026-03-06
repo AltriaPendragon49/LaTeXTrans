@@ -13,6 +13,7 @@ from backend.app.services.latex.utils import (
     mask_sensitive_commands,
     unmask_sensitive_commands,
 )
+from backend.app.core.timezone_utils import get_cst_now
 from pathlib import Path
 import os
 import re
@@ -222,7 +223,7 @@ class TranslatorAgent(BaseToolAgent):
         if not metadata:
             return
         event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": get_cst_now().isoformat(),
             "event": "oversize_chunk_downgraded",
             **metadata,
         }
