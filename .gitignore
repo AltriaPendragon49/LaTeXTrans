@@ -52,3 +52,4 @@ test_output.txt
 *.log
 .codex/
 .agent/
+openspec/daily_report

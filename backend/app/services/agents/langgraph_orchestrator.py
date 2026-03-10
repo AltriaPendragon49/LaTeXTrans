@@ -40,6 +40,7 @@ from typing_extensions import TypedDict
 from backend.app.core.timezone_utils import get_cst_now_iso
 from .generator_agent import GeneratorAgent
 from .parser_agent import ParserAgent
+from .pipeline_schema import FallbackReport
 from .translator_agent import TranslatorAgent
 from .validator_agent import ValidatorAgent
 from .compilation_diagnostic_node import CompilationDiagnosticNode
@@ -53,6 +54,9 @@ MAX_PIPELINE_TIMEOUT_SEC: float = 1800.0  # 30 分钟
 
 # Gate 4b-2 常量：validate_and_retry 最大轮次
 MAX_VALIDATE_RETRIES: int = 3
+
+# eliminate-silent-fallback：修复节点最大重试次数
+MAX_REPAIR_RETRIES: int = 3
 
 # ---------------------------------------------------------------------------
 # State Schema
@@ -74,6 +78,10 @@ class PipelineState(TypedDict, total=False):
     translator_agent: Any            # TranslatorAgent 实例（validate 节点复用）
     validation_warning: Optional[str]
     generation_result: Optional[Dict[str, Any]]
+
+    # eliminate-silent-fallback：FallbackReport 列表 + 修复轮次计数
+    fallback_reports: List[Any]      # List[FallbackReport]
+    repair_retry_count: int          # 当前已完成修复轮次
 
     # 输出字段
     final_result: Dict[str, Any]
@@ -411,7 +419,74 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
 
     _write_audit_log(transed_project_dir, task_id, "node_exit:validate_and_retry",
                      {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000})
-    return {**state, "validation_warning": validation_warning}
+
+    # eliminate-silent-fallback: collect FallbackReport list from translator + sections_map
+    collected_fallback_reports: List[Any] = []
+    try:
+        # 1. From translator_agent (oversize downgrade reports)
+        agent_reports = list(getattr(translator_agent, "fallback_reports", []) or [])
+        collected_fallback_reports.extend(agent_reports)
+
+        # 2. From sections_map: C2 structural fallback sections
+        sections_path = Path(transed_project_dir) / "sections_map.json"
+        if sections_path.exists():
+            _secs = json.loads(sections_path.read_text(encoding="utf-8"))
+            for _s in _secs:
+                if _s.get("translation_status") == "fallback_source_compile_first":
+                    try:
+                        _rpt = FallbackReport(
+                            fallback_kind="c2_structural_collapse",
+                            chunk_scope=str(_s.get("section", "")),
+                            root_cause="c2_global_structure_collapse",
+                            validation_evidence={
+                                "fallback_reason": _s.get("fallback_reason"),
+                                "translation_retry_count": _s.get("translation_retry_count"),
+                            },
+                            translated_text=_s.get("trans_content"),
+                        )
+                        collected_fallback_reports.append(_rpt)
+                    except Exception as _rpt_exc:
+                        logger.warning("Failed to build FallbackReport for section %s: %s",
+                                       _s.get("section"), _rpt_exc)
+
+        # 3. From envs_map: C2 structural fallback envs
+        envs_path = Path(transed_project_dir) / "envs_map.json"
+        if envs_path.exists():
+            _envs = json.loads(envs_path.read_text(encoding="utf-8"))
+            for _e in _envs:
+                if _e.get("translation_status") == "fallback_source_compile_first":
+                    try:
+                        _subtype = _e.get("fallback_subtype", "")
+                        _rpt = FallbackReport(
+                            fallback_kind="c2_structural_collapse",
+                            chunk_scope=str(_e.get("placeholder", "")),
+                            root_cause=_subtype or "c2_env_structural_collapse",
+                            validation_evidence={
+                                "env_name": _e.get("env_name"),
+                                "fallback_subtype": _subtype,
+                                "fallback_reason": _e.get("fallback_reason"),
+                            },
+                            translated_text=_e.get("trans_content"),
+                        )
+                        collected_fallback_reports.append(_rpt)
+                    except Exception as _rpt_exc:
+                        logger.warning("Failed to build FallbackReport for env %s: %s",
+                                       _e.get("placeholder"), _rpt_exc)
+
+        if collected_fallback_reports:
+            _write_task_log(
+                transed_project_dir,
+                "fallback_reports_collected",
+                {"count": len(collected_fallback_reports),
+                 "kinds": [r.fallback_kind for r in collected_fallback_reports]},
+            )
+            logger.info("eliminate-silent-fallback: %d FallbackReport(s) collected",
+                        len(collected_fallback_reports))
+    except Exception as _fr_collect_exc:
+        logger.warning("Failed to collect FallbackReports: %s", _fr_collect_exc)
+
+    return {**state, "validation_warning": validation_warning,
+            "fallback_reports": collected_fallback_reports}
 
 
 # ---------------------------------------------------------------------------
@@ -673,6 +748,176 @@ def _route_after_generate(state: PipelineState) -> str:
 
 
 # ---------------------------------------------------------------------------
+# eliminate-silent-fallback: 条件路由器（validate 之后）
+# ---------------------------------------------------------------------------
+
+
+def _route_after_validate(state: PipelineState) -> str:
+    """根据 FallbackReport 列表和 repair_retry_count 决定下一步。
+
+    - 有 fallback 且未超预算 → "repair_translation"
+    - 有 fallback 且已达上限  → "ultimate_downgrade"
+    - 无 fallback              → "generate"
+    """
+    fallback_reports = state.get("fallback_reports") or []
+    repair_retry_count = int(state.get("repair_retry_count") or 0)
+    if fallback_reports:
+        if repair_retry_count < MAX_REPAIR_RETRIES:
+            return "repair_translation"
+        else:
+            return "ultimate_downgrade"
+    return "generate"
+
+
+# ---------------------------------------------------------------------------
+# eliminate-silent-fallback: node_repair_translation
+# ---------------------------------------------------------------------------
+
+
+async def node_repair_translation(state: PipelineState) -> PipelineState:
+    """Repair node: route fallback segments through TranslationRepairAgent + StructureRepairNode.
+
+    Bounded authority:
+    - At most MAX_REPAIR_RETRIES global cycles (enforced by _route_after_validate).
+    - Uses fallback_reports as context; clears them on exit so validate re-runs clean.
+    - Increments repair_retry_count before returning.
+    """
+    transed_project_dir = state["transed_project_dir"]
+    config = state["config"]
+    task_id = state.get("task_id", state.get("base_name", ""))
+    fallback_reports = list(state.get("fallback_reports") or [])
+    repair_retry_count = int(state.get("repair_retry_count") or 0)
+    _write_audit_log(transed_project_dir, task_id, "node_enter:repair_translation",
+                     {"fallback_count": len(fallback_reports), "repair_retry_count": repair_retry_count})
+    _t0 = time.monotonic()
+    _update_progress(state, 82, f"Repair loop attempt {repair_retry_count + 1}/{MAX_REPAIR_RETRIES}")
+
+    try:
+        from .translation_repair_agent import TranslationRepairAgent
+        from .structure_repair_node import StructureRepairNode
+
+        repair_agent = TranslationRepairAgent(config=config)
+        structure_node = StructureRepairNode()
+
+        sections_path = Path(transed_project_dir) / "sections_map.json"
+        envs_path = Path(transed_project_dir) / "envs_map.json"
+
+        sections = json.loads(sections_path.read_text(encoding="utf-8")) if sections_path.exists() else []
+        envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
+
+        # Run repair for each fallback segment
+        sections, envs = await repair_agent.repair(
+            fallback_reports=fallback_reports,
+            sections=sections,
+            envs=envs,
+        )
+        sections, envs = structure_node.repair(sections=sections, envs=envs,
+                                               fallback_reports=fallback_reports)
+
+        # Write back results
+        if sections_path.exists():
+            sections_path.write_text(json.dumps(sections, ensure_ascii=False, indent=2), encoding="utf-8")
+        if envs_path.exists():
+            envs_path.write_text(json.dumps(envs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        _write_task_log(transed_project_dir, "repair_translation_completed",
+                        {"repair_retry_count": repair_retry_count + 1,
+                         "fallback_count": len(fallback_reports)})
+        _write_audit_log(transed_project_dir, task_id, "node_exit:repair_translation",
+                         {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000})
+    except Exception as e:
+        logger.warning("node_repair_translation failed (non-fatal, will proceed to validate): %s", e)
+        _write_audit_log(transed_project_dir, task_id, "node_exit:repair_translation",
+                         {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000, "error": str(e)})
+
+    # Clear fallback_reports so validate_and_retry re-evaluates from scratch
+    return {**state, "fallback_reports": [], "repair_retry_count": repair_retry_count + 1}
+
+
+# ---------------------------------------------------------------------------
+# eliminate-silent-fallback: node_ultimate_downgrade
+# ---------------------------------------------------------------------------
+
+
+async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
+    """Final safety net: deterministically strip LaTeX structure from all fallback segments.
+
+    Invoked only when all repair retries are exhausted. Guarantees target-language
+    readability in the final PDF at the cost of all LaTeX formatting.
+    """
+    transed_project_dir = state["transed_project_dir"]
+    task_id = state.get("task_id", state.get("base_name", ""))
+    fallback_reports = list(state.get("fallback_reports") or [])
+    _write_audit_log(transed_project_dir, task_id, "node_enter:ultimate_downgrade",
+                     {"fallback_count": len(fallback_reports)})
+    _t0 = time.monotonic()
+    _update_progress(state, 83, "Applying ultimate downgrade renderer")
+
+    try:
+        from backend.app.services.translation.ultimate_downgrade import ultimate_downgrade_segment
+
+        sections_path = Path(transed_project_dir) / "sections_map.json"
+        envs_path = Path(transed_project_dir) / "envs_map.json"
+        sections = json.loads(sections_path.read_text(encoding="utf-8")) if sections_path.exists() else []
+        envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
+
+        # Build lookup sets for quick matching
+        section_scope_set = {
+            r.chunk_scope for r in fallback_reports
+            if r.fallback_kind in {"oversize_downgrade", "c2_structural_collapse", "c1_structural_rollback"}
+        }
+
+        downgraded_sections = 0
+        downgraded_envs = 0
+
+        for sec in sections:
+            scope_key = str(sec.get("section", ""))
+            if scope_key in section_scope_set:
+                original_text = sec.get("trans_content") or sec.get("content") or ""
+                if original_text:
+                    report = next(
+                        (r for r in fallback_reports if r.chunk_scope == scope_key), None
+                    )
+                    sec["trans_content"] = ultimate_downgrade_segment(original_text, report)
+                    sec["translation_status"] = "ultimate_downgrade_applied"
+                    downgraded_sections += 1
+
+        env_scope_set = {
+            r.chunk_scope for r in fallback_reports
+            if r.fallback_kind in {"c2_structural_collapse", "c1_structural_rollback"}
+        }
+        for env in envs:
+            scope_key = str(env.get("placeholder", ""))
+            if scope_key in env_scope_set:
+                original_text = env.get("trans_content") or env.get("content") or ""
+                if original_text:
+                    report = next(
+                        (r for r in fallback_reports if r.chunk_scope == scope_key), None
+                    )
+                    env["trans_content"] = ultimate_downgrade_segment(original_text, report)
+                    env["translation_status"] = "ultimate_downgrade_applied"
+                    downgraded_envs += 1
+
+        if sections_path.exists():
+            sections_path.write_text(json.dumps(sections, ensure_ascii=False, indent=2), encoding="utf-8")
+        if envs_path.exists():
+            envs_path.write_text(json.dumps(envs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        _write_task_log(transed_project_dir, "ultimate_downgrade_completed",
+                        {"downgraded_sections": downgraded_sections, "downgraded_envs": downgraded_envs})
+        _write_audit_log(transed_project_dir, task_id, "node_exit:ultimate_downgrade",
+                         {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000,
+                          "downgraded_sections": downgraded_sections, "downgraded_envs": downgraded_envs})
+    except Exception as e:
+        logger.warning("node_ultimate_downgrade failed (non-fatal, proceeding to generate): %s", e)
+        _write_audit_log(transed_project_dir, task_id, "node_exit:ultimate_downgrade",
+                         {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000, "error": str(e)})
+
+    # Clear reports and proceed to generate
+    return {**state, "fallback_reports": []}
+
+
+# ---------------------------------------------------------------------------
 # Gate 4b-3：node_compilation_diagnostic（默认禁用，feature flag 激活后才挂入图）
 # ---------------------------------------------------------------------------
 
@@ -738,11 +983,27 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
     graph.add_node("generate", node_generate)
     graph.add_node("abort_structure_invalid", node_abort_structure_invalid)
     graph.add_node("finalize", node_finalize)
+    # eliminate-silent-fallback: repair loop + ultimate downgrade nodes
+    graph.add_node("repair_translation", node_repair_translation)
+    graph.add_node("ultimate_downgrade", node_ultimate_downgrade)
 
     graph.set_entry_point("parse")
     graph.add_edge("parse", "translate")
     graph.add_edge("translate", "validate_and_retry")
-    graph.add_edge("validate_and_retry", "generate")
+    # eliminate-silent-fallback: conditional routing after validate
+    graph.add_conditional_edges(
+        "validate_and_retry",
+        _route_after_validate,
+        {
+            "generate": "generate",
+            "repair_translation": "repair_translation",
+            "ultimate_downgrade": "ultimate_downgrade",
+        },
+    )
+    # repair loops back to validate for re-evaluation
+    graph.add_edge("repair_translation", "validate_and_retry")
+    # ultimate downgrade proceeds directly to generate
+    graph.add_edge("ultimate_downgrade", "generate")
     graph.add_conditional_edges(
         "generate",
         _route_after_generate,
@@ -822,6 +1083,9 @@ async def run_pipeline(
         "validation_warning": None,
         "generation_result": None,
         "diagnostic_report": None,
+        # eliminate-silent-fallback: repair loop state
+        "fallback_reports": [],
+        "repair_retry_count": 0,
         "final_result": {
             "status": "failed",
             "pdf_path": None,

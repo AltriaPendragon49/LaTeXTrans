@@ -1,6 +1,7 @@
 ﻿from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
 from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ERROR_TYPE_C1, ERROR_TYPE_C2, ValidatorAgent
+from .pipeline_schema import FallbackReport
 from .pipeline_invariants import (
     PipelineInvariantViolation,
     SpeculativeRepairForbiddenError,
@@ -142,6 +143,8 @@ class TranslatorAgent(BaseToolAgent):
         self.structural_fallback_parts: List[str] = []
         self.noop_sections: List[str] = []
         self._oversize_downgrade_events: List[Dict[str, Any]] = []
+        # eliminate-silent-fallback: structured fallback reports for repair loop
+        self.fallback_reports: List[FallbackReport] = []
         (
             self.model_context_tokens,
             self.prompt_reserve_tokens,
@@ -228,6 +231,18 @@ class TranslatorAgent(BaseToolAgent):
             **metadata,
         }
         self._oversize_downgrade_events.append(event)
+        # eliminate-silent-fallback: emit structured FallbackReport for repair loop
+        try:
+            report = FallbackReport(
+                fallback_kind="oversize_downgrade",
+                chunk_scope=str(metadata.get("section_id", "")),
+                root_cause=str(metadata.get("reason", "oversize_no_safe_boundary")),
+                validation_evidence=None,
+                translated_text=None,
+            )
+            self.fallback_reports.append(report)
+        except Exception as _fr_exc:
+            logger.warning("Failed to emit FallbackReport for oversize downgrade: %s", _fr_exc)
 
     def _flush_oversize_downgrade_events(self) -> None:
         if not self._oversize_downgrade_events or not self.output_dir:
