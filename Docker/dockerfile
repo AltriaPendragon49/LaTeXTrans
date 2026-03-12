@@ -1,0 +1,99 @@
+# ============================================================
+# LaTeXTrans TeX Live Runtime Image
+# Role: Production Runtime (NO application source code)
+# ============================================================
+
+FROM python:3.10-slim-bookworm
+
+# ------------------------------------------------------------
+# Global Environment
+# ------------------------------------------------------------
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TEXLIVE_VERSION=2025 \
+    TEXLIVE_ROOT=/usr/local/texlive/2025 \
+    PATH="/usr/local/texlive/2025/bin/x86_64-linux:${PATH}" \
+    LATEX_BIN_DIR="/usr/local/texlive/2025/bin/x86_64-linux"
+
+# ------------------------------------------------------------
+# System Dependencies
+# ------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    perl \
+    xz-utils \
+    fontconfig \
+    libfontconfig1 \
+    ghostscript \
+    libpaper-utils \
+    libio-all-perl \
+    unrar \
+    git \
+    build-essential \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------
+# Install TeX Live 2025 (scheme-full, no doc/src)
+# ------------------------------------------------------------
+WORKDIR /tmp/texlive_install
+
+RUN wget -qO- https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz \
+    | tar -xz --strip-components=1 \
+    && printf "%s\n" \
+    "selected_scheme scheme-full" \
+    "tlpdbopt_install_docfiles 0" \
+    "tlpdbopt_install_srcfiles 0" \
+    "instopt_adjustpath 0" \
+    "instopt_adjustrepo 1" \
+    "instopt_letter 0" \
+    "instopt_portable 0" \
+    "instopt_write18_restricted 1" \
+    "TEXDIR /usr/local/texlive/2025" \
+    "TEXMFLOCAL /usr/local/texlive/texmf-local" \
+    "TEXMFSYSCONFIG /usr/local/texlive/2025/texmf-config" \
+    "TEXMFSYSVAR /usr/local/texlive/2025/texmf-var" \
+    "TEXMFVAR ~/.texlive2025/texmf-var" \
+    > texlive.profile \
+    && ./install-tl --profile=texlive.profile \
+    && rm -rf \
+    /tmp/texlive_install \
+    /usr/local/texlive/2025/texmf-dist/doc \
+    /usr/local/texlive/2025/texmf-dist/source
+
+# ------------------------------------------------------------
+# Python Dependencies (NO application code)
+# ------------------------------------------------------------
+WORKDIR /app
+
+COPY backend/requirements.txt /app/requirements.txt
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# ------------------------------------------------------------
+# Runtime Contract
+# ------------------------------------------------------------
+# - Application code MUST be mounted to /app/backend
+# - .env MUST be injected at runtime
+# - backend/data/* must be writable
+# - This image NEVER contains business logic
+# ------------------------------------------------------------
+
+EXPOSE 9001
+
+LABEL maintainer="LaTeXTrans DevOps" \
+    role="texlive-runtime" \
+    texlive.version="2025" \
+    texlive.scheme="full"
+
+CMD ["uvicorn", "backend.app.main:app", \
+    "--host", "0.0.0.0", \
+    "--port", "9001", \
+    "--workers", "4", \
+    "--proxy-headers", \
+    "--forwarded-allow-ips", "*", \
+    "--timeout-keep-alive", "120", \
+    "--log-level", "info"]

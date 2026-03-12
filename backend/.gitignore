@@ -104,7 +104,6 @@ celerybeat.pid
 
 # 环境变量
 .env
-.env.example
 .venv
 env/
 venv/
