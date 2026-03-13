@@ -27,13 +27,16 @@ TBD - created by archiving change add-persistent-deployment. Update Purpose afte
 - **THEN** 页面正常加载，显示 LaTeXTrans 界面
 
 ### Requirement: Dynamic API URL Resolution
+Frontend API calls SHALL use environment variable `VITE_API_BASE_URL` and MUST NOT hardcode localhost fallback.
 
-前端所有 API 调用 SHALL 统一使用环境变量 `VITE_API_URL`，不硬编码 localhost。
+#### Scenario: Production build has no hardcoded localhost fallback
+- **WHEN** frontend is built in production mode
+- **THEN** build artifacts MUST NOT contain `localhost:8000`
 
-#### Scenario: No hardcoded localhost in production build
-
-- **WHEN** 前端以 production 模式构建
-- **THEN** 构建产物中不包含 `localhost:8000` 字符串
+#### Scenario: Missing API base env fails fast
+- **WHEN** `VITE_API_BASE_URL` is not set
+- **THEN** frontend MUST throw an explicit configuration error
+- **AND** frontend MUST block API request creation
 
 ### Requirement: Supabase Auth Redirect Configuration
 
@@ -57,4 +60,43 @@ Supabase Auth 确认邮件和重定向 SHALL 指向生产环境域名。
 
 - **WHEN** 开发者修改了后端代码并重启 FastAPI 服务
 - **THEN** `api.latextrans.online` 自动恢复连接，前端无需任何操作
+
+### Requirement: Runtime-Only Container Contract
+The runtime image MUST NOT be used without host code mount and runtime env injection.
+
+#### Scenario: Required backend mount and env injection
+- **WHEN** backend container starts
+- **THEN** `/app/backend` MUST be mounted from host
+- **AND** backend `.env` MUST be injected
+- **AND** `backend/data/*` MUST be writable
+
+#### Scenario: Forbidden naked runtime image run
+- **WHEN** runtime image is launched without mounting `/app/backend`
+- **THEN** deployment documentation MUST mark this pattern as forbidden
+
+### Requirement: Loopback-Only Host Publishing
+Backend service exposure on shared host MUST be loopback-only.
+
+#### Scenario: Host loopback port publish
+- **WHEN** backend container is launched in production
+- **THEN** host publish MUST be `127.0.0.1:9001:9001`
+- **AND** Nginx MUST proxy to `http://127.0.0.1:9001`
+
+### Requirement: Production Worker Guardrail
+Production runtime SHALL default to a single worker until runtime-state is fully externalized.
+
+#### Scenario: Runtime command uses one worker
+- **WHEN** runtime starts with default command
+- **THEN** `uvicorn` worker count MUST be `1`
+
+### Requirement: Service Role Secret Boundary and Rotation
+Service-role credentials MUST remain backend-only, and exposed keys MUST be rotated.
+
+#### Scenario: Frontend env excludes service-role key
+- **WHEN** frontend env files are prepared
+- **THEN** `VITE_SUPABASE_SERVICE_ROLE_KEY` MUST NOT be present
+
+#### Scenario: Exposure remediation documented
+- **WHEN** deployment documentation is reviewed
+- **THEN** it MUST include a mandatory key-rotation notice for exposed service-role credentials
 

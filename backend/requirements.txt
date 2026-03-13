@@ -1,44 +1,46 @@
-# FastAPI and Web Framework
+﻿#核心 Web 框架与服务器 (固定版本以对齐快照)
 fastapi==0.104.1
-uvicorn[standard]==0.24.0
+uvicorn==0.24.0
+starlette==0.27.0
 python-multipart==0.0.6
 aiohttp==3.9.1
 aiofiles==23.2.1
 
-# LaTeX Processing
-pylatexenc==2.10
-
-# LLM and AI
-requests==2.31.0
+# AI 与 工作流控制 (固定版本以对齐快照)
 openai==1.3.0
-langgraph>=1.0.0
-
-# Data Processing
+langgraph==1.0.10
 tiktoken==0.5.1
-pandas==2.1.3
-
-# HTML Parsing
-beautifulsoup4==4.12.2
-lxml==4.9.3
-
-# Utilities
-python-dotenv==1.0.0
-toml==0.10.2
-tqdm==4.66.1
-rarfile>=4.0
-
-# Type Hints
-pydantic==2.5.0
+pydantic==2.12.5
 pydantic-settings==2.1.0
 
-# Supabase - 使用新版稳定组合
-# supabase 2.x 拆分了 auth/functions 等子包，需要对应版本的 httpx
-supabase>=2.0.0
-httpx>=0.25.0
+# 数据库集成
+supabase==2.16.0
 
-# Encryption
-cryptography>=41.0.0
+# 论文处理与翻译核心 (使用兼容范围以解决 ResolutionImpossible)
+arxiv>=2.1.0
+feedparser>=6.0.10
+pylatexenc==2.10
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+pypdf>=5.0.0
+bibtexparser>=1.4.0
 
-# Testing
+# 异步与网络基础 (由 pip 自动寻找最兼容版本)
+requests>=2.31.0
+requests-toolbelt>=1.0.0
+httpx>=0.28.0
+urllib3>=1.26.18,<3
+
+# 工具与加密
+tqdm==4.66.1
+loguru==0.7.3
+toml==0.10.2
+rarfile==4.2
+cryptography>=46.0.0
+python-dotenv==1.0.0
+pandas==2.1.3
+
+
+# 测试
 pytest==7.4.3
 pytest-asyncio==0.21.1

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+﻿import { useEffect, useState } from "react"
 import { Download, BookText, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { API_BASE_URL } from "@/api-base"
 
 interface TermPair {
     source: string
@@ -27,7 +28,6 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
     const [error, setError] = useState<string | null>(null)
     const [isOpen, setIsOpen] = useState(false)
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
     const downloadUrl = taskId ? `${API_BASE_URL}/download/${taskId}/terminology` : null
 
     useEffect(() => {
@@ -129,17 +129,17 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
             <SheetTrigger asChild>
                 <Button variant="outline" size="sm" disabled={!taskId}>
                     <BookText className="mr-2 h-4 w-4" />
-                    术语表
+                    鏈琛?
                 </Button>
             </SheetTrigger>
             <SheetContent className="w-[400px] sm:w-[540px] flex flex-col h-full bg-white dark:bg-slate-950">
                 <SheetHeader>
                     <SheetTitle className="flex items-center gap-2">
                         <BookText className="h-5 w-5" />
-                        术语对照表
+                        鏈瀵圭収琛?
                     </SheetTitle>
                     <SheetDescription>
-                        本文档中提取和使用的专业术语对照。
+                        鏈枃妗ｄ腑鎻愬彇鍜屼娇鐢ㄧ殑涓撲笟鏈瀵圭収銆?
                     </SheetDescription>
                 </SheetHeader>
 
@@ -161,15 +161,15 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                     ) : data.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-6 text-center">
                             <BookText className="h-10 w-10 mb-2 opacity-20" />
-                            <p>没有找到术语数据</p>
-                            <p className="text-xs mt-1 opacity-70">请确保在翻译时开启了"生成术语表"选项</p>
+                            <p>娌℃湁鎵惧埌鏈鏁版嵁</p>
+                            <p className="text-xs mt-1 opacity-70">璇风‘淇濆湪缈昏瘧鏃跺紑鍚簡"鐢熸垚鏈琛?閫夐」</p>
                         </div>
                     ) : (
                         <ScrollArea className="h-full">
                             <div className="w-full text-sm">
                                 <div className="sticky top-0 bg-slate-100 dark:bg-slate-900 border-b flex font-medium text-muted-foreground z-10">
-                                    <div className="flex-1 p-3 border-r">原文 (Source)</div>
-                                    <div className="flex-1 p-3">译文 (Target)</div>
+                                    <div className="flex-1 p-3 border-r">鍘熸枃 (Source)</div>
+                                    <div className="flex-1 p-3">璇戞枃 (Target)</div>
                                 </div>
                                 <div className="divide-y">
                                     {data.map((pair, idx) => (
@@ -198,10 +198,11 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                         className="w-full sm:w-auto"
                     >
                         <Download className="mr-2 h-4 w-4" />
-                        下载 CSV
+                        涓嬭浇 CSV
                     </Button>
                 </div>
             </SheetContent>
         </Sheet>
     )
 }
+

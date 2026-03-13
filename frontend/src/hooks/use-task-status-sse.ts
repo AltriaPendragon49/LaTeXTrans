@@ -1,4 +1,4 @@
-/**
+﻿/**
  * useTaskStatusSSE - Real-time task status updates via Server-Sent Events
  * 
  * Features:
@@ -9,8 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+import { API_BASE_URL } from '@/api-base';
 
 export interface TaskStatus {
     task_id: string;
@@ -248,3 +247,4 @@ export function useTaskStatusSSE(
 }
 
 export default useTaskStatusSSE;
+

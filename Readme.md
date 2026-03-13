@@ -91,7 +91,7 @@ winget install Cloudflare.cloudflared
 # (记录此时终端输出的 TryCloudflare URL)
 
 # 3. 构建并发布前端静态文件
-.\scripts\deploy-frontend.ps1 -TunnelUrl "https://您的tunnel地址"
+.\scripts\deploy-frontend.ps1
 ```
 
 > ⚠️ 注意: 临时 Tunnel 地址在每次重启后均会变化，若需要长期稳定使用，请在 Cloudflare Dashboard 中配置固定 Tunnel。

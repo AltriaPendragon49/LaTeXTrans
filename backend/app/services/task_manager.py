@@ -223,6 +223,9 @@ class TaskManager:
                 "target_language": target_language,
                 "failure_intercepted": False,
                 "failed_output_path": None,
+                "compile_pid": None,
+                "compile_engine": None,
+                "compile_started_at": None,
                 # Runtime flush tracking — not exposed to API / Supabase
                 "_last_flush_time": time.monotonic(),
             }
@@ -260,7 +263,10 @@ class TaskManager:
         arxiv_id: Optional[str] = None,
         user_id: Optional[str] = None,
         source_language: Optional[str] = None,
-        target_language: Optional[str] = None
+        target_language: Optional[str] = None,
+        compile_pid: Optional[int] = None,
+        compile_engine: Optional[str] = None,
+        compile_started_at: Optional[str] = None,
     ) -> bool:
         """
         Update task fields
@@ -390,6 +396,14 @@ class TaskManager:
             if target_language is not None:
                 task["target_language"] = target_language
                 db_updates["target_language"] = target_language
+
+            # Runtime-only compilation metadata (never persisted).
+            if compile_pid is not None:
+                task["compile_pid"] = compile_pid or None
+            if compile_engine is not None:
+                task["compile_engine"] = compile_engine
+            if compile_started_at is not None:
+                task["compile_started_at"] = compile_started_at
             
             # Get user_id from task if not provided
             if user_id is None:
@@ -455,6 +469,24 @@ class TaskManager:
             self._maybe_send_email_notification(task_id, status, user_id)
 
         return True
+
+    def set_compile_runtime(
+        self,
+        task_id: str,
+        *,
+        pid: Optional[int],
+        engine: Optional[str],
+        started_at: Optional[str],
+    ) -> bool:
+        """Update in-memory compilation runtime metadata for a task."""
+        with self._lock:
+            if task_id not in self._tasks:
+                return False
+            task = self._tasks[task_id]
+            task["compile_pid"] = pid
+            task["compile_engine"] = engine
+            task["compile_started_at"] = started_at
+            return True
 
     def _should_skip_failure_quarantine(
         self,
@@ -1051,6 +1083,7 @@ class TaskManager:
         - data/uploads/{task_id}/
         - data/outputs/{task_id}/
         - data/terms/{task_id}/
+        - data/outputs/protection_log/{task_id}.json
         - Memory cache
         - Cancelled flag
         
@@ -1107,6 +1140,18 @@ class TaskManager:
             logger.debug(f"[TaskManager] task_configs_dir not configured, skipping config cleanup for {task_id}")
         except Exception as e:
             error_msg = f"Failed to delete task config for {task_id}: {str(e)}"
+            errors.append(error_msg)
+            logger.warning(f"[TaskManager] {error_msg}")
+
+        # Delete outputs/protection_log/{task_id}.json
+        try:
+            protection_log_file = Path(settings.outputs_dir) / "protection_log" / f"{task_id}.json"
+            if protection_log_file.exists():
+                protection_log_file.unlink()
+                deleted_dirs.append(str(protection_log_file))
+                logger.info(f"[TaskManager] Deleted protection log: {protection_log_file}")
+        except Exception as e:
+            error_msg = f"Failed to delete protection log for {task_id}: {str(e)}"
             errors.append(error_msg)
             logger.warning(f"[TaskManager] {error_msg}")
 
@@ -1371,7 +1416,7 @@ class TaskManager:
         
         try:
             settings = get_settings()
-            output_base = Path(settings.OUTPUT_DIR)
+            output_base = Path(settings.outputs_dir)
             
             # Check if output directory exists for this task
             task_output_dir = output_base / task_id
@@ -1400,7 +1445,7 @@ class TaskManager:
                 }
                 
                 # Try to find source path
-                source_base = Path(settings.SOURCE_DIR)
+                source_base = Path(settings.uploads_dir)
                 task_source_dir = source_base / task_id
                 if task_source_dir.exists():
                     task["source_path"] = str(task_source_dir)
@@ -1412,7 +1457,15 @@ class TaskManager:
                 return task
                 
         except Exception as e:
-            logger.warning(f"[TaskManager] Failed to recover task {task_id} from filesystem: {e}")
+            logger.warning(
+                "[TaskManager] Failed to recover task %s from filesystem "
+                "(outputs_dir=%r, uploads_dir=%r): %s",
+                task_id,
+                getattr(settings, "outputs_dir", None) if "settings" in locals() else None,
+                getattr(settings, "uploads_dir", None) if "settings" in locals() else None,
+                e,
+                exc_info=True,
+            )
         
         return None
     
@@ -1431,17 +1484,25 @@ class TaskManager:
             task_id = task["task_id"]
             
             if not task.get("output_path"):
-                output_dir = Path(settings.OUTPUT_DIR) / task_id
+                output_dir = Path(settings.outputs_dir) / task_id
                 if output_dir.exists():
                     task["output_path"] = str(output_dir)
             
             if not task.get("source_path"):
-                source_dir = Path(settings.SOURCE_DIR) / task_id
+                source_dir = Path(settings.uploads_dir) / task_id
                 if source_dir.exists():
                     task["source_path"] = str(source_dir)
                     
         except Exception as e:
-            logger.warning(f"[TaskManager] Failed to infer paths for task {task['task_id']}: {e}")
+            logger.warning(
+                "[TaskManager] Failed to infer filesystem paths for task %s "
+                "(outputs_dir=%r, uploads_dir=%r): %s",
+                task.get("task_id"),
+                getattr(settings, "outputs_dir", None) if "settings" in locals() else None,
+                getattr(settings, "uploads_dir", None) if "settings" in locals() else None,
+                e,
+                exc_info=True,
+            )
     
     def _infer_arxiv_id(self, task: Dict[str, Any], directory: Any):
         """

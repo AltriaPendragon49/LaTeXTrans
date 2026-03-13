@@ -39,15 +39,15 @@ chmod +x start.sh
 **手动启动(推荐用于开发):**
 ```bash
 # 从项目根目录执行
-python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 9001 --reload
 ```
 
 ### 3. 访问服务
 
 启动成功后访问:
-- **API文档(Swagger)**: http://localhost:8000/docs
-- **API文档(ReDoc)**: http://localhost:8000/redoc
-- **健康检查**: http://localhost:8000/health
+- **API文档(Swagger)**: http://localhost:9001/docs
+- **API文档(ReDoc)**: http://localhost:9001/redoc
+- **健康检查**: http://localhost:9001/health
 
 ## 💻 系统要求
 
@@ -528,7 +528,7 @@ export LATEX_BIN_DIR="/path/to/texlive/bin"
 **解决:**
 ```bash
 # 使用其他端口
-python -m uvicorn backend.app.main:app --port 8001
+python -m uvicorn backend.app.main:app --port 9001
 ```
 
 ### 7. CORS错误(前端调用)

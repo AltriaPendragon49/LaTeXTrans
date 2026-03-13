@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { deleteTask, deleteTasksBatch } from '@/lib/api'
+import { API_BASE_URL } from '@/api-base'
 
 interface TaskHistoryItem {
     task_id: string
@@ -116,7 +117,7 @@ export default function HistoryPage() {
             const token = await getAccessToken()
 
             const response = await fetch(
-                `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/history?page=${pageNum}&page_size=10`,
+                `${API_BASE_URL}/history?page=${pageNum}&page_size=10`,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,

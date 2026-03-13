@@ -41,26 +41,15 @@ During translation initialization, the system SHALL attempt runtime config snaps
 ### Requirement: Translation Progress Reporting
 The system SHALL report granular progress updates during translation workflow stages, with optimized database I/O for download operations.
 
-#### Scenario: AST parsing stage progress
-- **WHEN** `ParserAgent` is extracting LaTeX structure
-- **THEN** task progress reflects 0-25% with stage "parsing" and message describing current file
+#### Scenario: Async route DB calls do not pin event loop
+- **WHEN** async API routes perform Supabase operations
+- **THEN** blocking SDK calls SHALL execute through async-safe wrapper offload
+- **AND** event-loop responsiveness for `/health` and task status polling SHALL remain stable during compile load.
 
-#### Scenario: LLM translation stage progress
-- **WHEN** `TranslatorAgent` is translating text chunks
-- **THEN** task progress reflects 25-80% with stage "translating" and message showing chunk N/M
-
-#### Scenario: LaTeX compilation stage progress
-- **WHEN** `GeneratorAgent` is running xelatex
-- **THEN** task progress reflects 80-100% with stage "compiling" and message showing compilation pass
-
-#### Scenario: Error during translation
-- **WHEN** any agent encounters an unrecoverable error
-- **THEN** task status changes to "failed" with error field populated and progress frozen at failure point
-
-#### Scenario: arXiv Download Throttling
-- **WHEN** `DownloadProgressCallback` receives progress updates from arXiv download
-- **THEN** it MUST only execute a database update when the integer percentage changes or the stage completes
-- **AND** total download performance MUST stay independent of database latency.
+#### Scenario: Behavior-level event-loop health gate
+- **WHEN** parser/validator phases run with simulated blocking work
+- **THEN** automated tests SHALL verify scheduler/tick latency stays under configured threshold
+- **AND** concurrent task wall time SHALL indicate non-serialized behavior.
 
 ### Requirement: API Health Monitoring
 The system SHALL expose a health check endpoint to verify backend readiness.
@@ -298,4 +287,21 @@ The task manager MUST recover task configurations from the local file system.
 - **WHEN** a task is not in Supabase
 - **THEN** the backend searches the local file system using the system's valid `outputs_dir` and `uploads_dir` settings
 - **AND** it retrieves metadata gracefully without raising internal setting attribute exceptions.
+
+### Requirement: Configurable CORS Origin Allowlist
+Backend SHALL support comma-separated CORS origin configuration via `CORS_ORIGINS`.
+
+#### Scenario: Parse multiple origins from env
+- **WHEN** `CORS_ORIGINS` contains a comma-separated list
+- **THEN** backend MUST parse and trim each origin
+- **AND** backend MUST ignore empty entries
+
+#### Scenario: Wildcard is rejected
+- **WHEN** `CORS_ORIGINS` includes `*`
+- **THEN** backend configuration MUST reject this value
+- **AND** startup MUST not silently downgrade to wildcard behavior
+
+#### Scenario: Middleware uses parsed allowlist
+- **WHEN** backend app initializes CORS middleware
+- **THEN** middleware MUST use parsed configured allowlist directly
 

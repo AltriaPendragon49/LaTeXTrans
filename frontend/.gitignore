@@ -26,6 +26,7 @@ dist-ssr
 .env.production
 .env.development
 .env.*
+!.env.example
 
 # API Keys and Secrets
 *.key

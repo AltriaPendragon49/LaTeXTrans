@@ -31,6 +31,18 @@ def get_supabase_admin_client() -> Optional[Client]:
     if not settings.supabase_url or not settings.supabase_service_role_key:
         return None
     
+    return create_supabase_admin_client()
+
+
+def create_supabase_admin_client() -> Optional[Client]:
+    """
+    Create a short-lived Admin Client instance.
+
+    Useful for threaded DB calls when shared client thread-safety is uncertain.
+    """
+    settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        return None
     return create_client(
         settings.supabase_url,
         settings.supabase_service_role_key

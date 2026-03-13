@@ -11,7 +11,14 @@ Adapted from prototype system with:
 from typing import Dict, Any, Optional, Callable
 from .base_tool_agent import BaseToolAgent
 from backend.app.services.latex.reconstruct import LatexConstructor
-from backend.app.services.latex.compiler import compile_with_intelligent_fallback, find_main_tex_file
+import asyncio
+import time
+from backend.app.services.latex.compiler import (
+    compile_with_intelligent_fallback,
+    compile_with_intelligent_fallback_async,
+    find_main_tex_file,
+)
+from backend.app.services.agents.compile_runtime import get_compile_semaphore
 from backend.app.services.latex.structure_guard import validate_project_structure
 from backend.app.services.latex.utils import apply_formatting_config
 from pathlib import Path
@@ -79,6 +86,22 @@ class GeneratorAgent(BaseToolAgent):
             payload["structure_guard_details"] = details
         replay_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return str(replay_path)
+
+    def _notify_compile_start(self, pid: int, engine: str) -> None:
+        cb = self.config.get("_on_compile_start")
+        if callable(cb):
+            try:
+                cb(pid, engine)
+            except Exception:
+                logger.debug("compile start callback failed", exc_info=True)
+
+    def _notify_compile_end(self) -> None:
+        cb = self.config.get("_on_compile_end")
+        if callable(cb):
+            try:
+                cb()
+            except Exception:
+                logger.debug("compile end callback failed", exc_info=True)
 
     def execute(self) -> Dict[str, Any]:
         """
@@ -253,6 +276,157 @@ class GeneratorAgent(BaseToolAgent):
             "warnings": result.get("warnings"),
             "engine": result.get("engine"),
             "error_count": result.get("error_count", 0),
+        }
+
+    async def execute_async(self) -> Dict[str, Any]:
+        """
+        Async generation path: same semantics as execute(), but async compilation.
+        """
+        self.log(f"Starting generation for project: {os.path.basename(self.project_dir)}")
+        self.update_progress(5, "Starting generation")
+
+        self.update_progress(10, "Reading JSON maps")
+        sections = self.read_file(Path(self.output_dir, "sections_map.json"), "json")
+        self.update_progress(20, "Loading sections")
+        captions = self.read_file(Path(self.output_dir, "captions_map.json"), "json")
+        self.update_progress(30, "Loading captions")
+        envs = self.read_file(Path(self.output_dir, "envs_map.json"), "json")
+        self.update_progress(40, "Loading environments")
+        newcommands = self.read_file(Path(self.output_dir, "newcommands_map.json"), "json")
+        self.update_progress(50, "Loading newcommands")
+        inputs = self.read_file(Path(self.output_dir, "inputs_map.json"), "json")
+        self.update_progress(60, "Loading inputs")
+
+        self.update_progress(65, "Creating translation project directory")
+        transed_latex_dir = self._create_transed_latex_folder(self.project_dir)
+
+        self.update_progress(70, "Reconstructing LaTeX document")
+        target_language = self.config.get("target_language", "en")
+        latex_constructor = LatexConstructor(
+            sections=sections,
+            captions=captions,
+            envs=envs,
+            inputs=inputs,
+            newcommands=newcommands,
+            output_latex_dir=transed_latex_dir,
+            target_language=target_language
+        )
+        await asyncio.to_thread(latex_constructor.construct, self.on_progress)
+
+        self.update_progress(80, "Applying formatting config")
+        formatting_config = self.config.get("formatting")
+        if formatting_config:
+            transed_main_tex = find_main_tex_file(transed_latex_dir)
+            if transed_main_tex:
+                try:
+                    with open(transed_main_tex, 'r', encoding='utf-8', errors='replace') as f:
+                        tex_content = f.read()
+                    tex_content, fmt_warnings = apply_formatting_config(tex_content, formatting_config)
+                    with open(transed_main_tex, 'w', encoding='utf-8') as f:
+                        f.write(tex_content)
+                    if fmt_warnings and not hasattr(self, '_fmt_warnings'):
+                        self._fmt_warnings = []
+                    if fmt_warnings:
+                        self._fmt_warnings.extend(fmt_warnings)
+                except Exception as e:
+                    logger.warning(f"Failed to apply formatting config: {e}")
+
+        self.update_progress(80, "Waiting for compile slot")
+        main_tex = find_main_tex_file(transed_latex_dir)
+        if not main_tex:
+            error_summary = f"No main .tex file found in {transed_latex_dir}"
+            self.update_progress(100, "No main .tex file found")
+            return {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": error_summary,
+                "warnings": None,
+                "engine": None,
+                "error_count": 0,
+            }
+
+        structure_result = validate_project_structure(str(main_tex))
+        if not structure_result.get("ok", False):
+            reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
+            message = str(structure_result.get("message") or "Structure guard rejected LaTeX bundle")
+            details = structure_result.get("details") or {}
+            replay_bundle_ref = self._write_structure_replay_bundle(
+                main_tex=str(main_tex),
+                reason_code=reason_code,
+                guard_phase="precompile",
+                message=message,
+                details=details if isinstance(details, dict) else None,
+            )
+            return {
+                "status": "structure_invalid",
+                "pdf_path": None,
+                "error_summary": message,
+                "warnings": None,
+                "engine": None,
+                "error_count": 0,
+                "failure_reason_code": reason_code,
+                "failure_class": "structural",
+                "guard_phase": "precompile",
+                "replay_bundle_ref": replay_bundle_ref,
+            }
+
+        preferred_order = None
+        if self.latex_engine and self.latex_engine != "auto":
+            all_engines = ["pdflatex", "xelatex", "lualatex"]
+            if self.latex_engine in all_engines:
+                all_engines.remove(self.latex_engine)
+                preferred_order = [self.latex_engine] + all_engines
+
+        wait_started_at = time.monotonic()
+        compile_sem = get_compile_semaphore()
+        async with compile_sem:
+            compile_queue_wait_ms = int((time.monotonic() - wait_started_at) * 1000)
+            self.update_progress(80, "Compiling PDF document")
+            compile_started_at = time.monotonic()
+            result = await compile_with_intelligent_fallback_async(
+                tex_file=str(main_tex),
+                output_dir=transed_latex_dir,
+                preferred_order=preferred_order,
+                target_language=target_language,
+                on_process_start=self._notify_compile_start,
+                on_process_end=self._notify_compile_end,
+            )
+            compile_exec_ms = int((time.monotonic() - compile_started_at) * 1000)
+        logger.info(
+            "Compile timing for %s: queue_wait=%dms exec=%dms",
+            Path(main_tex).name,
+            compile_queue_wait_ms,
+            compile_exec_ms,
+        )
+        pdf_file = result.get("pdf_path")
+        if pdf_file and not Path(pdf_file).exists():
+            result["errors"] = result.get("errors") or f"Compilation returned a missing PDF path: {pdf_file}"
+            pdf_file = None
+
+        if pdf_file:
+            self.update_progress(100, "PDF generation complete")
+            return {
+                "status": result.get("status", "completed"),
+                "pdf_path": pdf_file,
+                "error_summary": None,
+                "warnings": result.get("warnings"),
+                "engine": result.get("engine"),
+                "error_count": result.get("error_count", 0),
+                "compile_queue_wait_ms": compile_queue_wait_ms,
+                "compile_exec_ms": compile_exec_ms,
+            }
+
+        self.update_progress(100, "PDF compilation failed")
+        error_summary = result.get("errors") or "Compilation failed without detailed error output"
+        return {
+            "status": "failed_compilation",
+            "pdf_path": None,
+            "error_summary": error_summary,
+            "warnings": result.get("warnings"),
+            "engine": result.get("engine"),
+            "error_count": result.get("error_count", 0),
+            "compile_queue_wait_ms": compile_queue_wait_ms,
+            "compile_exec_ms": compile_exec_ms,
         }
         
     def _create_transed_latex_folder(self, src_dir: str) -> str:

@@ -1,4 +1,4 @@
-import { useState } from "react"
+﻿import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Download, Columns, Smartphone, Plus } from "lucide-react"
 
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useStore } from "@/store/useStore"
 import { TerminologyTable } from "@/components/TerminologyTable"
+import { API_BASE_URL } from "@/api-base"
 
 export default function ComparisonsPage() {
     // const [scale, setScale] = useState<number>(1.0) // Scale not needed for iframe
@@ -23,14 +24,12 @@ export default function ComparisonsPage() {
         navigate('/')
     }
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-
-    // Source PDF: 优先使用后端接口，ArXiv 论文可直接用 arxiv.org 链接
-    // 后端接口会找到原始 PDF（排除 zh_前缀和翻译版）
+    // Source PDF: 浼樺厛浣跨敤鍚庣鎺ュ彛锛孉rXiv 璁烘枃鍙洿鎺ョ敤 arxiv.org 閾炬帴
+    // 鍚庣鎺ュ彛浼氭壘鍒板師濮?PDF锛堟帓闄?zh_鍓嶇紑鍜岀炕璇戠増锛?
     const sourceUrl = taskId
         ? `${API_BASE_URL}/preview/${taskId}/source-pdf`
         : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
-    // 使用 preview 端点显示 PDF（inline），download 端点用于实际下载
+    // 浣跨敤 preview 绔偣鏄剧ず PDF锛坕nline锛夛紝download 绔偣鐢ㄤ簬瀹為檯涓嬭浇
     const previewUrl = taskId ? `${API_BASE_URL}/preview/${taskId}/pdf` : null
     const downloadUrl = taskId ? `${API_BASE_URL}/download/${taskId}/pdf` : null
 
@@ -112,3 +111,4 @@ export default function ComparisonsPage() {
         </div>
     )
 }
+

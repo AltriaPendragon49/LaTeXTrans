@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ghostscript \
     libpaper-utils \
     libio-all-perl \
-    unrar \
+    unrar-free \
     git \
     build-essential \
     ca-certificates \
@@ -89,10 +89,13 @@ LABEL maintainer="LaTeXTrans DevOps" \
     texlive.version="2025" \
     texlive.scheme="full"
 
+# NOTE:
+# Keep workers=1 in production until task runtime state is fully externalized.
+# Current TaskManager still maintains part of runtime state in process memory.
 CMD ["uvicorn", "backend.app.main:app", \
     "--host", "0.0.0.0", \
     "--port", "9001", \
-    "--workers", "4", \
+    "--workers", "1", \
     "--proxy-headers", \
     "--forwarded-allow-ips", "*", \
     "--timeout-keep-alive", "120", \

@@ -21,6 +21,7 @@ from pathlib import Path
 
 from backend.app.core.auth import get_supabase_client_from_request
 from backend.app.core.config import get_settings
+from backend.app.utils.async_blocking import run_db_blocking
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
@@ -175,7 +176,7 @@ async def get_user_history(
         offset = (page - 1) * page_size
         query = query.order("created_at", desc=True).range(offset, offset + page_size - 1)
         
-        result = query.execute()
+        result = await run_db_blocking(lambda: query.execute())
 
         # DEBUG: trace what RLS returns for each task
         for _t in (result.data or []):
@@ -253,7 +254,9 @@ async def get_user_history(
                         }
                         if inferred_path:
                             patch["output_path"] = inferred_path
-                        client.table("translation_tasks").update(patch).eq("task_id", tid).execute()
+                        await run_db_blocking(
+                            lambda: client.table("translation_tasks").update(patch).eq("task_id", tid).execute()
+                        )
                         logger.info(
                             f"[history] Supabase corrected: {tid} -> {corrected_status}"
                             + (f" (output_path patched: {inferred_path})" if inferred_path else "")
@@ -305,9 +308,11 @@ async def get_task_detail(
     
     try:
         # RLS 自动过滤：只能查看自己的任务
-        result = supabase.table("translation_tasks").select("*").eq(
-            "task_id", task_id
-        ).execute()
+        result = await run_db_blocking(
+            lambda: supabase.table("translation_tasks").select("*").eq(
+                "task_id", task_id
+            ).execute()
+        )
         
         if not result.data or len(result.data) == 0:
             raise HTTPException(
@@ -385,9 +390,11 @@ async def delete_task_history(
     
     try:
         # 1. Check if task exists (RLS filtering)
-        result = supabase.table("translation_tasks").select("status").eq(
-            "task_id", task_id
-        ).execute()
+        result = await run_db_blocking(
+            lambda: supabase.table("translation_tasks").select("status").eq(
+                "task_id", task_id
+            ).execute()
+        )
         
         if not result.data or len(result.data) == 0:
             raise HTTPException(
@@ -404,9 +411,11 @@ async def delete_task_history(
             await asyncio.sleep(0.5)
         
         # 3. Delete from Supabase (RLS ensures only own tasks)
-        delete_result = supabase.table("translation_tasks").delete().eq(
-            "task_id", task_id
-        ).execute()
+        delete_result = await run_db_blocking(
+            lambda: supabase.table("translation_tasks").delete().eq(
+                "task_id", task_id
+            ).execute()
+        )
         
         # 4. Delete local files
         deletion_result = task_manager.delete_task_full(task_id)
@@ -466,9 +475,11 @@ async def delete_tasks_batch(
     for task_id in request.task_ids:
         try:
             # Check task exists
-            result = supabase.table("translation_tasks").select("status").eq(
-                "task_id", task_id
-            ).execute()
+            result = await run_db_blocking(
+                lambda: supabase.table("translation_tasks").select("status").eq(
+                    "task_id", task_id
+                ).execute()
+            )
             
             if not result.data or len(result.data) == 0:
                 results.append({
@@ -486,9 +497,11 @@ async def delete_tasks_batch(
                 await asyncio.sleep(0.3)  # Shorter wait in batch mode
             
             # Delete from Supabase
-            supabase.table("translation_tasks").delete().eq(
-                "task_id", task_id
-            ).execute()
+            await run_db_blocking(
+                lambda: supabase.table("translation_tasks").delete().eq(
+                    "task_id", task_id
+                ).execute()
+            )
             
             # Delete local files
             deletion_result = task_manager.delete_task_full(task_id)

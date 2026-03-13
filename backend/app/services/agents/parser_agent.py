@@ -117,7 +117,7 @@ class ParserAgent(BaseToolAgent):
         self.update_progress(0, f"Parsing {os.path.basename(self.project_dir)}")
 
         latex_parser = LatexParser(self.project_dir, self.output_dir)
-        latex_parser.parse(on_progress=self.on_progress)
+        await asyncio.to_thread(latex_parser.parse, self.on_progress)
 
         env_need_trans = []
         skipped_by_type = 0

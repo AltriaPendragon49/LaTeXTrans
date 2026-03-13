@@ -1,6 +1,7 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { toast } from "sonner"
 import { downloadArxiv, startTranslation, getTaskStatus } from '@/lib/api'
+import { API_BASE_URL } from '@/api-base'
 import type { TranslateRequest } from '@/lib/api'
 import type { TranslationConfig, AdvancedConfig, LatexValidation } from '@/types/config'
 import { DEFAULT_CONFIG } from '@/types/config'
@@ -186,7 +187,6 @@ export const useStore = create<TranslationState>((set, get) => ({
                 return
             }
 
-            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
             const response = await fetch(`${API_BASE_URL}/settings`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -271,13 +271,13 @@ export const useStore = create<TranslationState>((set, get) => ({
 
             const response = await downloadArxiv(arxivId)
 
-            //设置 task_id 并开始 SSE 监听下载进度
+            //璁剧疆 task_id 骞跺紑濮?SSE 鐩戝惉涓嬭浇杩涘害
             set({
                 taskId: response.task_id,
                 logs: [...get().logs, `Task created: ${response.task_id}`, response.message]
             })
 
-            // 使用 SSE 替代轮询监听下载进度
+            // 浣跨敤 SSE 鏇夸唬杞鐩戝惉涓嬭浇杩涘害
             get().pollDownloadProgress()
 
         } catch (error: unknown) {
@@ -294,17 +294,16 @@ export const useStore = create<TranslationState>((set, get) => ({
     },
 
     pollDownloadProgress: () => {
-        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
         const { taskId } = get()
         if (!taskId) return
 
-        // 尝试建立 SSE 连接
+        // 灏濊瘯寤虹珛 SSE 杩炴帴
         let eventSource: EventSource | null = null
         let sseRetryCount = 0
         const MAX_SSE_RETRIES = 3
 
         const connectSSE = () => {
-            if (downloadPollingInterval) return // 已降级为轮询
+            if (downloadPollingInterval) return // 宸查檷绾т负杞
 
             try {
                 const url = `${API_BASE_URL}/task/${taskId}/stream`
@@ -328,7 +327,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                             message: data.message
                         })
 
-                        // 检查下载完成
+                        // 妫€鏌ヤ笅杞藉畬鎴?
                         if (data.status?.toLowerCase() === 'pending' && data.progress === 100) {
                             if (get().status !== 'ready') {
                                 set({
@@ -384,7 +383,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                         eventSource?.close()
                         eventSource = null
                     } catch {
-                        // 连接错误由 onerror 处理
+                        // 杩炴帴閿欒鐢?onerror 澶勭悊
                     }
                 })
 
@@ -398,7 +397,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                         console.log(`[Download SSE] Retry ${sseRetryCount}/${MAX_SSE_RETRIES}`)
                         setTimeout(connectSSE, 1000 * sseRetryCount)
                     } else {
-                        // 降级为轮询
+                        // 闄嶇骇涓鸿疆璇?
                         console.log('[Download SSE] Falling back to polling')
                         startPollingFallback()
                     }
@@ -409,9 +408,9 @@ export const useStore = create<TranslationState>((set, get) => ({
             }
         }
 
-        // 轮询降级策略
+        // 杞闄嶇骇绛栫暐
         const startPollingFallback = () => {
-            if (downloadPollingInterval) return // 避免重复
+            if (downloadPollingInterval) return // 閬垮厤閲嶅
 
             console.log('[Download] Starting polling fallback (2s interval)')
 
@@ -465,10 +464,10 @@ export const useStore = create<TranslationState>((set, get) => ({
                 } catch (error) {
                     console.error("Download polling error", error)
                 }
-            }, 2000) // 降级为 2s 轮询
+            }, 2000) // 闄嶇骇涓?2s 杞
         }
 
-        // 启动 SSE 连接
+        // 鍚姩 SSE 杩炴帴
         connectSSE()
     },
 
@@ -542,3 +541,4 @@ export const useStore = create<TranslationState>((set, get) => ({
         set({ isPolling: false })
     }
 }))
+

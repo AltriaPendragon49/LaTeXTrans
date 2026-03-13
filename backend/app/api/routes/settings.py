@@ -15,6 +15,7 @@ from supabase import Client
 
 from backend.app.core.auth import get_supabase_client_from_request
 from backend.app.core.encryption import encrypt_api_key
+from backend.app.utils.async_blocking import run_db_blocking
 
 router = APIRouter()
 
@@ -99,7 +100,9 @@ async def get_user_settings(
     
     try:
         # RLS 自动过滤：只返回当前用户的 settings
-        result = supabase.table("user_settings").select("*").execute()
+        result = await run_db_blocking(
+            lambda: supabase.table("user_settings").select("*").execute()
+        )
         
         if result.data and len(result.data) > 0:
             return _build_response(result.data[0])
@@ -184,16 +187,22 @@ async def update_user_settings(
             return await get_user_settings(supabase)
         
         # 尝试更新（RLS 自动过滤到当前用户）
-        result = supabase.table("user_settings").select("id").execute()
+        result = await run_db_blocking(
+            lambda: supabase.table("user_settings").select("id").execute()
+        )
         
         if result.data and len(result.data) > 0:
             # 更新现有记录
-            supabase.table("user_settings").update(update_data).eq("id", result.data[0]["id"]).execute()
+            await run_db_blocking(
+                lambda: supabase.table("user_settings").update(update_data).eq("id", result.data[0]["id"]).execute()
+            )
         else:
             # 创建新记录 - 使用 RLS 自动填充 user_id
             # 注意：需要数据库触发器或 default 值设置 user_id = auth.uid()
             insert_data = {**SYSTEM_DEFAULTS, **update_data}
-            supabase.table("user_settings").insert(insert_data).execute()
+            await run_db_blocking(
+                lambda: supabase.table("user_settings").insert(insert_data).execute()
+            )
         
         return await get_user_settings(supabase)
         

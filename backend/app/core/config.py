@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 from enum import Enum
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 import toml
 
 
@@ -105,19 +105,20 @@ class Settings(BaseSettings):
     max_upload_size: int = 50 * 1024 * 1024  # 50MB in bytes
     allowed_extensions: set = {".zip", ".tex", ".tar", ".tar.gz", ".tgz", ".rar"}
     
-    # CORS Settings - Extended for Cloudflare Pages deployment
-    # Includes: localhost (dev), Cloudflare Pages default domain, and pattern for custom domains
-    cors_origins: list = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        # Cloudflare Pages default domain pattern
-        # Note: For production, add your specific *.pages.dev subdomain
-        "https://latextrans.pages.dev",
-        # Custom domain for persistent deployment
-        "https://latextrans.online",
-    ]
+    # CORS Settings
+    # Supports comma-separated CORS_ORIGINS env.
+    # Wildcard is intentionally disallowed for production safety.
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://latextrans.pages.dev",
+            "https://latextrans.online",
+        ],
+        env="CORS_ORIGINS",
+    )
     
     # Task Queue Settings
     max_concurrent_translations: int = Field(
@@ -154,6 +155,26 @@ class Settings(BaseSettings):
         env="LLM_MAX_CONCURRENT_REQUESTS",
         description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
     )
+    max_concurrent_compilations: int = Field(
+        default=1,
+        env="MAX_CONCURRENT_COMPILATIONS",
+        description="Hard ceiling on concurrent LaTeX compilation subprocesses in a single worker."
+    )
+    async_compiler_enabled: bool = Field(
+        default=True,
+        env="ASYNC_COMPILER_ENABLED",
+        description="Enable async subprocess-based compiler execution path."
+    )
+    async_blocking_wrappers_enabled: bool = Field(
+        default=True,
+        env="ASYNC_BLOCKING_WRAPPERS_ENABLED",
+        description="Enable asyncio.to_thread wrappers for blocking operations in async paths."
+    )
+    db_execution_mode: str = Field(
+        default="per_call_client",
+        env="DB_EXECUTION_MODE",
+        description="DB threaded execution strategy: per_call_client|shared_client"
+    )
 
     # Compile-first structural fallback controls (gray rollout)
     enable_compile_first_structural_fallback: bool = Field(
@@ -181,6 +202,32 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value):
+        if value is None:
+            return value
+
+        if isinstance(value, str):
+            origins = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple, set)):
+            origins = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            return value
+
+        if any(origin == "*" for origin in origins):
+            raise ValueError("CORS_ORIGINS cannot include wildcard '*'.")
+
+        return origins
+
+    @field_validator("db_execution_mode", mode="before")
+    @classmethod
+    def _parse_db_execution_mode(cls, value):
+        mode = str(value or "per_call_client").strip().lower()
+        if mode not in {"per_call_client", "shared_client"}:
+            return "per_call_client"
+        return mode
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

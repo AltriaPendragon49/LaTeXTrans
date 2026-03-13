@@ -20,6 +20,7 @@ import { Loader2, Settings, LogIn, Save, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { FormattingPanel } from '@/components/FormattingPanel'
 import type { FormattingConfig } from '@/types/config'
+import { API_BASE_URL } from '@/api-base'
 
 interface UserSettings {
     default_source_language: string
@@ -67,7 +68,7 @@ export default function SettingsPage() {
             const token = await getAccessToken()
 
             const response = await fetch(
-                `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings`,
+                `${API_BASE_URL}/settings`,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -135,7 +136,7 @@ export default function SettingsPage() {
             }
 
             const response = await fetch(
-                `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings`,
+                `${API_BASE_URL}/settings`,
                 {
                     method: 'PUT',
                     headers: {

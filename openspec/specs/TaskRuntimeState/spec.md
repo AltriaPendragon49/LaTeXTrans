@@ -4,41 +4,20 @@
 TBD - created by archiving change decouple-runtime-state. Update Purpose after archive.
 ## Requirements
 ### Requirement: State Layer Separation
-系统状态 MUST 拆分为两层：Runtime (TaskRuntimeState) 与 Persistent (Supabase)。
-- **Runtime**: 高频、内存态、不可回放。
-- **Persistent**: 低频、稳定、可回放。
+系统状态 MUST 拆分为 Runtime (TaskRuntimeState) 与 Persistent (Supabase)。
 
-#### Scenario: 任务执行期间的状态更新
-- **WHEN** 任务处于 `parsing` 或 `translating` 等循环阶段
-- **THEN** 系统 MUST 仅更新 `TaskRuntimeState`
-- **AND** 禁止在循环中触发任何 Supabase 写入或 PATCH 请求
-- **AND** RuntimeState 的更新必须为零网络操作（例如内存或本地 Redis）
+#### Scenario: Compile runtime metadata remains in runtime layer
+- **WHEN** compilation starts or ends
+- **THEN** `compile_pid`, `compile_engine`, `compile_started_at` MUST be updated only in runtime memory state
+- **AND** MUST NOT be persisted to Supabase terminal history fields.
 
 ### Requirement: Throttled Supabase Synchronization
-系统 SHALL 限制对 Supabase 的写入频率，严格区分语义跃迁 (Semantic Transitions) 与数值变化 (Value Changes)，并使用异步队列确保线程安全。
+系统 SHALL 限制 Supabase 写入频率并保持 async 路径非阻塞。
 
-#### Scenario: 状态跃迁触发立即入队
-- **WHEN** 任务发生以下语义状态变更：`status` 或 `stage` 的 **实际数值发生改变**（不仅是字段碰巧被传递，而是相对于内存旧值有实质变化）
-- **THEN** 系统 MUST 立即将当前快照推入持久化队列
-- **AND** 后台 Dedicated Flusher 协程将消费队列并写入 Supabase
-
-#### Scenario: 时间节流触发数值入队
-- **WHEN** 任务状态仅有进度或数值改变（如 `progress`, `current_section`）
-- **AND** 距离上次 flush 到 Supabase 的时间 `now - last_flush` 超过 `FLUSH_INTERVAL` （至少 5 秒）
-- **THEN** 系统 SHALL 将当前快照推入持久化队列
-- **AND** 重置 `last_flush` 时间
-- **AND** 仅有进度改变时，系统 MUST NOT 立即写入数据库
-
-#### Scenario: 线程安全的合并型 Dedicated Flusher
-- **WHEN** 工作线程 (Worker Thread) 调用 `TaskManager.update_task`
-- **THEN** 该方法 MUST NOT 直接由于异步上下文缺失而调用 `asyncio.create_task`
-- **AND** 该方法 SHALL 仅将数据安全地放入一个内存 Dict，由生命周期与应用一致的专用线程基于 `threading.Event` 唤醒消费
-- **AND** Flusher MUST 实现基于 `task_id` 的合并 (Coalescing，last-write-wins)，确保并发或风暴写入时能收敛为单次 Supabase 请求
-
-#### Scenario: 异常与错误状态的持久化
-- **WHEN** 任务发生异常或错误
-- **THEN** 系统 MUST 优先更新 `TaskRuntimeState`
-- **AND** 仅当 error 状态最终确定（无进一步 retry）或任务终止时，才执行 Supabase 写入
+#### Scenario: Async DB wrapper strategy mode
+- **WHEN** async route/service path issues DB SDK calls
+- **THEN** execution SHALL use wrapper policy driven by `DB_EXECUTION_MODE`
+- **AND** default mode SHALL be `per_call_client` for safer threaded execution.
 
 ### Requirement: API Read Strategy
 `/api/task/{task_id}` 查询接口 MUST 优先读取 Runtime 状态，以防止对 Supabase 形成高频轮询压力。
@@ -70,4 +49,16 @@ Final task statuses MUST flush immediately.
 - **AND** `update_task` enqueues the final status to the `SupabaseFlusher`
 - **THEN** it MUST immediately dispatch the write to Supabase (semantic transition), bypassing the interval throttle
 - **AND** if an error occurs within `update_task` post-enqueue (such as an email notification timeout), it SHALL NOT prevent the enqueued status from being written to the database.
+
+### Requirement: Single-Worker Runtime Safety Guardrail
+Until runtime task state is fully externalized, production runtime MUST operate with a single worker.
+
+#### Scenario: Startup warning about multi-worker risk
+- **WHEN** backend starts
+- **THEN** logs MUST state that runtime state is partially in-process
+- **AND** logs MUST state that multi-worker deployment is unsupported in current model
+
+#### Scenario: Deployment defaults align with guardrail
+- **WHEN** production runtime command is used
+- **THEN** default worker count MUST be `1`
 

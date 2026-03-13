@@ -22,8 +22,9 @@ from backend.app.services.config_capture import capture_task_config
 from backend.app.core.config import get_settings, TaskStatus
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
-from backend.app.core.supabase_client import get_supabase_admin_client
+from backend.app.core.supabase_client import get_supabase_admin_client, create_supabase_admin_client
 from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids
+from backend.app.utils.async_blocking import run_db_blocking
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -113,6 +114,55 @@ def get_user_api_config(user_id: str) -> dict:
         return {}
 
 
+async def get_user_api_config_async(user_id: str) -> dict:
+    """
+    Async-safe wrapper for fetching user API config from Supabase.
+    """
+    try:
+        client = get_supabase_admin_client()
+        if not client:
+            logger.warning("Supabase admin client not available")
+            return {}
+
+        def _shared_call():
+            return client.table("user_settings").select(
+                "custom_base_url, custom_api_key_encrypted"
+            ).eq("user_id", user_id).execute()
+
+        def _per_call_client():
+            c = create_supabase_admin_client()
+            if not c:
+                return None
+            return c.table("user_settings").select(
+                "custom_base_url, custom_api_key_encrypted"
+            ).eq("user_id", user_id).execute()
+
+        result = await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
+        if result is None or not result.data or len(result.data) == 0:
+            logger.info(f"No user settings found for user {user_id}")
+            return {}
+
+        settings_row = result.data[0]
+        encrypted_key = settings_row.get("custom_api_key_encrypted")
+        if not encrypted_key:
+            logger.info(f"No custom API key stored for user {user_id}")
+            return {}
+
+        api_key = decrypt_api_key(encrypted_key)
+        if not api_key:
+            logger.warning(f"Failed to decrypt API key for user {user_id}")
+            return {}
+
+        logger.info(f"Successfully retrieved user's custom API config for user {user_id}")
+        return {
+            "base_url": settings_row.get("custom_base_url"),
+            "api_key": api_key
+        }
+    except Exception as e:
+        logger.error(f"Error getting user API config async: {e}")
+        return {}
+
+
 def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Dict[str, Any]:
     """
     Build LLM configuration from advanced config.
@@ -183,6 +233,47 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
     logger.warning("No custom API configuration available, falling back to author's API")
     return settings.get_llm_config()
 
+
+async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str = None) -> Dict[str, Any]:
+    """
+    Async-safe variant of build_llm_config for async request paths.
+    """
+    if advanced_config.use_author_api:
+        logger.info("Using author's API configuration (use_author_api=True)")
+        return settings.get_llm_config()
+
+    logger.info(f"Custom API mode: user_id={user_id}, has_custom_api_key_in_request={bool(advanced_config.custom_api_key)}")
+
+    if advanced_config.custom_api_key:
+        logger.info("Using API key from request (frontend advanced config)")
+        base_url = (advanced_config.custom_base_url or "").rstrip('/')
+        if base_url and not base_url.endswith('/v1/chat/completions'):
+            base_url = f"{base_url}/v1/chat/completions"
+        return {
+            "base_url": base_url if base_url else None,
+            "api_key": advanced_config.custom_api_key,
+            "model": advanced_config.translation_model,
+            "timeout": 60
+        }
+
+    if user_id:
+        logger.info(f"Attempting to get API config from system settings for user {user_id}")
+        user_api_config = await get_user_api_config_async(user_id)
+        if user_api_config.get("api_key"):
+            base_url = (user_api_config.get("base_url") or "").rstrip('/')
+            if base_url and not base_url.endswith('/v1/chat/completions'):
+                base_url = f"{base_url}/v1/chat/completions"
+            return {
+                "base_url": base_url if base_url else None,
+                "api_key": user_api_config["api_key"],
+                "model": advanced_config.translation_model,
+                "timeout": 60
+            }
+        logger.warning(f"No API key found in system settings for user {user_id}")
+
+    logger.warning("No custom API configuration available, falling back to author's API")
+    return settings.get_llm_config()
+
 def compute_config_hash(
     arxiv_id: Optional[str],
     source_language: str,
@@ -241,15 +332,34 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
             logger.warning("Supabase admin client not available for output reuse")
             return None
         
-        result = client.table("translation_tasks").select(
-            "output_path"
-        ).eq(
-            "config_hash", config_hash
-        ).eq(
-            "status", "completed"
-        ).neq(
-            "task_id", task_id
-        ).limit(1).execute()
+        def _shared_call():
+            return client.table("translation_tasks").select(
+                "output_path"
+            ).eq(
+                "config_hash", config_hash
+            ).eq(
+                "status", "completed"
+            ).neq(
+                "task_id", task_id
+            ).limit(1).execute()
+
+        def _per_call_client():
+            c = create_supabase_admin_client()
+            if not c:
+                return None
+            return c.table("translation_tasks").select(
+                "output_path"
+            ).eq(
+                "config_hash", config_hash
+            ).eq(
+                "status", "completed"
+            ).neq(
+                "task_id", task_id
+            ).limit(1).execute()
+
+        result = await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
+        if result is None:
+            return None
         
         if result.data and result.data[0].get("output_path"):
             output_path = Path(result.data[0]["output_path"])
@@ -439,7 +549,7 @@ async def run_translation(
         progress_callback = task_manager.create_progress_callback(task_id)
         
         # Build LLM config from advanced settings (with user's stored API key if available)
-        llm_config = build_llm_config(advanced_config, user_id)
+        llm_config = await build_llm_config_async(advanced_config, user_id)
         
         # Build config dict for CoordinatorAgent with all advanced settings
         agent_config = {
@@ -689,9 +799,20 @@ async def start_translation(
         try:
             client = get_supabase_admin_client()
             if client:
-                client.table("translation_tasks").update({
-                    "config_hash": config_hash
-                }).eq("task_id", task_id).execute()
+                def _shared_call():
+                    return client.table("translation_tasks").update({
+                        "config_hash": config_hash
+                    }).eq("task_id", task_id).execute()
+
+                def _per_call_client():
+                    c = create_supabase_admin_client()
+                    if not c:
+                        return None
+                    return c.table("translation_tasks").update({
+                        "config_hash": config_hash
+                    }).eq("task_id", task_id).execute()
+
+                await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
                 logger.info(f"Stored config_hash in database for task {task_id}")
         except Exception as e:
             logger.warning(f"Failed to store config_hash: {e}")
@@ -699,7 +820,7 @@ async def start_translation(
     # Enqueue translation via TaskQueue
     if tq:
         # Compute token_hash for per-bucket routing isolation
-        _llm_cfg = build_llm_config(request.advanced_config, user_id)
+        _llm_cfg = await build_llm_config_async(request.advanced_config, user_id)
         _api_key = (_llm_cfg.get("api_key") or "").encode()
         token_hash = hashlib.md5(_api_key).hexdigest()
 
@@ -892,7 +1013,7 @@ async def batch_translate(
             # This prevents the HTTP request from blocking for minutes while
             # downloading arXiv source packages over the network.
             # Compute token_hash for bucket routing (same key as for single-task enqueue)
-            _batch_llm_cfg = build_llm_config(request.advanced_config, user_id)
+            _batch_llm_cfg = await build_llm_config_async(request.advanced_config, user_id)
             _batch_token_hash = hashlib.md5(
                 (_batch_llm_cfg.get("api_key") or "").encode()
             ).hexdigest()

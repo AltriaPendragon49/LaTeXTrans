@@ -13,6 +13,7 @@ import asyncio
 import logging
 
 from backend.app.core.config import get_settings
+from backend.app.utils.async_blocking import run_db_blocking
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,11 @@ async def startup_event():
     logger.info(f"Starting {settings.app_name} v{settings.version}")
     logger.info(f"Data directory: {settings.data_dir}")
     logger.info(f"LLM Model: {settings.llm_model}")
+    logger.info(f"CORS origins: {settings.cors_origins}")
+    logger.warning(
+        "Task runtime state is still partially in-process memory; "
+        "run a single worker in production until full runtime-state externalization is implemented."
+    )
 
     # Initialize TaskQueue
     import backend.app.services.task_manager as tm_module
@@ -110,11 +116,13 @@ async def startup_event():
                 return
 
             try:
-                result = (
-                    client.table("translation_tasks")
-                    .select("task_id")
-                    .in_("task_id", list(old_task_ids))
-                    .execute()
+                result = await run_db_blocking(
+                    lambda: (
+                        client.table("translation_tasks")
+                        .select("task_id")
+                        .in_("task_id", list(old_task_ids))
+                        .execute()
+                    )
                 )
                 db_task_ids = {row["task_id"] for row in (result.data or [])}
             except Exception as db_err:

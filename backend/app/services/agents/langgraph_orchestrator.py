@@ -44,6 +44,7 @@ from .pipeline_schema import FallbackReport
 from .translator_agent import TranslatorAgent
 from .validator_agent import ValidatorAgent
 from .compilation_diagnostic_node import CompilationDiagnosticNode
+from backend.app.utils.async_blocking import run_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
             output_dir=transed_project_dir,
             on_progress=lambda s, p, m: _update_progress(state, 70 + int(p * 0.05), m),
         )
-        errors_report = validator_agent.execute()
+        errors_report = await run_blocking(lambda: validator_agent.execute())
         initial_errors_count = len(errors_report) if errors_report else 0
 
         MAX_RETRIES = 3
@@ -294,7 +295,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                 )
                 translator_agent.errors_report = errors_report
                 await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
-                errors_report = validator_agent.execute(errors_report)
+                errors_report = await run_blocking(lambda: validator_agent.execute(errors_report))
                 retry_count += 1
 
         final_errors_count = len(errors_report) if errors_report else 0
@@ -504,22 +505,54 @@ async def node_generate(state: PipelineState) -> PipelineState:
     logger.info("Generating PDF")
     _update_progress(state, 85, "Generating PDF")
 
+    from backend.app.services.task_manager import task_manager as _tm
+
+    def _on_compile_start(pid: int, engine: str) -> None:
+        _tm.set_compile_runtime(
+            task_id,
+            pid=pid,
+            engine=engine,
+            started_at=get_cst_now_iso(),
+        )
+
+    def _on_compile_end() -> None:
+        _tm.set_compile_runtime(
+            task_id,
+            pid=None,
+            engine=None,
+            started_at=None,
+        )
+
+    config_with_runtime = dict(config)
+    config_with_runtime["_on_compile_start"] = _on_compile_start
+    config_with_runtime["_on_compile_end"] = _on_compile_end
+
     generator_agent = GeneratorAgent(
-        config=config,
+        config=config_with_runtime,
         project_dir=state["project_dir"],
         output_dir=transed_project_dir,
         on_progress=lambda s, p, m: _update_progress(state, 85 + int(p * 0.15), m),
     )
     try:
-        generation_result = generator_agent.execute()
+        if hasattr(generator_agent, "execute_async"):
+            generation_result = await generator_agent.execute_async()
+        else:
+            generation_result = await run_blocking(lambda: generator_agent.execute())
         _write_audit_log(transed_project_dir, task_id, "node_exit:generate",
-                         {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000})
+                         {
+                             "status": "ok",
+                             "elapsed_ms": (time.monotonic() - _t0) * 1000,
+                             "compile_queue_wait_ms": (generation_result or {}).get("compile_queue_wait_ms"),
+                             "compile_exec_ms": (generation_result or {}).get("compile_exec_ms"),
+                         })
     except Exception as e:
         _write_audit_log(transed_project_dir, task_id, "node_exit:generate",
                          {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000,
                           "error": str(e)})
         _write_stage_failed_log(transed_project_dir, "generate", e)
         raise
+    finally:
+        _on_compile_end()
 
     return {**state, "generation_result": generation_result}
 

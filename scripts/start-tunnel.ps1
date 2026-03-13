@@ -33,7 +33,7 @@ Write-Host ""
 Write-Host "Backend will be accessible at:" -ForegroundColor Yellow
 Write-Host "  https://api.latextrans.online" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Make sure the backend is running on localhost:8000" -ForegroundColor Yellow
+Write-Host "Make sure the backend is running on localhost:9001" -ForegroundColor Yellow
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # Start the named tunnel

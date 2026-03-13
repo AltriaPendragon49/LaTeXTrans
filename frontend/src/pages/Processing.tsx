@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { LogViewer } from "@/components/log-viewer"
 import { useStore } from "@/store/useStore"
 import { useAuth } from "@/contexts/AuthContext"
+import { API_BASE_URL } from "@/api-base"
 
 const steps = [
     { id: "download", label: "Downloading Source" },
@@ -130,7 +131,7 @@ export default function ProcessingPage() {
                 </div>
                 {canPreview ? (
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/download/${activeTaskId}/source`, '_blank')}>
+                        <Button variant="outline" onClick={() => window.open(`${API_BASE_URL}/download/${activeTaskId}/source`, '_blank')}>
                             <Download className="mr-2 h-4 w-4" /> Download Source
                         </Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>View Result</Button>

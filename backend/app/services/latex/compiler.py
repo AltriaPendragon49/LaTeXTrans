@@ -11,16 +11,156 @@ Implements multi-stage compilation strategy:
 import os
 import re
 import subprocess
+import asyncio
 import logging
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List, Protocol, Callable
 import platform
 import signal
 from .sanitizer import try_sanitize_images_in_errors, apply_precompile_sanitization
 
 logger = logging.getLogger(__name__)
+
+LATEX_RUNTIME_MODE_ENV = "LATEX_RUNTIME_MODE"
+LATEX_RUNTIME_MODE_HOST = "host"
+LATEX_RUNTIME_MODE_DOCKER = "docker"
+LATEX_DOCKER_IMAGE_ENV = "LATEX_DOCKER_IMAGE"
+LATEX_DOCKER_IMAGE_DEFAULT = "latextrans-runtime:texlive2025"
+
+
+class LatexExecutor(Protocol):
+    """Build final subprocess argv from an already constructed LaTeX command."""
+
+    def prepare_command(self, cmd: List[str], cwd: Path) -> List[str]:
+        ...
+
+
+class HostLatexExecutor:
+    """Preserve existing behavior by running commands directly on host."""
+
+    def prepare_command(self, cmd: List[str], cwd: Path) -> List[str]:
+        return cmd
+
+
+class DockerLatexExecutor:
+    """Wrap LaTeX commands with docker run while preserving command arguments."""
+
+    def __init__(self, image: str):
+        self.image = image or LATEX_DOCKER_IMAGE_DEFAULT
+
+    def prepare_command(self, cmd: List[str], cwd: Path) -> List[str]:
+        cwd_path = cwd.resolve()
+        rewritten_cmd, extra_mounts = self._rewrite_command_paths(cmd, cwd_path)
+        docker_cmd = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{cwd_path}:/work",
+            "-w",
+            "/work",
+        ]
+        for host_path, container_path in extra_mounts:
+            docker_cmd.extend(["-v", f"{host_path}:{container_path}"])
+
+        docker_cmd.append(self.image)
+        docker_cmd.extend(rewritten_cmd)
+        return docker_cmd
+
+    def _rewrite_command_paths(self, cmd: List[str], cwd: Path) -> Tuple[List[str], List[Tuple[Path, str]]]:
+        rewritten = list(cmd)
+        mounts: List[Tuple[Path, str]] = []
+
+        if rewritten:
+            executable = rewritten[0]
+            if executable.lower().endswith(".exe"):
+                rewritten[0] = Path(executable).stem
+            elif os.path.sep in executable or "/" in executable or "\\" in executable:
+                rewritten[0] = Path(executable).name
+
+        for i, arg in enumerate(rewritten):
+            if arg.startswith("-outdir="):
+                host_outdir = Path(arg.split("=", 1)[1]).resolve()
+                container_outdir = self._map_host_path(host_outdir, cwd, mounts, "/latex-out")
+                rewritten[i] = f"-outdir={container_outdir}"
+                continue
+
+            if arg == "-output-directory" and i + 1 < len(rewritten):
+                host_outdir = Path(rewritten[i + 1]).resolve()
+                container_outdir = self._map_host_path(host_outdir, cwd, mounts, "/latex-out")
+                rewritten[i + 1] = container_outdir
+
+        return rewritten, mounts
+
+    @staticmethod
+    def _map_host_path(host_path: Path, cwd: Path, mounts: List[Tuple[Path, str]], default_container_path: str) -> str:
+        try:
+            relative = host_path.relative_to(cwd)
+            relative_posix = relative.as_posix()
+            return "/work" if relative_posix == "." else f"/work/{relative_posix}"
+        except ValueError:
+            if not any(existing_host == host_path for existing_host, _ in mounts):
+                mounts.append((host_path, default_container_path))
+            return default_container_path
+
+
+def _get_latex_executor() -> LatexExecutor:
+    runtime_mode = os.getenv(LATEX_RUNTIME_MODE_ENV, LATEX_RUNTIME_MODE_DOCKER).strip().lower()
+    if runtime_mode == LATEX_RUNTIME_MODE_HOST:
+        return HostLatexExecutor()
+    if runtime_mode == LATEX_RUNTIME_MODE_DOCKER:
+        if _is_running_in_container():
+            logger.warning(
+                "Detected container runtime; forcing HostLatexExecutor to avoid nested docker run."
+            )
+            return HostLatexExecutor()
+        if not _is_docker_available():
+            logger.warning(
+                "Docker runtime mode requested but docker is unavailable; forcing HostLatexExecutor."
+            )
+            return HostLatexExecutor()
+        image = os.getenv(LATEX_DOCKER_IMAGE_ENV, LATEX_DOCKER_IMAGE_DEFAULT).strip()
+        return DockerLatexExecutor(image=image or LATEX_DOCKER_IMAGE_DEFAULT)
+    logger.warning(
+        "Unknown %s=%r, fallback to HostLatexExecutor",
+        LATEX_RUNTIME_MODE_ENV,
+        runtime_mode,
+    )
+    return HostLatexExecutor()
+
+
+def _is_running_in_container() -> bool:
+    if Path("/.dockerenv").exists():
+        return True
+
+    cgroup_path = Path("/proc/1/cgroup")
+    if cgroup_path.exists():
+        try:
+            content = cgroup_path.read_text(encoding="utf-8", errors="ignore").lower()
+            markers = ("docker", "containerd", "kubepods", "podman")
+            return any(marker in content for marker in markers)
+        except OSError:
+            return False
+    return False
+
+
+def _is_docker_available() -> bool:
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        return False
+    try:
+        probe = subprocess.run(
+            [docker_path, "version", "--format", "{{.Server.Version}}"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        return probe.returncode == 0
+    except Exception:
+        return False
 
 
 def _kill_process_tree(pid: int) -> None:
@@ -49,6 +189,35 @@ def _kill_process_tree(pid: int) -> None:
             os.kill(pid, signal.SIGTERM)
         except Exception:
             pass
+
+
+async def _spawn_latex_process_async(final_cmd: List[str], cwd: Path) -> asyncio.subprocess.Process:
+    """
+    Spawn LaTeX subprocess in its own process group/session for robust cancellation.
+    """
+    kwargs: Dict[str, Any] = {
+        "cwd": str(cwd),
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.PIPE,
+    }
+    if platform.system() == "Windows":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        kwargs["start_new_session"] = True
+    return await asyncio.create_subprocess_exec(*final_cmd, **kwargs)
+
+
+async def _terminate_process_tree_and_wait(proc: asyncio.subprocess.Process) -> None:
+    """
+    Kill full process tree then wait for process object to complete.
+    """
+    if proc is None or proc.pid is None:
+        return
+    await asyncio.to_thread(_kill_process_tree, int(proc.pid))
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=10)
+    except Exception:
+        pass
 
 # CJK character detection threshold
 CJK_THRESHOLD = 100
@@ -851,6 +1020,8 @@ def compile_latex(
             bibtex_flag,  # conditionally run bibtex (skip if no .bib to preserve existing .bbl)
             tex_filename
         ]
+        executor = _get_latex_executor()
+        final_cmd = executor.prepare_command(cmd, tex_dir)
         
         # Use Popen instead of subprocess.run to properly kill the entire process tree
         # on timeout. On Windows, subprocess.run timeout only kills the parent (latexmk),
@@ -859,7 +1030,7 @@ def compile_latex(
         compilation_timeout = 300  # 5 minutes per engine attempt
         
         proc = subprocess.Popen(
-            cmd,
+            final_cmd,
             cwd=str(tex_dir),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -928,6 +1099,126 @@ def compile_latex(
     )
 
 
+async def compile_latex_async(
+    tex_file: str,
+    output_dir: str,
+    engine: str = "pdflatex",
+    max_runs: int = 2,
+    *,
+    on_process_start: Optional[Callable[[int, str], None]] = None,
+    on_process_end: Optional[Callable[[], None]] = None,
+    compilation_timeout: int = 300,
+) -> CompilationResult:
+    """
+    Async variant of compile_latex() using asyncio subprocess primitives.
+    """
+    tex_path = Path(tex_file).resolve()
+    out_path = Path(output_dir).resolve()
+
+    if not tex_path.exists():
+        logger.error(f"TeX file not found: {tex_file}")
+        return CompilationResult(success=False, exit_code=-1)
+
+    tex_filename = tex_path.name
+    tex_basename = tex_path.stem
+    out_path.mkdir(parents=True, exist_ok=True)
+    pdf_path = out_path / f"{tex_basename}.pdf"
+    log_path = out_path / f"{tex_basename}.log"
+    _remove_stale_expected_pdf(pdf_path)
+
+    logger.info(f"Compiling {tex_filename} with latexmk ({engine}) [async]...")
+    last_exit_code = 0
+
+    try:
+        tex_dir = tex_path.parent
+        has_real_bib = any(
+            not bib.name.endswith("-blx.bib")
+            for bib in Path(tex_dir).rglob("*.bib")
+        )
+        bibtex_flag = "-bibtex" if has_real_bib else "-bibtex-"
+        logger.info(f"Bibliography detection: {'found' if has_real_bib else 'no'} .bib files -> using {bibtex_flag}")
+        if not has_real_bib:
+            _fallback_biblatex_to_thebibliography(str(tex_dir), str(out_path))
+
+        cmd = [
+            "latexmk",
+            f"-{engine}",
+            "-interaction=nonstopmode",
+            f"-outdir={out_path}",
+            "-file-line-error",
+            "-synctex=1",
+            bibtex_flag,
+            tex_filename
+        ]
+        executor = _get_latex_executor()
+        final_cmd = executor.prepare_command(cmd, tex_dir)
+
+        proc: Optional[asyncio.subprocess.Process] = None
+        try:
+            proc = await _spawn_latex_process_async(final_cmd, tex_dir)
+            if on_process_start and proc.pid:
+                on_process_start(int(proc.pid), engine)
+            await asyncio.wait_for(proc.communicate(), timeout=compilation_timeout)
+            last_exit_code = int(proc.returncode or 0)
+            logger.info(f"latexmk ({engine}) completed with exit code {last_exit_code}")
+        except asyncio.TimeoutError:
+            if proc is not None:
+                logger.error(f"latexmk ({engine}) timed out after {compilation_timeout}s, terminating PID {proc.pid}")
+                await _terminate_process_tree_and_wait(proc)
+            return CompilationResult(success=False, exit_code=-2)
+        except asyncio.CancelledError:
+            if proc is not None:
+                logger.info(f"latexmk ({engine}) cancelled, terminating PID {proc.pid}")
+                await _terminate_process_tree_and_wait(proc)
+            raise
+        finally:
+            if on_process_end:
+                on_process_end()
+    except FileNotFoundError:
+        logger.warning("latexmk not found, falling back to direct compiler call (async)")
+        return await _compile_latex_direct_async(
+            str(tex_path),
+            str(out_path),
+            engine,
+            max_runs,
+            on_process_start=on_process_start,
+            on_process_end=on_process_end,
+        )
+    except Exception as e:
+        logger.error(f"latexmk ({engine}) compilation failed: {e}")
+        return CompilationResult(success=False, exit_code=-3)
+
+    pdf_exists = pdf_path.exists()
+    error_count = 0
+    errors: List[str] = []
+    quality_issue_count = 0
+    quality_issues: List[str] = []
+    quality_issue_severe = False
+    if log_path.exists():
+        error_count, errors = parse_log_errors(str(log_path))
+        quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
+            str(log_path),
+            enable_quality_gate=True,
+        )
+
+    if (not pdf_exists) and error_count == 0:
+        errors = [f"{tex_filename}: compilation failed without parsable log errors (exit code {last_exit_code})"]
+        error_count = 1
+
+    success = pdf_exists and error_count == 0
+    return CompilationResult(
+        success=success,
+        pdf_path=str(pdf_path) if pdf_exists else None,
+        log_path=str(log_path) if log_path.exists() else None,
+        error_count=error_count,
+        errors=errors,
+        exit_code=last_exit_code,
+        quality_issue_count=quality_issue_count,
+        quality_issues=quality_issues,
+        quality_issue_severe=quality_issue_severe,
+    )
+
+
 def _compile_latex_direct(
     tex_file: str,
     output_dir: str,
@@ -950,11 +1241,13 @@ def _compile_latex_direct(
     logger.info(f"Compiling {tex_filename} directly with {engine}...")
     
     last_exit_code = 0
+    executor = _get_latex_executor()
+    is_host_executor = isinstance(executor, HostLatexExecutor)
     for run in range(max_runs):
         try:
             from backend.app.core.config import settings
             
-            if settings.latex_bin_dir and os.path.exists(settings.latex_bin_dir):
+            if is_host_executor and settings.latex_bin_dir and os.path.exists(settings.latex_bin_dir):
                 engine_path = os.path.join(settings.latex_bin_dir, f"{engine}.exe")
                 if not os.path.exists(engine_path):
                     logger.error(f"Compiler not found: {engine_path}")
@@ -969,12 +1262,13 @@ def _compile_latex_direct(
                 "-output-directory", str(out_path),
                 tex_filename
             ]
+            final_cmd = executor.prepare_command(cmd, tex_path.parent)
             
             # Use Popen for proper process tree cleanup on timeout
             direct_timeout = 300  # 5 minutes
             
             proc = subprocess.Popen(
-                cmd,
+                final_cmd,
                 cwd=str(tex_path.parent),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -1026,6 +1320,98 @@ def _compile_latex_direct(
         f"Exit Code={last_exit_code}"
     )
     
+    return CompilationResult(
+        success=success,
+        pdf_path=str(pdf_path) if pdf_exists else None,
+        log_path=str(log_path) if log_path.exists() else None,
+        error_count=error_count,
+        errors=errors,
+        exit_code=last_exit_code,
+        quality_issue_count=quality_issue_count,
+        quality_issues=quality_issues,
+        quality_issue_severe=quality_issue_severe,
+    )
+
+
+async def _compile_latex_direct_async(
+    tex_file: str,
+    output_dir: str,
+    engine: str = "pdflatex",
+    max_runs: int = 2,
+    *,
+    on_process_start: Optional[Callable[[int, str], None]] = None,
+    on_process_end: Optional[Callable[[], None]] = None,
+    direct_timeout: int = 300,
+) -> CompilationResult:
+    tex_path = Path(tex_file).resolve()
+    tex_filename = tex_path.name
+    tex_basename = tex_path.stem
+    out_path = Path(output_dir).resolve()
+    out_path.mkdir(parents=True, exist_ok=True)
+    pdf_path = out_path / f"{tex_basename}.pdf"
+    log_path = out_path / f"{tex_basename}.log"
+    _remove_stale_expected_pdf(pdf_path)
+
+    last_exit_code = 0
+    executor = _get_latex_executor()
+    is_host_executor = isinstance(executor, HostLatexExecutor)
+    for run in range(max_runs):
+        proc: Optional[asyncio.subprocess.Process] = None
+        try:
+            from backend.app.core.config import settings
+
+            if is_host_executor and settings.latex_bin_dir and os.path.exists(settings.latex_bin_dir):
+                engine_path = os.path.join(settings.latex_bin_dir, f"{engine}.exe")
+                if not os.path.exists(engine_path):
+                    logger.error(f"Compiler not found: {engine_path}")
+                    return CompilationResult(success=False, exit_code=-3)
+            else:
+                engine_path = engine
+
+            cmd = [
+                engine_path,
+                "-interaction=nonstopmode",
+                "-output-directory", str(out_path),
+                tex_filename
+            ]
+            final_cmd = executor.prepare_command(cmd, tex_path.parent)
+            proc = await _spawn_latex_process_async(final_cmd, tex_path.parent)
+            if on_process_start and proc.pid:
+                on_process_start(int(proc.pid), engine)
+            try:
+                await asyncio.wait_for(proc.communicate(), timeout=direct_timeout)
+                last_exit_code = int(proc.returncode or 0)
+            except asyncio.TimeoutError:
+                await _terminate_process_tree_and_wait(proc)
+                return CompilationResult(success=False, exit_code=-2)
+            except asyncio.CancelledError:
+                await _terminate_process_tree_and_wait(proc)
+                raise
+            finally:
+                if on_process_end:
+                    on_process_end()
+        except Exception as e:
+            logger.error(f"{engine} compilation failed: {e}")
+            return CompilationResult(success=False, exit_code=-3)
+
+    pdf_exists = pdf_path.exists()
+    error_count = 0
+    errors: List[str] = []
+    quality_issue_count = 0
+    quality_issues: List[str] = []
+    quality_issue_severe = False
+    if log_path.exists():
+        error_count, errors = parse_log_errors(str(log_path))
+        quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
+            str(log_path),
+            enable_quality_gate=True,
+        )
+
+    if (not pdf_exists) and error_count == 0:
+        errors = [f"{tex_filename}: compilation failed without parsable log errors (exit code {last_exit_code})"]
+        error_count = 1
+
+    success = pdf_exists and error_count == 0
     return CompilationResult(
         success=success,
         pdf_path=str(pdf_path) if pdf_exists else None,
@@ -1950,6 +2336,489 @@ def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
         "warnings": None,
         "errors": combined_errors
     }
+
+
+async def compile_with_intelligent_fallback_async(
+    tex_file: str,
+    output_dir: str,
+    preferred_order: Optional[List[str]] = None,
+    target_language: Optional[str] = None,
+    *,
+    on_process_start: Optional[Callable[[int, str], None]] = None,
+    on_process_end: Optional[Callable[[], None]] = None,
+) -> Dict[str, Any]:
+    """
+    Async intelligent fallback with the same stage/selection semantics as the
+    synchronous implementation, while using non-blocking subprocess awaits.
+    """
+    from backend.app.core.config import settings
+
+    # Rollback switch: keep legacy path available.
+    if not bool(getattr(settings, "async_compiler_enabled", True)):
+        return await asyncio.to_thread(
+            compile_with_intelligent_fallback,
+            tex_file,
+            output_dir,
+            preferred_order,
+            target_language,
+        )
+
+    logger.info(f"Starting intelligent three-engine compilation for {tex_file} [async]")
+
+    normalized_tex_file = str(Path(tex_file).resolve())
+    normalized_output_dir = str(Path(output_dir).resolve())
+    tex_dir = str(Path(normalized_tex_file).parent)
+
+    language, language_reason = _decide_compiler_language(normalized_tex_file, target_language)
+    mapped_target_language = map_target_language_to_family(target_language)
+    language_decision: Dict[str, Any] = {
+        "target_language": target_language,
+        "target_language_family": mapped_target_language,
+        "resolved_language": language,
+        "reason": language_reason,
+        "detection_scope": (
+            "target_language_override"
+            if mapped_target_language is not None
+            else "main_and_includes"
+        ),
+    }
+
+    engine_order_notes: List[str] = []
+    if preferred_order is not None:
+        engines = list(preferred_order)
+        engine_order_notes.append(f"preferred_order_override={engines}")
+    else:
+        if language == "cjk":
+            engines = ["xelatex", "lualatex"]
+            engine_order_notes.append("language_family=cjk_default_order")
+        elif language == "cyrillic":
+            engines = ["xelatex", "lualatex", "pdflatex"]
+            engine_order_notes.append("language_family=cyrillic_default_order")
+        else:
+            engines = ["pdflatex", "xelatex", "lualatex"]
+            engine_order_notes.append("language_family=latin_default_order")
+
+    ordered_unique_engines: List[str] = []
+    for candidate in engines:
+        if candidate not in ordered_unique_engines:
+            ordered_unique_engines.append(candidate)
+    engines = ordered_unique_engines
+
+    try:
+        tex_content_for_pkg_scan = _remove_comments(
+            collect_detection_content(normalized_tex_file, 50_000)
+        )
+        if re.search(r'\\usepackage(?:\[[^\]]*\])?\{luatexja\}', tex_content_for_pkg_scan):
+            if "xelatex" in engines:
+                engines = ["xelatex"] + [e for e in engines if e != "xelatex"]
+                engine_order_notes.append("luatexja_detected_keep_xelatex_priority")
+        if re.search(r'\\usepackage(?:\[[^\]]*\])?\{xypdf\}', tex_content_for_pkg_scan):
+            if "lualatex" in engines:
+                engines = [e for e in engines if e != "lualatex"]
+                engine_order_notes.append("xypdf_detected_skip_lualatex")
+    except Exception as scan_err:
+        logger.debug("Package-aware engine scan failed (non-fatal): %s", scan_err)
+        engine_order_notes.append("package_scan_failed_non_fatal")
+
+    engine_order_reason = "; ".join(engine_order_notes) if engine_order_notes else "default"
+    logger.info(
+        "Compiler language decision=%s, engine_order=%s, reason=%s",
+        language,
+        engines,
+        engine_order_reason,
+    )
+
+    compat_shims_applied: List[Dict[str, Any]] = []
+    precompile_warnings: List[str] = []
+    if language == "cjk":
+        logger.info("Stage 0 (pre-compile): scanning all .tex files for incompatible packages...")
+        for tex_path in list(Path(tex_dir).rglob("*.tex")):
+            try:
+                content = tex_path.read_text(encoding="utf-8", errors="replace")
+                sanitizer_output, round_warnings = apply_precompile_sanitization(content)
+                if round_warnings:
+                    tex_path.write_text(sanitizer_output, encoding="utf-8")
+                    precompile_warnings.extend(round_warnings)
+                    logger.info("Stage 0: sanitized %s (%d package(s) filtered)", tex_path.name, len(round_warnings))
+            except Exception as e:
+                logger.warning("Stage 0: failed to process %s: %s", tex_path.name, e)
+
+    def _with_diagnostics(payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = dict(payload)
+        payload["language_decision"] = language_decision
+        payload["engine_order_reason"] = engine_order_reason
+        payload["compat_shims_applied"] = compat_shims_applied
+        if precompile_warnings:
+            existing_warnings = payload.get("warnings")
+            prefix = "[Stage 0: Pre-compile Sanitization] " + "; ".join(precompile_warnings)
+            payload["warnings"] = prefix if not existing_warnings else f"{prefix} | {existing_warnings}"
+        return payload
+
+    tex_path_obj = Path(normalized_tex_file)
+    original_tex_content: Optional[str] = None
+    try:
+        original_tex_content = tex_path_obj.read_text(encoding="utf-8", errors="replace")
+    except Exception as read_err:
+        logger.warning("Failed to read source tex for compatibility shims: %s", read_err)
+
+    results: Dict[str, CompilationResult] = {}
+
+    def _clean_aux_files() -> None:
+        for ext in [".out", ".toc", ".fls", ".fdb_latexmk", ".xdv", ".nav", ".snm"]:
+            aux_file = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}{ext}"
+            if aux_file.exists():
+                try:
+                    aux_file.unlink()
+                except OSError:
+                    pass
+
+    def _preserve_pdf_and_log(result: CompilationResult, engine: str, stage_label: str) -> CompilationResult:
+        if result.pdf_path:
+            pdf_candidate = Path(result.pdf_path)
+            if pdf_candidate.exists():
+                preserved_pdf = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}.{engine}.{stage_label}.pdf"
+                try:
+                    shutil.copy2(pdf_candidate, preserved_pdf)
+                    result.pdf_path = str(preserved_pdf)
+                    logger.info(f"Preserved {engine} ({stage_label}) PDF snapshot: {preserved_pdf}")
+                    if result.log_path:
+                        log_candidate = Path(result.log_path)
+                        if log_candidate.exists():
+                            preserved_log = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}_{engine}_{stage_label}.log"
+                            try:
+                                shutil.copy2(log_candidate, preserved_log)
+                            except Exception:
+                                pass
+                except Exception as exc:
+                    logger.warning(f"Failed to preserve {engine} PDF snapshot: {exc}")
+                    result.pdf_path = str(pdf_candidate) if pdf_candidate.exists() else None
+            else:
+                logger.warning(f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}")
+                result.pdf_path = None
+        return result
+
+    def _is_perfect(result: CompilationResult) -> bool:
+        effective_quality = result.quality_issue_count if language == "cjk" else 0
+        return result.success and result.error_count == 0 and effective_quality == 0
+
+    async def _compile_one(engine: str) -> CompilationResult:
+        return await compile_latex_async(
+            normalized_tex_file,
+            normalized_output_dir,
+            engine=engine,
+            on_process_start=on_process_start,
+            on_process_end=on_process_end,
+        )
+
+    try:
+        logger.info("Stage 0 (pristine): attempting compilation without source modifications.")
+        for engine in engines:
+            _clean_aux_files()
+            logger.info(f"Stage 0 - attempting engine {engine}...")
+            result = await _compile_one(engine)
+            result = _preserve_pdf_and_log(result, engine, "stage0")
+            compat_shims_applied.append({"engine": engine, "stage": 0, "shims": []})
+            results[f"stage0_{engine}"] = result
+            if _is_perfect(result):
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("Stage 0 pdflatex perfect for CJK; still trying modern engines")
+                else:
+                    logger.info(f"Stage 0: {engine} produced perfect compilation.")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": None,
+                            "errors": None,
+                        }
+                    )
+
+        logger.info("Stage 0 did not produce a perfect result. Stage 1 (shimmed): applying engine compatibility shims.")
+        for engine in engines:
+            if original_tex_content is None:
+                applied_shims_list: List[str] = ["skip_shims_source_unreadable"]
+            else:
+                patched_tex_content, applied_shims_list = _apply_engine_compat_shims(
+                    original_tex_content, engine, language
+                )
+                if patched_tex_content != original_tex_content:
+                    try:
+                        tex_path_obj.write_text(patched_tex_content, encoding="utf-8")
+                    except Exception as write_err:
+                        logger.warning("Stage 1: failed to write shimmed TeX for engine %s: %s", engine, write_err)
+                        applied_shims_list = list(applied_shims_list) + ["shim_write_failed"]
+                else:
+                    logger.debug(f"Stage 1: no shims for {engine}, skipping.")
+                    continue
+
+            _clean_aux_files()
+            compat_shims_applied.append({"engine": engine, "stage": 1, "shims": applied_shims_list})
+            if applied_shims_list:
+                logger.info("Stage 1 - applied shims for %s: %s", engine, applied_shims_list)
+            logger.info(f"Stage 1 - attempting engine {engine}...")
+            result = await _compile_one(engine)
+            result = _preserve_pdf_and_log(result, engine, "stage1")
+            results[f"stage1_{engine}"] = result
+            if _is_perfect(result):
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("Stage 1 pdflatex perfect for CJK; still trying modern engines")
+                else:
+                    logger.info(f"Stage 1 (shimmed): {engine} produced perfect compilation.")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": None,
+                            "errors": None,
+                        }
+                    )
+
+        logger.warning(
+            "Stage 0 and Stage 1 did not produce a perfect result. Stage 2 (invasive): upgrading cls files and running biblatex fallback."
+        )
+        _upgrade_outdated_cls_files(tex_dir)
+        compat_shims_applied.append({"engine": "*", "stage": 2, "shims": ["upgrade_cls_files"]})
+
+        for engine in engines:
+            if original_tex_content is None:
+                applied_shims_list = ["skip_shims_source_unreadable"]
+            else:
+                patched_tex_content, applied_shims_list = _apply_engine_compat_shims(
+                    original_tex_content, engine, language
+                )
+                try:
+                    tex_path_obj.write_text(patched_tex_content, encoding="utf-8")
+                except Exception as write_err:
+                    logger.warning("Stage 2: failed to write shimmed TeX for engine %s: %s", engine, write_err)
+                    applied_shims_list = list(applied_shims_list) + ["shim_write_failed"]
+
+            _clean_aux_files()
+            compat_shims_applied.append({"engine": engine, "stage": 2, "shims": applied_shims_list})
+            logger.info(f"Stage 2 - attempting engine {engine}...")
+            result = await _compile_one(engine)
+            result = _preserve_pdf_and_log(result, engine, "stage2")
+            results[f"stage2_{engine}"] = result
+            if _is_perfect(result):
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("Stage 2 pdflatex perfect for CJK; continuing for merit selection")
+                else:
+                    logger.info(f"Stage 2 (invasive): {engine} produced perfect compilation (DEGRADED).")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": "Stage 2 (invasive) was used: user .cls files may have been modified.",
+                            "errors": None,
+                        }
+                    )
+
+        engine_result_items = [(k.split("_", 1)[1], v) for k, v in results.items()]
+        dedup: Dict[str, CompilationResult] = {}
+        for eng, res in engine_result_items:
+            if eng not in dedup or (dedup[eng].pdf_path is None and res.pdf_path is not None):
+                dedup[eng] = res
+        result_items_for_selection = list(dedup.items())
+        result_items_for_selection_with_pdf = [
+            (eng, res)
+            for eng, res in result_items_for_selection
+            if res.pdf_path is not None and Path(res.pdf_path).exists()
+        ]
+
+        for engine, result in dedup.items():
+            results[engine] = result
+            if result.pdf_path:
+                pdf_candidate = Path(result.pdf_path)
+                if pdf_candidate.exists():
+                    preserved_pdf = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}.{engine}.pdf"
+                    try:
+                        shutil.copy2(pdf_candidate, preserved_pdf)
+                        result.pdf_path = str(preserved_pdf)
+                        logger.info(f"Preserved {engine} PDF snapshot: {preserved_pdf}")
+                        if result.log_path:
+                            log_candidate = Path(result.log_path)
+                            if log_candidate.exists():
+                                preserved_log = Path(normalized_output_dir) / f"{Path(normalized_tex_file).stem}_{engine}.log"
+                                try:
+                                    shutil.copy2(log_candidate, preserved_log)
+                                    logger.info(f"Preserved {engine} LOG snapshot: {preserved_log}")
+                                except Exception as exc:
+                                    logger.warning(f"Failed to preserve {engine} LOG snapshot: {exc}")
+                    except Exception as exc:
+                        logger.warning(f"Failed to preserve {engine} PDF snapshot from {pdf_candidate}: {exc}")
+                        result.pdf_path = str(pdf_candidate) if pdf_candidate.exists() else None
+                else:
+                    logger.warning(f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}")
+                    result.pdf_path = None
+
+            effective_quality_issue_count = result.quality_issue_count if language == "cjk" else 0
+            if result.success and result.error_count == 0 and effective_quality_issue_count == 0:
+                if language == "cjk" and engine == "pdflatex":
+                    logger.debug("pdflatex produced 0 errors for CJK; continuing for merit selection")
+                else:
+                    logger.info(f"{engine} produced perfect compilation (zero errors)")
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": result.pdf_path,
+                            "status": "completed",
+                            "engine": engine,
+                            "error_count": 0,
+                            "warnings": None,
+                            "errors": None,
+                        }
+                    )
+
+        all_error_lines: List[str] = []
+        for res in dedup.values():
+            all_error_lines.extend(res.errors)
+
+        _IMAGE_TRIGGERS = ("reading image failed", "pdf inclusion")
+        if any(any(kw in ln.lower() for kw in _IMAGE_TRIGGERS) for ln in all_error_lines):
+            logger.warning(
+                "Stage 3 (image sanitizer): detected PDF inclusion errors - entering iterative repair loop (max %d rounds).",
+                MAX_SANITIZE_ROUNDS,
+            )
+            sanitized_files: set = set()
+            all_sanitized_outputs: List[Path] = []
+
+            best_s2_engine = engines[-1]
+            if result_items_for_selection_with_pdf:
+                best_s2_engine = min(result_items_for_selection_with_pdf, key=lambda x: x[1].error_count)[0]
+            elif result_items_for_selection:
+                best_s2_engine = min(result_items_for_selection, key=lambda x: x[1].error_count)[0]
+
+            round_error_lines = all_error_lines
+            current_round_result: Optional[CompilationResult] = None
+            for round_idx in range(MAX_SANITIZE_ROUNDS):
+                has_image_error = any(any(kw in ln.lower() for kw in _IMAGE_TRIGGERS) for ln in round_error_lines)
+                if not has_image_error:
+                    logger.info("Stage 3 round %d: no image errors detected; exiting loop.", round_idx)
+                    break
+
+                newly_sanitized_outputs, any_new, newly_sanitized_originals = try_sanitize_images_in_errors(
+                    round_error_lines,
+                    Path(tex_dir),
+                    already_sanitized=sanitized_files,
+                )
+                if not any_new:
+                    logger.info("Stage 3 round %d: no new corrupted PDFs discovered (short-circuit).", round_idx)
+                    break
+
+                sanitized_files.update(newly_sanitized_originals)
+                all_sanitized_outputs.extend(newly_sanitized_outputs)
+                logger.info(
+                    "Stage 3 round %d: repaired %d new PDF(s) - cumulative total %d.",
+                    round_idx,
+                    len(newly_sanitized_originals),
+                    len(sanitized_files),
+                )
+
+                _clean_aux_files()
+                logger.info("Stage 3 round %d - retrying engine %s after image sanitization...", round_idx, best_s2_engine)
+                current_round_result = await _compile_one(best_s2_engine)
+                current_round_result = _preserve_pdf_and_log(current_round_result, best_s2_engine, f"stage3_r{round_idx}")
+                results[f"stage3_r{round_idx}_{best_s2_engine}"] = current_round_result
+
+                if _is_perfect(current_round_result):
+                    logger.info("Stage 3 round %d: %s produced perfect compilation.", round_idx, best_s2_engine)
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": current_round_result.pdf_path,
+                            "status": "completed_with_warnings",
+                            "engine": best_s2_engine,
+                            "error_count": 0,
+                            "warnings": (
+                                f"Stage 3 (image sanitizer) repaired {len(all_sanitized_outputs)} corrupted PDF image(s) "
+                                f"across {round_idx + 1} round(s): " + ", ".join(p.name for p in all_sanitized_outputs)
+                            ),
+                            "errors": None,
+                        }
+                    )
+
+                if current_round_result.pdf_path and current_round_result.error_count < sum(res.error_count for res in dedup.values()):
+                    logger.info("Stage 3 round %d: %s reduced errors; accepting best-effort PDF.", round_idx, best_s2_engine)
+                    return _with_diagnostics(
+                        {
+                            "pdf_path": current_round_result.pdf_path,
+                            "status": "completed_with_warnings",
+                            "engine": best_s2_engine,
+                            "error_count": current_round_result.error_count,
+                            "warnings": (
+                                f"Stage 3 (image sanitizer) partially repaired {len(all_sanitized_outputs)} image(s) "
+                                f"across {round_idx + 1} round(s). {current_round_result.error_count} residual error(s)."
+                            ),
+                            "errors": None,
+                        }
+                    )
+
+                round_error_lines = current_round_result.errors
+
+        engines_with_pdf = result_items_for_selection_with_pdf
+        if language == "cjk":
+            modern_engines_with_pdf = [(e, r) for e, r in engines_with_pdf if e in ["xelatex", "lualatex"]]
+            if modern_engines_with_pdf:
+                logger.info("Found modern-engine PDFs for CJK; excluding pdflatex result.")
+                engines_with_pdf = modern_engines_with_pdf
+
+        if engines_with_pdf:
+            engines_with_pdf.sort(
+                key=lambda x: (
+                    x[1].error_count,
+                    x[1].quality_issue_count if language == "cjk" else 0,
+                )
+            )
+            best_engine, best_result = engines_with_pdf[0]
+            if language == "cjk":
+                comparison = ", ".join(f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}" for eng, res in dedup.items())
+            else:
+                comparison = ", ".join(f"{eng}: {res.error_count}" for eng, res in dedup.items())
+            logger.warning(f"Selected {best_engine} PDF with {best_result.error_count} errors ({comparison})")
+            warning_msg = f"Compilation completed with {best_result.error_count} errors using {best_engine}."
+            if language == "cjk" and best_result.quality_issue_count > 0:
+                warning_msg += (
+                    f" Detected {best_result.quality_issue_count} CJK missing-character quality issues in the chosen engine log."
+                )
+            return _with_diagnostics(
+                {
+                    "pdf_path": best_result.pdf_path,
+                    "status": "completed_with_warnings",
+                    "engine": best_engine,
+                    "error_count": best_result.error_count,
+                    "warnings": warning_msg,
+                    "errors": None,
+                }
+            )
+
+        logger.error(f"All stages and engines failed to produce PDF: {engines}")
+        combined_errors = "Compilation failed with all engines across all stages:\n\n"
+        for eng, res in dedup.items():
+            combined_errors += f"{eng} ({res.error_count} errors):\n"
+            combined_errors += "\n".join(res.errors[:10]) + "\n\n"
+        total_errors = sum(res.error_count for res in dedup.values())
+        return _with_diagnostics(
+            {
+                "pdf_path": None,
+                "status": "failed_compilation",
+                "engine": None,
+                "error_count": total_errors,
+                "warnings": None,
+                "errors": combined_errors,
+            }
+        )
+    except asyncio.CancelledError:
+        logger.info("compile_with_intelligent_fallback_async cancelled")
+        raise
+    finally:
+        if original_tex_content is not None:
+            try:
+                tex_path_obj.write_text(original_tex_content, encoding="utf-8")
+            except Exception as restore_err:
+                logger.warning("Failed to restore original TeX source after async fallback compile: %s", restore_err)
 
 
 class LaTeXCompiler:

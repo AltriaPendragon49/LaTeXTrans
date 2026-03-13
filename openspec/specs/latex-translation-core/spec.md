@@ -54,35 +54,42 @@ The system SHALL download LaTeX source code from arXiv.org given a valid paper I
 ### Requirement: LaTeX Compilation with Intelligent Fallback
 The system SHALL compile translated LaTeX files with intelligent multi-engine fallback and MUST produce explicit structured outcomes for success and compilation failure.
 
-#### Scenario: Timeout process-tree cleanup
-- **WHEN** a compile subprocess exceeds timeout
-- **THEN** the system MUST terminate the full process tree
-- **AND** on Windows MUST use process-tree termination semantics (`taskkill /T /F`).
+#### Scenario: Async compilation execution path
+- **WHEN** orchestration enters compilation stage in single-worker runtime
+- **THEN** the compiler path SHALL execute through a non-blocking async orchestration entry (event loop MUST remain schedulable)
+- **AND** implementation MAY use direct async subprocess execution or thread-wrapped legacy fallback core
+- **AND** it SHALL preserve existing status semantics (`completed`, `completed_with_warnings`, `failed_compilation`, `structure_invalid`).
 
-#### Scenario: Outdated local class-file conflict
-- **WHEN** a project-bundled `.cls` file conflicts with system TeX distribution compatibility
-- **THEN** the system MUST prefer the compatible system class file when safe resolution is available.
+#### Scenario: Async compiler feature toggle rollback
+- **WHEN** `ASYNC_COMPILER_ENABLED=true`
+- **THEN** intelligent fallback execution SHALL use native async stage execution with awaited subprocess-based compile calls.
+- **WHEN** `ASYNC_COMPILER_ENABLED=false`
+- **THEN** the system MAY route through legacy fallback implementation for emergency rollback without changing API contract.
 
-#### Scenario: Structured compilation failure result
-- **WHEN** all engines fail to produce a valid translated PDF
-- **THEN** the generator/coordinator pipeline MUST return structured failure fields including `status=failed_compilation` and `error_summary`
-- **AND** MUST persist a `compilation_failed` event in `task_log.json` with diagnostic context.
+#### Scenario: Compile semaphore boundary is compile-only
+- **WHEN** single-worker runtime enforces `MAX_CONCURRENT_COMPILATIONS`
+- **THEN** semaphore acquisition MUST wrap only the actual compile await region
+- **AND** preprocessing/generation steps before compile (reconstruct, formatting, structure guard) MUST NOT be serialized by compile semaphore.
 
-#### Scenario: Engine fallback PDF path integrity
-- **WHEN** multi-engine fallback runs on a project that contains stale pre-copied `<basename>.pdf` or later-engine clobber risk
-- **THEN** each engine attempt MUST treat stale `<basename>.pdf` as invalid pre-run output
-- **AND** the fallback selector MUST only return `pdf_path` values that still exist on disk at selection time.
+#### Scenario: Compile slot waiting is observable
+- **WHEN** a task enters compile stage but compile slot is occupied
+- **THEN** progress messaging SHALL expose waiting state distinct from active compilation
+- **AND** runtime/audit metrics SHALL include queue-wait and compile-execution durations.
 
-#### Scenario: Relative output directory invocation
-- **WHEN** compilation is invoked with a relative `output_dir` and engine subprocesses run with `cwd` set to the TeX directory
-- **THEN** the compiler MUST normalize `output_dir` and `tex_file` to absolute paths before engine invocation
-- **AND** MUST evaluate produced `pdf_path`/`log_path` against the same normalized absolute directory.
+#### Scenario: Async path preserves legacy compile selection semantics
+- **WHEN** async compilation fallback returns a warning-level successful PDF candidate
+- **THEN** the selected `pdf_path` MUST follow legacy intelligent-fallback selection output (including engine/stage snapshot naming when applicable)
+- **AND** the workflow MUST NOT downgrade to `failed_compilation` solely due to mismatch with a fixed basename expectation.
 
-#### Scenario: Missing PDF with zero parsed errors
-- **WHEN** a compile attempt exits without producing a PDF
-- **AND** log parsing returns `error_count=0`
-- **THEN** the compiler MUST synthesize a fallback compile error with exit-code context
-- **AND** MUST report the compile attempt as failed (not success).
+#### Scenario: Compilation timeout and cancellation teardown
+- **WHEN** compile subprocess times out or pipeline cancellation is raised during compilation
+- **THEN** the system MUST terminate the full subprocess tree/process-group
+- **AND** MUST wait for subprocess cleanup before returning terminal state.
+
+#### Scenario: Runtime compile metadata tracking
+- **WHEN** a compile subprocess is created
+- **THEN** runtime state SHALL store `compile_pid`, `compile_engine`, and `compile_started_at`
+- **AND** these fields MUST be cleared in a guaranteed cleanup path after compile exit.
 
 ### Requirement: PDF Generation Readiness Verification
 
@@ -656,4 +663,66 @@ Speculative repair entrypoints that remain for compatibility MUST be sealed by t
 2. When the function is invoked
 3. Then it MUST raise a typed invariant exception
 4. And the exception MUST include a stable error code for observability/replay.
+
+### Requirement: Runtime-Selectable LaTeX Executor Strategy
+The system MUST support a runtime-selectable LaTeX command executor strategy for compilation subprocesses while preserving existing compilation behavior and fallback logic.
+
+#### Scenario: Default docker execution
+- **WHEN** `LATEX_RUNTIME_MODE` is unset
+- **THEN** the compiler MUST execute LaTeX commands through docker runtime.
+
+#### Scenario: Explicit host compatibility
+- **WHEN** `LATEX_RUNTIME_MODE` equals `host`
+- **THEN** the compiler MUST execute the original LaTeX command directly on host
+- **AND** host runtime behavior MUST remain consistent with the pre-change host execution path.
+
+#### Scenario: Docker-based execution wrapping
+- **WHEN** `LATEX_RUNTIME_MODE` equals `docker`
+- **THEN** the compiler MUST execute LaTeX commands through `docker run --rm`
+- **AND** MUST map the working directory into the container and set container working directory explicitly
+- **AND** MUST NOT use `shell=True`.
+
+#### Scenario: Compilation behavior invariance across runtime modes
+- **WHEN** runtime mode switches between `host` and `docker`
+- **THEN** compile parameter semantics, engine fallback ordering, and error-handling flow MUST remain unchanged
+- **AND** process-tree cleanup behavior (`_kill_process_tree`) MUST remain unchanged.
+
+#### Scenario: Output and diagnostics consistency in docker mode
+- **WHEN** docker runtime mode is enabled
+- **THEN** compilation outputs MUST be written to the same host output locations expected by existing logic
+- **AND** stdout/stderr capture and log parsing flow MUST remain available to existing diagnostics.
+
+#### Scenario: Invalid runtime mode fallback
+- **WHEN** `LATEX_RUNTIME_MODE` is set to an unsupported value
+- **THEN** the compiler MUST fall back to docker execution mode
+- **AND** MUST emit a warning log for the invalid configuration.
+
+### Requirement: Safe Executor Selection Without Nested Docker
+LaTeX executor selection MUST avoid Docker-in-Docker and remain safe in runtime containers.
+
+#### Scenario: Container runtime forces host executor
+- **WHEN** `LATEX_RUNTIME_MODE=docker`
+- **AND** backend is running inside a container runtime
+- **THEN** system MUST use `HostLatexExecutor`
+- **AND** system MUST log a warning about nested docker prevention
+
+#### Scenario: Docker unavailable forces host executor
+- **WHEN** `LATEX_RUNTIME_MODE=docker`
+- **AND** docker binary or daemon is unavailable
+- **THEN** system MUST use `HostLatexExecutor`
+- **AND** system MUST log a warning
+
+#### Scenario: Host with docker available uses docker executor
+- **WHEN** `LATEX_RUNTIME_MODE=docker`
+- **AND** backend is on host runtime with docker available
+- **THEN** system MUST use `DockerLatexExecutor`
+
+#### Scenario: Explicit host mode remains supported
+- **WHEN** `LATEX_RUNTIME_MODE=host`
+- **THEN** system MUST use `HostLatexExecutor`
+
+#### Scenario: Invalid runtime mode downgrades safely
+- **WHEN** `LATEX_RUNTIME_MODE` is an unknown value
+- **THEN** system MUST log a warning
+- **AND** system MUST fallback to `HostLatexExecutor`
 
