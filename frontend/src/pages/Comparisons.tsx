@@ -24,12 +24,12 @@ export default function ComparisonsPage() {
         navigate('/')
     }
 
-    // Source PDF: 浼樺厛浣跨敤鍚庣鎺ュ彛锛孉rXiv 璁烘枃鍙洿鎺ョ敤 arxiv.org 閾炬帴
-    // 鍚庣鎺ュ彛浼氭壘鍒板師濮?PDF锛堟帓闄?zh_鍓嶇紑鍜岀炕璇戠増锛?
+    // Source PDF: prefer backend endpoint; arXiv tasks can fall back to arxiv.org.
+    // Backend endpoint resolves original PDF and excludes translated variants.
     const sourceUrl = taskId
         ? `${API_BASE_URL}/api/preview/${taskId}/source-pdf`
         : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
-    // 浣跨敤 preview 绔偣鏄剧ず PDF锛坕nline锛夛紝download 绔偣鐢ㄤ簬瀹為檯涓嬭浇
+    // Use preview endpoint for inline display; use download endpoint for file download.
     const previewUrl = taskId ? `${API_BASE_URL}/api/preview/${taskId}/pdf` : null
     const downloadUrl = taskId ? `${API_BASE_URL}/api/download/${taskId}/pdf` : null
 

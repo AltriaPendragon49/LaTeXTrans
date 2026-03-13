@@ -271,13 +271,13 @@ export const useStore = create<TranslationState>((set, get) => ({
 
             const response = await downloadArxiv(arxivId)
 
-            //璁剧疆 task_id 骞跺紑濮?SSE 鐩戝惉涓嬭浇杩涘害
+            // Set task_id and start SSE-based download progress tracking.
             set({
                 taskId: response.task_id,
                 logs: [...get().logs, `Task created: ${response.task_id}`, response.message]
             })
 
-            // 浣跨敤 SSE 鏇夸唬杞鐩戝惉涓嬭浇杩涘害
+            // Use SSE instead of polling for download progress.
             get().pollDownloadProgress()
 
         } catch (error: unknown) {
@@ -297,7 +297,7 @@ export const useStore = create<TranslationState>((set, get) => ({
         const { taskId } = get()
         if (!taskId) return
 
-        // 灏濊瘯寤虹珛 SSE 杩炴帴
+        // Try establishing SSE connection.
         let eventSource: EventSource | null = null
         let sseRetryCount = 0
         const MAX_SSE_RETRIES = 3
@@ -313,7 +313,7 @@ export const useStore = create<TranslationState>((set, get) => ({
         }
 
         const connectSSE = () => {
-            if (downloadPollingInterval) return // 宸查檷绾т负杞
+            if (downloadPollingInterval) return // already downgraded to polling
 
             try {
                 const url = `${API_BASE_URL}/api/task/${taskId}/stream`
@@ -338,7 +338,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                             message: data.message
                         })
 
-                        // 妫€鏌ヤ笅杞藉畬鎴?
+                        // Check whether source download is complete.
                         if (data.status?.toLowerCase() === 'pending' && data.progress === 100) {
                             if (get().status !== 'ready') {
                                 set({
@@ -395,7 +395,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                         eventSource?.close()
                         eventSource = null
                     } catch {
-                        // 杩炴帴閿欒鐢?onerror 澶勭悊
+                        // Connection errors are handled by onerror.
                     }
                 })
 
@@ -409,7 +409,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                         console.log(`[Download SSE] Retry ${sseRetryCount}/${MAX_SSE_RETRIES}`)
                         setTimeout(connectSSE, 1000 * sseRetryCount)
                     } else {
-                        // 闄嶇骇涓鸿疆璇?
+                        // Downgrade to polling.
                         console.log('[Download SSE] Falling back to polling')
                         startPollingFallback()
                     }
@@ -420,9 +420,9 @@ export const useStore = create<TranslationState>((set, get) => ({
             }
         }
 
-        // 杞闄嶇骇绛栫暐
+        // Polling fallback strategy.
         const startPollingFallback = () => {
-            if (downloadPollingInterval) return // 閬垮厤閲嶅
+            if (downloadPollingInterval) return // avoid duplicate intervals
 
             console.log('[Download] Starting polling fallback (2s interval)')
 
@@ -470,10 +470,10 @@ export const useStore = create<TranslationState>((set, get) => ({
                 } catch (error) {
                     console.error("Download polling error", error)
                 }
-            }, 2000) // 闄嶇骇涓?2s 杞
+            }, 2000) // fallback polling interval: 2s
         }
 
-        // 鍚姩 SSE 杩炴帴
+        // Start SSE connection.
         connectSSE()
     },
 

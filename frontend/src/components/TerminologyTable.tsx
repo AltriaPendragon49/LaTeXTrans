@@ -129,17 +129,17 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
             <SheetTrigger asChild>
                 <Button variant="outline" size="sm" disabled={!taskId}>
                     <BookText className="mr-2 h-4 w-4" />
-                    鏈琛?
+                    术语表
                 </Button>
             </SheetTrigger>
             <SheetContent className="w-[400px] sm:w-[540px] flex flex-col h-full bg-white dark:bg-slate-950">
                 <SheetHeader>
                     <SheetTitle className="flex items-center gap-2">
                         <BookText className="h-5 w-5" />
-                        鏈瀵圭収琛?
+                        术语对照表
                     </SheetTitle>
                     <SheetDescription>
-                        鏈枃妗ｄ腑鎻愬彇鍜屼娇鐢ㄧ殑涓撲笟鏈瀵圭収銆?
+                        本文档中提取并使用的专业术语对照。
                     </SheetDescription>
                 </SheetHeader>
 
@@ -161,15 +161,15 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                     ) : data.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-6 text-center">
                             <BookText className="h-10 w-10 mb-2 opacity-20" />
-                            <p>娌℃湁鎵惧埌鏈鏁版嵁</p>
-                            <p className="text-xs mt-1 opacity-70">璇风‘淇濆湪缈昏瘧鏃跺紑鍚簡"鐢熸垚鏈琛?閫夐」</p>
+                            <p>没有找到术语数据</p>
+                            <p className="text-xs mt-1 opacity-70">请确认翻译时已开启“生成术语表”选项</p>
                         </div>
                     ) : (
                         <ScrollArea className="h-full">
                             <div className="w-full text-sm">
                                 <div className="sticky top-0 bg-slate-100 dark:bg-slate-900 border-b flex font-medium text-muted-foreground z-10">
-                                    <div className="flex-1 p-3 border-r">鍘熸枃 (Source)</div>
-                                    <div className="flex-1 p-3">璇戞枃 (Target)</div>
+                                    <div className="flex-1 p-3 border-r">原文 (Source)</div>
+                                    <div className="flex-1 p-3">译文 (Target)</div>
                                 </div>
                                 <div className="divide-y">
                                     {data.map((pair, idx) => (
@@ -198,7 +198,7 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                         className="w-full sm:w-auto"
                     >
                         <Download className="mr-2 h-4 w-4" />
-                        涓嬭浇 CSV
+                        下载 CSV
                     </Button>
                 </div>
             </SheetContent>
