@@ -58,3 +58,5 @@ test_output.txt
 .codex/
 .agent/
 openspec/daily_report
+
+latextrans-runtime-texlive2025.tar
