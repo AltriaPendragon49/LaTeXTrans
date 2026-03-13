@@ -7,7 +7,7 @@ Minimal MVP version with:
 - Basic CORS configuration
 """
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import logging
@@ -40,6 +40,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+api_router = APIRouter()
 
 
 @app.on_event("startup")
@@ -197,7 +199,7 @@ async def shutdown_event():
 
 
 
-@app.get("/health")
+@api_router.get("/health")
 async def health_check():
     """
     Health check endpoint
@@ -213,7 +215,7 @@ async def health_check():
     }
 
 
-@app.get("/")
+@api_router.get("/")
 async def root():
     """
     Root endpoint
@@ -225,11 +227,11 @@ async def root():
         "message": "LaTeXTrans Backend API",
         "version": settings.version,
         "docs": "/docs",
-        "health": "/health"
+        "health": "/api/health"
     }
 
 
-@app.get("/favicon.ico", include_in_schema=False)
+@api_router.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     """
     Handle favicon.ico requests to avoid 404 errors in logs
@@ -241,13 +243,14 @@ async def favicon():
 from backend.app.api.routes import arxiv, upload, task, translate, download, history
 from backend.app.api.routes import settings as settings_routes
 
-app.include_router(upload.router, prefix="/api", tags=["upload"])
-app.include_router(arxiv.router, prefix="/api", tags=["arxiv"])
-app.include_router(translate.router, prefix="/api", tags=["translate"])
-app.include_router(task.router, prefix="/api", tags=["task"])
-app.include_router(download.router, prefix="/api", tags=["download"])
-app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
-app.include_router(history.router, prefix="/api", tags=["history"])
+api_router.include_router(upload.router, tags=["upload"])
+api_router.include_router(arxiv.router, tags=["arxiv"])
+api_router.include_router(translate.router, tags=["translate"])
+api_router.include_router(task.router, tags=["task"])
+api_router.include_router(download.router, tags=["download"])
+api_router.include_router(settings_routes.router, tags=["settings"])
+api_router.include_router(history.router, tags=["history"])
+app.include_router(api_router, prefix="/api")
 
 
 if __name__ == "__main__":
