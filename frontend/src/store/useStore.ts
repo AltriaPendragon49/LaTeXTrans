@@ -187,7 +187,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                 return
             }
 
-            const response = await fetch(`${API_BASE_URL}/settings`, {
+            const response = await fetch(`${API_BASE_URL}/api/settings`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
@@ -301,12 +301,22 @@ export const useStore = create<TranslationState>((set, get) => ({
         let eventSource: EventSource | null = null
         let sseRetryCount = 0
         const MAX_SSE_RETRIES = 3
+        const markDownloadFailed = (msg?: string) => {
+            const errorMsg = msg || 'ArXiv source download failed'
+            set({
+                status: 'failed',
+                isDownloading: false,
+                error: errorMsg,
+                message: errorMsg
+            })
+            toast.error(errorMsg)
+        }
 
         const connectSSE = () => {
             if (downloadPollingInterval) return // 宸查檷绾т负杞
 
             try {
-                const url = `${API_BASE_URL}/task/${taskId}/stream`
+                const url = `${API_BASE_URL}/api/task/${taskId}/stream`
                 console.log('[Download SSE] Connecting to:', url)
 
                 eventSource = new EventSource(url)
@@ -320,6 +330,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     try {
                         const data = JSON.parse(event.data)
                         console.log('[Download SSE] Update:', data)
+                        const currentStatus = String(data.status || '').toLowerCase()
 
                         set({
                             downloadProgress: data.progress,
@@ -341,6 +352,10 @@ export const useStore = create<TranslationState>((set, get) => ({
                             }
                             eventSource?.close()
                             eventSource = null
+                        } else if (currentStatus === 'failed') {
+                            markDownloadFailed(data.error || data.message)
+                            eventSource?.close()
+                            eventSource = null
                         }
                     } catch (err) {
                         console.error('[Download SSE] Parse error:', err)
@@ -351,8 +366,11 @@ export const useStore = create<TranslationState>((set, get) => ({
                     try {
                         const data = JSON.parse(event.data)
                         console.log('[Download SSE] Complete:', data)
+                        const currentStatus = String(data.status || '').toLowerCase()
 
-                        if (get().status !== 'ready') {
+                        if (currentStatus === 'failed' || currentStatus === 'failed_compilation' || currentStatus === 'structure_invalid') {
+                            markDownloadFailed(data.error || data.message)
+                        } else if (get().status !== 'ready') {
                             set({
                                 status: 'ready',
                                 isDownloading: false,
@@ -373,13 +391,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                     try {
                         const data = JSON.parse((event as MessageEvent).data)
                         console.error('[Download SSE] Server error:', data)
-                        set({
-                            status: 'failed',
-                            isDownloading: false,
-                            error: data.message || 'Download failed',
-                            message: data.message
-                        })
-                        toast.error(data.message || 'Download failed')
+                        markDownloadFailed(data.error || data.message)
                         eventSource?.close()
                         eventSource = null
                     } catch {
@@ -452,13 +464,7 @@ export const useStore = create<TranslationState>((set, get) => ({
                         if (downloadPollingInterval) clearInterval(downloadPollingInterval)
                         downloadPollingInterval = null
 
-                        set({
-                            status: 'failed',
-                            isDownloading: false,
-                            error: statusData.error || 'Download failed',
-                            message: statusData.message
-                        })
-                        toast.error(statusData.error || 'Download failed')
+                        markDownloadFailed(statusData.error || statusData.message)
                     }
 
                 } catch (error) {

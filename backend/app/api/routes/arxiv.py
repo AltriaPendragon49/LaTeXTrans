@@ -16,7 +16,10 @@ import json
 from backend.app.services.latex.utils import (
     batch_download_arxiv_tex,
     extract_arxiv_ids,
-    is_valid_arxiv_id
+    is_valid_arxiv_id,
+    ArxivNoSourceAvailableError,
+    ArxivNetworkFailureError,
+    ArxivArchiveCorruptedError,
 )
 from backend.app.services.task_manager import get_task_manager
 from backend.app.core.config import get_settings, TaskStatus
@@ -28,17 +31,6 @@ task_manager = get_task_manager()
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
-
-
-# Custom exceptions for better error handling
-class ArxivNoSourceError(Exception):
-    """arXiv paper has no TeX source available"""
-    pass
-
-
-class ArxivExtractionError(Exception):
-    """Failed to extract arXiv source archive"""
-    pass
 
 
 class ArxivRequest(BaseModel):
@@ -76,7 +68,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
         )
         
         if not source_dirs:
-            raise ArxivNoSourceError(f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码")
+            raise ArxivNoSourceAvailableError(f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码")
         
         source_path = source_dirs[0]
         
@@ -92,7 +84,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
         
         logger.info(f"Successfully downloaded arXiv {arxiv_id} to {source_path}")
         
-    except ArxivNoSourceError as e:
+    except ArxivNoSourceAvailableError as e:
         # 404 - No TeX source available for this paper
         logger.warning(f"No TeX source for arXiv {arxiv_id}: {e}")
         task_manager.update_task(
@@ -102,7 +94,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
             message=f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码"
         )
     
-    except ArxivExtractionError as e:
+    except ArxivArchiveCorruptedError as e:
         # 422 - Extraction failed (unprocessable)
         logger.error(f"Failed to extract arXiv {arxiv_id}: {e}")
         task_manager.update_task(
@@ -110,6 +102,15 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
             status=TaskStatus.FAILED.value,
             error=str(e),
             message=f"arXiv 论文 {arxiv_id} 解压失败"
+        )
+
+    except ArxivNetworkFailureError as e:
+        logger.error(f"Network failure while downloading arXiv {arxiv_id}: {e}")
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            error=str(e),
+            message=f"下载 arXiv 论文 {arxiv_id} 时网络不稳定，请稍后重试"
         )
     
     except Exception as e:

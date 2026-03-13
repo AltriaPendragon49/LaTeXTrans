@@ -28,7 +28,7 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
     const [error, setError] = useState<string | null>(null)
     const [isOpen, setIsOpen] = useState(false)
 
-    const downloadUrl = taskId ? `${API_BASE_URL}/download/${taskId}/terminology` : null
+    const downloadUrl = taskId ? `${API_BASE_URL}/api/download/${taskId}/terminology` : null
 
     useEffect(() => {
         if (isOpen && taskId) {

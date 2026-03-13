@@ -27,6 +27,8 @@ from bs4 import BeautifulSoup
 from typing import List, Optional
 import time
 import logging
+import random
+from http.client import IncompleteRead
 
 logger = logging.getLogger(__name__)
 
@@ -2227,22 +2229,35 @@ def collect_latex_errors_with_logpath(folder: str):
 # arXiv Download Utilities (Web-adapted, Streamlit removed)
 # ============================================================================
 
+ARXIV_EPRINT_SOURCES = (
+    "https://export.arxiv.org/e-print/{arxiv_id}",
+    "https://arxiv.org/e-print/{arxiv_id}",
+)
+
+
+class ArxivDownloadError(Exception):
+    """Base exception for arXiv source download failures."""
+
+
+class ArxivNoSourceAvailableError(ArxivDownloadError):
+    """The paper has no TeX source available on arXiv."""
+
+
+class ArxivNetworkFailureError(ArxivDownloadError):
+    """All download attempts failed due to network or remote service errors."""
+
+
+class ArxivArchiveCorruptedError(ArxivDownloadError):
+    """Downloaded file is invalid or cannot be extracted."""
+
+
 def get_tex_url(arxiv_id: str, headers: dict) -> str:
     """
-    Get TeX source download link from arXiv
+    Keep compatibility for old callers.
+    Returns the highest-priority e-print source URL.
     """
-    abs_url = f"https://arxiv.org/abs/{arxiv_id}"
-    try:
-        resp = requests.get(abs_url, headers=headers, timeout=10)
-        resp.raise_for_status()
-    except requests.RequestException:
-        return ""
-    
-    soup = BeautifulSoup(resp.text, "html.parser")
-    link = soup.find("a", class_="abs-button download-eprint")
-    if link and link.get("href"):
-        return f"https://arxiv.org{link['href']}"
-    return ""
+    _ = headers
+    return ARXIV_EPRINT_SOURCES[0].format(arxiv_id=arxiv_id)
 
 
 def is_already_downloaded(arxiv_id: str, save_dir: str) -> bool:
@@ -2325,99 +2340,249 @@ class DownloadProgressCallback:
         )
 
 
-def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict, progress_callback=None):
-    """
-    Download TeX source .tar.gz file with progress tracking
-    
-    Args:
-        arxiv_id: arXiv paper ID
-        tex_url: URL to TeX source
-        save_dir: Directory to save files
-        headers: HTTP headers
-        progress_callback: Optional DownloadProgressCallback instance
-    """
-    # Ensure save directory exists
-    os.makedirs(save_dir, exist_ok=True)
-    
-    file_path = os.path.join(save_dir, f"{arxiv_id}.tar.gz")
+def _parse_total_size_from_headers(response: requests.Response, existing_size: int) -> Optional[int]:
+    content_range = response.headers.get("Content-Range", "")
+    if content_range:
+        match = re.search(r"/(\d+)$", content_range)
+        if match:
+            return int(match.group(1))
+
+    content_length = response.headers.get("Content-Length")
+    if content_length and content_length.isdigit():
+        if response.status_code == 206:
+            return existing_size + int(content_length)
+        return int(content_length)
+    return None
+
+
+def _extract_downloaded_tex_archive(
+    arxiv_id: str,
+    archive_path: str,
+    save_dir: str,
+    progress_callback=None,
+) -> str:
+    extract_dir = os.path.join(save_dir, arxiv_id)
+    os.makedirs(extract_dir, exist_ok=True)
 
     try:
-        with requests.get(tex_url, headers=headers, stream=True, timeout=20) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get("Content-Length", 0))
-            downloaded = 0
-
-            with open(file_path, "wb") as f:
-                for chunk in r.iter_content(8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        # 使用回调更新进度
-                        if progress_callback:
-                            progress_callback.update(downloaded, total_size)
-        
-        logger.info(f"[SUCCESS] {arxiv_id} successfully downloaded to {file_path}.")
-        
-        # 更新进度到解压阶段
-        if progress_callback:
-            progress_callback.stage = "extracting"
-            progress_callback.update(0, 1)
-        
-        # Extract the tar.gz file
-        extract_dir = os.path.join(save_dir, arxiv_id)
-        os.makedirs(extract_dir, exist_ok=True)
-        
-        try:
-            # Use 'r:*' to auto-detect compression format (supports gz, bz2, xz, or plain tar)
-            # This is crucial because arXiv files may have .tar.gz extension but use different compression
-            with tarfile.open(file_path, mode='r:*') as tar:
-                members = tar.getmembers()
-                total_members = len(members)
-                # Filter for security - avoid absolute paths and path traversal
-                for i, member in enumerate(members):
-                    if member.name.startswith('/') or '..' in member.name:
-                        logger.warning(f"Skipping potentially unsafe path: {member.name}")
-                        continue
-                    tar.extract(member, path=extract_dir)
-                    # 每解压一个文件更新一次进度
-                    if progress_callback and total_members > 0:
-                        progress_callback.update(i + 1, total_members)
-            logger.info(f"[SUCCESS] {arxiv_id} extracted to {extract_dir}")
-            
-            # Remove the tar.gz file after extraction
-            os.remove(file_path)
-            logger.debug(f"Removed tar.gz file: {file_path}")
-            
-        except tarfile.ReadError as e:
-            # Sometimes arXiv returns a single TeX file without tar wrapper
-            logger.warning(f"[WARN] {file_path} is not a valid tar archive, trying as gzip: {e}")
-            try:
-                import gzip
-                # Try to decompress as plain gzip file
-                with gzip.open(file_path, 'rb') as gz_file:
-                    content = gz_file.read()
-                    # Check if it's a single TeX file
-                    if content.startswith(b'%') or b'\\documentclass' in content[:1024]:
-                        tex_file_path = os.path.join(extract_dir, f"{arxiv_id}.tex")
-                        with open(tex_file_path, 'wb') as f:
-                            f.write(content)
-                        logger.info(f"[SUCCESS] Single TeX file extracted to {tex_file_path}")
-                        os.remove(file_path)
-                    else:
-                        logger.error(f"[FAIL] Unknown file format for {file_path}")
-                        return None
-            except Exception as inner_e:
-                logger.error(f"[FAIL] Failed to extract {file_path} as gzip: {inner_e}")
-                return None
-        except tarfile.TarError as e:
-            logger.error(f"[FAIL] Failed to extract {file_path}: {e}")
-            return None
-        
+        with tarfile.open(archive_path, mode="r:*") as tar:
+            members = tar.getmembers()
+            total_members = len(members)
+            for i, member in enumerate(members):
+                if member.name.startswith("/") or ".." in member.name:
+                    logger.warning(f"[ARXIV][EXTRACT_SKIP] Unsafe path skipped: {member.name}")
+                    continue
+                tar.extract(member, path=extract_dir)
+                if progress_callback and total_members > 0:
+                    progress_callback.update(i + 1, total_members)
+        logger.info(f"[ARXIV][EXTRACT_OK] {arxiv_id} extracted to {extract_dir}")
         return extract_dir
+    except tarfile.ReadError as tar_read_error:
+        # Some arXiv e-print responses are a plain gzipped TeX source instead of tar.
+        logger.warning(f"[ARXIV][EXTRACT_FALLBACK] Tar read failed for {archive_path}: {tar_read_error}")
+        try:
+            import gzip
 
-    except requests.RequestException as e:
-        logger.error(f"[FAIL] {arxiv_id} download failed: {e}")
-        return None
+            with gzip.open(archive_path, "rb") as gz_file:
+                content = gz_file.read()
+            if content.startswith(b"%") or b"\\documentclass" in content[:1024]:
+                tex_file_path = os.path.join(extract_dir, f"{arxiv_id}.tex")
+                with open(tex_file_path, "wb") as tex_file:
+                    tex_file.write(content)
+                logger.info(f"[ARXIV][EXTRACT_OK] Single TeX extracted to {tex_file_path}")
+                return extract_dir
+        except Exception as gzip_error:
+            raise ArxivArchiveCorruptedError(
+                f"Failed to extract {archive_path} as gzip/plain TeX: {gzip_error}"
+            ) from gzip_error
+        raise ArxivArchiveCorruptedError(
+            f"Downloaded archive for {arxiv_id} is neither a valid tar nor supported gzip TeX file"
+        ) from tar_read_error
+    except tarfile.TarError as tar_error:
+        raise ArxivArchiveCorruptedError(
+            f"Failed to extract archive for {arxiv_id}: {tar_error}"
+        ) from tar_error
+
+
+def download_arxiv_source_archive(
+    arxiv_id: str,
+    save_dir: str,
+    headers: dict,
+    *,
+    max_retries_per_source: int = 3,
+    retry_delay_range: Tuple[float, float] = (2.0, 5.0),
+    timeout: Tuple[float, float] = (10.0, 120.0),
+    chunk_size: int = 128 * 1024,
+    progress_callback=None,
+) -> str:
+    """
+    Robustly download arXiv source archive with:
+    - Multi-source fallback (export.arxiv.org -> arxiv.org)
+    - Retry per source
+    - Resume via HTTP Range
+    - Post-download size integrity check
+
+    Returns:
+        Local `.tar.gz` path
+
+    Raises:
+        ArxivNoSourceAvailableError
+        ArxivNetworkFailureError
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    archive_path = os.path.join(save_dir, f"{arxiv_id}.tar.gz")
+
+    sources = [url_tpl.format(arxiv_id=arxiv_id) for url_tpl in ARXIV_EPRINT_SOURCES]
+    source_errors: List[str] = []
+    no_source_count = 0
+
+    for source_url in sources:
+        for attempt in range(1, max_retries_per_source + 1):
+            existing_size = os.path.getsize(archive_path) if os.path.exists(archive_path) else 0
+            request_headers = dict(headers or {})
+            if existing_size > 0:
+                request_headers["Range"] = f"bytes={existing_size}-"
+
+            try:
+                with requests.get(
+                    source_url,
+                    headers=request_headers,
+                    stream=True,
+                    timeout=timeout,
+                ) as response:
+                    status_code = response.status_code
+
+                    if status_code in (404, 410):
+                        no_source_count += 1
+                        logger.warning(
+                            f"[ARXIV][NO_SOURCE] {arxiv_id} not available from {source_url} "
+                            f"(HTTP {status_code})"
+                        )
+                        break
+
+                    if status_code == 416 and existing_size > 0:
+                        total_size = _parse_total_size_from_headers(response, existing_size)
+                        if total_size and existing_size == total_size:
+                            logger.info(
+                                f"[ARXIV][RESUME_OK] {arxiv_id} local archive already complete "
+                                f"({existing_size} bytes)"
+                            )
+                            return archive_path
+                        if os.path.exists(archive_path):
+                            os.remove(archive_path)
+                        raise ArxivNetworkFailureError(
+                            f"Received HTTP 416 with mismatched local size for {arxiv_id}"
+                        )
+
+                    response.raise_for_status()
+
+                    supports_resume = (status_code == 206)
+                    if existing_size > 0 and not supports_resume:
+                        logger.warning(
+                            f"[ARXIV][RESUME_UNSUPPORTED] {source_url} ignored Range for {arxiv_id}; "
+                            "restart from byte 0"
+                        )
+                        existing_size = 0
+
+                    total_size = _parse_total_size_from_headers(response, existing_size)
+                    file_mode = "ab" if existing_size > 0 and supports_resume else "wb"
+                    downloaded = existing_size
+
+                    with open(archive_path, file_mode) as out_file:
+                        for chunk in response.iter_content(chunk_size=chunk_size):
+                            if not chunk:
+                                continue
+                            out_file.write(chunk)
+                            downloaded += len(chunk)
+                            if progress_callback and total_size:
+                                progress_callback.update(downloaded, total_size)
+
+                    final_size = os.path.getsize(archive_path)
+                    if total_size is not None and final_size != total_size:
+                        raise IncompleteRead(
+                            partial=b"",
+                            expected=total_size - final_size,
+                        )
+                    if final_size <= 0:
+                        raise ArxivNetworkFailureError(f"Downloaded empty archive for {arxiv_id}")
+
+                    logger.info(
+                        f"[ARXIV][DOWNLOAD_OK] {arxiv_id} from {source_url} "
+                        f"(attempt {attempt}, size={final_size})"
+                    )
+                    return archive_path
+
+            except (
+                IncompleteRead,
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.RequestException,
+                OSError,
+                ArxivNetworkFailureError,
+            ) as network_error:
+                error_text = (
+                    f"source={source_url} attempt={attempt}/{max_retries_per_source} "
+                    f"error={network_error}"
+                )
+                logger.warning(f"[ARXIV][NETWORK_FAIL] {arxiv_id} {error_text}")
+                source_errors.append(error_text)
+                if attempt < max_retries_per_source:
+                    sleep_seconds = random.uniform(*retry_delay_range)
+                    time.sleep(sleep_seconds)
+                    continue
+
+    all_sources_checked = len(sources) * max_retries_per_source
+    if no_source_count >= len(sources):
+        raise ArxivNoSourceAvailableError(
+            f"arXiv paper {arxiv_id} has no TeX source (checked {len(sources)} source endpoints)"
+        )
+
+    raise ArxivNetworkFailureError(
+        f"All download attempts failed for arXiv {arxiv_id} "
+        f"({all_sources_checked} attempts): {'; '.join(source_errors[-6:])}"
+    )
+
+
+def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict, progress_callback=None):
+    """
+    Download and extract TeX source with robust network handling.
+
+    Note:
+        `tex_url` is preserved for backward compatibility but ignored because
+        the downloader now uses built-in prioritized multi-source endpoints.
+    """
+    _ = tex_url
+
+    archive_path = download_arxiv_source_archive(
+        arxiv_id=arxiv_id,
+        save_dir=save_dir,
+        headers=headers,
+        max_retries_per_source=3,
+        retry_delay_range=(2.0, 5.0),
+        timeout=(10.0, 120.0),
+        chunk_size=128 * 1024,
+        progress_callback=progress_callback,
+    )
+
+    if progress_callback:
+        progress_callback.stage = "extracting"
+        progress_callback.update(0, 1)
+
+    extract_dir = _extract_downloaded_tex_archive(
+        arxiv_id=arxiv_id,
+        archive_path=archive_path,
+        save_dir=save_dir,
+        progress_callback=progress_callback,
+    )
+
+    try:
+        os.remove(archive_path)
+        logger.debug(f"[ARXIV][CLEANUP] Removed archive: {archive_path}")
+    except OSError as cleanup_error:
+        logger.warning(f"[ARXIV][CLEANUP_WARN] Failed to remove archive {archive_path}: {cleanup_error}")
+
+    return extract_dir
 
 
 def batch_download_arxiv_tex(
@@ -2436,6 +2601,7 @@ def batch_download_arxiv_tex(
         task_id: Optional task ID for tracking
     """
     source_dirs = []
+    id_errors: Dict[str, Exception] = {}
     headers = {"User-Agent": "Mozilla/5.0"}
     for arxiv_id in arxiv_ids:
         if is_already_downloaded(arxiv_id, save_dir):
@@ -2443,23 +2609,26 @@ def batch_download_arxiv_tex(
             logger.info(f"[SKIP] Already downloaded: {arxiv_id}")
             continue
 
-        tex_url = get_tex_url(arxiv_id, headers)
-        if tex_url:
-            # 创建下载阶段的进度回调
-            download_callback = DownloadProgressCallback(
-                task_manager=task_manager,
-                task_id=task_id,
-                stage="downloading"
-            ) if task_manager and task_id else None
-            
-            dir = download_tex(arxiv_id, tex_url, save_dir, headers, download_callback)
-            if dir:  # Only add if download and extraction succeeded
-                source_dirs.append(dir)
-            else:
-                logger.error(f"[FAIL] Failed to download or extract {arxiv_id}")
-                continue
-        else:
-            logger.warning(f"[SKIP] No TeX source found for {arxiv_id}. Please check the arXiv ID or the availability of the source.")
+        download_callback = DownloadProgressCallback(
+            task_manager=task_manager,
+            task_id=task_id,
+            stage="downloading"
+        ) if task_manager and task_id else None
+
+        try:
+            dir = download_tex(arxiv_id, "", save_dir, headers, download_callback)
+            source_dirs.append(dir)
+        except ArxivNoSourceAvailableError as no_source_error:
+            logger.warning(f"[ARXIV][NO_SOURCE] {arxiv_id}: {no_source_error}")
+            id_errors[arxiv_id] = no_source_error
+            continue
+        except ArxivNetworkFailureError as network_error:
+            logger.error(f"[ARXIV][NETWORK_FAIL] {arxiv_id}: {network_error}")
+            id_errors[arxiv_id] = network_error
+            continue
+        except ArxivArchiveCorruptedError as extract_error:
+            logger.error(f"[ARXIV][EXTRACT_FAIL] {arxiv_id}: {extract_error}")
+            id_errors[arxiv_id] = extract_error
             continue
 
         # 更新进度到 PDF 下载阶段
@@ -2516,6 +2685,14 @@ def batch_download_arxiv_tex(
             
             # 验证完成
             validating_callback.update(1, 1)
+
+    if not source_dirs and id_errors:
+        # For single-ID callers, this preserves explicit failure cause.
+        first_error = id_errors[next(iter(id_errors))]
+        raise first_error
+
+    if id_errors:
+        logger.warning(f"[ARXIV][PARTIAL_FAIL] Some IDs failed: {list(id_errors.keys())}")
 
     return source_dirs
 

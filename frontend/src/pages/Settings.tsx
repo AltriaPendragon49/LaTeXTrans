@@ -68,7 +68,7 @@ export default function SettingsPage() {
             const token = await getAccessToken()
 
             const response = await fetch(
-                `${API_BASE_URL}/settings`,
+                `${API_BASE_URL}/api/settings`,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -136,7 +136,7 @@ export default function SettingsPage() {
             }
 
             const response = await fetch(
-                `${API_BASE_URL}/settings`,
+                `${API_BASE_URL}/api/settings`,
                 {
                     method: 'PUT',
                     headers: {

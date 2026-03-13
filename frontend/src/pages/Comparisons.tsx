@@ -27,11 +27,11 @@ export default function ComparisonsPage() {
     // Source PDF: 浼樺厛浣跨敤鍚庣鎺ュ彛锛孉rXiv 璁烘枃鍙洿鎺ョ敤 arxiv.org 閾炬帴
     // 鍚庣鎺ュ彛浼氭壘鍒板師濮?PDF锛堟帓闄?zh_鍓嶇紑鍜岀炕璇戠増锛?
     const sourceUrl = taskId
-        ? `${API_BASE_URL}/preview/${taskId}/source-pdf`
+        ? `${API_BASE_URL}/api/preview/${taskId}/source-pdf`
         : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
     // 浣跨敤 preview 绔偣鏄剧ず PDF锛坕nline锛夛紝download 绔偣鐢ㄤ簬瀹為檯涓嬭浇
-    const previewUrl = taskId ? `${API_BASE_URL}/preview/${taskId}/pdf` : null
-    const downloadUrl = taskId ? `${API_BASE_URL}/download/${taskId}/pdf` : null
+    const previewUrl = taskId ? `${API_BASE_URL}/api/preview/${taskId}/pdf` : null
+    const downloadUrl = taskId ? `${API_BASE_URL}/api/download/${taskId}/pdf` : null
 
     const handleDownload = () => {
         if (downloadUrl) {

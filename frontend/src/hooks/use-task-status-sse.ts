@@ -97,7 +97,7 @@ export function useTaskStatusSSE(
 
         const poll = async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/task/${taskId}`);
+                const response = await fetch(`${API_BASE_URL}/api/task/${taskId}`);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
@@ -139,7 +139,7 @@ export function useTaskStatusSSE(
         setError(null);
 
         try {
-            const url = `${API_BASE_URL}/task/${taskId}/stream`;
+            const url = `${API_BASE_URL}/api/task/${taskId}/stream`;
             console.log('[SSE] Connecting to:', url);
 
             const eventSource = new EventSource(url);

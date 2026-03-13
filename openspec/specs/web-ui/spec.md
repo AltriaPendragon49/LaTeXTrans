@@ -84,30 +84,36 @@ And the right pane should display the translated PDF
 - **THEN** 系统下载 CSV 格式的术语表文件
 
 ### Requirement: ArXiv Download Progress Bar
-前端 SHALL 在 Dashboard 页面的 Load Source 按钮下方显示下载进度条，反映真实的后端下载进度。
+鍓嶇 SHALL 鍦?Dashboard 椤甸潰鐨?Load Source 鎸夐挳涓嬫柟鏄剧ず涓嬭浇杩涘害鏉★紝鍙嶆槧鐪熷疄鐨勫悗绔笅杞借繘搴︺€?
 
-#### Scenario: 点击 Load Source 后显示进度条
-- **WHEN** 用户在 arXiv ID 输入框输入有效 ID 并点击 "Load Source" 按钮
-- **THEN** 系统立即在按钮下方显示进度条组件
-- **AND** 进度条初始值为 0%
-- **AND** 按钮状态变为禁用
+#### Scenario: 鐐瑰嚮 Load Source 鍚庢樉绀鸿繘搴︽潯
+- **WHEN** 鐢ㄦ埛鍦?arXiv ID 杈撳叆妗嗚緭鍏ユ湁鏁?ID 骞剁偣鍑?"Load Source" 鎸夐挳
+- **THEN** 绯荤粺绔嬪嵆鍦ㄦ寜閽笅鏂规樉绀鸿繘搴︽潯缁勪欢
+- **AND** 杩涘害鏉″垵濮嬪€间负 0%
+- **AND** 鎸夐挳鐘舵€佸彉涓虹鐢?
 
-#### Scenario: 进度条实时更新
-- **WHEN** 后端返回下载进度更新（通过轮询 /api/task/{task_id}）
-- **THEN** 进度条平滑更新到最新进度值
-- **AND** 进度条下方显示当前阶段描述（如"正在下载 TeX 源码..."）
+#### Scenario: 杩涘害鏉″疄鏃舵洿鏂?
+- **WHEN** 鍚庣杩斿洖涓嬭浇杩涘害鏇存柊锛堥€氳繃杞 /api/task/{task_id}锛?
+- **THEN** 杩涘害鏉″钩婊戞洿鏂板埌鏈€鏂拌繘搴﹀€?
+- **AND** 杩涘害鏉′笅鏂规樉绀哄綋鍓嶉樁娈垫弿杩帮紙濡?姝ｅ湪涓嬭浇 TeX 婧愮爜..."锛?
 
-#### Scenario: 下载完成后隐藏进度条
-- **WHEN** 后端返回 progress: 100 且 status: "pending"
-- **THEN** 进度条消失
-- **AND** 显示 "Source Ready" 成功提示
-- **AND** "Start Translation" 按钮变为可用
+#### Scenario: 涓嬭浇瀹屾垚鍚庨殣钘忚繘搴︽潯
+- **WHEN** 鍚庣杩斿洖 progress: 100 涓?status: "pending"
+- **THEN** 杩涘害鏉℃秷澶?
+- **AND** 鏄剧ず "Source Ready" 鎴愬姛鎻愮ず
+- **AND** "Start Translation" 鎸夐挳鍙樹负鍙敤
 
-#### Scenario: 下载失败时显示错误
-- **WHEN** 后端返回 status: "failed"
-- **THEN** 进度条变为红色/错误状态
-- **AND** 显示错误消息
-- **AND** 提供重试按钮
+#### Scenario: 涓嬭浇澶辫触鏃舵樉绀洪敊璇?
+- **WHEN** 鍚庣杩斿洖 status: "failed"
+- **THEN** 杩涘害鏉″彉涓虹孩鑹?閿欒鐘舵€?
+- **AND** 鏄剧ず閿欒娑堟伅
+- **AND** 鎻愪緵閲嶈瘯鎸夐挳
+
+#### Scenario: SSE complete event with failed terminal status
+- **WHEN** frontend receives SSE `complete` event
+- **AND** event payload status is `failed`, `failed_compilation`, or `structure_invalid`
+- **THEN** frontend MUST transition to failed download state
+- **AND** frontend MUST NOT show success toast or `Source Ready`.
 
 ### Requirement: Progress Bar Visual Design
 进度条 SHALL 遵循 ui-ux-pro-max 设计规范，提供专业的视觉效果。

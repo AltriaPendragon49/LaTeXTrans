@@ -117,7 +117,7 @@ export default function HistoryPage() {
             const token = await getAccessToken()
 
             const response = await fetch(
-                `${API_BASE_URL}/history?page=${pageNum}&page_size=10`,
+                `${API_BASE_URL}/api/history?page=${pageNum}&page_size=10`,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,

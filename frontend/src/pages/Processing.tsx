@@ -131,7 +131,7 @@ export default function ProcessingPage() {
                 </div>
                 {canPreview ? (
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => window.open(`${API_BASE_URL}/download/${activeTaskId}/source`, '_blank')}>
+                        <Button variant="outline" onClick={() => window.open(`${API_BASE_URL}/api/download/${activeTaskId}/source`, '_blank')}>
                             <Download className="mr-2 h-4 w-4" /> Download Source
                         </Button>
                         <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>View Result</Button>

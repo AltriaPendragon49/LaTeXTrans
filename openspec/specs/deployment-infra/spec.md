@@ -4,18 +4,15 @@
 TBD - created by archiving change add-persistent-deployment. Update Purpose after archive.
 ## Requirements
 ### Requirement: Fixed Backend Public URL
-
-后端 API SHALL 通过 Cloudflare Named Tunnel 暴露在固定的公网子域名上，不因重启而变化。
+鍚庣 API SHALL 閫氳繃 Cloudflare Named Tunnel 鏆撮湶鍦ㄥ浐瀹氱殑鍏綉瀛愬煙鍚嶄笂锛屼笉鍥犻噸鍚€屽彉鍖栥€?
 
 #### Scenario: Backend accessible via custom domain
-
-- **WHEN** 外部设备访问 `https://api.latextrans.online/health`
-- **THEN** 返回健康检查 JSON 响应（status=200）
+- **WHEN** 澶栭儴璁惧璁块棶 `https://api.latextrans.online/api/health`
+- **THEN** 杩斿洖鍋ュ悍妫€鏌?JSON 鍝嶅簲锛坰tatus=200锛?
 
 #### Scenario: Tunnel restart preserves URL
-
-- **WHEN** Named Tunnel 进程被停止并重新启动
-- **THEN** URL 不变，服务仍可正常访问
+- **WHEN** Named Tunnel 杩涚▼琚仠姝㈠苟閲嶆柊鍚姩
+- **THEN** URL 涓嶅彉锛屾湇鍔′粛鍙甯歌闂?
 
 ### Requirement: Frontend Custom Domain
 
@@ -37,6 +34,11 @@ Frontend API calls SHALL use environment variable `VITE_API_BASE_URL` and MUST N
 - **WHEN** `VITE_API_BASE_URL` is not set
 - **THEN** frontend MUST throw an explicit configuration error
 - **AND** frontend MUST block API request creation
+
+#### Scenario: API requests append /api namespace
+- **WHEN** frontend composes backend request URLs
+- **THEN** request paths SHALL be formed as `${VITE_API_BASE_URL}/api/...`
+- **AND** callers MUST NOT bypass this contract with non-prefixed paths such as `/history`.
 
 ### Requirement: Supabase Auth Redirect Configuration
 
