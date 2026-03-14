@@ -167,7 +167,10 @@ def check_pdf_syntax_error(pdf_path: Path) -> bool:
     Use ``pdfinfo`` to check whether a PDF has byte-level syntax errors.
 
     Returns True if a Syntax Error or Illegal character is detected.
-    Returns False if pdfinfo is unavailable or the file is fine.
+    Returns False if the file is fine.
+
+    Raises:
+        RuntimeError: when pdfinfo is unavailable or cannot execute.
     """
     try:
         result = subprocess.run(
@@ -180,11 +183,9 @@ def check_pdf_syntax_error(pdf_path: Path) -> bool:
         combined = result.stdout + result.stderr
         return "Syntax Error" in combined or "Illegal character" in combined
     except FileNotFoundError:
-        logger.debug("pdfinfo not found; skipping PDF syntax check for %s", pdf_path.name)
-        return False
+        raise RuntimeError("pdfinfo is required but not installed")
     except Exception as exc:
-        logger.warning("PDF syntax check failed for %s: %s", pdf_path.name, exc)
-        return False
+        raise RuntimeError(f"pdfinfo check failed for {pdf_path.name}: {exc}") from exc
 
 
 def sanitize_pdf(pdf_path: Path) -> Optional[Path]:

@@ -1,0 +1,19 @@
+FROM latextrans-runtime:texlive2025
+
+# ------------------------------------------------------------
+# Runtime Mode
+# ------------------------------------------------------------
+ENV LATEX_RUNTIME_MODE=host
+
+# ------------------------------------------------------------
+# Extra PDF & Font Dependencies
+# ------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    ghostscript \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
+    fonts-wqy-zenhei \
+    fonts-wqy-microhei \
+    && fc-cache -fv \
+    && rm -rf /var/lib/apt/lists/*

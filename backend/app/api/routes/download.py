@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 import logging
 import json
+import subprocess
 from pathlib import Path
 import zipfile
 import tempfile
@@ -15,12 +16,32 @@ import shutil
 
 from typing import Optional
 from backend.app.services.task_manager import get_task_manager
+from backend.app.services.latex.compiler import compile_with_intelligent_fallback
 from backend.app.core.config import get_settings, TaskStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
+
+
+def _validate_pdf_with_pdfinfo(pdf_path: Path) -> bool:
+    """Hard PDF structure gate using pdfinfo."""
+    try:
+        result = subprocess.run(
+            ["pdfinfo", str(pdf_path)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except FileNotFoundError:
+        logger.error("pdfinfo is missing; cannot validate cached PDF %s", pdf_path)
+        return False
+    except Exception as exc:
+        logger.error("pdfinfo validation failed for %s: %s", pdf_path, exc)
+        return False
+    return result.returncode == 0
 
 
 def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
@@ -167,6 +188,12 @@ async def download_pdf(task_id: str):
             status_code=503,
             detail="PDF not accessible, please retry"
         )
+
+    if not _validate_pdf_with_pdfinfo(pdf_file):
+        raise HTTPException(
+            status_code=503,
+            detail="PDF structure validation failed, please retry"
+        )
     
     logger.info(f"Returning PDF: {pdf_file}")
     
@@ -252,6 +279,12 @@ async def preview_pdf(task_id: str):
             status_code=503,
             detail="PDF not accessible, please retry"
         )
+
+    if not _validate_pdf_with_pdfinfo(pdf_file):
+        raise HTTPException(
+            status_code=503,
+            detail="PDF structure validation failed, please retry"
+        )
     
     logger.info(f"Returning PDF for preview: {pdf_file}")
     
@@ -285,7 +318,6 @@ async def preview_source_pdf(task_id: str):
         HTTPException: If task not found or source PDF not available
     """
     import re
-    import subprocess
     from fastapi.responses import RedirectResponse
     
     logger.info(f"Source PDF preview request for task: {task_id}")
@@ -412,32 +444,26 @@ async def preview_source_pdf(task_id: str):
     # Use fixed name for shared uploads (no task_id dependency)
     compiled_pdf_path = source_dir / "source_compiled.pdf"
     if compiled_pdf_path.exists() and compiled_pdf_path.stat().st_size > 0:
-        logger.info(f"Using cached compiled source PDF: {compiled_pdf_path}")
-        return FileResponse(
-            path=str(compiled_pdf_path),
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
-            }
-        )
+        if _validate_pdf_with_pdfinfo(compiled_pdf_path):
+            logger.info(f"Using cached compiled source PDF: {compiled_pdf_path}")
+            return FileResponse(
+                path=str(compiled_pdf_path),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                }
+            )
+        logger.error("Cached source PDF failed validation, removing: %s", compiled_pdf_path)
+        compiled_pdf_path.unlink(missing_ok=True)
     
-    # Compile the source tex
+    # Compile the source tex via unified compiler executor
     logger.info(f"Compiling source PDF from: {main_tex}")
     try:
-        # Use pdflatex for compilation (2 passes for references)
-        for _ in range(2):
-            result = subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", "-output-directory", str(source_dir), str(main_tex)],
-                cwd=str(source_dir),
-                capture_output=True,
-                timeout=120
-            )
-        
-        # Find generated PDF
-        expected_pdf = main_tex.with_suffix(".pdf")
-        if expected_pdf.exists() and expected_pdf.stat().st_size > 0:
+        result = compile_with_intelligent_fallback(str(main_tex), str(source_dir))
+        generated_pdf = Path(result.get("pdf_path") or "")
+        if generated_pdf.is_file() and generated_pdf.stat().st_size > 0:
             # Rename to our standard name
-            shutil.copy(str(expected_pdf), str(compiled_pdf_path))
+            shutil.copy(str(generated_pdf), str(compiled_pdf_path))
             logger.info(f"Compiled and cached source PDF: {compiled_pdf_path}")
             return FileResponse(
                 path=str(compiled_pdf_path),
@@ -449,18 +475,8 @@ async def preview_source_pdf(task_id: str):
         else:
             raise HTTPException(
                 status_code=503,
-                detail="Failed to compile source PDF. Try using arxiv ID for automatic source PDF."
+                detail=f"Failed to compile source PDF: {result.get('errors') or result.get('warnings') or 'unknown error'}"
             )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(
-            status_code=503,
-            detail="Source PDF compilation timed out"
-        )
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=503,
-            detail="LaTeX compiler not available. Use arxiv ID for automatic source PDF."
-        )
     except Exception as e:
         logger.error(f"Failed to compile source PDF: {e}")
         raise HTTPException(

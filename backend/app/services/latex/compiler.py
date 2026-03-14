@@ -112,23 +112,48 @@ def _get_latex_executor() -> LatexExecutor:
         return HostLatexExecutor()
     if runtime_mode == LATEX_RUNTIME_MODE_DOCKER:
         if _is_running_in_container():
-            logger.warning(
-                "Detected container runtime; forcing HostLatexExecutor to avoid nested docker run."
+            raise RuntimeError(
+                f"{LATEX_RUNTIME_MODE_ENV}=docker is invalid inside container runtime. "
+                f"Set {LATEX_RUNTIME_MODE_ENV}=host when backend runs in container."
             )
-            return HostLatexExecutor()
         if not _is_docker_available():
-            logger.warning(
-                "Docker runtime mode requested but docker is unavailable; forcing HostLatexExecutor."
+            raise RuntimeError(
+                f"{LATEX_RUNTIME_MODE_ENV}=docker but docker daemon is unavailable."
             )
-            return HostLatexExecutor()
         image = os.getenv(LATEX_DOCKER_IMAGE_ENV, LATEX_DOCKER_IMAGE_DEFAULT).strip()
         return DockerLatexExecutor(image=image or LATEX_DOCKER_IMAGE_DEFAULT)
-    logger.warning(
-        "Unknown %s=%r, fallback to HostLatexExecutor",
-        LATEX_RUNTIME_MODE_ENV,
-        runtime_mode,
+    raise RuntimeError(
+        f"Unknown {LATEX_RUNTIME_MODE_ENV}={runtime_mode!r}. "
+        f"Expected '{LATEX_RUNTIME_MODE_HOST}' or '{LATEX_RUNTIME_MODE_DOCKER}'."
     )
-    return HostLatexExecutor()
+
+
+def _validate_generated_pdf_structure(pdf_path: Path) -> Tuple[bool, Optional[str]]:
+    """
+    Enforce structural PDF validation using pdfinfo.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    try:
+        result = subprocess.run(
+            ["pdfinfo", str(pdf_path)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "pdfinfo is not installed in runtime environment"
+    except Exception as exc:
+        return False, f"pdfinfo validation failed: {exc}"
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        detail = stderr or stdout or "unknown pdfinfo error"
+        return False, f"pdfinfo returned non-zero exit code ({result.returncode}): {detail}"
+    return True, None
 
 
 def _is_running_in_container() -> bool:
@@ -1047,13 +1072,32 @@ def compile_latex(
             return CompilationResult(success=False, exit_code=-2)
         
     except FileNotFoundError:
-        logger.warning("latexmk not found, falling back to direct compiler call")
-        return _compile_latex_direct(str(tex_path), str(out_path), engine, max_runs)
+        logger.error("latexmk not found; hard-failing compilation without direct-compiler fallback")
+        return CompilationResult(
+            success=False,
+            pdf_path=None,
+            log_path=str(log_path) if log_path.exists() else None,
+            error_count=1,
+            errors=[f"{tex_filename}: latexmk not found in runtime environment"],
+            exit_code=-5,
+        )
     except Exception as e:
         logger.error(f"latexmk ({engine}) compilation failed: {e}")
         return CompilationResult(success=False, exit_code=-3)
     
     pdf_exists = pdf_path.exists()
+    if pdf_exists:
+        pdf_valid, pdf_error = _validate_generated_pdf_structure(pdf_path)
+        if not pdf_valid:
+            logger.error("Generated PDF failed structure validation: %s", pdf_error)
+            return CompilationResult(
+                success=False,
+                pdf_path=None,
+                log_path=str(log_path) if log_path.exists() else None,
+                error_count=1,
+                errors=[f"{tex_filename}: {pdf_error}"],
+                exit_code=-4,
+            )
     
     # Parse errors from log file
     error_count = 0
@@ -1175,20 +1219,32 @@ async def compile_latex_async(
             if on_process_end:
                 on_process_end()
     except FileNotFoundError:
-        logger.warning("latexmk not found, falling back to direct compiler call (async)")
-        return await _compile_latex_direct_async(
-            str(tex_path),
-            str(out_path),
-            engine,
-            max_runs,
-            on_process_start=on_process_start,
-            on_process_end=on_process_end,
+        logger.error("latexmk not found; hard-failing async compilation without direct-compiler fallback")
+        return CompilationResult(
+            success=False,
+            pdf_path=None,
+            log_path=str(log_path) if log_path.exists() else None,
+            error_count=1,
+            errors=[f"{tex_filename}: latexmk not found in runtime environment"],
+            exit_code=-5,
         )
     except Exception as e:
         logger.error(f"latexmk ({engine}) compilation failed: {e}")
         return CompilationResult(success=False, exit_code=-3)
 
     pdf_exists = pdf_path.exists()
+    if pdf_exists:
+        pdf_valid, pdf_error = _validate_generated_pdf_structure(pdf_path)
+        if not pdf_valid:
+            logger.error("Generated PDF failed structure validation: %s", pdf_error)
+            return CompilationResult(
+                success=False,
+                pdf_path=None,
+                log_path=str(log_path) if log_path.exists() else None,
+                error_count=1,
+                errors=[f"{tex_filename}: {pdf_error}"],
+                exit_code=-4,
+            )
     error_count = 0
     errors: List[str] = []
     quality_issue_count = 0
@@ -1289,6 +1345,18 @@ def _compile_latex_direct(
             return CompilationResult(success=False, exit_code=-3)
     
     pdf_exists = pdf_path.exists()
+    if pdf_exists:
+        pdf_valid, pdf_error = _validate_generated_pdf_structure(pdf_path)
+        if not pdf_valid:
+            logger.error("Generated PDF failed structure validation: %s", pdf_error)
+            return CompilationResult(
+                success=False,
+                pdf_path=None,
+                log_path=str(log_path) if log_path.exists() else None,
+                error_count=1,
+                errors=[f"{tex_filename}: {pdf_error}"],
+                exit_code=-4,
+            )
     
     error_count = 0
     errors = []
@@ -1395,6 +1463,18 @@ async def _compile_latex_direct_async(
             return CompilationResult(success=False, exit_code=-3)
 
     pdf_exists = pdf_path.exists()
+    if pdf_exists:
+        pdf_valid, pdf_error = _validate_generated_pdf_structure(pdf_path)
+        if not pdf_valid:
+            logger.error("Generated PDF failed structure validation: %s", pdf_error)
+            return CompilationResult(
+                success=False,
+                pdf_path=None,
+                log_path=str(log_path) if log_path.exists() else None,
+                error_count=1,
+                errors=[f"{tex_filename}: {pdf_error}"],
+                exit_code=-4,
+            )
     error_count = 0
     errors: List[str] = []
     quality_issue_count = 0

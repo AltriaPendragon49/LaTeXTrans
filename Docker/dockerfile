@@ -12,6 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
+    LATEX_RUNTIME_MODE=host \
     TEXLIVE_VERSION=2025 \
     TEXLIVE_ROOT=/usr/local/texlive/2025 \
     PATH="/usr/local/texlive/2025/bin/x86_64-linux:${PATH}" \
@@ -26,13 +27,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     fontconfig \
     libfontconfig1 \
+    poppler-utils \
     ghostscript \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
+    fonts-wqy-zenhei \
+    fonts-wqy-microhei \
     libpaper-utils \
     libio-all-perl \
     unrar-free \
     git \
     build-essential \
     ca-certificates \
+    && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
