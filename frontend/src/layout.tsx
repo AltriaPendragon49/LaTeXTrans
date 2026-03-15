@@ -17,10 +17,9 @@ export default function Layout() {
                 <div className="flex items-center justify-between p-2 border-b bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0">
                     <div className="flex items-center">
                         <SidebarTrigger />
-                        <div className="ml-2 font-medium">LaTeX Translation Platform</div>
+                        <div className="ml-2 font-medium">LaTeX 翻译平台</div>
                     </div>
 
-                    {/* User area */}
                     <div className="pr-2">
                         {loading ? (
                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

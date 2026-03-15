@@ -10,7 +10,7 @@ import SettingsPage from "./pages/Settings"
 import ProfilePage from "./pages/Profile"
 
 function Glossary() {
-  return <div>Glossary Management</div>
+  return <div>术语库管理</div>
 }
 
 function App() {

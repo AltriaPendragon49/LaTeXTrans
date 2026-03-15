@@ -47,9 +47,9 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
 
             if (!response.ok) {
                 if (response.status === 404) {
-                    setError("No terminology table found for this task.")
+                    setError("未找到该任务的术语表。")
                 } else {
-                    setError("Failed to load terminology table.")
+                    setError("术语表加载失败。")
                 }
                 setData([])
                 return
@@ -59,7 +59,7 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
             const pairs = parseCSV(text)
             setData(pairs)
         } catch (err) {
-            setError("Network error occurred while fetching terminology.")
+            setError("获取术语表时发生网络错误。")
             setData([])
         } finally {
             setLoading(false)
@@ -168,8 +168,8 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                         <ScrollArea className="h-full">
                             <div className="w-full text-sm">
                                 <div className="sticky top-0 bg-slate-100 dark:bg-slate-900 border-b flex font-medium text-muted-foreground z-10">
-                                    <div className="flex-1 p-3 border-r">原文 (Source)</div>
-                                    <div className="flex-1 p-3">译文 (Target)</div>
+                                    <div className="flex-1 p-3 border-r">原文</div>
+                                    <div className="flex-1 p-3">译文</div>
                                 </div>
                                 <div className="divide-y">
                                     {data.map((pair, idx) => (
@@ -177,10 +177,10 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                                             key={idx}
                                             className="flex hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
                                         >
-                                            <div className="flex-1 p-3 border-r break-words font-medium text-slate-700 dark:text-slate-300">
+                                            <div className="flex-1 p-3 border-r wrap-break-words font-medium text-slate-700 dark:text-slate-300">
                                                 {pair.source}
                                             </div>
-                                            <div className="flex-1 p-3 break-words text-slate-600 dark:text-slate-400">
+                                            <div className="flex-1 p-3 wrap-break-words text-slate-600 dark:text-slate-400">
                                                 {pair.target}
                                             </div>
                                         </div>
@@ -198,7 +198,7 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
                         className="w-full sm:w-auto"
                     >
                         <Download className="mr-2 h-4 w-4" />
-                        下载 CSV
+                        下载术语表 CSV
                     </Button>
                 </div>
             </SheetContent>

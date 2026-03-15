@@ -95,7 +95,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Sign in with email/password
     const signIn = async (email: string, password: string) => {
         if (!supabase) {
-            return { error: { message: 'Authentication not available' } as AuthError }
+            return { error: { message: '认证服务不可用' } as AuthError }
         }
 
         setError(null)
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Sign up with email/password
     const signUp = async (email: string, password: string) => {
         if (!supabase) {
-            return { error: { message: 'Authentication not available' } as AuthError }
+            return { error: { message: '认证服务不可用' } as AuthError }
         }
 
         setError(null)
@@ -153,7 +153,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Verify OTP for email confirmation
     const verifyOtp = async (email: string, token: string) => {
         if (!supabase) {
-            return { error: { message: 'Authentication not available' } as AuthError }
+            return { error: { message: '认证服务不可用' } as AuthError }
         }
 
         setError(null)

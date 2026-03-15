@@ -381,7 +381,7 @@ export default function Login() {
                                 <Input
                                     id="email"
                                     type="email"
-                                    placeholder="your@email.com"
+                                    placeholder="请输入邮箱地址"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="pl-10"

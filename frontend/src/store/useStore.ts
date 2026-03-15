@@ -260,9 +260,9 @@ export const useStore = create<TranslationState>((set, get) => ({
         try {
             set({
                 status: 'downloading',
-                message: 'Starting ArXiv download...',
+                message: '正在开始下载 arXiv 源文件...',
                 error: null,
-                logs: ['Starting ArXiv download...'],
+                logs: ['正在开始下载 arXiv 源文件...'],
                 arxivId: arxivId,
                 isDownloading: true,
                 downloadProgress: 0,
@@ -274,14 +274,14 @@ export const useStore = create<TranslationState>((set, get) => ({
             // Set task_id and start SSE-based download progress tracking.
             set({
                 taskId: response.task_id,
-                logs: [...get().logs, `Task created: ${response.task_id}`, response.message]
+                logs: [...get().logs, `任务已创建: ${response.task_id}`, response.message]
             })
 
             // Use SSE instead of polling for download progress.
             get().pollDownloadProgress()
 
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : 'Failed to download ArXiv paper'
+            const msg = error instanceof Error ? error.message : '下载 arXiv 论文失败'
             set({
                 error: msg,
                 status: 'failed',
@@ -345,10 +345,10 @@ export const useStore = create<TranslationState>((set, get) => ({
                                     status: 'ready',
                                     isDownloading: false,
                                     downloadProgress: 100,
-                                    message: 'ArXiv source downloaded successfully',
-                                    logs: [...get().logs, 'Download completed']
+                                    message: 'arXiv 源文件下载完成',
+                                    logs: [...get().logs, '下载已完成']
                                 })
-                                toast.success("ArXiv source downloaded successfully")
+                                toast.success("arXiv 源文件下载完成")
                             }
                             eventSource?.close()
                             eventSource = null
@@ -375,10 +375,10 @@ export const useStore = create<TranslationState>((set, get) => ({
                                 status: 'ready',
                                 isDownloading: false,
                                 downloadProgress: 100,
-                                message: 'ArXiv source downloaded successfully',
-                                logs: [...get().logs, 'Download completed']
+                                message: 'arXiv 源文件下载完成',
+                                logs: [...get().logs, '下载已完成']
                             })
-                            toast.success("ArXiv source downloaded successfully")
+                            toast.success("arXiv 源文件下载完成")
                         }
                         eventSource?.close()
                         eventSource = null
@@ -454,10 +454,10 @@ export const useStore = create<TranslationState>((set, get) => ({
                                 status: 'ready',
                                 isDownloading: false,
                                 downloadProgress: 100,
-                                message: 'ArXiv source downloaded successfully',
-                                logs: [...get().logs, 'Download completed']
+                                message: 'arXiv 源文件下载完成',
+                                logs: [...get().logs, '下载已完成']
                             })
-                            toast.success("ArXiv source downloaded successfully")
+                            toast.success("arXiv 源文件下载完成")
                         }
                         return
                     } else if (statusData.status.toLowerCase() === 'failed') {
@@ -480,18 +480,18 @@ export const useStore = create<TranslationState>((set, get) => ({
     startTranslation: async (config) => {
         const { taskId } = get()
         if (!taskId) {
-            toast.error("No active task ID")
-            throw new Error("No active task ID")
+            toast.error("当前没有可用任务 ID")
+            throw new Error("当前没有可用任务 ID")
         }
 
         try {
-            set({ status: 'starting_translation', message: 'Initiating translation...', error: null })
+            set({ status: 'starting_translation', message: '正在启动翻译...', error: null })
             const response = await startTranslation(taskId, config)
-            set({ message: response.message, logs: [...get().logs, 'Translation started'] })
-            toast.success("Translation started")
+            set({ message: response.message, logs: [...get().logs, '翻译已启动'] })
+            toast.success("翻译已启动")
             get().pollStatus()
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : 'Failed to start translation'
+            const msg = error instanceof Error ? error.message : '启动翻译失败'
             set({ error: msg, status: 'failed' })
             toast.error(msg)
             throw error
@@ -526,11 +526,11 @@ export const useStore = create<TranslationState>((set, get) => ({
                     stopPolling()
                     if (wasPolling) {
                         if (statusData.status.toLowerCase() === 'completed') {
-                            toast.success("Task completed successfully", { id: `task-completed-${taskId}` })
+                            toast.success("任务已完成", { id: `task-completed-${taskId}` })
                         } else if (statusData.status.toLowerCase() === 'failed') {
-                            toast.error("Task failed", { id: `task-failed-${taskId}` })
+                            toast.error("任务失败", { id: `task-failed-${taskId}` })
                         } else if (statusData.status.toLowerCase() === 'failed_compilation') {
-                            toast.error("Task failed at PDF compilation stage", { id: `task-failed-compilation-${taskId}` })
+                            toast.error("任务在 PDF 编译阶段失败", { id: `task-failed-compilation-${taskId}` })
                         }
                     }
                 }

@@ -30,12 +30,12 @@ export const DropZone = () => {
         const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
 
         if (!validExtensions.includes(ext)) {
-            toast.error('Invalid file type. Please upload .zip, .rar, .tar.gz or .tex')
+            toast.error('文件类型不支持，请上传 .zip、.rar、.tar.gz 或 .tex')
             return
         }
 
         if (file.size > 50 * 1024 * 1024) {
-            toast.error('File size exceeds 50MB limit')
+            toast.error('文件大小超过 50MB 限制')
             return
         }
 
@@ -66,12 +66,12 @@ export const DropZone = () => {
             if (response.latex_validation) {
                 setLatexValidation(response.latex_validation)
                 if (response.latex_validation.is_valid) {
-                    toast.success('File uploaded and validated successfully')
+                    toast.success('文件上传成功，且通过校验')
                 } else {
-                    toast.warning('File uploaded but has validation issues')
+                    toast.warning('文件上传成功，但存在校验问题')
                 }
             } else {
-                toast.success('File uploaded successfully')
+                toast.success('文件上传成功')
             }
 
             // Clear ArXiv ID to switch mode
@@ -80,7 +80,7 @@ export const DropZone = () => {
         } catch (error: any) {
             clearInterval(interval)
             setUploadStatus('error')
-            const msg = error.response?.data?.detail || error.message || 'Upload failed'
+            const msg = error.response?.data?.detail || error.message || '上传失败'
             toast.error(msg)
         }
     }
@@ -159,9 +159,9 @@ export const DropZone = () => {
                                     <Upload className="w-8 h-8 text-primary/80" />
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-lg font-medium">Click to upload or drag and drop</p>
+                                    <p className="text-lg font-medium">点击上传或拖拽文件到此处</p>
                                     <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                                        Support for ZIP, RAR, TAR.GZ archives or single .tex files (max 50MB)
+                                        支持 ZIP、RAR、TAR.GZ 压缩包或单个 .tex 文件（最大 50MB）
                                     </p>
                                 </div>
                             </motion.div>
@@ -189,7 +189,7 @@ export const DropZone = () => {
                                         animate={{ width: `${progress}%` }}
                                     />
                                 </div>
-                                <p className="text-xs text-muted-foreground animate-pulse">Uploading and validating...</p>
+                                <p className="text-xs text-muted-foreground animate-pulse">正在上传并校验...</p>
                             </motion.div>
                         )}
 
@@ -214,7 +214,7 @@ export const DropZone = () => {
                                     className="text-muted-foreground hover:text-foreground mt-2"
                                 >
                                     <X className="w-4 h-4 mr-2" />
-                                    Change File
+                                    更换文件
                                 </Button>
                             </motion.div>
                         )}
@@ -229,9 +229,9 @@ export const DropZone = () => {
                                 <div className="p-3 rounded-full bg-destructive/10 text-destructive mb-2">
                                     <AlertTriangle className="w-8 h-8" />
                                 </div>
-                                <p className="font-medium text-destructive">Upload Failed</p>
+                                <p className="font-medium text-destructive">上传失败</p>
                                 <Button variant="outline" size="sm" onClick={resetUpload}>
-                                    Try Again
+                                    重试
                                 </Button>
                             </motion.div>
                         )}
@@ -260,13 +260,13 @@ export const DropZone = () => {
 
                             <div className="space-y-2 w-full">
                                 <h4 className={cn("font-medium", !latexValidation.is_valid && "text-destructive")}>
-                                    {latexValidation.is_valid ? "Valid LaTeX Project" : "Invalid LaTeX Project"}
+                                    {latexValidation.is_valid ? "LaTeX 项目有效" : "LaTeX 项目无效"}
                                 </h4>
 
                                 {latexValidation.main_file && (
                                     <div className="flex items-center gap-2 text-muted-foreground">
                                         <File className="w-4 h-4" />
-                                        <span>Main entry: <span className="text-foreground font-mono">{latexValidation.main_file}</span></span>
+                                        <span>主入口文件：<span className="text-foreground font-mono">{latexValidation.main_file}</span></span>
                                     </div>
                                 )}
 

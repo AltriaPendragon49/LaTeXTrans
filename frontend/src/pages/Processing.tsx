@@ -9,11 +9,11 @@ import { useAuth } from "@/contexts/AuthContext"
 import { API_BASE_URL } from "@/api-base"
 
 const steps = [
-    { id: "download", label: "Downloading Source" },
-    { id: "extract", label: "Extracting Files" },
-    { id: "translate", label: "Translating Content" },
-    { id: "validate", label: "Validating Results" },
-    { id: "compile", label: "Compiling PDF" }
+    { id: "download", label: "下载源文件" },
+    { id: "extract", label: "解压文件" },
+    { id: "translate", label: "翻译内容" },
+    { id: "validate", label: "校验结果" },
+    { id: "compile", label: "编译 PDF" }
 ]
 
 export default function ProcessingPage() {
@@ -47,7 +47,7 @@ export default function ProcessingPage() {
     const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'failed_compilation'
 
     // Determine sub-stage from storeMessage to give fine-grained progress
-    let subStage = "Running..."
+    let subStage = "执行中..."
     let isValidating = false
 
     if (storeMessage) {
@@ -62,19 +62,19 @@ export default function ProcessingPage() {
         const matchTranslate = storeMessage.match(/Translated (\d+\/\d+)/);
 
         if (matchB) {
-            subStage = `Retrying failed sections (${matchB[1]})`;
+            subStage = `重试失败片段（${matchB[1]}）`;
         } else if (matchC1) {
-            subStage = `Restoring LaTeX structure (${matchC1[1]})`;
+            subStage = `恢复 LaTeX 结构（${matchC1[1]}）`;
         } else if (matchC2) {
-            subStage = `Applying fallback translations (${matchC2[1]})`;
+            subStage = `应用兜底翻译（${matchC2[1]}）`;
         } else if (matchA) {
-            subStage = `Restoring LaTeX environments (${matchA[1]})`;
+            subStage = `恢复 LaTeX 环境（${matchA[1]}）`;
         } else if (storeMessage.includes("Validating translation results") || storeMessage.includes("Structure invariant")) {
-            subStage = "Verifying structure integrity";
+            subStage = "校验结构完整性";
         } else if (matchTranslate) {
-            subStage = `Translating (${matchTranslate[1]})`;
+            subStage = `翻译中（${matchTranslate[1]}）`;
         } else if (storeMessage.includes("Compiling") || storeMessage.includes("PDF")) {
-            subStage = "Preparing PDF compilation";
+            subStage = "准备 PDF 编译";
         } else {
             subStage = storeMessage;
         }
@@ -126,20 +126,20 @@ export default function ProcessingPage() {
 
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Translation in Progress</h1>
-                    <p className="text-muted-foreground">Monitor the realtime status of your translation task.</p>
+                    <h1 className="text-3xl font-bold tracking-tight">翻译进行中</h1>
+                    <p className="text-muted-foreground">实时查看翻译任务状态。</p>
                 </div>
                 {canPreview ? (
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => window.open(`${API_BASE_URL}/api/download/${activeTaskId}/source`, '_blank')}>
-                            <Download className="mr-2 h-4 w-4" /> Download Source
+                            <Download className="mr-2 h-4 w-4" /> 下载源文件
                         </Button>
-                        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>View Result</Button>
+                        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>查看结果</Button>
                     </div>
                 ) : isFailed ? (
-                    <Button variant="outline" onClick={() => navigate("/")}>Back to Home</Button>
+                    <Button variant="outline" onClick={() => navigate("/")}>返回首页</Button>
                 ) : (
-                    <Button variant="destructive" onClick={() => navigate("/")}>Cancel Task</Button>
+                    <Button variant="destructive" onClick={() => navigate("/")}>取消任务</Button>
                 )}
             </div>
 
@@ -148,7 +148,7 @@ export default function ProcessingPage() {
                 <div className="col-span-1 space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Status</CardTitle>
+                            <CardTitle>任务状态</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 space-y-8 pl-6 py-2">
@@ -172,7 +172,7 @@ export default function ProcessingPage() {
                                                     {step.label}
                                                 </span>
                                                 {isActive && <span className="text-xs text-muted-foreground animate-pulse">{subStage}</span>}
-                                                {isFailedStep && <span className="text-xs text-red-600">Failed</span>}
+                                                {isFailedStep && <span className="text-xs text-red-600">失败</span>}
                                             </div>
                                         </div>
                                     )
@@ -186,24 +186,24 @@ export default function ProcessingPage() {
                             {canPreview ? (
                                 <div className="text-center space-y-2">
                                     <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
-                                    <p className="font-medium text-emerald-600">Translation Completed!</p>
+                                    <p className="font-medium text-emerald-600">翻译已完成</p>
                                 </div>
                             ) : isFailed ? (
                                 <div className="text-center space-y-2">
                                     <AlertTriangle className="h-16 w-16 text-red-500 mx-auto" />
-                                    <p className="font-medium text-red-600">Translation Failed</p>
+                                    <p className="font-medium text-red-600">翻译失败</p>
                                     <p className="text-xs text-slate-500">{error || status}</p>
                                 </div>
                             ) : (
                                 <div className="text-center space-y-2">
                                     <RotateCw className="h-16 w-16 text-indigo-500 animate-spin mx-auto" />
                                     <p className="text-sm font-medium text-foreground">{subStage}</p>
-                                    <p className="text-xs text-slate-400 capitalize">{normalizedStatus === 'processing' && isValidating ? 'validating results' : normalizedStatus}</p>
+                                    <p className="text-xs text-slate-400 capitalize">{normalizedStatus === 'processing' && isValidating ? '正在校验结果' : normalizedStatus}</p>
                                     {logs.length > 0 && logs[logs.length - 1]?.includes("rate limited") && (
                                         <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 animate-pulse">
                                             <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
                                             <p className="text-xs text-amber-500 dark:text-amber-400 text-left">
-                                                API rate limited, retrying until API recovers. Consider using your own API key for better performance.
+                                                API 速率受限，正在自动重试。建议配置自定义 API Key 以提升稳定性。
                                             </p>
                                         </div>
                                     )}
@@ -217,7 +217,7 @@ export default function ProcessingPage() {
                 <div className="lg:col-span-2">
                     <Card className="h-full flex flex-col">
                         <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Live Logs</CardTitle>
+                            <CardTitle>实时日志</CardTitle>
                             <div className="flex gap-2">
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Code className="h-4 w-4" /></Button>
                             </div>

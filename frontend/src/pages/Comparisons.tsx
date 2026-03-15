@@ -44,7 +44,7 @@ export default function ComparisonsPage() {
             return (
                 <div className="flex flex-col items-center justify-center h-full bg-slate-100 dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg m-4 min-h-[600px]">
                     <p className="text-muted-foreground font-medium mb-2">{title}</p>
-                    <p className="text-slate-400 text-sm">No Document Available</p>
+                    <p className="text-slate-400 text-sm">暂无可用文档</p>
                 </div>
             )
         }
@@ -64,10 +64,10 @@ export default function ComparisonsPage() {
             <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded-md shadow-sm border">
                 <div className="flex items-center space-x-2">
                     <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v as any)}>
-                        <ToggleGroupItem value="split" aria-label="Split View">
+                        <ToggleGroupItem value="split" aria-label="分栏视图">
                             <Columns className="h-4 w-4" />
                         </ToggleGroupItem>
-                        <ToggleGroupItem value="single" aria-label="Single View">
+                        <ToggleGroupItem value="single" aria-label="单栏视图">
                             <Smartphone className="h-4 w-4" />
                         </ToggleGroupItem>
                     </ToggleGroup>
@@ -78,10 +78,10 @@ export default function ComparisonsPage() {
                 <div className="flex items-center space-x-2">
                     <TerminologyTable taskId={taskId} />
                     <Button variant="default" size="sm" className="ml-2" onClick={handleDownload} disabled={!downloadUrl}>
-                        <Download className="mr-2 h-4 w-4" /> Download PDF
+                        <Download className="mr-2 h-4 w-4" /> 下载 PDF
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleNewTranslation}>
-                        <Plus className="mr-2 h-4 w-4" /> New Translation
+                        <Plus className="mr-2 h-4 w-4" /> 新建翻译
                     </Button>
                 </div>
             </div>
@@ -92,19 +92,19 @@ export default function ComparisonsPage() {
                     <ResizablePanelGroup orientation="horizontal">
                         <ResizablePanel defaultSize={50} minSize={30}>
                             <div className="h-full overflow-hidden flex justify-center">
-                                <PDFViewer url={sourceUrl} title="Source PDF (Original)" />
+                                <PDFViewer url={sourceUrl} title="原文 PDF（源文档）" />
                             </div>
                         </ResizablePanel>
                         <ResizableHandle withHandle />
                         <ResizablePanel defaultSize={50} minSize={30}>
                             <div className="h-full overflow-hidden flex justify-center bg-white dark:bg-zinc-900">
-                                <PDFViewer url={previewUrl} title="Target PDF (Translated)" />
+                                <PDFViewer url={previewUrl} title="译文 PDF（翻译结果）" />
                             </div>
                         </ResizablePanel>
                     </ResizablePanelGroup>
                 ) : (
                     <div className="h-full overflow-hidden flex justify-center bg-white dark:bg-zinc-900">
-                        <PDFViewer url={previewUrl} title="Target PDF (Translated)" />
+                        <PDFViewer url={previewUrl} title="译文 PDF（翻译结果）" />
                     </div>
                 )}
             </div>

@@ -78,7 +78,7 @@ export default function SettingsPage() {
             )
 
             if (!response.ok) {
-                throw new Error('Failed to fetch settings')
+                throw new Error('获取设置失败')
             }
 
             const data: UserSettings = await response.json()
@@ -148,7 +148,7 @@ export default function SettingsPage() {
             )
 
             if (!response.ok) {
-                throw new Error('Failed to save settings')
+                throw new Error('保存设置失败')
             }
 
             const data: UserSettings = await response.json()
@@ -263,13 +263,13 @@ export default function SettingsPage() {
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="en">English</SelectItem>
+                                            <SelectItem value="en">英语</SelectItem>
                                             <SelectItem value="zh">中文</SelectItem>
                                             <SelectItem value="ja">日本語</SelectItem>
                                             <SelectItem value="ko">한국어</SelectItem>
-                                            <SelectItem value="de">Deutsch</SelectItem>
-                                            <SelectItem value="fr">Français</SelectItem>
-                                            <SelectItem value="es">Español</SelectItem>
+                                            <SelectItem value="de">德语</SelectItem>
+                                            <SelectItem value="fr">法语</SelectItem>
+                                            <SelectItem value="es">西班牙语</SelectItem>
                                             <SelectItem value="ru">Русский</SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -285,12 +285,12 @@ export default function SettingsPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="zh">中文</SelectItem>
-                                            <SelectItem value="en">English</SelectItem>
+                                            <SelectItem value="en">英语</SelectItem>
                                             <SelectItem value="ja">日本語</SelectItem>
                                             <SelectItem value="ko">한국어</SelectItem>
-                                            <SelectItem value="de">Deutsch</SelectItem>
-                                            <SelectItem value="fr">Français</SelectItem>
-                                            <SelectItem value="es">Español</SelectItem>
+                                            <SelectItem value="de">德语</SelectItem>
+                                            <SelectItem value="fr">法语</SelectItem>
+                                            <SelectItem value="es">西班牙语</SelectItem>
                                             <SelectItem value="ru">Русский</SelectItem>
                                         </SelectContent>
                                     </Select>

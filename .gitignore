@@ -59,4 +59,6 @@ test_output.txt
 .agent/
 openspec/daily_report
 
-latextrans-runtime-texlive2025.tar
+
+backend_data_backup.tar.gz
+deployment_data/

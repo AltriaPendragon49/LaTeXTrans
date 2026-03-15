@@ -15,7 +15,6 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar"
 
-// Menu items.
 const items = [
     {
         title: "新建翻译",
@@ -47,14 +46,14 @@ export function AppSidebar() {
                 <div className="px-2 py-4">
                     {state === "expanded" && (
                         <h1 className="text-xl font-bold bg-linear-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent transition-all duration-200">
-                            LaTeXTrans 🚀
+                            LaTeXTrans
                         </h1>
                     )}
                 </div>
             </SidebarHeader>
             <SidebarContent>
                 <SidebarGroup>
-                    <SidebarGroupLabel>Menu</SidebarGroupLabel>
+                    <SidebarGroupLabel>菜单</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu>
                             {items.map((item) => (
@@ -77,7 +76,7 @@ export function AppSidebar() {
                         <SidebarMenuButton asChild>
                             <Link to="/profile">
                                 <User />
-                                <span>个人配置</span>
+                                <span>个人中心</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>

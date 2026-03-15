@@ -127,7 +127,7 @@ export default function HistoryPage() {
             )
 
             if (!response.ok) {
-                throw new Error('Failed to fetch history')
+                throw new Error('获取历史记录失败')
             }
 
             const data: HistoryResponse = await response.json()
