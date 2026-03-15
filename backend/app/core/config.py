@@ -176,11 +176,16 @@ class Settings(BaseSettings):
         description="DB threaded execution strategy: per_call_client|shared_client"
     )
 
-    # Compile-first structural fallback controls (gray rollout)
+    # Compile-first structural fallback controls (deprecated runtime semantics)
     enable_compile_first_structural_fallback: bool = Field(
-        default=False,
+        default=True,
         env="ENABLE_COMPILE_FIRST_STRUCTURAL_FALLBACK",
-        description="Enable deterministic compile-first fallback for structurally broken translated parts"
+        description="Deprecated compatibility flag. Structural candidates are no longer rolled back during validation."
+    )
+    enable_post_compile_target_language_fallback: bool = Field(
+        default=True,
+        env="ENABLE_POST_COMPILE_TARGET_LANGUAGE_FALLBACK",
+        description="Enable deterministic target-language fallback after an initial compile failure."
     )
     structural_fallback_ratio_cap: float = Field(
         default=0.38,

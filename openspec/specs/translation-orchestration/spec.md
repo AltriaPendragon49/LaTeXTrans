@@ -36,22 +36,12 @@ The validation agent SHALL subclassify structural (Type C) errors to differentia
 - **AND** the system MUST bypass the LLM retry loop entirely, proceeding directly to deterministic repair or fallback.
 
 ### Requirement: Deterministic LaTeX Structural Repair
-The repair strategy MUST rely on deterministic rules rather than context-dependent guessing across translated text, and restrict structural fallback scope.
+The repair strategy MUST rely on deterministic rules rather than context-dependent guessing across translated text, and structural fallback candidates MUST preserve target-language content until compilation proves they are unsafe.
 
-#### Scenario: Bare Underscore Escape Repair
-- **WHEN** a bare `_` character is detected outside of math boundaries in the translated output
-- **THEN** the parsing/repair logic MUST unconditionally escape it to `\_`
-- **AND** MUST NOT attempt to guess semantic math boundaries around it.
-
-#### Scenario: Conditional Math Delimiter Insertion
-- **WHEN** considering `$...$` insertion for mathematical residue
-- **THEN** the system MUST only insert math delimiters if explicit, unambiguous math signals are adjacent (e.g., `^`, `\frac`, `\sum`, or known placeholder fragments)
-- **AND** MUST NEVER arbitrarily expand across unknown Unicode or CJK text boundaries.
-
-#### Scenario: Limited Fallback Granularity
-- **WHEN** an uncorrectable structural failure mandates original-text fallback
-- **THEN** the system MUST limit this fallback to the specific isolated chunk or paragraph containing the error
-- **AND** MUST NOT blanketly revert the entire section or document unless global layout instability dictates otherwise.
+#### Scenario: Limited fallback granularity after compile failure
+- **WHEN** an uncorrectable structural failure mandates fallback handling
+- **THEN** the system MUST limit this handling to the specific isolated chunk or environment containing the error
+- **AND** MUST NOT blanketly revert an entire section or document unless the structure guard already rejected the bundle globally.
 
 ### Requirement: State-Machine Orchestration and Agent Scope
 The system SHALL orchestrate parsing, translation, validation, and compilation exclusively through a LangGraph StateMachine.
@@ -223,11 +213,17 @@ All structural-risk translation requests MUST use one freeze/restore LLM entrypo
 4. And direct raw client invocation outside that entrypoint MUST NOT occur.
 
 ### Requirement: C1/C2 Routing Without Speculative Injection
-C1/C2 orchestration MUST retain existing retry/fallback semantics while prohibiting speculative structure-token injection.
+C1/C2 orchestration MUST retain existing retry and deterministic repair semantics while prohibiting speculative structure-token injection and validate-stage source rollback.
 
-#### Scenario: C2 structural error handling
-1. Given a part classified as C2
-2. When error routing executes
-3. Then the system MUST skip speculative repair injection
-4. And MUST go directly to existing compile-first fallback semantics.
+#### Scenario: C2 structural error is recorded but translation is preserved
+- **WHEN** the validator classifies a section or environment as `C2`
+- **THEN** the system MUST record that unit as a post-compile fallback candidate
+- **AND** MUST NOT overwrite `trans_content` with source text during validation
+- **AND** the first compilation attempt MUST use the preserved target-language text.
+
+#### Scenario: Compile succeeds despite recorded structural risk
+- **WHEN** a section or environment is recorded as a structural fallback candidate
+- **AND** the first compilation attempt succeeds
+- **THEN** the system MUST retain the target-language translation
+- **AND** MUST NOT execute deterministic target-language downgrade for that unit.
 

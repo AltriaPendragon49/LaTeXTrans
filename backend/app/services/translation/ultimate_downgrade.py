@@ -164,7 +164,8 @@ def ultimate_downgrade_segment(
     - Exempt: verbatim/code environments are returned as-is.
 
     Args:
-        translated_text: The (possibly structurally broken) translated text.
+    translated_text: The last target-language text for the unit. This renderer
+        must not be fed the source-language snapshot as a replacement strategy.
         fallback_report: Optional context for logging. Not used for logic.
 
     Returns:
@@ -178,7 +179,7 @@ def ultimate_downgrade_segment(
     if _is_verbatim_segment(translated_text):
         return translated_text
 
-    # Step 1: Extract natural language (strip structural LaTeX)
+    # Step 1: Extract natural language from the target-language text only.
     natural = _extract_natural_language(translated_text)
 
     if not natural.strip():

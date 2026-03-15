@@ -68,6 +68,7 @@ class TranslatorAgent(BaseToolAgent):
     STATUS_TRANSLATED = "translated"
     STATUS_TRANSLATED_AFTER_NOOP_RETRY = "translated_after_noop_retry"
     STATUS_FALLBACK_SOURCE_COMPILE_FIRST = "fallback_source_compile_first"
+    STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE = "structural_fallback_pending_compile"
     STATUS_FALLBACK_SOURCE_API_FAILURE = "fallback_source_api_failure"
     STATUS_SOURCE_PASS_THROUGH = "source_pass_through"
     STATUS_MATH_PRESERVED = "math_preserved"
@@ -125,6 +126,10 @@ class TranslatorAgent(BaseToolAgent):
         self.enable_compile_first_structural_fallback = self._coerce_bool(
             config.get("enable_compile_first_structural_fallback", False),
             default=False,
+        )
+        self.enable_post_compile_target_language_fallback = self._coerce_bool(
+            config.get("enable_post_compile_target_language_fallback", True),
+            default=True,
         )
         self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
         self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
@@ -986,12 +991,6 @@ class TranslatorAgent(BaseToolAgent):
             )
             logger.warning(self.structural_fallback_warning)
 
-        if (not self.enable_compile_first_structural_fallback) and self.structural_fallback_candidate_count > 0:
-            logger.info(
-                "Compile-first fallback disabled: %d candidate part(s) detected",
-                self.structural_fallback_candidate_count,
-            )
-
     def _get_structural_validator(self) -> ValidatorAgent:
         if self._structural_validator is None:
             self._structural_validator = ValidatorAgent(
@@ -1035,29 +1034,12 @@ class TranslatorAgent(BaseToolAgent):
         )
 
     def _apply_compile_first_fallback(self, part: Dict, error: Dict, recheck_report: Optional[Dict] = None) -> bool:
-        """Fallback to source text for a part when structural fix remains unsafe."""
+        """Mark a part for post-compile target-language fallback when structural fix remains unsafe."""
         self.structural_fallback_candidate_count += 1
         identifier = error.get("num_or_ph", "?")
         reason = self._summarize_structural_errors(recheck_report or error)
 
-        if not self.enable_compile_first_structural_fallback:
-            logger.warning(
-                "Compile-first fallback candidate detected but disabled for part %s: %s",
-                identifier,
-                reason,
-            )
-            return False
-
         projected_ratio = (self.structural_fallback_count + 1) / max(self.structural_fallback_denominator, 1)
-        if self.structural_fallback_cap_mode == "hard" and projected_ratio > self.structural_fallback_cap:
-            self.structural_fallback_warning = (
-                f"Compile-first fallback hard cap reached at part {identifier}: "
-                f"{projected_ratio:.2%} > {self.structural_fallback_cap:.2%}"
-            )
-            logger.warning(self.structural_fallback_warning)
-            return False
-
-        part["trans_content"] = part.get("content", "")
         self.structural_fallback_count += 1
         if identifier not in self.structural_fallback_parts:
             self.structural_fallback_parts.append(identifier)
@@ -1068,7 +1050,7 @@ class TranslatorAgent(BaseToolAgent):
             fallback_reason = f"compile_first_structural_fallback:{err_type}_{reason_tag}"
             self._update_section_metadata(
                 part,
-                status=self.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+                status=self.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
                 fallback_reason=fallback_reason,
             )
         elif "env_name" in part:
@@ -1076,21 +1058,21 @@ class TranslatorAgent(BaseToolAgent):
             fallback_reason = f"compile_first_structural_fallback:{err_type}_{reason}"
             self._update_env_metadata(
                 part,
-                status=self.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+                status=self.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
                 fallback_reason=fallback_reason,
                 fallback_subtype=self._infer_env_fallback_subtype(part),
             )
 
         logger.warning(
-            "Compile-first fallback applied for part %s (reason: %s)",
+            "Post-compile fallback candidate recorded for part %s (reason: %s)",
             identifier,
             reason,
         )
 
-        if projected_ratio > self.structural_fallback_cap and self.structural_fallback_cap_mode == "soft":
+        if projected_ratio > self.structural_fallback_cap:
             self.structural_fallback_warning = (
                 f"Compile-first structural fallback ratio {projected_ratio:.2%} "
-                f"exceeds cap {self.structural_fallback_cap:.2%} (soft mode)"
+                f"exceeds cap {self.structural_fallback_cap:.2%} (mode={self.structural_fallback_cap_mode})"
             )
             logger.warning(self.structural_fallback_warning)
 

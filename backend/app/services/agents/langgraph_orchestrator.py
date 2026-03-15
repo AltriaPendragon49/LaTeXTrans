@@ -59,6 +59,11 @@ MAX_VALIDATE_RETRIES: int = 3
 # eliminate-silent-fallback：修复节点最大重试次数
 MAX_REPAIR_RETRIES: int = 3
 
+COMPILE_FALLBACK_PENDING_STATUSES = {
+    TranslatorAgent.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+}
+
 # ---------------------------------------------------------------------------
 # State Schema
 # ---------------------------------------------------------------------------
@@ -82,7 +87,9 @@ class PipelineState(TypedDict, total=False):
 
     # eliminate-silent-fallback：FallbackReport 列表 + 修复轮次计数
     fallback_reports: List[Any]      # List[FallbackReport]
+    compile_fallback_reports: List[Any]
     repair_retry_count: int          # 当前已完成修复轮次
+    post_compile_fallback_attempted: bool
 
     # 输出字段
     final_result: Dict[str, Any]
@@ -343,7 +350,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                 fallback_sections = [
                     s
                     for s in normal_sections
-                    if s.get("translation_status") == "fallback_source_compile_first"
+                    if s.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
                 ]
                 fallback_sections_translatable = [
                     s for s in fallback_sections if not _has_level_a_env(s.get("content") or "")
@@ -357,7 +364,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                 env_fallbacks = [
                     e
                     for e in envs
-                    if e.get("translation_status") == "fallback_source_compile_first"
+                    if e.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
                 ]
                 fallback_count_env_math = sum(
                     1 for e in env_fallbacks if e.get("fallback_subtype") == "math_env_fallback"
@@ -423,17 +430,18 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
 
     # eliminate-silent-fallback: collect FallbackReport list from translator + sections_map
     collected_fallback_reports: List[Any] = []
+    compile_fallback_reports: List[Any] = []
     try:
         # 1. From translator_agent (oversize downgrade reports)
         agent_reports = list(getattr(translator_agent, "fallback_reports", []) or [])
         collected_fallback_reports.extend(agent_reports)
 
-        # 2. From sections_map: C2 structural fallback sections
+        # 2. From sections_map: structural fallback candidates
         sections_path = Path(transed_project_dir) / "sections_map.json"
         if sections_path.exists():
             _secs = json.loads(sections_path.read_text(encoding="utf-8"))
             for _s in _secs:
-                if _s.get("translation_status") == "fallback_source_compile_first":
+                if _s.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES:
                     try:
                         _rpt = FallbackReport(
                             fallback_kind="c2_structural_collapse",
@@ -446,16 +454,17 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                             translated_text=_s.get("trans_content"),
                         )
                         collected_fallback_reports.append(_rpt)
+                        compile_fallback_reports.append(_rpt)
                     except Exception as _rpt_exc:
                         logger.warning("Failed to build FallbackReport for section %s: %s",
                                        _s.get("section"), _rpt_exc)
 
-        # 3. From envs_map: C2 structural fallback envs
+        # 3. From envs_map: structural fallback candidates
         envs_path = Path(transed_project_dir) / "envs_map.json"
         if envs_path.exists():
             _envs = json.loads(envs_path.read_text(encoding="utf-8"))
             for _e in _envs:
-                if _e.get("translation_status") == "fallback_source_compile_first":
+                if _e.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES:
                     try:
                         _subtype = _e.get("fallback_subtype", "")
                         _rpt = FallbackReport(
@@ -470,6 +479,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                             translated_text=_e.get("trans_content"),
                         )
                         collected_fallback_reports.append(_rpt)
+                        compile_fallback_reports.append(_rpt)
                     except Exception as _rpt_exc:
                         logger.warning("Failed to build FallbackReport for env %s: %s",
                                        _e.get("placeholder"), _rpt_exc)
@@ -486,8 +496,12 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
     except Exception as _fr_collect_exc:
         logger.warning("Failed to collect FallbackReports: %s", _fr_collect_exc)
 
-    return {**state, "validation_warning": validation_warning,
-            "fallback_reports": collected_fallback_reports}
+    return {
+        **state,
+        "validation_warning": validation_warning,
+        "fallback_reports": collected_fallback_reports,
+        "compile_fallback_reports": compile_fallback_reports,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -777,6 +791,13 @@ def _route_after_generate(state: PipelineState) -> str:
     result = state.get("generation_result") or {}
     if result.get("status") == "structure_invalid":
         return "abort_structure_invalid"
+    if (
+        not result.get("pdf_path")
+        and bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
+        and (state.get("compile_fallback_reports") or [])
+        and not bool(state.get("post_compile_fallback_attempted"))
+    ):
+        return "post_compile_target_language_fallback"
     return "finalize"
 
 
@@ -798,8 +819,132 @@ def _route_after_validate(state: PipelineState) -> str:
         if repair_retry_count < MAX_REPAIR_RETRIES:
             return "repair_translation"
         else:
-            return "ultimate_downgrade"
+            return "generate"
     return "generate"
+
+
+async def node_post_compile_target_language_fallback(state: PipelineState) -> PipelineState:
+    """Apply deterministic target-language fallback after the first compile failure."""
+    transed_project_dir = state["transed_project_dir"]
+    task_id = state.get("task_id", state.get("base_name", ""))
+    compile_fallback_reports = list(state.get("compile_fallback_reports") or [])
+    _write_audit_log(
+        transed_project_dir,
+        task_id,
+        "node_enter:post_compile_target_language_fallback",
+        {"fallback_count": len(compile_fallback_reports)},
+    )
+    _write_task_log(
+        transed_project_dir,
+        "post_compile_target_language_fallback_started",
+        {"fallback_count": len(compile_fallback_reports)},
+    )
+    _t0 = time.monotonic()
+    _update_progress(state, 83, "Applying post-compile target-language fallback")
+
+    applied_sections = 0
+    applied_envs = 0
+    failed_sections = 0
+    failed_envs = 0
+
+    try:
+        from backend.app.services.translation.ultimate_downgrade import ultimate_downgrade_segment
+
+        sections_path = Path(transed_project_dir) / "sections_map.json"
+        envs_path = Path(transed_project_dir) / "envs_map.json"
+        sections = json.loads(sections_path.read_text(encoding="utf-8")) if sections_path.exists() else []
+        envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
+
+        report_by_scope = {str(r.chunk_scope): r for r in compile_fallback_reports}
+
+        for sec in sections:
+            scope_key = str(sec.get("section", ""))
+            if (
+                scope_key in report_by_scope
+                and sec.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
+            ):
+                current_target_text = sec.get("trans_content") or ""
+                if current_target_text.strip():
+                    sec["trans_content"] = ultimate_downgrade_segment(
+                        current_target_text,
+                        report_by_scope.get(scope_key),
+                    )
+                    sec["translation_status"] = "final_target_language_fallback_applied"
+                    applied_sections += 1
+                else:
+                    sec["translation_status"] = "final_target_language_fallback_failed"
+                    failed_sections += 1
+
+        for env in envs:
+            scope_key = str(env.get("placeholder", ""))
+            if (
+                scope_key in report_by_scope
+                and env.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
+            ):
+                current_target_text = env.get("trans_content") or ""
+                if current_target_text.strip():
+                    env["trans_content"] = ultimate_downgrade_segment(
+                        current_target_text,
+                        report_by_scope.get(scope_key),
+                    )
+                    env["translation_status"] = "final_target_language_fallback_applied"
+                    applied_envs += 1
+                else:
+                    env["translation_status"] = "final_target_language_fallback_failed"
+                    failed_envs += 1
+
+        if sections_path.exists():
+            sections_path.write_text(json.dumps(sections, ensure_ascii=False, indent=2), encoding="utf-8")
+        if envs_path.exists():
+            envs_path.write_text(json.dumps(envs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        _write_task_log(
+            transed_project_dir,
+            "post_compile_target_language_fallback_completed",
+            {
+                "applied_sections": applied_sections,
+                "applied_envs": applied_envs,
+                "failed_sections": failed_sections,
+                "failed_envs": failed_envs,
+            },
+        )
+        _write_task_log(
+            transed_project_dir,
+            "compile_retry_after_target_language_fallback",
+            {
+                "applied_sections": applied_sections,
+                "applied_envs": applied_envs,
+                "failed_sections": failed_sections,
+                "failed_envs": failed_envs,
+            },
+        )
+        _write_audit_log(
+            transed_project_dir,
+            task_id,
+            "node_exit:post_compile_target_language_fallback",
+            {
+                "status": "ok",
+                "elapsed_ms": (time.monotonic() - _t0) * 1000,
+                "applied_sections": applied_sections,
+                "applied_envs": applied_envs,
+                "failed_sections": failed_sections,
+                "failed_envs": failed_envs,
+            },
+        )
+    except Exception as e:
+        logger.warning("node_post_compile_target_language_fallback failed (non-fatal): %s", e)
+        _write_audit_log(
+            transed_project_dir,
+            task_id,
+            "node_exit:post_compile_target_language_fallback",
+            {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000, "error": str(e)},
+        )
+
+    return {
+        **state,
+        "fallback_reports": [],
+        "post_compile_fallback_attempted": True,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1014,11 +1159,11 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
     graph.add_node("translate", node_translate)
     graph.add_node("validate_and_retry", node_validate_and_retry)
     graph.add_node("generate", node_generate)
+    graph.add_node("post_compile_target_language_fallback", node_post_compile_target_language_fallback)
     graph.add_node("abort_structure_invalid", node_abort_structure_invalid)
     graph.add_node("finalize", node_finalize)
-    # eliminate-silent-fallback: repair loop + ultimate downgrade nodes
+    # eliminate-silent-fallback: repair loop node
     graph.add_node("repair_translation", node_repair_translation)
-    graph.add_node("ultimate_downgrade", node_ultimate_downgrade)
 
     graph.set_entry_point("parse")
     graph.add_edge("parse", "translate")
@@ -1030,18 +1175,17 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
         {
             "generate": "generate",
             "repair_translation": "repair_translation",
-            "ultimate_downgrade": "ultimate_downgrade",
         },
     )
     # repair loops back to validate for re-evaluation
     graph.add_edge("repair_translation", "validate_and_retry")
-    # ultimate downgrade proceeds directly to generate
-    graph.add_edge("ultimate_downgrade", "generate")
+    graph.add_edge("post_compile_target_language_fallback", "generate")
     graph.add_conditional_edges(
         "generate",
         _route_after_generate,
         {
             "abort_structure_invalid": "abort_structure_invalid",
+            "post_compile_target_language_fallback": "post_compile_target_language_fallback",
             "finalize": "finalize",
         },
     )
@@ -1118,7 +1262,9 @@ async def run_pipeline(
         "diagnostic_report": None,
         # eliminate-silent-fallback: repair loop state
         "fallback_reports": [],
+        "compile_fallback_reports": [],
         "repair_retry_count": 0,
+        "post_compile_fallback_attempted": False,
         "final_result": {
             "status": "failed",
             "pdf_path": None,

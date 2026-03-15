@@ -100,12 +100,12 @@ All Phase 2 repair attempts MUST be subjected to strict verifiable checks agains
 - **THEN** the system immediately delegates the env to Phase 3 (deterministic downgrade)
 
 ### Requirement: FallbackReport Emission and Routing
-The system MUST emit a structured FallbackReport whenever a text segment is rolled back to the source language or subjected to an oversize downgrade. When a FallbackReport is present in the pipeline state, the orchestrator MUST route the segment to the targeted repair sub-graph instead of immediately proceeding to final PDF generation or source pass-through.
+The system MUST emit a structured `FallbackReport` whenever a text segment is marked for structural fallback consideration or subjected to oversize downgrade. When a structural `FallbackReport` is present, the orchestrator MUST route it through repair and compile-aware fallback handling instead of immediately rolling the text back to the source language.
 
-#### Scenario: Intercepting a Validated Error
-- **Given** a translation chunk has failed structural validation
-- **When** the ValidatorAgent emits a FallbackReport for this chunk
-- **Then** the langgraph_orchestrator routes the chunk to the targeted repair nodes rather than triggering silent rollback.
+#### Scenario: Repair exhausted but compile not yet attempted
+- **WHEN** all repair budget for a structural fallback candidate is exhausted
+- **THEN** the system MUST perform the first PDF compilation attempt before any deterministic downgrade
+- **AND** MUST NOT immediately render the unit with the deterministic downgrade renderer.
 
 ### Requirement: TranslationRepairAgent Bounds and StructureRepairNode Determinism
 The TranslationRepairAgent MUST operate under strict bounds: preserving placeholders, preserving protected tokens, and rejecting the introduction of any new macros. The StructureRepairNode MUST use deterministic, non-LLM logic to correct bracket and environment mismatches, rejecting repairs if safety constraints fail.
@@ -116,10 +116,18 @@ The TranslationRepairAgent MUST operate under strict bounds: preserving placehol
 - **Then** it deterministically closes the brace if feasible, or rejects the repair if the closure scope is ambiguous.
 
 ### Requirement: Deterministic Ultimate Downgrade Renderer
-If all targeted repair attempts fail or retry budgets are exhausted, the system MUST apply a deterministic ultimate downgrade renderer backfilled with target language text. The renderer MUST deterministically escape all LaTeX special characters ($ \ % # & { } _ ^ ~) and isolate the readable language into a minimal compilation-safe container. Code blocks and verbatim environments are explicitly excluded.
+If the first compile attempt fails and structural fallback candidates remain, the system MUST apply a deterministic target-language downgrade renderer to those candidates, then perform at most one compile retry. The renderer input MUST be the last target-language text, not the source snapshot.
 
-#### Scenario: Final safety net triggered
-- **WHEN** all repair budgets are exhausted for a chunk
-- **THEN** the system MUST execute the deterministic renderer
-- **AND** the resulting string MUST be safe for TeX compilation regardless of original content errors.
+#### Scenario: Failed compilation triggers deterministic target-language downgrade
+- **WHEN** the first compilation attempt fails
+- **AND** one or more structural fallback candidates remain
+- **THEN** the system MUST apply the deterministic downgrade renderer to the candidate units
+- **AND** MUST pass the last target-language `trans_content` into the renderer
+- **AND** MUST perform exactly one compile retry.
+
+#### Scenario: Compile retry budget is exhausted
+- **WHEN** deterministic target-language downgrade has already been applied once
+- **AND** the subsequent compile retry still fails
+- **THEN** the system MUST return `failed_compilation`
+- **AND** MUST NOT start another downgrade or compile retry cycle.
 
