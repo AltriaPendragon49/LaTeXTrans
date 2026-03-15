@@ -178,7 +178,7 @@ class Settings(BaseSettings):
 
     # Compile-first structural fallback controls (gray rollout)
     enable_compile_first_structural_fallback: bool = Field(
-        default=True,
+        default=False,
         env="ENABLE_COMPILE_FIRST_STRUCTURAL_FALLBACK",
         description="Enable deterministic compile-first fallback for structurally broken translated parts"
     )
