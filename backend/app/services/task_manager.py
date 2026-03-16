@@ -19,12 +19,17 @@ import shutil
 import json
 import re
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Union, List
 from backend.app.core.config import TaskStatus, CompilationStage, get_settings
 from backend.app.core.supabase_client import get_supabase_admin_client
 from backend.app.core.timezone_utils import get_cst_now, get_cst_now_iso
+from backend.app.services.task_detail import (
+    infer_task_detail,
+    normalize_detail_params,
+    normalize_stage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +206,8 @@ class TaskManager:
                 "progress": 0,
                 "stage": CompilationStage.IDLE.value,
                 "message": "Task created",
+                "detail_code": "task_waiting",
+                "detail_params": None,
                 "error": None,
                 "warnings": None,
                 "failure_reason_code": None,
@@ -248,6 +255,8 @@ class TaskManager:
         progress: Optional[int] = None,
         stage: Optional[str] = None,
         message: Optional[str] = None,
+        detail_code: Optional[str] = None,
+        detail_params: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
         warnings: Optional[str] = None,
         failure_reason_code: Optional[str] = None,
@@ -321,8 +330,9 @@ class TaskManager:
                 db_updates["progress"] = task["progress"]
             
             if stage is not None:
-                task["stage"] = stage
-                db_updates["stage"] = stage
+                normalized_stage = normalize_stage(stage)
+                task["stage"] = normalized_stage
+                db_updates["stage"] = normalized_stage
             
             if message is not None:
                 task["message"] = message
@@ -404,6 +414,37 @@ class TaskManager:
                 task["compile_engine"] = compile_engine
             if compile_started_at is not None:
                 task["compile_started_at"] = compile_started_at
+
+            should_refresh_detail = any(
+                value is not None
+                for value in (
+                    status,
+                    progress,
+                    stage,
+                    message,
+                    warnings,
+                    detail_code,
+                    detail_params,
+                )
+            )
+            if should_refresh_detail:
+                resolved_detail_code = detail_code
+                resolved_detail_params = normalize_detail_params(detail_params)
+
+                if resolved_detail_code is None:
+                    resolved_detail_code, resolved_detail_params = infer_task_detail(
+                        status=task.get("status"),
+                        stage=task.get("stage"),
+                        message=task.get("message"),
+                        progress=task.get("progress"),
+                        warnings=task.get("warnings"),
+                    )
+                    resolved_detail_params = normalize_detail_params(resolved_detail_params)
+
+                task["detail_code"] = resolved_detail_code
+                task["detail_params"] = resolved_detail_params
+                db_updates["detail_code"] = resolved_detail_code
+                db_updates["detail_params"] = resolved_detail_params
             
             # Get user_id from task if not provided
             if user_id is None:
@@ -549,7 +590,7 @@ class TaskManager:
 
         dest_dir = failed_root / task_id
         if dest_dir.exists():
-            suffix = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            suffix = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
             dest_dir = failed_root / f"{task_id}_{suffix}"
 
         shutil.move(str(source_dir), str(dest_dir))
@@ -1266,6 +1307,8 @@ class TaskManager:
                 "status": TaskStatus.PENDING.value,
                 "progress": 0,
                 "stage": CompilationStage.IDLE.value,
+                "detail_code": "task_waiting",
+                "detail_params": None,
             }
             
             # Extract advanced config fields if available
@@ -1364,10 +1407,12 @@ class TaskManager:
                     "progress": db_task.get("progress", 100),
                     "stage": db_task.get("stage", "done"),
                     "message": db_task.get("message", "Task completed"),
+                    "detail_code": db_task.get("detail_code"),
+                    "detail_params": db_task.get("detail_params"),
                     "error": db_task.get("error"),
                     "warnings": None,
                     "source_available": True,
-                    "created_at": db_task.get("created_at", datetime.utcnow().isoformat()),
+                    "created_at": db_task.get("created_at", datetime.now(timezone.utc).isoformat()),
                     "completed_at": db_task.get("completed_at"),
                     "source_type": db_task.get("source_type", "arxiv"),
                     "source_path": db_task.get("source_path"),
@@ -1428,6 +1473,8 @@ class TaskManager:
                     "progress": 100,
                     "stage": CompilationStage.DONE.value,
                     "message": "Task recovered from filesystem",
+                    "detail_code": "compile_complete",
+                    "detail_params": None,
                     "error": None,
                     "warnings": None,
                     "source_available": True,
@@ -1565,14 +1612,14 @@ class GuestTaskTracker:
         from backend.app.core.config import get_settings
         if ttl_hours is None:
             ttl_hours = get_settings().guest_task_ttl_hours
-        expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
         with self._lock:
             self._guest_tasks[task_id] = expires_at
         logger.debug(f"[GuestTracker] Registered guest task {task_id}, expires at {expires_at}")
 
     def get_expired_task_ids(self) -> List[str]:
         """Return list of expired guest task IDs."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._lock:
             return [tid for tid, exp in self._guest_tasks.items() if exp <= now]
 
@@ -1670,6 +1717,7 @@ class TaskQueue:
             task_id=task_id,
             status=TaskStatus.QUEUED.value,
             message="Task queued, waiting for available slot",
+            detail_code="task_queued",
             user_id=user_id,
         )
 

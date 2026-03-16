@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Mail, Lock, AlertCircle, KeySquare } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 type AuthMode = 'login' | 'register'
 
@@ -29,6 +30,7 @@ export default function Login() {
     const navigate = useNavigate()
     const location = useLocation()
     const { signIn, signUp, verifyOtp, error, clearError, isSupabaseAvailable, loading: authLoading } = useAuth()
+    const { t } = useTranslation()
 
     const [mode, setMode] = useState<AuthMode>('login')
     const [email, setEmail] = useState('')
@@ -73,7 +75,7 @@ export default function Login() {
     // OTP: verify token
     const handleOtpVerify = async () => {
         if (otpValue.length !== 8) {
-            setOtpError('请输入完整的 8 位验证码')
+            setOtpError(t('auth.enter_the_full_8_digit_verification_code'))
             return
         }
         setOtpError(null)
@@ -83,7 +85,7 @@ export default function Login() {
             if (!verifyError) {
                 navigate(from, { replace: true })
             } else {
-                setOtpError('验证码错误或已过期，请重新尝试')
+                setOtpError(t('auth.the_verification_code_is_incorrect_or_expired_please_try_again'))
                 setOtpValue('')
                 otpInputRef.current?.focus()
             }
@@ -110,27 +112,27 @@ export default function Login() {
         setLocalError(null)
 
         if (!email.trim()) {
-            setLocalError('请输入邮箱地址')
+            setLocalError(t('auth.enter_your_email_address'))
             return false
         }
 
         if (!email.includes('@')) {
-            setLocalError('请输入有效的邮箱地址')
+            setLocalError(t('auth.enter_a_valid_email_address'))
             return false
         }
 
         if (!password) {
-            setLocalError('请输入密码')
+            setLocalError(t('auth.enter_your_password'))
             return false
         }
 
         if (password.length < 6) {
-            setLocalError('密码至少需要 6 个字符')
+            setLocalError(t('auth.password_must_be_at_least_6_characters'))
             return false
         }
 
         if (mode === 'register' && password !== confirmPassword) {
-            setLocalError('两次输入的密码不一致')
+            setLocalError(t('auth.the_passwords_do_not_match'))
             return false
         }
 
@@ -181,16 +183,16 @@ export default function Login() {
             <div className="container mx-auto max-w-md p-6 flex flex-col items-center justify-center min-h-[60vh]">
                 <Card className="w-full border-border/50 bg-card/80 backdrop-blur-sm shadow-xl">
                     <CardHeader className="text-center">
-                        <CardTitle className="text-2xl">认证服务未配置</CardTitle>
+                        <CardTitle className="text-2xl">{t('auth.authentication_service_unavailable')}</CardTitle>
                         <CardDescription>
-                            当前系统未配置 Supabase 认证服务，无法使用登录功能。
+                            {t('auth.supabase_authentication_is_not_configured_for_this_system_so_sign_in_is_unavailable')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <Alert variant="default" className="border-amber-500/30 bg-amber-500/10">
                             <AlertCircle className="h-4 w-4 text-amber-500" />
                             <AlertDescription className="text-amber-700 dark:text-amber-300">
-                                请在 .env 文件中设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY
+                                {t('auth.set_vite_supabase_url_and_vite_supabase_anon_key_in_your_env_file')}
                             </AlertDescription>
                         </Alert>
                     </CardContent>
@@ -200,7 +202,7 @@ export default function Login() {
                             variant="outline"
                             onClick={() => navigate('/')}
                         >
-                            返回首页（访客模式）
+                            {t('auth.actions.backToGuestHome')}
                         </Button>
                     </CardFooter>
                 </Card>
@@ -217,9 +219,9 @@ export default function Login() {
                         <div className="mx-auto p-3 rounded-full bg-primary/10 text-primary w-fit">
                             <KeySquare className="h-8 w-8" />
                         </div>
-                        <CardTitle className="text-2xl">输入验证码</CardTitle>
+                        <CardTitle className="text-2xl">{t('auth.enter_verification_code')}</CardTitle>
                         <CardDescription>
-                            已向 <span className="font-medium text-foreground">{email}</span> 发送了 8 位验证码，请查收邮件并输入。
+                            {t('auth.we_sent_an_8_digit_verification_code_to_check_your_email_and_enter_it', { email })}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-5">
@@ -276,7 +278,7 @@ export default function Login() {
                                     if (e.key === 'Enter' && otpValue.length === 8) handleOtpVerify()
                                 }}
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-text"
-                                aria-label="输入8位验证码"
+                                aria-label={t('auth.enter_8_digit_verification_code')}
                             />
                         </div>
 
@@ -289,14 +291,14 @@ export default function Login() {
                             {otpLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    验证中...
+                                    {t('auth.verifying')}
                                 </>
-                            ) : '确认验证码'}
+                            ) : t('auth.verify_code')}
                         </Button>
 
                         {/* Resend */}
                         <div className="text-center text-sm text-muted-foreground">
-                            没有收到验证码？{' '}
+                            {t('auth.didn_t_receive_the_code')}{' '}
                             <button
                                 type="button"
                                 onClick={handleResend}
@@ -304,8 +306,8 @@ export default function Login() {
                                 className="text-primary hover:underline font-medium disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed cursor-pointer transition-colors duration-150"
                             >
                                 {resendCountdown > 0
-                                    ? `重新发送 (${resendCountdown}s)`
-                                    : loading ? '发送中...' : '重新发送'}
+                                    ? t('auth.resend_s', { seconds: resendCountdown })
+                                    : loading ? t('auth.sending') : t('auth.actions.resendCode')}
                             </button>
                         </div>
                     </CardContent>
@@ -320,24 +322,13 @@ export default function Login() {
                                 setOtpError(null)
                             }}
                         >
-                            返回登录
+                            {t('auth.actions.backToSignIn')}
                         </Button>
                     </CardFooter>
                 </Card>
             </div>
         )
     }
-
-    {/* OTP error */ }
-    {
-        otpError && (
-            <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{otpError}</AlertDescription>
-            </Alert>
-        )
-    }
-
 
     // Loading state
     if (authLoading) {
@@ -348,17 +339,19 @@ export default function Login() {
         )
     }
 
+    const authErrorMessage = error ? t('auth.errors.requestFailed') : null
+
     return (
         <div className="container mx-auto max-w-md p-6 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in duration-500">
             <Card className="w-full border-border/50 bg-card/80 backdrop-blur-sm shadow-xl">
                 <CardHeader className="text-center">
                     <CardTitle className="text-2xl">
-                        {mode === 'login' ? '欢迎回来' : '创建账户'}
+                        {mode === 'login' ? t('auth.welcome_back') : t('auth.actions.createAccount')}
                     </CardTitle>
                     <CardDescription>
                         {mode === 'login'
-                            ? '登录以保存您的翻译历史和设置'
-                            : '注册账户以使用完整功能'
+                            ? t('auth.sign_in_to_save_your_translation_history_and_settings')
+                            : t('auth.create_an_account_to_use_all_features')
                         }
                     </CardDescription>
                 </CardHeader>
@@ -369,19 +362,19 @@ export default function Login() {
                         {(error || localError) && (
                             <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
                                 <AlertCircle className="h-4 w-4" />
-                                <AlertDescription>{error || localError}</AlertDescription>
+                                <AlertDescription>{authErrorMessage || localError}</AlertDescription>
                             </Alert>
                         )}
 
                         {/* Email field */}
                         <div className="space-y-2">
-                            <Label htmlFor="email">邮箱地址</Label>
+                            <Label htmlFor="email">{t('auth.labels.emailAddress')}</Label>
                             <div className="relative">
                                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     id="email"
                                     type="email"
-                                    placeholder="请输入邮箱地址"
+                                    placeholder={t('auth.enter_your_email_address')}
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="pl-10"
@@ -393,7 +386,7 @@ export default function Login() {
 
                         {/* Password field */}
                         <div className="space-y-2">
-                            <Label htmlFor="password">密码</Label>
+                            <Label htmlFor="password">{t('auth.labels.password')}</Label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -412,7 +405,7 @@ export default function Login() {
                         {/* Confirm password field (register only) */}
                         {mode === 'register' && (
                             <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                <Label htmlFor="confirmPassword">确认密码</Label>
+                                <Label htmlFor="confirmPassword">{t('auth.confirm_password')}</Label>
                                 <div className="relative">
                                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <Input
@@ -439,34 +432,34 @@ export default function Login() {
                             {loading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    {mode === 'login' ? '登录中...' : '注册中...'}
+                                    {mode === 'login' ? t('auth.signing_in') : t('auth.creating_account')}
                                 </>
                             ) : (
-                                mode === 'login' ? '登录' : '注册'
+                                mode === 'login' ? t('common.actions.signIn') : t('auth.actions.signUp')
                             )}
                         </Button>
 
                         <div className="text-center text-sm text-muted-foreground">
                             {mode === 'login' ? (
                                 <>
-                                    还没有账户？{' '}
+                                    {t('auth.don_t_have_an_account')}{' '}
                                     <button
                                         type="button"
                                         onClick={toggleMode}
                                         className="text-primary hover:underline font-medium cursor-pointer"
                                     >
-                                        立即注册
+                                        {t('auth.actions.signUpNow')}
                                     </button>
                                 </>
                             ) : (
                                 <>
-                                    已有账户？{' '}
+                                    {t('auth.already_have_an_account')}{' '}
                                     <button
                                         type="button"
                                         onClick={toggleMode}
                                         className="text-primary hover:underline font-medium cursor-pointer"
                                     >
-                                        返回登录
+                                        {t('auth.actions.backToSignIn')}
                                     </button>
                                 </>
                             )}
@@ -477,7 +470,7 @@ export default function Login() {
                                 <span className="w-full border-t border-border/50" />
                             </div>
                             <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-card px-2 text-muted-foreground">或</span>
+                                <span className="bg-card px-2 text-muted-foreground">{t('auth.or')}</span>
                             </div>
                         </div>
 
@@ -487,7 +480,7 @@ export default function Login() {
                             className="w-full"
                             onClick={() => navigate('/')}
                         >
-                            继续使用访客模式
+                            {t('auth.actions.continueInGuestMode')}
                         </Button>
                     </CardFooter>
                 </form>

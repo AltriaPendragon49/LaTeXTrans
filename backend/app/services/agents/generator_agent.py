@@ -103,6 +103,53 @@ class GeneratorAgent(BaseToolAgent):
             except Exception:
                 logger.debug("compile end callback failed", exc_info=True)
 
+    def _resolve_and_validate_compile_bundle(
+        self, transed_latex_dir: str
+    ) -> tuple[Optional[Path], Optional[Dict[str, Any]]]:
+        main_tex = find_main_tex_file(transed_latex_dir)
+        if not main_tex:
+            error_summary = f"No main .tex file found in {transed_latex_dir}"
+            logger.error(error_summary)
+            self.update_progress(100, "No main .tex file found")
+            return None, {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": error_summary,
+                "warnings": None,
+                "engine": None,
+                "error_count": 0,
+            }
+
+        self.update_progress(80, "Checking project structure...")
+        structure_result = validate_project_structure(str(main_tex))
+        if not structure_result.get("ok", False):
+            reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
+            message = str(structure_result.get("message") or "Structure guard rejected LaTeX bundle")
+            details = structure_result.get("details") or {}
+            replay_bundle_ref = self._write_structure_replay_bundle(
+                main_tex=str(main_tex),
+                reason_code=reason_code,
+                guard_phase="precompile",
+                message=message,
+                details=details if isinstance(details, dict) else None,
+            )
+            logger.error("Structure guard rejected compile bundle: %s (%s)", message, reason_code)
+            self.update_progress(100, "Structure guard rejected compile bundle")
+            return None, {
+                "status": "structure_invalid",
+                "pdf_path": None,
+                "error_summary": message,
+                "warnings": None,
+                "engine": None,
+                "error_count": 0,
+                "failure_reason_code": reason_code,
+                "failure_class": "structural",
+                "guard_phase": "precompile",
+                "replay_bundle_ref": replay_bundle_ref,
+            }
+
+        return Path(main_tex), None
+
     def execute(self) -> Dict[str, Any]:
         """
         Execute generation task: reconstruct LaTeX and compile to PDF
@@ -178,51 +225,11 @@ class GeneratorAgent(BaseToolAgent):
             else:
                 logger.warning("No main .tex file found; formatting config not applied")
 
-        self.update_progress(80, "Compiling PDF document")
-        
-        # Use intelligent main tex file detection
-        main_tex = find_main_tex_file(transed_latex_dir)
-        
-        if not main_tex:
-            error_summary = f"No main .tex file found in {transed_latex_dir}"
-            logger.error(error_summary)
-            self.update_progress(100, "No main .tex file found")
-            return {
-                "status": "failed_compilation",
-                "pdf_path": None,
-                "error_summary": error_summary,
-                "warnings": None,
-                "engine": None,
-                "error_count": 0,
-            }
+        main_tex, precompile_failure = self._resolve_and_validate_compile_bundle(transed_latex_dir)
+        if precompile_failure is not None:
+            return precompile_failure
 
-        # Precompile hard gate: reject structurally unsafe bundles before compile.
-        structure_result = validate_project_structure(str(main_tex))
-        if not structure_result.get("ok", False):
-            reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
-            message = str(structure_result.get("message") or "Structure guard rejected LaTeX bundle")
-            details = structure_result.get("details") or {}
-            replay_bundle_ref = self._write_structure_replay_bundle(
-                main_tex=str(main_tex),
-                reason_code=reason_code,
-                guard_phase="precompile",
-                message=message,
-                details=details if isinstance(details, dict) else None,
-            )
-            logger.error("Structure guard rejected compile bundle: %s (%s)", message, reason_code)
-            self.update_progress(100, "Structure guard rejected compile bundle")
-            return {
-                "status": "structure_invalid",
-                "pdf_path": None,
-                "error_summary": message,
-                "warnings": None,
-                "engine": None,
-                "error_count": 0,
-                "failure_reason_code": reason_code,
-                "failure_class": "structural",
-                "guard_phase": "precompile",
-                "replay_bundle_ref": replay_bundle_ref,
-            }
+        self.update_progress(80, "Compiling PDF document")
         
         logger.info(f"Compiling {Path(main_tex).name}...")
         
@@ -331,44 +338,9 @@ class GeneratorAgent(BaseToolAgent):
                 except Exception as e:
                     logger.warning(f"Failed to apply formatting config: {e}")
 
-        self.update_progress(80, "Waiting for compile slot")
-        main_tex = find_main_tex_file(transed_latex_dir)
-        if not main_tex:
-            error_summary = f"No main .tex file found in {transed_latex_dir}"
-            self.update_progress(100, "No main .tex file found")
-            return {
-                "status": "failed_compilation",
-                "pdf_path": None,
-                "error_summary": error_summary,
-                "warnings": None,
-                "engine": None,
-                "error_count": 0,
-            }
-
-        structure_result = validate_project_structure(str(main_tex))
-        if not structure_result.get("ok", False):
-            reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
-            message = str(structure_result.get("message") or "Structure guard rejected LaTeX bundle")
-            details = structure_result.get("details") or {}
-            replay_bundle_ref = self._write_structure_replay_bundle(
-                main_tex=str(main_tex),
-                reason_code=reason_code,
-                guard_phase="precompile",
-                message=message,
-                details=details if isinstance(details, dict) else None,
-            )
-            return {
-                "status": "structure_invalid",
-                "pdf_path": None,
-                "error_summary": message,
-                "warnings": None,
-                "engine": None,
-                "error_count": 0,
-                "failure_reason_code": reason_code,
-                "failure_class": "structural",
-                "guard_phase": "precompile",
-                "replay_bundle_ref": replay_bundle_ref,
-            }
+        main_tex, precompile_failure = self._resolve_and_validate_compile_bundle(transed_latex_dir)
+        if precompile_failure is not None:
+            return precompile_failure
 
         preferred_order = None
         if self.latex_engine and self.latex_engine != "auto":
@@ -379,7 +351,10 @@ class GeneratorAgent(BaseToolAgent):
 
         wait_started_at = time.monotonic()
         compile_sem = get_compile_semaphore()
-        async with compile_sem:
+        if compile_sem.locked():
+            self.update_progress(80, "Waiting for compile slot")
+        await compile_sem.acquire()
+        try:
             compile_queue_wait_ms = int((time.monotonic() - wait_started_at) * 1000)
             self.update_progress(80, "Compiling PDF document")
             compile_started_at = time.monotonic()
@@ -392,6 +367,8 @@ class GeneratorAgent(BaseToolAgent):
                 on_process_end=self._notify_compile_end,
             )
             compile_exec_ms = int((time.monotonic() - compile_started_at) * 1000)
+        finally:
+            compile_sem.release()
         logger.info(
             "Compile timing for %s: queue_wait=%dms exec=%dms",
             Path(main_tex).name,

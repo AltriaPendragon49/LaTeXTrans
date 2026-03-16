@@ -12,17 +12,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, User, Mail, LogOut, LogIn, Settings } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 
 export default function ProfilePage() {
     const navigate = useNavigate()
     const { user, isAuthenticated, loading, signOut } = useAuth()
     const [isLoggingOut, setIsLoggingOut] = useState(false)
+    const { t } = useTranslation()
 
     // Handle logout
     const handleLogout = async () => {
         setIsLoggingOut(true)
         await signOut()
-        toast.success('已退出登录')
+        toast.success(t('profile.signed_out'))
         navigate('/')
         // Note: setIsLoggingOut(false) 不需要，因为会导航离开页面
     }
@@ -47,14 +49,12 @@ export default function ProfilePage() {
                                 <LogIn className="h-8 w-8 text-muted-foreground" />
                             </div>
                             <div className="space-y-2">
-                                <p className="text-lg font-medium">尚未登录</p>
-                                <p className="text-muted-foreground">
-                                    登录以管理您的账户
-                                </p>
+                                <p className="text-lg font-medium">{t('profile.not_signed_in')}</p>
+                                <p className="text-muted-foreground">{t('profile.sign_in_to_manage_your_account')}</p>
                             </div>
                             <Button onClick={() => navigate('/login')} className="mt-4">
                                 <LogIn className="mr-2 h-4 w-4" />
-                                前往登录
+                                {t('common.go_to_sign_in')}
                             </Button>
                         </div>
                     </CardContent>
@@ -70,8 +70,8 @@ export default function ProfilePage() {
                     <div className="mx-auto p-4 rounded-full bg-primary/10 text-primary w-fit mb-2">
                         <User className="h-10 w-10" />
                     </div>
-                    <CardTitle className="text-2xl">个人资料</CardTitle>
-                    <CardDescription>管理您的账户信息</CardDescription>
+                    <CardTitle className="text-2xl">{t('profile.profile')}</CardTitle>
+                    <CardDescription>{t('profile.manage_your_account_information')}</CardDescription>
                 </CardHeader>
 
                 <CardContent className="space-y-6">
@@ -80,7 +80,7 @@ export default function ProfilePage() {
                         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                             <Mail className="h-5 w-5 text-muted-foreground" />
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm text-muted-foreground">邮箱地址</p>
+                                <p className="text-sm text-muted-foreground">{t('auth.labels.emailAddress')}</p>
                                 <p className="font-medium truncate">{user?.email}</p>
                             </div>
                         </div>
@@ -94,7 +94,7 @@ export default function ProfilePage() {
                             onClick={() => navigate('/settings')}
                         >
                             <Settings className="mr-2 h-4 w-4" />
-                            系统设置
+                            {t('settings.title')}
                         </Button>
 
                         <Button
@@ -106,12 +106,12 @@ export default function ProfilePage() {
                             {isLoggingOut ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    正在退出...
+                                    {t('profile.signing_out')}
                                 </>
                             ) : (
                                 <>
                                     <LogOut className="mr-2 h-4 w-4" />
-                                    退出登录
+                                    {t('profile.sign_out')}
                                 </>
                             )}
                         </Button>

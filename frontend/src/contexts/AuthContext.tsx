@@ -9,7 +9,9 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { User, AuthError, Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
+import { useStore } from '@/store/useStore'
 
 // Auth state interface
 interface AuthState {
@@ -59,7 +61,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
     const [user, setUser] = useState<User | null>(null)
     const [session, setSession] = useState<Session | null>(null)
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(() => !!supabase)
     const [error, setError] = useState<string | null>(null)
 
     const isSupabaseAvailable = isSupabaseConfigured()
@@ -68,7 +70,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Initialize auth state
     useEffect(() => {
         if (!supabase) {
-            setLoading(false)
             return
         }
 
@@ -95,7 +96,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Sign in with email/password
     const signIn = async (email: string, password: string) => {
         if (!supabase) {
-            return { error: { message: '认证服务不可用' } as AuthError }
+            return { error: { message: i18n.t('auth.errors.serviceUnavailable') } as AuthError }
         }
 
         setError(null)
@@ -109,11 +110,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else {
             // Login successful - trigger settings reload
             try {
-                const { useStore } = await import('@/store/useStore')
                 useStore.getState().invalidateUserSettings()
                 await useStore.getState().loadUserSettings(true)
-                toast.success('系统设置已加载', {
-                    description: '您保存的默认配置已自动应用',
+                toast.success(i18n.t('auth.toast.settingsLoaded.title'), {
+                    description: i18n.t('auth.toast.settingsLoaded.description'),
                     duration: 4000,
                 })
             } catch (e) {
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Sign up with email/password
     const signUp = async (email: string, password: string) => {
         if (!supabase) {
-            return { error: { message: '认证服务不可用' } as AuthError }
+            return { error: { message: i18n.t('auth.errors.serviceUnavailable') } as AuthError }
         }
 
         setError(null)
@@ -153,7 +153,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Verify OTP for email confirmation
     const verifyOtp = async (email: string, token: string) => {
         if (!supabase) {
-            return { error: { message: '认证服务不可用' } as AuthError }
+            return { error: { message: i18n.t('auth.errors.serviceUnavailable') } as AuthError }
         }
 
         setError(null)
@@ -168,11 +168,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else {
             // OTP verified - trigger settings reload
             try {
-                const { useStore } = await import('@/store/useStore')
                 useStore.getState().invalidateUserSettings()
                 await useStore.getState().loadUserSettings(true)
-                toast.success('注册成功', {
-                    description: '欢迎加入！您的账户已激活。',
+                toast.success(i18n.t('auth.toast.signUpSuccess.title'), {
+                    description: i18n.t('auth.toast.signUpSuccess.description'),
                     duration: 4000,
                 })
             } catch (e) {

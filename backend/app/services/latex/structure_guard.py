@@ -13,9 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+import logging
 import re
+import time
 
 from pylatexenc.latexwalker import LatexWalker
+
+
+logger = logging.getLogger(__name__)
 
 
 VERBATIM_LIKE_ENVS: Set[str] = {"verbatim", "lstlisting", "minted"}
@@ -263,12 +268,25 @@ def validate_project_structure(main_tex_path: str) -> Dict[str, Any]:
     The input must be the assembled main.tex path inside the compile-ready bundle.
     """
     main_path = Path(main_tex_path)
+    started_at = time.perf_counter()
+
+    def _finalize(result: StructureGuardResult) -> Dict[str, Any]:
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "Structure guard validated %s: ok=%s reason_code=%s elapsed_ms=%d",
+            main_path.name or str(main_path),
+            result.ok,
+            result.reason_code,
+            elapsed_ms,
+        )
+        return result.as_dict()
+
     if not main_path.exists():
-        return StructureGuardResult(
+        return _finalize(StructureGuardResult(
             ok=False,
             reason_code=REASON_ENV_STACK_MISMATCH,
             message=f"Main tex file not found: {main_tex_path}",
-        ).as_dict()
+        ))
 
     full_text = _collect_project_text(main_path)
     clean_text = _mask_verbatim_like_envs(_strip_line_comments(full_text))
@@ -280,11 +298,10 @@ def validate_project_structure(main_tex_path: str) -> Dict[str, Any]:
     ):
         failure = check(clean_text)
         if failure:
-            return failure.as_dict()
+            return _finalize(failure)
 
     walker_failure = _check_latexwalker(full_text)
     if walker_failure:
-        return walker_failure.as_dict()
+        return _finalize(walker_failure)
 
-    return StructureGuardResult(ok=True, message="structure_guard_passed").as_dict()
-
+    return _finalize(StructureGuardResult(ok=True, message="structure_guard_passed"))

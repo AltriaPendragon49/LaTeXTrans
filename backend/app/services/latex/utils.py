@@ -2330,13 +2330,29 @@ class DownloadProgressCallback:
             "downloading_pdf": "正在下载 PDF",
             "validating": "正在验证文件"
         }
-        message = f"{stage_descriptions.get(self.stage, self.stage)}: {int(stage_progress * 100)}%"
+        stage_percent = int(stage_progress * 100)
+        message = f"{stage_descriptions.get(self.stage, self.stage)}: {stage_percent}%"
+        normalized_stage = "downloading" if self.stage == "extracting" else self.stage
+        stage_detail_codes = {
+            "downloading": ("download_source_starting", "download_source_progress", "download_source_complete"),
+            "extracting": ("download_source_starting", "download_source_progress", "download_source_complete"),
+            "downloading_pdf": ("download_pdf_starting", "download_pdf_progress", "download_pdf_complete"),
+            "validating": ("validate_source_starting", "validate_source_complete", "validate_source_complete"),
+        }
+        start_code, progress_code, complete_code = stage_detail_codes.get(
+            self.stage,
+            ("task_waiting", "task_waiting", "task_waiting"),
+        )
+        detail_code = complete_code if is_complete else (start_code if current == 0 else progress_code)
+        detail_params = None if is_complete else {"percent": stage_percent}
 
         self.task_manager.update_task(
             task_id=self.task_id,
             progress=overall_progress,
-            stage=self.stage,
-            message=message
+            stage=normalized_stage,
+            message=message,
+            detail_code=detail_code,
+            detail_params=detail_params,
         )
 
 

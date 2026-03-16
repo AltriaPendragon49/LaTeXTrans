@@ -521,6 +521,10 @@ class TranslatorAgent(BaseToolAgent):
                                 f"⚠ API rate limited (429) for {fail_part}, "
                                 f"waiting {wait}s (attempt {rate_limit_hits}/{MAX_429_RETRIES})"
                             )
+                            self.update_progress(
+                                -1,
+                                f"API rate limited, waiting {wait}s (attempt {rate_limit_hits}/{MAX_429_RETRIES})",
+                            )
                             await asyncio.sleep(wait)
                             continue
                         else:

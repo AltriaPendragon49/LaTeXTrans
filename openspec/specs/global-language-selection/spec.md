@@ -1,9 +1,9 @@
-# Spec: 全局 UI 语言选择
+# global-language-selection Specification
 
-本功能规格说明书描述了在前端实现全局系统交互语言切换的各项需求。
+## Purpose
+定义全局 UI 语言选择、即时切换、偏好持久化以及壳层辅助文案本地化规则，确保前端所有用户可见静态界面文案能够随所选语言统一呈现，并在后续访问中保持一致。
 
-## ADDED Requirements
-
+## Requirements
 ### Requirement: 用户应当能够从 8 种系统支持语言中选择并更改全局的用户界面呈现语言。
 系统界面 SHALL (必须) 允许全局切换为这 8 种语言上下文，与现有的翻译选项保持一致。
 
@@ -21,3 +21,21 @@ UI/UX SHALL (必须) 满足高对比度与无障碍访问准则的要求。
 - **WHEN** 用户使用键盘（按 Tab 键等）进行导航选中交互组件时
 - **THEN** 该语言选择组件 SHALL (必须) 呈现出外边框轮廓 Focus Ring，支持无障碍屏幕阅读器播报（Aria Label）。
 - **THEN** 无论当前操作系统切换为亮色（Light）模式还是暗色（Dark）模式，该选项悬停背景反馈 SHALL (必须) 均有足够对比度的颜色区分，保证整体排版不发生跳动脱节（Layout Shift）。
+
+### Requirement: Users can switch the global UI language across all supported locales
+The frontend MUST allow users to switch the application UI language between `en`, `zh`, `ja`, `ko`, `de`, `fr`, `es`, and `ru`, and MUST persist the selected language across reloads.
+
+#### Scenario: Switching the UI language
+- **WHEN** the user opens the global language selector from the application shell
+- **THEN** the system MUST display all 8 supported UI languages
+- **WHEN** the user selects a different language
+- **THEN** the visible UI copy MUST update immediately without requiring a page refresh
+- **AND** the preference MUST be restored on the next visit
+
+### Requirement: The global language selector provides localized accessibility copy
+The application shell MUST localize the selector label, related navigation labels, and accessibility text used by shell components.
+
+#### Scenario: Shell a11y copy follows the active language
+- **WHEN** the active UI language changes
+- **THEN** the selector label, sidebar toggle label, sheet close label, and related accessible text MUST switch to the same language
+- **AND** keyboard and screen-reader interaction MUST continue to work

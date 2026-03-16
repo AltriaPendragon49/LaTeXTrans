@@ -11,6 +11,7 @@
 import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -33,9 +34,11 @@ import { startBatchTranslation, getTaskStatus, uploadFile, startTranslation } fr
 import type { AdvancedConfig } from '@/types/config'
 import { DEFAULT_CONFIG } from '@/types/config'
 import { cn } from '@/lib/utils'
+import { getTaskCopy } from '@/i18n/task-copy'
 
 const MAX_BATCH = 9
 const VALID_EXTS = ['.zip', '.rar', '.tar', '.gz', '.tgz', '.tex']
+type Translate = (key: string, options?: Record<string, unknown>) => string
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,8 +47,12 @@ interface BatchTask {
     label: string       // arxiv_id or filename
     status: string
     progress: number
+    stage?: string | null
     message: string
+    detail_code?: string | null
+    detail_params?: Record<string, string | number | boolean | null> | null
     warnings?: string | null  // Formatting auto-downgrade notices from backend
+    failure_reason_code?: string | null
 }
 
 interface QueuedFile {
@@ -97,19 +104,6 @@ const statusIcon = (status: string) => {
     }
 }
 
-const statusLabel = (status: string, message?: string) => {
-    const map: Record<string, string> = {
-        queued: '排队中',
-        processing: message?.includes('下载') ? '下载中' : '翻译中',
-        completed: '已完成',
-        completed_with_warnings: '完成（有警告）',
-        failed: '失败',
-        failed_compilation: '编译失败',
-        pending: '等待中',
-    }
-    return map[status] ?? status
-}
-
 const statusBadgeClass = (status: string) => {
     if (status === 'completed' || status === 'completed_with_warnings')
         return 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400'
@@ -124,24 +118,36 @@ const statusBadgeClass = (status: string) => {
 
 // ─── Task list panel (shared) ─────────────────────────────────────────────────
 
-function TaskList({ tasks }: { tasks: BatchTask[] }) {
+function TaskList({ tasks, translate }: { tasks: BatchTask[]; translate: Translate }) {
     const navigate = useNavigate()
     if (tasks.length === 0) return null
     return (
         <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">任务列表</p>
+            <p className="text-sm font-medium text-muted-foreground">{translate('batch.taskList')}</p>
             {tasks.map(task => (
                 <div
                     key={task.task_id}
                     className="rounded-lg border border-border bg-card p-3 space-y-2 shadow-sm"
                 >
+                    {(() => {
+                        const copy = getTaskCopy(translate, {
+                            status: task.status,
+                            stage: task.stage,
+                            detailCode: task.detail_code,
+                            detailParams: task.detail_params,
+                            failureReasonCode: task.failure_reason_code,
+                            warnings: task.warnings,
+                        })
+
+                        return (
+                            <>
                     <div className="flex items-center gap-2">
                         {statusIcon(task.status)}
                         <span className="flex-1 font-mono text-sm text-foreground truncate">
                             {task.label}
                         </span>
                         <Badge variant="outline" className={cn('text-xs', statusBadgeClass(task.status))}>
-                            {statusLabel(task.status, task.message)}
+                            {copy.statusLabel}
                         </Badge>
                         {(task.status === 'completed' || task.status === 'completed_with_warnings') && (
                             <Button
@@ -151,7 +157,7 @@ function TaskList({ tasks }: { tasks: BatchTask[] }) {
                                 onClick={() => navigate(`/processing?taskId=${task.task_id}`)}
                             >
                                 <ExternalLink className="h-3 w-3" />
-                                查看
+                                {translate('common.actions.view')}
                             </Button>
                         )}
                     </div>
@@ -162,31 +168,34 @@ function TaskList({ tasks }: { tasks: BatchTask[] }) {
                                 value={task.progress}
                                 className={cn(
                                     "h-1.5",
-                                    task.message?.includes("rate limited") && "animate-pulse [&>div]:bg-amber-500!"
+                                    copy.isRateLimited && "animate-pulse [&>div]:bg-amber-500!"
                                 )}
                             />
                             <p className={cn(
                                 "text-xs",
-                                task.message?.includes("rate limited")
+                                copy.isRateLimited
                                     ? "text-amber-500 dark:text-amber-400 font-medium"
                                     : "text-muted-foreground"
                             )}>
-                                {task.message}
+                                {copy.detailLabel || copy.stageLabel || copy.statusLabel}
                             </p>
                         </div>
                     )}
 
                     {(task.status === 'failed' || task.status === 'failed_compilation') && (
-                        <p className="text-xs text-destructive">{task.message}</p>
+                        <p className="text-xs text-destructive">{copy.failureLabel || copy.statusLabel}</p>
                     )}
 
                     {/* Formatting warnings (e.g. auto-downgraded font size) */}
                     {task.warnings && (
                         <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
                             <AlertCircle className="h-3 w-3 shrink-0" />
-                            {task.warnings}
+                            {translate('task.detail.formattingWarning', { warningText: task.warnings })}
                         </p>
                     )}
+                            </>
+                        )
+                    })()}
                 </div>
             ))}
         </div>
@@ -201,6 +210,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     sourceLanguage = 'en',
     onStateChange,
 }, ref) {
+    const { t } = useTranslation()
     // ── 内部 Tab 状态
     const [activeTab, setActiveTab] = useState<'arxiv' | 'upload'>('arxiv')
 
@@ -245,7 +255,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                 ? parsedIds.length > 0 && !isArxivSubmitting
                 : queuedFiles.length > 0 && !isUploadSubmitting,
         })
-    }, [activeTab, isArxivSubmitting, isUploadSubmitting, parsedIds.length, queuedFiles.length])
+    }, [activeTab, isArxivSubmitting, isUploadSubmitting, onStateChange, parsedIds.length, queuedFiles.length])
 
     // Track task IDs for which persist_failed warning has already been shown
     const warnedPersistFailed = useRef<Set<string>>(new Set())
@@ -263,30 +273,40 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     if (s.persist_failed && !warnedPersistFailed.current.has(task_id)) {
                         warnedPersistFailed.current.add(task_id)
                         toast.warning(
-                            '由于后端服务器网络问题，未能存入数据库，请注意保存翻译结果！',
+                            t('batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results'),
                             { duration: 8000 }
                         )
                     }
                     setter(prev =>
                         prev.map(t =>
                             t.task_id === task_id
-                                ? { ...t, status: s.status, progress: s.progress, message: s.message, warnings: (s as any).warnings ?? t.warnings }
+                                ? {
+                                    ...t,
+                                    status: s.status,
+                                    progress: s.progress,
+                                    stage: s.stage ?? t.stage,
+                                    message: s.message,
+                                    detail_code: s.detail_code ?? t.detail_code,
+                                    detail_params: s.detail_params ?? t.detail_params,
+                                    warnings: s.warnings ?? t.warnings,
+                                    failure_reason_code: s.failure_reason_code ?? t.failure_reason_code,
+                                }
                                 : t
                         )
                     )
-                    if (['completed', 'completed_with_warnings', 'failed', 'failed_compilation'].includes(s.status))
+                    if (['completed', 'completed_with_warnings', 'failed', 'failed_compilation', 'structure_invalid'].includes(s.status))
                         break
                 } catch {
                     // ignore transient
                 }
             }
         },
-        []
+        [t]
     )
 
     // ── arXiv submit
     const handleArxivSubmit = async () => {
-        if (parsedIds.length === 0) { toast.error('请输入至少一个 arXiv ID'); return }
+        if (parsedIds.length === 0) { toast.error(t('batch.enter_at_least_one_arxiv_id')); return }
         setIsArxivSubmitting(true)
         try {
             const resp = await startBatchTranslation({
@@ -299,38 +319,42 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                 task_id: tid,
                 label: parsedIds[i] ?? tid,
                 status: 'processing',
+                stage: 'downloading',
                 progress: 0,
-                message: '等待下载...',
+                message: t('task.detail.taskWaiting'),
+                detail_code: 'task_waiting',
+                detail_params: null,
             }))
             setArxivTasks(initial)
             setArxivText('')
-            toast.success(`批量翻译已提交：${resp.queued_count} 个任务创建成功`)
+            toast.success(t('batch.batch_translation_submitted_tasks_created_successfully', { count: resp.queued_count }))
             for (const t of initial) pollTask(t.task_id, setArxivTasks)
         } catch (err: unknown) {
-            toast.error((err as any)?.response?.data?.detail ?? (err as Error)?.message ?? '提交失败')
+            console.error('[BatchTranslation] Failed to submit arXiv batch', err)
+            toast.error(t('batch.submission_failed'))
         } finally {
             setIsArxivSubmitting(false)
         }
     }
 
     // ── File helpers
-    const addFiles = (files: FileList | File[]) => {
+    const addFiles = useCallback((files: FileList | File[]) => {
         const arr = Array.from(files)
         const valid = arr.filter(f => {
             const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase()
-            if (!VALID_EXTS.includes(ext)) { toast.error(`不支持的文件类型：${f.name}`); return false }
-            if (f.size > 50 * 1024 * 1024) { toast.error(`文件超过 50MB：${f.name}`); return false }
+            if (!VALID_EXTS.includes(ext)) { toast.error(t('batch.unsupported_file_type', { name: f.name })); return false }
+            if (f.size > 50 * 1024 * 1024) { toast.error(t('batch.file_exceeds_50_mb', { name: f.name })); return false }
             return true
         })
         setQueuedFiles(prev => {
             const combined = [...prev, ...valid.map(file => ({ file, id: uid() }))]
             if (combined.length > MAX_BATCH) {
-                toast.warning(`最多 ${MAX_BATCH} 个文件，已截断`)
+                toast.warning(t('batch.maximum_files_extra_files_were_removed', { count: MAX_BATCH }))
                 return combined.slice(0, MAX_BATCH)
             }
             return combined
         })
-    }
+    }, [t])
 
     const handleDrag = useCallback((e: React.DragEvent) => {
         e.preventDefault(); e.stopPropagation()
@@ -341,7 +365,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
         e.preventDefault(); e.stopPropagation()
         setIsDragActive(false)
         if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files)
-    }, [])
+    }, [addFiles])
 
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.length) addFiles(e.target.files)
@@ -354,7 +378,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     // No intermediate "上传中" state — tasks appear in the list only
     // after upload + translation start succeed (with a real task_id).
     const handleUploadSubmit = async () => {
-        if (queuedFiles.length === 0) { toast.error('请先添加文件'); return }
+        if (queuedFiles.length === 0) { toast.error(t('batch.add_files_first')); return }
         setIsUploadSubmitting(true)
 
         const snapshot = [...queuedFiles]
@@ -376,8 +400,11 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     task_id,
                     label: qf.file.name,
                     status: 'processing',
+                    stage: 'parsing',
                     progress: 0,
-                    message: '启动翻译…',
+                    message: t('task.detail.translationStarting'),
+                    detail_code: 'translation_starting',
+                    detail_params: null,
                 }
                 appendTask(newTask)
 
@@ -391,20 +418,21 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     advanced_config: advancedConfig,
                 })
             } catch (err: unknown) {
-                const msg = (err as any)?.response?.data?.detail ?? (err as Error)?.message ?? '失败'
+                console.error('[BatchTranslation] Failed to process uploaded file', err)
                 // Show failed task so user knows which file had issues
                 appendTask({
                     task_id: `failed-${qf.id}`,
                     label: qf.file.name,
                     status: 'failed',
                     progress: 0,
-                    message: msg,
+                    message: t('batch.submission_failed'),
+                    failure_reason_code: null,
                 })
             }
         }))
 
         setIsUploadSubmitting(false)
-        toast.success('所有文件已提交翻译')
+        toast.success(t('batch.all_files_have_been_submitted_for_translation'))
     }
 
     return (
@@ -413,11 +441,11 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                 <TabsList className="w-full grid grid-cols-2">
                     <TabsTrigger value="arxiv" className="gap-1.5">
                         <Layers className="h-3.5 w-3.5" />
-                        arXiv ID 批量
+                        {t('batch.batch_arxiv_ids')}
                     </TabsTrigger>
                     <TabsTrigger value="upload" className="gap-1.5">
                         <Upload className="h-3.5 w-3.5" />
-                        文件批量上传
+                        {t('batch.batch_file_upload')}
                     </TabsTrigger>
                 </TabsList>
 
@@ -427,15 +455,15 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     <div className="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
                         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                         <span>
-                            每行输入一个 arXiv ID（如 <code className="font-mono text-foreground">2401.00001</code>），最多 {MAX_BATCH} 个。
-                            支持完整 URL 或纯 ID 格式。
+                            {t('batch.enter_one_arxiv_id_per_line_for_example_up_to_total', { example: '2401.00001', count: MAX_BATCH })}{' '}
+                            {t('batch.full_urls_or_plain_ids_are_supported')}
                         </span>
                     </div>
 
                     {/* Textarea */}
                     <div className="space-y-1.5">
                         <label htmlFor="batch-arxiv-input" className="text-sm font-medium text-foreground">
-                            arXiv ID 列表
+                            {t('batch.arxiv_id_list')}
                         </label>
                         <textarea
                             id="batch-arxiv-input"
@@ -458,18 +486,18 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     <div className="flex items-center gap-2">
                         {parsedIds.length > 0 && (
                             <Badge variant="secondary">
-                                {parsedIds.length}/{MAX_BATCH} 个 ID
+                                {t('batch.ids', { current: parsedIds.length, total: MAX_BATCH })}
                             </Badge>
                         )}
                         {isOverLimit && (
                             <span className="flex items-center gap-1 text-xs text-destructive">
                                 <AlertCircle className="h-3 w-3" />
-                                超出限制，仅前 {MAX_BATCH} 个将被提交
+                                {t('batch.limit_exceeded_only_the_first_will_be_submitted', { count: MAX_BATCH })}
                             </span>
                         )}
                     </div>
 
-                    <TaskList tasks={arxivTasks} />
+                    <TaskList tasks={arxivTasks} translate={t} />
                 </TabsContent>
 
                 {/* ── Upload tab ── */}
@@ -478,8 +506,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     <div className="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
                         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                         <span>
-                            支持 <code className="font-mono text-foreground">.zip .rar .tar.gz .tex</code> 格式，
-                            单文件最大 50 MB，最多 {MAX_BATCH} 个文件。
+                            {t('batch.supports_zip_rar_tar_gz_and_tex_files_up_to_50_mb_each_and_files_total', { count: MAX_BATCH })}
                         </span>
                     </div>
 
@@ -512,10 +539,10 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                             </div>
                             <div className="space-y-1">
                                 <p className="text-sm font-medium text-foreground">
-                                    点击选择文件，或拖拽到此处
+                                    {t('batch.click_to_choose_files_or_drag_them_here')}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    ZIP / RAR / TAR.GZ / TEX，最多 {MAX_BATCH} 个
+                                    {t('batch.zip_rar_tar_gz_tex_up_to', { count: MAX_BATCH })}
                                 </p>
                             </div>
                         </div>
@@ -531,7 +558,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                                 className="space-y-2"
                             >
                                 <p className="text-sm font-medium text-muted-foreground">
-                                    待上传文件（{queuedFiles.length}/{MAX_BATCH}）
+                                    {t('batch.files_queued_for_upload', { selected: queuedFiles.length, total: MAX_BATCH })}
                                 </p>
                                 {queuedFiles.map(qf => (
                                     <div
@@ -548,7 +575,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                                         <button
                                             onClick={e => { e.stopPropagation(); removeFile(qf.id) }}
                                             className="rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                            aria-label="移除文件"
+                                            aria-label={t('batch.remove_file')}
                                         >
                                             <X className="h-3.5 w-3.5" />
                                         </button>
@@ -562,12 +589,12 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                     <div className="flex items-center gap-2">
                         {queuedFiles.length > 0 && (
                             <span className="text-sm text-muted-foreground">
-                                已选 {queuedFiles.length}/{MAX_BATCH} 个文件
+                                {t('batch.selected_files', { selected: queuedFiles.length, total: MAX_BATCH })}
                             </span>
                         )}
                     </div>
 
-                    <TaskList tasks={uploadTasks} />
+                    <TaskList tasks={uploadTasks} translate={t} />
                 </TabsContent>
             </Tabs>
         </div>

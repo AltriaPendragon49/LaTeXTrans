@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 
 interface LogViewerProps {
     logs: string[]
@@ -6,6 +7,7 @@ interface LogViewerProps {
 
 export function LogViewer({ logs }: LogViewerProps) {
     const scrollRef = useRef<HTMLDivElement>(null)
+    const { t } = useTranslation()
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -15,7 +17,7 @@ export function LogViewer({ logs }: LogViewerProps) {
 
     return (
         <div className="rounded-md border bg-slate-950 text-slate-50 font-mono text-xs p-4 h-[300px] overflow-auto shadow-inner" ref={scrollRef}>
-            {logs.length === 0 && <div className="text-slate-500 italic">等待日志中...</div>}
+            {logs.length === 0 && <div className="text-slate-500 italic">{t("logs.waiting_for_logs")}</div>}
             {logs.map((log, index) => (
                 <div key={index} className="whitespace-pre-wrap py-0.5 border-b border-slate-800/50 last:border-0 hover:bg-slate-900/50">
                     {log}

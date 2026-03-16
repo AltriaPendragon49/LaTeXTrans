@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useTranslation } from 'react-i18next'
 import type { FormattingConfig } from '@/types/config'
 
 interface SimpleSwitchProps {
@@ -48,6 +49,7 @@ interface NumericFieldProps {
 }
 
 const NumericField = ({ id, label, icon, value, onChange, min, max, step, placeholder, tooltip }: NumericFieldProps) => {
+    const { t } = useTranslation()
     const enabled = value !== undefined && value !== null
     return (
         <div className="flex flex-col gap-2 p-3 rounded-lg border border-border/50 bg-card/30 hover:bg-muted/30 transition-colors duration-200">
@@ -68,7 +70,7 @@ const NumericField = ({ id, label, icon, value, onChange, min, max, step, placeh
                 min={min}
                 max={max}
                 step={step ?? 0.1}
-                placeholder={enabled ? '' : (placeholder ?? '保持原样')}
+                placeholder={enabled ? '' : (placeholder ?? t('formatting.keepOriginal'))}
                 value={enabled ? (value ?? '') : ''}
                 disabled={!enabled}
                 onChange={(e) => {
@@ -91,27 +93,31 @@ interface SelectFieldProps {
     options: { value: string; label: string }[]
 }
 
-const SelectField = ({ id, label, icon, value, onChange, options }: SelectFieldProps) => (
-    <div className="flex flex-col gap-2 p-3 rounded-lg border border-border/50 bg-card/30 hover:bg-muted/30 transition-colors duration-200">
-        <Label htmlFor={id} className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">{icon}</span>
-            {label}
-        </Label>
-        <Select value={value ?? '__keep__'} onValueChange={(v) => onChange(v === '__keep__' ? null : v)}>
-            <SelectTrigger id={id} className="h-8 text-sm">
-                <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value="__keep__">保持原样</SelectItem>
-                {options.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                    </SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
-    </div>
-)
+const SelectField = ({ id, label, icon, value, onChange, options }: SelectFieldProps) => {
+    const { t } = useTranslation()
+
+    return (
+        <div className="flex flex-col gap-2 p-3 rounded-lg border border-border/50 bg-card/30 hover:bg-muted/30 transition-colors duration-200">
+            <Label htmlFor={id} className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">{icon}</span>
+                {label}
+            </Label>
+            <Select value={value ?? '__keep__'} onValueChange={(v) => onChange(v === '__keep__' ? null : v)}>
+                <SelectTrigger id={id} className="h-8 text-sm">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="__keep__">{t('formatting.keepOriginal')}</SelectItem>
+                    {options.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+    )
+}
 
 interface ToggleRowProps {
     id: string
@@ -146,58 +152,59 @@ const CJK_LANGS = new Set(['zh', 'ja', 'ko'])
 
 export const FormattingPanel = ({ value, onChange, targetLanguage, className }: FormattingPanelProps) => {
     const isCjk = targetLanguage ? CJK_LANGS.has(targetLanguage) : false
+    const { t } = useTranslation()
 
     return (
         <div className={cn('space-y-3', className)}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <NumericField
                     id="fmt-line-spacing"
-                    label="行距"
+                    label={t('formatting.lineSpacing')}
                     icon={<AlignJustify className="w-4 h-4" />}
                     value={value.line_spacing}
                     onChange={(v) => onChange({ line_spacing: v ?? undefined })}
                     min={1.0}
                     max={2.5}
                     step={0.1}
-                    placeholder="保持原样（如 1.5）"
-                    tooltip="行距倍率，建议范围 1.0-2.5。"
+                    placeholder={t('formatting.keepOriginalLineSpacing')}
+                    tooltip={t('formatting.line_spacing_multiplier_recommended_range_1_0_2_5')}
                 />
                 <NumericField
                     id="fmt-font-size"
-                    label="字号（pt）"
+                    label={t('formatting.fontSize')}
                     icon={<Type className="w-4 h-4" />}
                     value={value.font_size}
                     onChange={(v) => onChange({ font_size: v ?? undefined })}
                     min={8}
                     max={14}
                     step={0.5}
-                    placeholder="保持原样（如 12）"
-                    tooltip="全局字号，建议范围 8-14pt。"
+                    placeholder={t('formatting.keepOriginalFontSize')}
+                    tooltip={t('formatting.global_font_size_recommended_range_8_14_pt')}
                 />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <SelectField
                     id="fmt-column-mode"
-                    label="栏数模式"
+                    label={t('formatting.columnMode')}
                     icon={<Columns2 className="w-4 h-4" />}
                     value={value.column_mode}
                     onChange={(v) => onChange({ column_mode: v ?? undefined })}
                     options={[
-                        { value: 'single', label: '单栏' },
-                        { value: 'double', label: '双栏' },
+                        { value: 'single', label: t('formatting.column.single') },
+                        { value: 'double', label: t('formatting.column.double') },
                     ]}
                 />
                 <SelectField
                     id="fmt-margin"
-                    label="页边距"
+                    label={t('formatting.pageMargin')}
                     icon={<Maximize2 className="w-4 h-4" />}
                     value={value.margin}
                     onChange={(v) => onChange({ margin: v ?? undefined })}
                     options={[
-                        { value: 'narrow', label: '窄边距' },
-                        { value: 'normal', label: '标准边距' },
-                        { value: 'wide', label: '宽边距' },
+                        { value: 'narrow', label: t('formatting.margin.narrow') },
+                        { value: 'normal', label: t('formatting.margin.standard') },
+                        { value: 'wide', label: t('formatting.margin.wide') },
                     ]}
                 />
             </div>
@@ -205,27 +212,27 @@ export const FormattingPanel = ({ value, onChange, targetLanguage, className }: 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <SelectField
                     id="fmt-bib-style"
-                    label="参考文献格式"
+                    label={t('formatting.bibliographyStyle')}
                     icon={<BookOpen className="w-4 h-4" />}
                     value={value.bib_style}
                     onChange={(v) => onChange({ bib_style: v ?? undefined })}
                     options={[
-                        { value: 'gbt7714-numerical', label: 'GB/T 7714 数字制' },
-                        { value: 'gbt7714-author-year', label: 'GB/T 7714 著者-年份' },
+                        { value: 'gbt7714-numerical', label: t('formatting.bibliography.gbtNumerical') },
+                        { value: 'gbt7714-author-year', label: t('formatting.bibliography.gbtAuthorYear') },
                         { value: 'ieeetr', label: 'IEEE' },
                         { value: 'apalike', label: 'APA' },
                     ]}
                 />
                 <SelectField
                     id="fmt-cite-style"
-                    label="引用样式"
+                    label={t('formatting.citationStyle')}
                     icon={<Quote className="w-4 h-4" />}
                     value={value.cite_style}
                     onChange={(v) => onChange({ cite_style: v ?? undefined })}
                     options={[
-                        { value: 'numbers', label: '数字 [1]' },
-                        { value: 'super', label: '上标' },
-                        { value: 'authoryear', label: '著者-年份' },
+                        { value: 'numbers', label: t('formatting.citationStyle.numeric') },
+                        { value: 'super', label: t('formatting.citationStyle.superscript') },
+                        { value: 'authoryear', label: t('formatting.citationStyle.authorYear') },
                     ]}
                 />
             </div>
@@ -233,13 +240,13 @@ export const FormattingPanel = ({ value, onChange, targetLanguage, className }: 
             {isCjk && (
                 <SelectField
                     id="fmt-cjk-font"
-                    label="中文字体"
+                    label={t('formatting.chineseFont')}
                     icon={<FileText className="w-4 h-4" />}
                     value={value.cjk_font}
                     onChange={(v) => onChange({ cjk_font: v ?? undefined })}
                     options={[
-                        { value: 'songti', label: '宋体' },
-                        { value: 'heiti', label: '黑体' },
+                        { value: 'songti', label: t('formatting.font.songti') },
+                        { value: 'heiti', label: t('formatting.font.heiti') },
                     ]}
                 />
             )}
@@ -247,16 +254,16 @@ export const FormattingPanel = ({ value, onChange, targetLanguage, className }: 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <ToggleRow
                     id="fmt-paragraph-indent"
-                    label="首行缩进"
-                    description="开启后使用 2em 首行缩进"
+                    label={t('formatting.firstLineIndent')}
+                    description={t('formatting.use_a_2em_first_line_indent_when_enabled')}
                     icon={<Indent className="w-4 h-4" />}
                     value={value.paragraph_indent}
                     onChange={(v) => onChange({ paragraph_indent: v ?? undefined })}
                 />
                 <ToggleRow
                     id="fmt-localize-captions"
-                    label="图表标题本地化"
-                    description="Figure→图，Table→表"
+                    label={t('formatting.localizeCaptions')}
+                    description={t('formatting.localizeCaptionsDescription')}
                     icon={<FileText className="w-4 h-4" />}
                     value={value.localize_captions}
                     onChange={(v) => onChange({ localize_captions: v ?? undefined })}

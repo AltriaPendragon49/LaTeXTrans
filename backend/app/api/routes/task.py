@@ -26,6 +26,8 @@ class TaskStatusResponse(BaseModel):
     progress: int
     stage: str
     message: str
+    detail_code: Optional[str] = None
+    detail_params: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     warnings: Optional[str] = None
     failure_reason_code: Optional[str] = None
@@ -70,6 +72,8 @@ async def get_task_status(task_id: str):
         progress=task["progress"],
         stage=task["stage"],
         message=task["message"],
+        detail_code=task.get("detail_code"),
+        detail_params=task.get("detail_params"),
         error=task.get("error"),
         warnings=task.get("warnings"),
         failure_reason_code=task.get("failure_reason_code"),
@@ -188,6 +192,8 @@ async def stream_task_status(task_id: str):
                         "progress": current_progress,
                         "stage": current_stage,
                         "message": current_message,
+                        "detail_code": task.get("detail_code"),
+                        "detail_params": task.get("detail_params"),
                         "error": task.get("error"),
                         "warnings": task.get("warnings"),
                         "failure_reason_code": task.get("failure_reason_code"),
@@ -210,7 +216,10 @@ async def stream_task_status(task_id: str):
                         "task_id": task_id,
                         "status": current_status,
                         "progress": current_progress,
+                        "stage": current_stage,
                         "message": current_message,
+                        "detail_code": task.get("detail_code"),
+                        "detail_params": task.get("detail_params"),
                         "failure_reason_code": task.get("failure_reason_code"),
                         "failure_class": task.get("failure_class"),
                         "guard_phase": task.get("guard_phase"),

@@ -1,19 +1,25 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { LogIn, Lock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface LoginPromptProps {
-    message?: string
-    description?: string
+    messageKey?: string
+    descriptionKey?: string
+    messageValues?: Record<string, unknown>
+    descriptionValues?: Record<string, unknown>
     className?: string
 }
 
 export function LoginPrompt({
-    message = '请先登录以使用此功能',
-    description,
+    messageKey = 'auth.loginRequiredForThisFeature',
+    descriptionKey,
+    messageValues,
+    descriptionValues,
     className = '',
 }: LoginPromptProps) {
     const navigate = useNavigate()
+    const { t } = useTranslation()
 
     return (
         <div
@@ -24,9 +30,9 @@ export function LoginPrompt({
             </div>
 
             <div className="space-y-1.5">
-                <p className="text-base font-semibold text-foreground">{message}</p>
-                {description && (
-                    <p className="max-w-xs text-sm text-muted-foreground">{description}</p>
+                <p className="text-base font-semibold text-foreground">{t(messageKey, messageValues)}</p>
+                {descriptionKey && (
+                    <p className="max-w-xs text-sm text-muted-foreground">{t(descriptionKey, descriptionValues)}</p>
                 )}
             </div>
 
@@ -35,7 +41,7 @@ export function LoginPrompt({
                 className="gap-2"
             >
                 <LogIn className="h-4 w-4" />
-                登录账号
+                {t('auth.actions.signInAccount')}
             </Button>
         </div>
     )

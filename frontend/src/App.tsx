@@ -1,16 +1,38 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { lazy, Suspense, type ReactNode } from "react"
+import { Loader2 } from "lucide-react"
+import { BrowserRouter, Route, Routes } from "react-router-dom"
+import { useTranslation } from "react-i18next"
+
 import { AuthProvider } from "./contexts/AuthContext"
-import Layout from "./layout"
-import Dashboard from "./pages/Dashboard"
-import ProcessingPage from "./pages/Processing"
-import ComparisonsPage from "./pages/Comparisons"
-import Login from "./pages/Login"
-import HistoryPage from "./pages/History"
-import SettingsPage from "./pages/Settings"
-import ProfilePage from "./pages/Profile"
+
+const Layout = lazy(() => import("./layout"))
+const Dashboard = lazy(() => import("./pages/Dashboard"))
+const ProcessingPage = lazy(() => import("./pages/Processing"))
+const ComparisonsPage = lazy(() => import("./pages/Comparisons"))
+const Login = lazy(() => import("./pages/Login"))
+const HistoryPage = lazy(() => import("./pages/History"))
+const SettingsPage = lazy(() => import("./pages/Settings"))
+const ProfilePage = lazy(() => import("./pages/Profile"))
+
+function RouteLoading() {
+  const { t } = useTranslation()
+
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center gap-3 text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
+      <span>{t("common.status.loading")}</span>
+    </div>
+  )
+}
+
+function withSuspense(element: ReactNode) {
+  return <Suspense fallback={<RouteLoading />}>{element}</Suspense>
+}
 
 function Glossary() {
-  return <div>术语库管理</div>
+  const { t } = useTranslation()
+
+  return <div>{t("glossary.glossary_3")}</div>
 }
 
 function App() {
@@ -18,18 +40,15 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Login page without layout */}
-          <Route path="/login" element={<Login />} />
-
-          {/* Main app with layout */}
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="processing" element={<ProcessingPage />} />
-            <Route path="preview" element={<ComparisonsPage />} />
-            <Route path="history" element={<HistoryPage />} />
+          <Route path="/login" element={withSuspense(<Login />)} />
+          <Route path="/" element={withSuspense(<Layout />)}>
+            <Route index element={withSuspense(<Dashboard />)} />
+            <Route path="processing" element={withSuspense(<ProcessingPage />)} />
+            <Route path="preview" element={withSuspense(<ComparisonsPage />)} />
+            <Route path="history" element={withSuspense(<HistoryPage />)} />
             <Route path="glossary" element={<Glossary />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="profile" element={<ProfilePage />} />
+            <Route path="settings" element={withSuspense(<SettingsPage />)} />
+            <Route path="profile" element={withSuspense(<ProfilePage />)} />
           </Route>
         </Routes>
       </BrowserRouter>

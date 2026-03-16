@@ -78,6 +78,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
             status=TaskStatus.PENDING.value,  # Ready for translation
             progress=100,
             message=f"arXiv paper {arxiv_id} downloaded successfully",
+            detail_code="download_source_complete",
             source_path=source_path,
             source_available=True
         )
@@ -188,7 +189,8 @@ async def download_arxiv(
         status=TaskStatus.PROCESSING.value,
         progress=0,
         stage="downloading",
-        message=f"开始下载 arXiv 论文 {arxiv_id}..."
+        message=f"开始下载 arXiv 论文 {arxiv_id}...",
+        detail_code="download_source_starting",
     )
     
     # Start background download task

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom"
 import { Calendar, Search, Settings, FileText, User } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import {
     Sidebar,
@@ -17,22 +18,22 @@ import {
 
 const items = [
     {
-        title: "新建翻译",
+        titleKey: "common.new_translation",
         url: "/",
         icon: Search,
     },
     {
-        title: "历史记录",
+        titleKey: "history.history",
         url: "/history",
         icon: Calendar,
     },
     {
-        title: "术语库管理",
+        titleKey: "glossary.glossary_management",
         url: "/glossary",
         icon: FileText,
     },
     {
-        title: "系统设置",
+        titleKey: "settings.title",
         url: "/settings",
         icon: Settings,
     },
@@ -40,6 +41,7 @@ const items = [
 
 export function AppSidebar() {
     const { state } = useSidebar()
+    const { t } = useTranslation()
     return (
         <Sidebar collapsible="icon">
             <SidebarHeader>
@@ -53,15 +55,15 @@ export function AppSidebar() {
             </SidebarHeader>
             <SidebarContent>
                 <SidebarGroup>
-                    <SidebarGroupLabel>菜单</SidebarGroupLabel>
+                    <SidebarGroupLabel>{t("layout.menu")}</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu>
                             {items.map((item) => (
-                                <SidebarMenuItem key={item.title}>
+                                <SidebarMenuItem key={item.titleKey}>
                                     <SidebarMenuButton asChild>
                                         <Link to={item.url}>
                                             <item.icon />
-                                            <span>{item.title}</span>
+                                            <span>{t(item.titleKey)}</span>
                                         </Link>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
@@ -76,7 +78,7 @@ export function AppSidebar() {
                         <SidebarMenuButton asChild>
                             <Link to="/profile">
                                 <User />
-                                <span>个人中心</span>
+                                <span>{t("layout.profile")}</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>

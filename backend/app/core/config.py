@@ -9,7 +9,7 @@ import os
 from typing import Optional, Dict, Any
 from enum import Enum
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 import toml
 
@@ -44,17 +44,17 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
     
     llm_api_key: str = Field(
-        env="LLM_API_KEY"
+        validation_alias="LLM_API_KEY"
     )
     llm_base_url: str = Field(
-        env="LLM_BASE_URL"
+        validation_alias="LLM_BASE_URL"
     )
     llm_model: str = Field(
-        env="LLM_MODEL"
+        validation_alias="LLM_MODEL"
     )
     llm_timeout: int = Field(
         default=60,
-        env="LLM_TIMEOUT"
+        validation_alias="LLM_TIMEOUT"
     )
     
     # Translation Settings
@@ -64,16 +64,16 @@ class Settings(BaseSettings):
     # Supabase Configuration
     supabase_url: Optional[str] = Field(
         default=None,
-        env="SUPABASE_URL"
+        validation_alias="SUPABASE_URL"
     )
     supabase_anon_key: Optional[str] = Field(
         default=None,
-        env="SUPABASE_ANON_KEY",
+        validation_alias="SUPABASE_ANON_KEY",
         description="Anon key for user operations (RLS enforced)"
     )
     supabase_service_role_key: Optional[str] = Field(
         default=None,
-        env="SUPABASE_SERVICE_ROLE_KEY",
+        validation_alias="SUPABASE_SERVICE_ROLE_KEY",
         description="Service Role Key for admin operations (bypasses RLS)"
     )
 
@@ -81,14 +81,14 @@ class Settings(BaseSettings):
     # Encryption Configuration
     encryption_key: Optional[str] = Field(
         default=None,
-        env="ENCRYPTION_KEY",
+        validation_alias="ENCRYPTION_KEY",
         description="Key for encrypting sensitive data like API keys"
     )
     
     # LaTeX Compiler Settings
     latex_bin_dir: Optional[str] = Field(
         default=None,
-        env="LATEX_BIN_DIR"
+        validation_alias="LATEX_BIN_DIR"
     )
     
     # Storage Paths (relative to project root)
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     terms_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "terms")
     task_configs_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "task_configs")
     failed_tasks_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "failed_tasks")
-    enable_task_config_capture: bool = Field(default=True, env="ENABLE_TASK_CONFIG_CAPTURE")
+    enable_task_config_capture: bool = Field(default=True, validation_alias="ENABLE_TASK_CONFIG_CAPTURE")
     
     # File Upload Settings
     max_upload_size: int = 50 * 1024 * 1024  # 50MB in bytes
@@ -117,31 +117,31 @@ class Settings(BaseSettings):
             "https://latextrans.pages.dev",
             "https://latextrans.online",
         ],
-        env="CORS_ORIGINS",
+        validation_alias="CORS_ORIGINS",
     )
     
     # Task Queue Settings
     max_concurrent_translations: int = Field(
         default=3,
-        env="MAX_CONCURRENT_TRANSLATIONS"
+        validation_alias="MAX_CONCURRENT_TRANSLATIONS"
     )
     max_user_active_tasks: int = Field(
         default=9,
-        env="MAX_USER_ACTIVE_TASKS"
+        validation_alias="MAX_USER_ACTIVE_TASKS"
     )
     guest_task_ttl_hours: int = Field(
         default=2,
-        env="GUEST_TASK_TTL_HOURS"
+        validation_alias="GUEST_TASK_TTL_HOURS"
     )
 
     # SMTP / Email Notification Settings (all optional)
-    smtp_host: Optional[str] = Field(default=None, env="SMTP_HOST")
-    smtp_port: int = Field(default=587, env="SMTP_PORT")
-    smtp_user: Optional[str] = Field(default=None, env="SMTP_USER")
-    smtp_password: Optional[str] = Field(default=None, env="SMTP_PASSWORD")
+    smtp_host: Optional[str] = Field(default=None, validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_user: Optional[str] = Field(default=None, validation_alias="SMTP_USER")
+    smtp_password: Optional[str] = Field(default=None, validation_alias="SMTP_PASSWORD")
     smtp_from: Optional[str] = Field(
         default=None,
-        env="SMTP_FROM",
+        validation_alias="SMTP_FROM",
         description="Sender address; defaults to SMTP_USER if not set"
     )
 
@@ -152,49 +152,49 @@ class Settings(BaseSettings):
     # - Self-hosted Triton NIM: no hard limit → use 100-200
     llm_max_concurrent_requests: int = Field(
         default=30,
-        env="LLM_MAX_CONCURRENT_REQUESTS",
+        validation_alias="LLM_MAX_CONCURRENT_REQUESTS",
         description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
     )
     max_concurrent_compilations: int = Field(
         default=1,
-        env="MAX_CONCURRENT_COMPILATIONS",
+        validation_alias="MAX_CONCURRENT_COMPILATIONS",
         description="Hard ceiling on concurrent LaTeX compilation subprocesses in a single worker."
     )
     async_compiler_enabled: bool = Field(
         default=True,
-        env="ASYNC_COMPILER_ENABLED",
+        validation_alias="ASYNC_COMPILER_ENABLED",
         description="Enable async subprocess-based compiler execution path."
     )
     async_blocking_wrappers_enabled: bool = Field(
         default=True,
-        env="ASYNC_BLOCKING_WRAPPERS_ENABLED",
+        validation_alias="ASYNC_BLOCKING_WRAPPERS_ENABLED",
         description="Enable asyncio.to_thread wrappers for blocking operations in async paths."
     )
     db_execution_mode: str = Field(
         default="per_call_client",
-        env="DB_EXECUTION_MODE",
+        validation_alias="DB_EXECUTION_MODE",
         description="DB threaded execution strategy: per_call_client|shared_client"
     )
 
     # Compile-first structural fallback controls (deprecated runtime semantics)
     enable_compile_first_structural_fallback: bool = Field(
         default=True,
-        env="ENABLE_COMPILE_FIRST_STRUCTURAL_FALLBACK",
+        validation_alias="ENABLE_COMPILE_FIRST_STRUCTURAL_FALLBACK",
         description="Deprecated compatibility flag. Structural candidates are no longer rolled back during validation."
     )
     enable_post_compile_target_language_fallback: bool = Field(
         default=True,
-        env="ENABLE_POST_COMPILE_TARGET_LANGUAGE_FALLBACK",
+        validation_alias="ENABLE_POST_COMPILE_TARGET_LANGUAGE_FALLBACK",
         description="Enable deterministic target-language fallback after an initial compile failure."
     )
     structural_fallback_ratio_cap: float = Field(
         default=0.38,
-        env="STRUCTURAL_FALLBACK_RATIO_CAP",
+        validation_alias="STRUCTURAL_FALLBACK_RATIO_CAP",
         description="Preferred fallback ratio cap (soft/hard behavior controlled by STRUCTURAL_FALLBACK_CAP_MODE)"
     )
     structural_fallback_cap_mode: str = Field(
         default="soft",
-        env="STRUCTURAL_FALLBACK_CAP_MODE",
+        validation_alias="STRUCTURAL_FALLBACK_CAP_MODE",
         description="Fallback ratio cap mode: soft or hard"
     )
 
@@ -203,10 +203,11 @@ class Settings(BaseSettings):
     port: int = 8000
     reload: bool = True
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -17,6 +17,8 @@ export interface TaskStatus {
     progress: number;
     stage: string;
     message: string;
+    detail_code?: string | null;
+    detail_params?: Record<string, string | number | boolean | null> | null;
     error?: string | null;
     warnings?: string | null;
     failure_reason_code?: string | null;

@@ -50,7 +50,8 @@ Thumbs.db
 texts/
 prototype_system/
 .pytest_cache/
-NiuTrans_LaTeXTrans/
+NiuTrans/
+NiuTrans/LaTeXTrans/
 LOG.TXT
 validation_results.txt
 test_output.txt

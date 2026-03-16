@@ -44,3 +44,5 @@ credentials.json
 client_secret.json
 auth.json
 *.ovpn
+.i18n-cache/
+coverage/

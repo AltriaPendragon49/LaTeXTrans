@@ -5,10 +5,13 @@ import { Toaster } from "@/components/ui/sonner"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { User, LogIn, Loader2 } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { LanguageSelector } from "@/components/LanguageSelector"
 
 export default function Layout() {
     const navigate = useNavigate()
     const { user, isAuthenticated, loading, isSupabaseAvailable } = useAuth()
+    const { t } = useTranslation()
 
     return (
         <SidebarProvider>
@@ -17,10 +20,11 @@ export default function Layout() {
                 <div className="flex items-center justify-between p-2 border-b bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0">
                     <div className="flex items-center">
                         <SidebarTrigger />
-                        <div className="ml-2 font-medium">LaTeX 翻译平台</div>
+                        <div className="ml-2 font-medium">{t("layout.latex_translation_platform")}</div>
                     </div>
 
-                    <div className="pr-2">
+                    <div className="flex items-center gap-2 pr-2">
+                        <LanguageSelector />
                         {loading ? (
                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                         ) : isAuthenticated ? (
@@ -43,10 +47,10 @@ export default function Layout() {
                                 className="gap-2"
                             >
                                 <LogIn className="h-4 w-4" />
-                                登录
+                                {t("common.actions.signIn")}
                             </Button>
                         ) : (
-                            <span className="text-xs text-muted-foreground px-2">访客模式</span>
+                            <span className="text-xs text-muted-foreground px-2">{t("layout.guestMode")}</span>
                         )}
                     </div>
                 </div>

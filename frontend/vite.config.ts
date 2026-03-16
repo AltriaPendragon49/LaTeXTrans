@@ -11,4 +11,41 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+
+          if (id.includes('react-pdf') || id.includes('pdfjs-dist')) {
+            return 'pdf'
+          }
+
+          if (id.includes('@supabase')) {
+            return 'supabase'
+          }
+
+          if (id.includes('i18next') || id.includes('react-i18next')) {
+            return 'i18n'
+          }
+
+          if (id.includes('@radix-ui')) {
+            return 'radix'
+          }
+
+          if (id.includes('framer-motion')) {
+            return 'motion'
+          }
+
+          if (id.includes('lucide-react')) {
+            return 'icons'
+          }
+
+          return 'vendor'
+        },
+      },
+    },
+  },
 })

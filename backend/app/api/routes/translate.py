@@ -498,6 +498,7 @@ async def run_translation(
             status=TaskStatus.PROCESSING.value,
             progress=0,
             message="Checking for reusable output...",
+            detail_code="task_waiting",
             output_path=str(output_dir),  # eagerly written for lazy reconciliation
             user_id=user_id
         )
@@ -527,6 +528,7 @@ async def run_translation(
                 status=TaskStatus.COMPLETED.value,
                 progress=100,
                 message="Translation completed (reused existing output)",
+                detail_code="compile_complete",
                 output_path=new_output_path,
                 user_id=user_id
             )
@@ -542,6 +544,7 @@ async def run_translation(
             status=TaskStatus.PROCESSING.value,
             progress=0,
             message="Initializing translation...",
+            detail_code="translation_starting",
             user_id=user_id
         )
         
@@ -669,6 +672,7 @@ async def run_translation(
                 status=TaskStatus.COMPLETED_WITH_WARNINGS.value,
                 progress=100,
                 message="Translation completed with compilation warnings",
+                detail_code="compile_complete",
                 warnings=warning_summary or "Compilation completed with warnings",
                 output_path=str(output_dir),
                 user_id=user_id
@@ -680,6 +684,7 @@ async def run_translation(
                 status=TaskStatus.COMPLETED.value,
                 progress=100,
                 message="Translation completed successfully",
+                detail_code="compile_complete",
                 output_path=str(output_dir),
                 user_id=user_id
             )
@@ -1083,6 +1088,7 @@ async def _download_and_enqueue(
             progress=0,
             stage="downloading",
             message=f"正在下载 arXiv 论文 {arxiv_id}...",
+            detail_code="download_source_starting",
             user_id=user_id,
         )
 
@@ -1106,6 +1112,7 @@ async def _download_and_enqueue(
             status=TaskStatus.PENDING.value,
             progress=100,
             message=f"arXiv 论文 {arxiv_id} 下载完成，等待翻译",
+            detail_code="download_source_complete",
             source_path=source_path,
             source_available=True,
             user_id=user_id,

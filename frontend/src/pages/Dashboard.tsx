@@ -13,17 +13,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronDown, ChevronRight, Play, FileText, Download, RefreshCw, Info, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
-
-const stageMap: Record<string, string> = {
-    downloading: '正在从 arXiv 下载源文件...',
-    extracting: '正在解压源文件...',
-    downloading_pdf: '正在下载原文 PDF...',
-    validating: '正在校验 LaTeX 结构...',
-}
+import { useTranslation } from 'react-i18next'
 
 export default function Dashboard() {
     const navigate = useNavigate()
     const { user } = useAuth()
+    const { t } = useTranslation()
     const isAuthenticated = !!user
     const {
         taskId, status, config,
@@ -44,6 +39,20 @@ export default function Dashboard() {
     const [showArxivTip, setShowArxivTip] = useState(true)
     const [showApiWarning, setShowApiWarning] = useState(true)
 
+    const stageMap: Record<string, string> = {
+        downloading: t('dashboard.downloading_source_files_from_arxiv'),
+        extracting: t('dashboard.extracting_source_files_2'),
+        downloading_pdf: t('dashboard.downloading_the_original_pdf'),
+        validating: t('dashboard.validating_latex_structure_2'),
+    }
+
+    const stageTitleMap: Record<string, string> = {
+        downloading: t('task.steps.downloadSource'),
+        extracting: t('dashboard.extracting_source_files'),
+        downloading_pdf: t('dashboard.downloading_original_pdf'),
+        validating: t('dashboard.validating_latex_structure'),
+    }
+
     useEffect(() => {
         loadUserSettings()
     }, [loadUserSettings])
@@ -51,7 +60,7 @@ export default function Dashboard() {
     const handleLoadArxiv = async () => {
         if (!localArxivId.trim()) return
         setIsLoadingSource(true)
-        toast.info('正在加载源文档，请稍候...')
+        toast.info(t('dashboard.loading_source_document_please_wait'))
         try {
             await startArxivDownload(localArxivId)
         } finally {
@@ -73,27 +82,27 @@ export default function Dashboard() {
     return (
         <div className="container mx-auto max-w-4xl p-6 space-y-8 animate-in fade-in duration-500">
             <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight">新建翻译</h1>
+                <h1 className="text-3xl font-bold tracking-tight">{t('common.new_translation')}</h1>
                 <p className="text-muted-foreground">
-                    输入 arXiv ID 或上传 LaTeX 项目，开始新的翻译任务。
+                    {t('dashboard.enter_an_arxiv_id_or_upload_a_latex_project_to_start_a_new_translation_task')}
                 </p>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList className="grid w-full grid-cols-3 lg:w-[520px]">
-                    <TabsTrigger value="arxiv">arXiv 编号</TabsTrigger>
-                    <TabsTrigger value="upload">本地上传</TabsTrigger>
-                    <TabsTrigger value="batch">批量翻译</TabsTrigger>
+                    <TabsTrigger value="arxiv">{t('dashboard.arxiv_id')}</TabsTrigger>
+                    <TabsTrigger value="upload">{t('dashboard.local_upload')}</TabsTrigger>
+                    <TabsTrigger value="batch">{t('dashboard.batch_translation')}</TabsTrigger>
                 </TabsList>
 
                 <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
                     {activeTab !== 'batch' && (
                         <CardHeader>
-                            <CardTitle>{activeTab === 'arxiv' ? 'arXiv 论文' : '文件上传'}</CardTitle>
+                            <CardTitle>{activeTab === 'arxiv' ? t('dashboard.arxiv_paper') : t('dashboard.file_upload')}</CardTitle>
                             <CardDescription>
                                 {activeTab === 'arxiv'
-                                    ? '输入 arXiv ID（例如 2310.xxxxx）下载源文档。'
-                                    : '上传 LaTeX 项目压缩包（ZIP / RAR / TAR.GZ）。'}
+                                    ? t('dashboard.enter_an_arxiv_id_for_example_2310_xxxxx_to_download_source_files')
+                                    : t('dashboard.upload_a_latex_project_archive_zip_rar_tar_gz')}
                             </CardDescription>
                         </CardHeader>
                     )}
@@ -101,7 +110,7 @@ export default function Dashboard() {
                         <TabsContent value="arxiv" className="mt-0 space-y-4">
                             <div className="flex gap-4">
                                 <Input
-                                    placeholder="请输入 arXiv ID（例如 2301.12345）"
+                                    placeholder={t('dashboard.enter_an_arxiv_id_for_example_2301_12345')}
                                     value={localArxivId}
                                     onChange={(e) => setLocalArxivId(e.target.value)}
                                     className="font-mono bg-background"
@@ -114,7 +123,7 @@ export default function Dashboard() {
                                     {(isLoadingSource || isDownloading)
                                         ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                                         : <Download className="mr-2 h-4 w-4" />}
-                                    加载源文档
+                                    {t('dashboard.load_source')}
                                 </Button>
                             </div>
 
@@ -123,10 +132,10 @@ export default function Dashboard() {
                                     className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3 border border-border/50 relative group cursor-pointer hover:bg-muted/80 transition-colors animate-in fade-in zoom-in-95 duration-200"
                                     onClick={() => setShowArxivTip(false)}
                                 >
-                                    <Info className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
+                                    <Info className="h-4 w-4 mt-0.5 text-blue-500 shrink-0" />
                                     <p className="pr-6">
-                                        <span className="font-medium text-foreground/80">提示：</span>
-                                        通过官方 arXiv 通道下载时，大论文会耗时较久，请耐心等待。
+                                        <span className="font-medium text-foreground/80">{t('dashboard.tip')}</span>
+                                        {t('dashboard.large_papers_can_take_longer_to_download_through_the_official_arxiv_channel_please_be_patient')}
                                     </p>
                                     <X className="h-4 w-4 absolute right-2 top-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </div>
@@ -141,7 +150,7 @@ export default function Dashboard() {
                                                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
                                             </span>
                                             <span className="text-sm font-medium text-foreground">
-                                                {downloadStage ? downloadStage.replace(/_/g, ' ') : '准备中...'}
+                                                {downloadStage ? (stageTitleMap[downloadStage] ?? downloadStage.replace(/_/g, ' ')) : t('dashboard.preparing')}
                                             </span>
                                         </div>
                                         <span className="text-sm font-mono font-semibold text-primary tabular-nums">
@@ -150,12 +159,12 @@ export default function Dashboard() {
                                     </div>
                                     <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
                                         <div
-                                            className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
+                                            className="h-full rounded-full bg-linear-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
                                             style={{ width: `${Math.round(downloadProgress)}%` }}
                                         />
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        {stageMap[downloadStage] ?? '正在准备下载...'}
+                                        {stageMap[downloadStage] ?? t('dashboard.preparing_download')}
                                     </p>
                                 </div>
                             )}
@@ -176,8 +185,8 @@ export default function Dashboard() {
                                 />
                             ) : (
                                 <LoginPrompt
-                                    message="请登录后使用批量翻译"
-                                    description="批量翻译仅对登录用户开放，支持一次提交最多 9 篇 arXiv 论文或多个本地文件。"
+                                    messageKey="dashboard.batch.loginRequired"
+                                    descriptionKey="dashboard.batch.loginRequiredDescription"
                                 />
                             )}
                         </TabsContent>
@@ -188,8 +197,8 @@ export default function Dashboard() {
                                     <FileText className="w-5 h-5" />
                                 </div>
                                 <div className="flex-1">
-                                    <p className="font-medium text-green-700 dark:text-green-300">源文档已就绪</p>
-                                    <p className="text-xs text-green-600/80 dark:text-green-400/80 font-mono">任务编号: {taskId}</p>
+                                    <p className="font-medium text-green-700 dark:text-green-300">{t('dashboard.source_document_ready')}</p>
+                                    <p className="text-xs text-green-600/80 dark:text-green-400/80 font-mono">{t('dashboard.task_id', { taskId })}</p>
                                 </div>
                             </div>
                         )}
@@ -204,8 +213,8 @@ export default function Dashboard() {
                             {isConfigOpen
                                 ? <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0" />
                                 : <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0" />}
-                            <span className="font-medium text-lg whitespace-nowrap">高级配置</span>
-                            <span className="text-sm text-muted-foreground ml-1 font-normal whitespace-nowrap">（可选）</span>
+                            <span className="font-medium text-lg whitespace-nowrap">{t('dashboard.advancedConfig')}</span>
+                            <span className="text-sm text-muted-foreground ml-1 font-normal whitespace-nowrap">{t('dashboard.optional')}</span>
                         </Button>
                     </CollapsibleTrigger>
 
@@ -216,7 +225,7 @@ export default function Dashboard() {
                         >
                             <Info className="w-3.5 h-3.5 shrink-0" />
                             <span className="leading-tight mr-1">
-                                默认 API 使用免费额度，质量与速度可能受影响，建议配置自定义 API。
+                                {t('dashboard.the_default_api_uses_a_free_tier_and_may_affect_quality_and_speed_a_custom_api_is_recommended')}
                             </span>
                             <X className="w-3.5 h-3.5 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
                         </div>
@@ -238,7 +247,7 @@ export default function Dashboard() {
                         {batchState.isSubmitting
                             ? <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                             : <Play className="mr-2 h-5 w-5 fill-current" />}
-                        {batchState.isSubmitting ? '提交中...' : '开始批量翻译'}
+                        {batchState.isSubmitting ? t('dashboard.submitting') : t('dashboard.start_batch_translation')}
                     </Button>
                 ) : (
                     <Button
@@ -248,7 +257,7 @@ export default function Dashboard() {
                         className="w-full md:w-auto min-w-[200px] shadow-lg shadow-primary/20 text-lg py-6"
                     >
                         <Play className="mr-2 h-5 w-5 fill-current" />
-                        开始翻译
+                        {t('dashboard.start_translation')}
                     </Button>
                 )}
             </div>

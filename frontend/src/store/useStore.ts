@@ -2,17 +2,25 @@
 import { toast } from "sonner"
 import { downloadArxiv, startTranslation, getTaskStatus } from '@/lib/api'
 import { API_BASE_URL } from '@/api-base'
+import i18n from '@/i18n'
 import type { TranslateRequest } from '@/lib/api'
 import type { TranslationConfig, AdvancedConfig, LatexValidation } from '@/types/config'
 import { DEFAULT_CONFIG } from '@/types/config'
+import { getAccessToken, isSupabaseConfigured } from '@/lib/supabase'
+
+type TaskDetailParams = Record<string, string | number | boolean | null> | null
 
 interface TranslationState {
     // Task state
     taskId: string | null
     arxivId: string | null
     status: string
+    stage: string
     progress: number
     message: string
+    detailCode: string | null
+    detailParams: TaskDetailParams
+    failureReasonCode: string | null
     logs: string[]
     error: string | null
     isPolling: boolean
@@ -63,8 +71,12 @@ export const useStore = create<TranslationState>((set, get) => ({
     taskId: null,
     arxivId: null,
     status: 'idle',
+    stage: 'idle',
     progress: 0,
     message: '',
+    detailCode: null,
+    detailParams: null,
+    failureReasonCode: null,
     logs: [],
     error: null,
     isPolling: false,
@@ -95,8 +107,12 @@ export const useStore = create<TranslationState>((set, get) => ({
             taskId: null,
             arxivId: null,
             status: 'idle',
+            stage: 'idle',
             progress: 0,
             message: '',
+            detailCode: null,
+            detailParams: null,
+            failureReasonCode: null,
             logs: [],
             error: null,
             isPolling: false,
@@ -121,8 +137,12 @@ export const useStore = create<TranslationState>((set, get) => ({
             taskId: null,
             arxivId: null,
             status: 'idle',
+            stage: 'idle',
             progress: 0,
             message: '',
+            detailCode: null,
+            detailParams: null,
+            failureReasonCode: null,
             logs: [],
             error: null,
             isPolling: false,
@@ -173,8 +193,6 @@ export const useStore = create<TranslationState>((set, get) => ({
         if (get().userSettingsLoaded && !forceReload) return
 
         try {
-            const { getAccessToken, isSupabaseConfigured } = await import('@/lib/supabase')
-
             // Skip if not configured or not authenticated
             if (!isSupabaseConfigured()) {
                 set({ userSettingsLoaded: true })
@@ -260,9 +278,12 @@ export const useStore = create<TranslationState>((set, get) => ({
         try {
             set({
                 status: 'downloading',
-                message: '正在开始下载 arXiv 源文件...',
+                stage: 'downloading',
+                message: i18n.t('task.detail.downloadSourceStarting'),
+                detailCode: 'download_source_starting',
+                detailParams: null,
                 error: null,
-                logs: ['正在开始下载 arXiv 源文件...'],
+                logs: [i18n.t('task.detail.downloadSourceStarting')],
                 arxivId: arxivId,
                 isDownloading: true,
                 downloadProgress: 0,
@@ -274,21 +295,22 @@ export const useStore = create<TranslationState>((set, get) => ({
             // Set task_id and start SSE-based download progress tracking.
             set({
                 taskId: response.task_id,
-                logs: [...get().logs, `任务已创建: ${response.task_id}`, response.message]
+                logs: [...get().logs, response.message].filter((value, index, values) => values.indexOf(value) === index)
             })
 
             // Use SSE instead of polling for download progress.
             get().pollDownloadProgress()
 
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : '下载 arXiv 论文失败'
+            const msg = error instanceof Error ? error.message : i18n.t('dashboard.arxivDownloadFailed')
             set({
                 error: msg,
                 status: 'failed',
+                stage: 'downloading',
                 isDownloading: false,
                 downloadProgress: 0
             })
-            toast.error(msg)
+            toast.error(i18n.t('dashboard.arxivDownloadFailed'))
             throw error
         }
     },
@@ -302,14 +324,15 @@ export const useStore = create<TranslationState>((set, get) => ({
         let sseRetryCount = 0
         const MAX_SSE_RETRIES = 3
         const markDownloadFailed = (msg?: string) => {
-            const errorMsg = msg || 'ArXiv source download failed'
+            const errorMsg = msg || i18n.t('dashboard.arxivDownloadFailed')
             set({
                 status: 'failed',
+                stage: get().downloadStage || 'downloading',
                 isDownloading: false,
                 error: errorMsg,
                 message: errorMsg
             })
-            toast.error(errorMsg)
+            toast.error(i18n.t('dashboard.arxivDownloadFailed'))
         }
 
         const connectSSE = () => {
@@ -335,6 +358,9 @@ export const useStore = create<TranslationState>((set, get) => ({
                         set({
                             downloadProgress: data.progress,
                             downloadStage: data.stage || 'downloading',
+                            stage: data.stage || get().stage,
+                            detailCode: data.detail_code ?? null,
+                            detailParams: data.detail_params ?? null,
                             message: data.message
                         })
 
@@ -343,12 +369,15 @@ export const useStore = create<TranslationState>((set, get) => ({
                             if (get().status !== 'ready') {
                                 set({
                                     status: 'ready',
+                                    stage: data.stage || 'done',
                                     isDownloading: false,
                                     downloadProgress: 100,
-                                    message: 'arXiv 源文件下载完成',
-                                    logs: [...get().logs, '下载已完成']
+                                    detailCode: 'download_source_complete',
+                                    detailParams: null,
+                                    message: data.message,
+                                    logs: [...get().logs, data.message].filter((value, index, values) => values.indexOf(value) === index)
                                 })
-                                toast.success("arXiv 源文件下载完成")
+                                toast.success(i18n.t('dashboard.sourceDocumentReady'))
                             }
                             eventSource?.close()
                             eventSource = null
@@ -373,12 +402,15 @@ export const useStore = create<TranslationState>((set, get) => ({
                         } else if (get().status !== 'ready') {
                             set({
                                 status: 'ready',
+                                stage: data.stage || 'done',
                                 isDownloading: false,
                                 downloadProgress: 100,
-                                message: 'arXiv 源文件下载完成',
-                                logs: [...get().logs, '下载已完成']
+                                detailCode: 'download_source_complete',
+                                detailParams: null,
+                                message: data.message,
+                                logs: [...get().logs, data.message].filter((value, index, values) => values.indexOf(value) === index)
                             })
-                            toast.success("arXiv 源文件下载完成")
+                            toast.success(i18n.t('dashboard.sourceDocumentReady'))
                         }
                         eventSource?.close()
                         eventSource = null
@@ -440,6 +472,9 @@ export const useStore = create<TranslationState>((set, get) => ({
                     set({
                         downloadProgress: statusData.progress,
                         downloadStage: statusData.stage || 'downloading',
+                        stage: statusData.stage || get().stage,
+                        detailCode: statusData.detail_code ?? null,
+                        detailParams: statusData.detail_params ?? null,
                         message: statusData.message
                     })
 
@@ -452,12 +487,15 @@ export const useStore = create<TranslationState>((set, get) => ({
                         if (get().status !== 'ready') {
                             set({
                                 status: 'ready',
+                                stage: statusData.stage || 'done',
                                 isDownloading: false,
                                 downloadProgress: 100,
-                                message: 'arXiv 源文件下载完成',
-                                logs: [...get().logs, '下载已完成']
+                                detailCode: 'download_source_complete',
+                                detailParams: null,
+                                message: statusData.message,
+                                logs: [...get().logs, statusData.message].filter((value, index, values) => values.indexOf(value) === index)
                             })
-                            toast.success("arXiv 源文件下载完成")
+                            toast.success(i18n.t('dashboard.sourceDocumentReady'))
                         }
                         return
                     } else if (statusData.status.toLowerCase() === 'failed') {
@@ -480,20 +518,31 @@ export const useStore = create<TranslationState>((set, get) => ({
     startTranslation: async (config) => {
         const { taskId } = get()
         if (!taskId) {
-            toast.error("当前没有可用任务 ID")
-            throw new Error("当前没有可用任务 ID")
+            toast.error(i18n.t('task.error.missingTaskId'))
+            throw new Error(i18n.t('task.error.missingTaskId'))
         }
 
         try {
-            set({ status: 'starting_translation', message: '正在启动翻译...', error: null })
+            set({
+                status: 'processing',
+                stage: 'parsing',
+                message: i18n.t('task.detail.translationStarting'),
+                detailCode: 'translation_starting',
+                detailParams: null,
+                failureReasonCode: null,
+                error: null,
+            })
             const response = await startTranslation(taskId, config)
-            set({ message: response.message, logs: [...get().logs, '翻译已启动'] })
-            toast.success("翻译已启动")
+            set({
+                message: response.message,
+                logs: [...get().logs, response.message].filter((value, index, values) => values.indexOf(value) === index),
+            })
+            toast.success(i18n.t('task.toast.translationStarted'))
             get().pollStatus()
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : '启动翻译失败'
+            const msg = error instanceof Error ? error.message : i18n.t('task.error.startFailed')
             set({ error: msg, status: 'failed' })
-            toast.error(msg)
+            toast.error(i18n.t('task.error.startFailed'))
             throw error
         }
     },
@@ -514,10 +563,14 @@ export const useStore = create<TranslationState>((set, get) => ({
 
                 set((state) => ({
                     status: statusData.status,
+                    stage: statusData.stage || state.stage,
                     progress: statusData.progress,
                     message: statusData.message,
+                    detailCode: statusData.detail_code ?? state.detailCode,
+                    detailParams: statusData.detail_params ?? state.detailParams,
+                    failureReasonCode: statusData.failure_reason_code ?? state.failureReasonCode,
                     error: statusData.error || null,
-                    taskWarnings: (statusData as any).warnings ?? state.taskWarnings,
+                    taskWarnings: statusData.warnings ?? state.taskWarnings,
                     logs: statusData.logs ? statusData.logs : [...state.logs, statusData.message].filter((v, i, a) => a.indexOf(v) === i)
                 }))
 
@@ -526,11 +579,11 @@ export const useStore = create<TranslationState>((set, get) => ({
                     stopPolling()
                     if (wasPolling) {
                         if (statusData.status.toLowerCase() === 'completed') {
-                            toast.success("任务已完成", { id: `task-completed-${taskId}` })
+                            toast.success(i18n.t('task.toast.completed'), { id: `task-completed-${taskId}` })
                         } else if (statusData.status.toLowerCase() === 'failed') {
-                            toast.error("任务失败", { id: `task-failed-${taskId}` })
+                            toast.error(i18n.t('task.toast.failed'), { id: `task-failed-${taskId}` })
                         } else if (statusData.status.toLowerCase() === 'failed_compilation') {
-                            toast.error("任务在 PDF 编译阶段失败", { id: `task-failed-compilation-${taskId}` })
+                            toast.error(i18n.t('task.toast.failedCompilation'), { id: `task-failed-compilation-${taskId}` })
                         }
                     }
                 }

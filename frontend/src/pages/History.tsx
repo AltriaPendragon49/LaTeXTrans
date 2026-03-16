@@ -5,7 +5,7 @@
  * Requires authentication - shows prompt for guests.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useStore } from '@/store/useStore'
@@ -28,6 +28,9 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { deleteTask, deleteTasksBatch } from '@/lib/api'
 import { API_BASE_URL } from '@/api-base'
+import { useTranslation } from 'react-i18next'
+import { getCompileStrategyLabel, getFormattingValueLabel, getTaskStatusLabel, getTranslationModeLabel } from '@/i18n/ui-text'
+import { getAccessToken } from '@/lib/supabase'
 
 interface TaskHistoryItem {
     task_id: string
@@ -77,6 +80,7 @@ export default function HistoryPage() {
     const navigate = useNavigate()
     const { isAuthenticated, loading: authLoading } = useAuth()
     const { setTaskId, setArxivId } = useStore()
+    const { t, i18n } = useTranslation()
 
     const [tasks, setTasks] = useState<TaskHistoryItem[]>([])
     const [loading, setLoading] = useState(false)
@@ -108,12 +112,11 @@ export default function HistoryPage() {
     }
 
     // Fetch history
-    const fetchHistory = async (pageNum: number, append: boolean = false) => {
+    const fetchHistory = useCallback(async (pageNum: number, append: boolean = false) => {
         setLoading(true)
         setError(null)
 
         try {
-            const { getAccessToken } = await import('@/lib/supabase')
             const token = await getAccessToken()
 
             const response = await fetch(
@@ -127,7 +130,7 @@ export default function HistoryPage() {
             )
 
             if (!response.ok) {
-                throw new Error('获取历史记录失败')
+                throw new Error(t('history.failed_to_load_history'))
             }
 
             const data: HistoryResponse = await response.json()
@@ -141,11 +144,11 @@ export default function HistoryPage() {
             setTotal(data.total)
             setPage(pageNum)
         } catch (err) {
-            setError(err instanceof Error ? err.message : '获取历史记录失败')
+            setError(err instanceof Error ? err.message : t('history.failed_to_load_history'))
         } finally {
             setLoading(false)
         }
-    }
+    }, [t])
 
     // Load more handler
     const loadMore = () => {
@@ -159,7 +162,7 @@ export default function HistoryPage() {
         if (isAuthenticated) {
             fetchHistory(1)
         }
-    }, [isAuthenticated])
+    }, [fetchHistory, isAuthenticated])
 
     // Delete handlers
     const handleDeleteClick = (taskId: string, e: React.MouseEvent) => {
@@ -177,7 +180,7 @@ export default function HistoryPage() {
         setDeleteDialogOpen(false)
         setTaskToDelete(null)
 
-        const toastId = toast.loading('正在删除任务...')
+        const toastId = toast.loading(t('history.deleting_task'))
 
         try {
             await deleteTask(deletingId)
@@ -191,12 +194,10 @@ export default function HistoryPage() {
                 return newSet
             })
 
-            toast.success('任务已删除', { id: toastId })
+            toast.success(t('history.task_deleted'), { id: toastId })
         } catch (error) {
-            toast.error(
-                error instanceof Error ? error.message : '删除失败，请重试',
-                { id: toastId }
-            )
+            console.error('[History] Failed to delete task', error)
+            toast.error(t('history.delete_failed_please_try_again'), { id: toastId })
         }
     }
 
@@ -211,7 +212,7 @@ export default function HistoryPage() {
         setSelectedTasks(new Set())
         setSelectionMode(false)
 
-        const toastId = toast.loading(`正在删除 ${count} 个任务...`)
+        const toastId = toast.loading(t('history.deleting_tasks', { count }))
 
         try {
             const result = await deleteTasksBatch(deletingIds)
@@ -227,17 +228,15 @@ export default function HistoryPage() {
             }
 
             if (successCount === count) {
-                toast.success(`成功删除 ${successCount} 个任务`, { id: toastId })
+                toast.success(t('history.successfully_deleted_tasks', { count: successCount }), { id: toastId })
             } else if (successCount > 0) {
-                toast.warning(`删除了 ${successCount}/${count} 个任务，部分失败请重试`, { id: toastId })
+                toast.warning(t('history.deleted_tasks_some_failed_please_try_again', { successCount, count }), { id: toastId })
             } else {
-                toast.error(`删除失败（0/${count}），请重试`, { id: toastId })
+                toast.error(t('history.delete_failed_0_please_try_again', { count }), { id: toastId })
             }
         } catch (error) {
-            toast.error(
-                error instanceof Error ? error.message : '批量删除失败，请重试',
-                { id: toastId }
-            )
+            console.error('[History] Failed to delete tasks', error)
+            toast.error(t('history.batch_delete_failed_please_try_again'), { id: toastId })
         }
     }
 
@@ -278,7 +277,7 @@ export default function HistoryPage() {
                 <div className="space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
                         <History className="h-8 w-8" />
-                        翻译历史
+                        {t('history.history')}
                     </h1>
                 </div>
 
@@ -289,14 +288,14 @@ export default function HistoryPage() {
                                 <LogIn className="h-8 w-8 text-muted-foreground" />
                             </div>
                             <div className="space-y-2">
-                                <p className="text-lg font-medium">登录以查看翻译历史</p>
+                                <p className="text-lg font-medium">{t('history.sign_in_to_view_translation_history')}</p>
                                 <p className="text-muted-foreground">
-                                    登录后您可以查看和管理所有的翻译任务记录
+                                    {t('history.sign_in_to_view_and_manage_all_translation_task_records')}
                                 </p>
                             </div>
                             <Button onClick={() => navigate('/login')} className="mt-4">
                                 <LogIn className="mr-2 h-4 w-4" />
-                                前往登录
+                                {t('common.go_to_sign_in')}
                             </Button>
                         </div>
                     </CardContent>
@@ -308,7 +307,8 @@ export default function HistoryPage() {
     // Format date
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr)
-        return date.toLocaleString('zh-CN', {
+        const locale = i18n.resolvedLanguage === 'zh' ? 'zh-CN' : i18n.resolvedLanguage
+        return date.toLocaleString(locale, {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -344,10 +344,10 @@ export default function HistoryPage() {
                 <div className="space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
                         <History className="h-8 w-8" />
-                        翻译历史
+                        {t('history.history')}
                     </h1>
                     <p className="text-muted-foreground">
-                        共 {total} 个翻译任务
+                        {t('history.total_translation_tasks', { count: total })}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -358,7 +358,7 @@ export default function HistoryPage() {
                                 size="sm"
                                 onClick={selectAll}
                             >
-                                {selectedTasks.size === tasks.length ? '取消全选' : '全选'}
+                                {selectedTasks.size === tasks.length ? t('history.clear_selection') : t('history.select_all')}
                             </Button>
                             <Button
                                 variant="destructive"
@@ -368,7 +368,7 @@ export default function HistoryPage() {
                                 className="min-w-[90px]"
                             >
                                 <Trash2 className="h-4 w-4 mr-2" />
-                                删除选中 ({selectedTasks.size})
+                                {t('history.delete_selected', { count: selectedTasks.size })}
                             </Button>
                             <Button
                                 variant="ghost"
@@ -378,7 +378,7 @@ export default function HistoryPage() {
                                     setSelectedTasks(new Set())
                                 }}
                             >
-                                取消
+                                {t('common.actions.cancel')}
                             </Button>
                         </>
                     ) : (
@@ -389,7 +389,7 @@ export default function HistoryPage() {
                                 onClick={() => setSelectionMode(true)}
                                 disabled={tasks.length === 0}
                             >
-                                选择
+                                {t('history.select')}
                             </Button>
                             <Button
                                 variant="outline"
@@ -398,7 +398,7 @@ export default function HistoryPage() {
                                 disabled={loading}
                             >
                                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                                刷新
+                                {t('history.refresh')}
                             </Button>
                         </>
                     )}
@@ -418,7 +418,7 @@ export default function HistoryPage() {
                         <CardContent className="pt-6">
                             <div className="text-center py-8 text-muted-foreground">
                                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                <p>暂无翻译记录</p>
+                                <p>{t('history.no_translation_history_yet')}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -441,7 +441,7 @@ export default function HistoryPage() {
                                                     checked={selectedTasks.has(task.task_id)}
                                                     onCheckedChange={() => toggleSelection(task.task_id)}
                                                     className="ml-2"
-                                                    aria-label={`选择任务 ${task.arxiv_id || task.task_id.slice(0, 8)}`}
+                                                    aria-label={t('history.select_task', { task: task.arxiv_id || task.task_id.slice(0, 8) })}
                                                 />
                                             ) : (
                                                 <div className="p-2 rounded-lg bg-muted">
@@ -458,7 +458,7 @@ export default function HistoryPage() {
                                                         {formatDate(task.created_at)}
                                                     </span>
                                                     <span className="capitalize">
-                                                        {task.translation_mode === 'full' ? '全文翻译' : '快速筛查'}
+                                                        {getTranslationModeLabel(t, task.translation_mode)}
                                                     </span>
                                                 </div>
                                             </div>
@@ -466,13 +466,7 @@ export default function HistoryPage() {
 
                                         <div className="flex items-center gap-2">
                                             <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusStyles[task.status] || statusStyles.failed}`}>
-                                                {task.status === 'completed' ? '已完成' :
-                                                    task.status === 'completed_with_warnings' ? '完成(有警告)' :
-                                                        task.status === 'processing' ? '处理中' :
-                                                            task.status === 'failed' ? '失败' :
-                                                                task.status === 'failed_compilation' ? '编译失败' :
-                                                                    task.status === 'structure_invalid' ? '结构无效' :
-                                                                        task.status === 'pending' ? '等待中' : task.status}
+                                                {getTaskStatusLabel(t, task.status)}
                                             </span>
 
                                             {!selectionMode && (
@@ -483,7 +477,7 @@ export default function HistoryPage() {
                                                         size="sm"
                                                         className="h-11 w-11 p-0 hover:bg-destructive/10 hover:text-destructive transition-colors"
                                                         onClick={(e) => handleDeleteClick(task.task_id, e)}
-                                                        aria-label="删除任务"
+                                                        aria-label={t('history.delete_task')}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
@@ -495,7 +489,7 @@ export default function HistoryPage() {
                                                             size="sm"
                                                             className="h-11 w-11 p-0 hover:bg-muted"
                                                             onClick={(e) => toggleExpand(task.task_id, e)}
-                                                            aria-label="展开配置详情"
+                                                            aria-label={t('history.expand_configuration_details')}
                                                         >
                                                             <Settings2 className="h-4 w-4" />
                                                             <ChevronDown
@@ -513,32 +507,32 @@ export default function HistoryPage() {
 
                                     {/* 可折叠的配置详情区域 */}
                                     <CollapsibleContent className="animate-in slide-in-from-top-2 fade-in duration-200">
-                                        <div className="pt-3 border-t border-border/50 space-y-3">
-                                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                                                <Settings2 className="h-4 w-4" />
-                                                <span className="font-medium">翻译配置</span>
-                                            </div>
+                                            <div className="pt-3 border-t border-border/50 space-y-3">
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                                                    <Settings2 className="h-4 w-4" />
+                                                    <span className="font-medium">{t('history.translation_configuration')}</span>
+                                                </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                                 {/* 语言设置 */}
                                                 <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
                                                     <Languages className="h-4 w-4 text-blue-500" />
-                                                    <span className="text-muted-foreground">语言：</span>
+                                                    <span className="text-muted-foreground">{t('history.language')}</span>
                                                     <span className="font-medium">{task.source_language} → {task.target_language}</span>
                                                 </div>
 
                                                 {/* 编译策略 */}
                                                 <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
                                                     <Wrench className="h-4 w-4 text-orange-500" />
-                                                    <span className="text-muted-foreground">编译策略：</span>
-                                                    <span className="font-medium capitalize">{task.compile_strategy}</span>
+                                                    <span className="text-muted-foreground">{t('history.compile_strategy')}</span>
+                                                    <span className="font-medium capitalize">{getCompileStrategyLabel(t, task.compile_strategy)}</span>
                                                 </div>
 
                                                 {/* 翻译模型 */}
                                                 {task.translation_model && (
                                                     <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30 md:col-span-2">
                                                         <Sparkles className="h-4 w-4 text-purple-500" />
-                                                        <span className="text-muted-foreground">翻译模型：</span>
+                                                        <span className="text-muted-foreground">{t('history.translation_model')}</span>
                                                         <span className="font-mono text-xs">{task.translation_model}</span>
                                                     </div>
                                                 )}
@@ -551,7 +545,7 @@ export default function HistoryPage() {
                                                         ) : (
                                                             <XCircle className="h-3.5 w-3.5 text-gray-400" />
                                                         )}
-                                                        <span className="text-xs">生成术语表</span>
+                                                        <span className="text-xs">{t('common.generate_glossary')}</span>
                                                     </div>
 
                                                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30">
@@ -560,58 +554,58 @@ export default function HistoryPage() {
                                                         ) : (
                                                             <XCircle className="h-3.5 w-3.5 text-gray-400" />
                                                         )}
-                                                        <span className="text-xs">使用作者 API</span>
+                                                        <span className="text-xs">{t('history.use_author_api')}</span>
                                                     </div>
                                                 </div>
 
                                                 {/* 排版配置快照 */}
                                                 {task.formatting && Object.keys(task.formatting).length > 0 && (
                                                     <div className="md:col-span-2 space-y-2">
-                                                        <div className="text-xs text-muted-foreground font-medium">排版设置：</div>
+                                                        <div className="text-xs text-muted-foreground font-medium">{t('history.formatting_settings')}</div>
                                                         <div className="flex flex-wrap gap-1.5">
                                                             {task.formatting.line_spacing != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    行距: {String(task.formatting.line_spacing)}
+                                                                    {t('history.line_spacing', { value: String(task.formatting.line_spacing) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.font_size != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    字号: {String(task.formatting.font_size)}pt
+                                                                    {t('history.font_size_pt', { value: String(task.formatting.font_size) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.column_mode != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    {task.formatting.column_mode === 'single' ? '单栏' : '双栏'}
+                                                                    {getFormattingValueLabel(t, 'column_mode', String(task.formatting.column_mode))}
                                                                 </span>
                                                             )}
                                                             {task.formatting.margin != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    边距: {task.formatting.margin === 'narrow' ? '窄' : task.formatting.margin === 'wide' ? '宽' : '标准'}
+                                                                    {t('history.margins', { value: getFormattingValueLabel(t, 'margin', String(task.formatting.margin)) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.cjk_font != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    字体: {task.formatting.cjk_font === 'songti' ? '宋体' : '黑体'}
+                                                                    {t('history.font', { value: getFormattingValueLabel(t, 'cjk_font', String(task.formatting.cjk_font)) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.paragraph_indent === true && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    首行缩进
+                                                                    {t('formatting.firstLineIndent')}
                                                                 </span>
                                                             )}
                                                             {task.formatting.localize_captions === true && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    图表本地化
+                                                                    {t('history.localize_figures_tables')}
                                                                 </span>
                                                             )}
                                                             {task.formatting.bib_style != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    文献: {String(task.formatting.bib_style)}
+                                                                    {t('history.bibliography', { value: String(task.formatting.bib_style) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.cite_style != null && (
                                                                 <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                                                    引文: {task.formatting.cite_style === 'numbers' ? '数字' : task.formatting.cite_style === 'super' ? '上标' : '著者-年'}
+                                                                    {t('history.citation', { value: getFormattingValueLabel(t, 'cite_style', String(task.formatting.cite_style)) })}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -638,10 +632,10 @@ export default function HistoryPage() {
                         {loading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                加载中...
+                                {t('common.status.loading')}
                             </>
                         ) : (
-                            '加载更多'
+                            t('common.actions.loadMore')
                         )}
                     </Button>
                 </div>
@@ -651,18 +645,18 @@ export default function HistoryPage() {
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+                        <AlertDialogTitle>{t('history.dialog.confirmDeleteTitle')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            此操作将删除该任务的所有数据（源文件、翻译结果、术语表），且无法恢复。确定要继续吗？
+                            {t('history.this_action_deletes_all_data_for_this_task_source_files_translated_results_glossary_and_cannot_be_undone_continue')}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t('common.actions.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={confirmDelete}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
-                            确认删除
+                            {t('common.actions.confirmDelete')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

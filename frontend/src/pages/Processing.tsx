@@ -1,233 +1,278 @@
 import { useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { CheckCircle2, RotateCw, Download, Code, LogIn, AlertTriangle } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { LogViewer } from "@/components/log-viewer"
-import { useStore } from "@/store/useStore"
-import { useAuth } from "@/contexts/AuthContext"
-import { API_BASE_URL } from "@/api-base"
+import { AlertTriangle, CheckCircle2, Code, Download, LogIn, RotateCw } from "lucide-react"
 
-const steps = [
-    { id: "download", label: "下载源文件" },
-    { id: "extract", label: "解压文件" },
-    { id: "translate", label: "翻译内容" },
-    { id: "validate", label: "校验结果" },
-    { id: "compile", label: "编译 PDF" }
-]
+import { API_BASE_URL } from "@/api-base"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { LogViewer } from "@/components/log-viewer"
+import { useAuth } from "@/contexts/AuthContext"
+import { getTaskCopy } from "@/i18n/task-copy"
+import { useStore } from "@/store/useStore"
+import { useTranslation } from "react-i18next"
+
+const stepOrder = ["downloading", "translating", "validating", "compiling"] as const
 
 export default function ProcessingPage() {
-    const { taskId: storeTaskId, status, message: storeMessage, progress, logs, pollStatus, stopPolling, setTaskId, taskWarnings, error } = useStore()
-    const [searchParams] = useSearchParams()
-    const navigate = useNavigate()
-    const { user } = useAuth()
-    const isGuest = !user
+  const {
+    taskId: storeTaskId,
+    status,
+    stage,
+    detailCode,
+    detailParams,
+    failureReasonCode,
+    logs,
+    pollStatus,
+    stopPolling,
+    setTaskId,
+    taskWarnings,
+  } = useStore()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { t } = useTranslation()
 
-    // URL 参数优先，兼容 store（单论文翻译流程）
-    const urlTaskId = searchParams.get('taskId')
-    const effectiveTaskId = urlTaskId || storeTaskId
+  const urlTaskId = searchParams.get("taskId")
+  const effectiveTaskId = urlTaskId || storeTaskId
+  const isGuest = !user
 
-    // 若 URL 有 taskId 但 store 没有，同步到 store（确保 pollStatus 等方法能读到）
-    useEffect(() => {
-        if (urlTaskId && urlTaskId !== storeTaskId) {
-            setTaskId(urlTaskId)
-        }
-    }, [urlTaskId])
+  useEffect(() => {
+    if (urlTaskId && urlTaskId !== storeTaskId) {
+      setTaskId(urlTaskId)
+    }
+  }, [urlTaskId, storeTaskId, setTaskId])
 
-    useEffect(() => {
-        // 只有在有 effectiveTaskId 时才开始轮询
-        if (effectiveTaskId) {
-            pollStatus()
-        }
-        return () => stopPolling()
-    }, [effectiveTaskId])
+  useEffect(() => {
+    if (effectiveTaskId) {
+      pollStatus()
+    }
+    return () => stopPolling()
+  }, [effectiveTaskId, pollStatus, stopPolling])
 
-    const normalizedStatus = (status || "").toLowerCase()
-    const canPreview = normalizedStatus === 'completed' || normalizedStatus === 'completed_with_warnings'
-    const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'failed_compilation'
+  const normalizedStatus = (status || "").toLowerCase()
+  const normalizedStage = ((stage === "extracting" ? "downloading" : stage) || "").toLowerCase()
+  const canPreview =
+    normalizedStatus === "completed" || normalizedStatus === "completed_with_warnings"
+  const isFailed = ["failed", "failed_compilation", "structure_invalid"].includes(normalizedStatus)
 
-    // Determine sub-stage from storeMessage to give fine-grained progress
-    let subStage = "执行中..."
-    let isValidating = false
+  const copy = getTaskCopy(t, {
+    status,
+    stage: normalizedStage,
+    detailCode,
+    detailParams,
+    failureReasonCode,
+    warnings: taskWarnings,
+  })
 
-    if (storeMessage) {
-        if (progress >= 95 || storeMessage.includes("Validating translation") || storeMessage.includes("Processed") || storeMessage.includes("Retranslated") || storeMessage.includes("Structure invariant")) {
-            isValidating = true;
-        }
+  const steps = [
+    { id: "downloading", label: t("task.stage.downloading") },
+    { id: "translating", label: t("task.stage.translating") },
+    { id: "validating", label: t("task.stage.validating") },
+    { id: "compiling", label: t("task.stage.compiling") },
+  ]
 
-        const matchB = storeMessage.match(/Retranslated (\d+\/\d+) \(B:retry\)/);
-        const matchC1 = storeMessage.match(/Processed (\d+\/\d+) \(C1:/);
-        const matchC2 = storeMessage.match(/Processed (\d+\/\d+) \(C2:/);
-        const matchA = storeMessage.match(/Processed (\d+\/\d+) \(A:/);
-        const matchTranslate = storeMessage.match(/Translated (\d+\/\d+)/);
-
-        if (matchB) {
-            subStage = `重试失败片段（${matchB[1]}）`;
-        } else if (matchC1) {
-            subStage = `恢复 LaTeX 结构（${matchC1[1]}）`;
-        } else if (matchC2) {
-            subStage = `应用兜底翻译（${matchC2[1]}）`;
-        } else if (matchA) {
-            subStage = `恢复 LaTeX 环境（${matchA[1]}）`;
-        } else if (storeMessage.includes("Validating translation results") || storeMessage.includes("Structure invariant")) {
-            subStage = "校验结构完整性";
-        } else if (matchTranslate) {
-            subStage = `翻译中（${matchTranslate[1]}）`;
-        } else if (storeMessage.includes("Compiling") || storeMessage.includes("PDF")) {
-            subStage = "准备 PDF 编译";
-        } else {
-            subStage = storeMessage;
-        }
+  const currentStepIndex = (() => {
+    if (canPreview) {
+      return stepOrder.length
     }
 
-    // Derive current step from status message or status enum
-    let currentStepIndex = 0
-    if (normalizedStatus === 'downloading') currentStepIndex = 0
-    else if (normalizedStatus === 'processing' || normalizedStatus === 'started') {
-        currentStepIndex = 2
-        if (isValidating) currentStepIndex = 3
+    if (normalizedStage === "downloading" || normalizedStage === "downloading_pdf") {
+      return 0
     }
-    else if (normalizedStatus === 'failed_compilation') currentStepIndex = 4
-    else if (normalizedStatus === 'failed') currentStepIndex = isValidating ? 3 : 2
-    else if (canPreview) currentStepIndex = 5
+    if (normalizedStage === "parsing" || normalizedStage === "translating") {
+      return 1
+    }
+    if (normalizedStage === "validating") {
+      return 2
+    }
+    if (normalizedStage === "compiling" || normalizedStage === "compilation_failed") {
+      return 3
+    }
+    if (isFailed) {
+      return Math.max(0, stepOrder.indexOf("translating"))
+    }
 
-    // 使用 effectiveTaskId 替代 taskId 用于下载链接
-    const activeTaskId = effectiveTaskId
+    return 0
+  })()
 
-    return (
-        <div className="max-w-5xl mx-auto space-y-6">
-            {/* Guest warning banner */}
-            {isGuest && (
-                <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-                    <p className="flex-1 text-sm text-amber-300">
-                        <span className="font-semibold">访客模式：</span>
-                        离开此页面后将无法重新访问翻译结果。
-                        <button
-                            onClick={() => navigate('/login')}
-                            className="ml-2 inline-flex items-center gap-1 underline underline-offset-2 hover:text-amber-200"
-                        >
-                            <LogIn className="h-3 w-3" />
-                            登录以保存到历史记录
-                        </button>
-                    </p>
-                </div>
-            )}
+  const activeTaskId = effectiveTaskId
+  const currentDetail = copy.detailLabel || copy.stageLabel || copy.statusLabel
+  const failureText = copy.failureLabel || copy.statusLabel
 
-            {/* Formatting warnings (e.g. auto-downgraded font size) */}
-            {taskWarnings && (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
-                    <p className="flex-1 text-sm text-amber-300">
-                        <span className="font-semibold">排版提示：</span>{taskWarnings}
-                    </p>
-                </div>
-            )}
-
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">翻译进行中</h1>
-                    <p className="text-muted-foreground">实时查看翻译任务状态。</p>
-                </div>
-                {canPreview ? (
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => window.open(`${API_BASE_URL}/api/download/${activeTaskId}/source`, '_blank')}>
-                            <Download className="mr-2 h-4 w-4" /> 下载源文件
-                        </Button>
-                        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/preview")}>查看结果</Button>
-                    </div>
-                ) : isFailed ? (
-                    <Button variant="outline" onClick={() => navigate("/")}>返回首页</Button>
-                ) : (
-                    <Button variant="destructive" onClick={() => navigate("/")}>取消任务</Button>
-                )}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Status & Visualization */}
-                <div className="col-span-1 space-y-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>任务状态</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 space-y-8 pl-6 py-2">
-                                {steps.map((step, index) => {
-                                    const isActive = !canPreview && !isFailed && index === currentStepIndex
-                                    const isFailedStep = isFailed && index === currentStepIndex
-                                    const isCompleted = index < currentStepIndex || canPreview
-
-                                    return (
-                                        <div key={step.id} className="relative">
-                                            <span className={`absolute -left-[31px] flex h-6 w-6 items-center justify-center rounded-full border-2 bg-background ${isCompleted ? "border-emerald-500 bg-emerald-500 text-white" :
-                                                isFailedStep ? "border-red-500 bg-red-500 text-white" :
-                                                    isActive ? "border-indigo-500 border-2 animate-pulse" : "border-slate-300"
-                                                }`}>
-                                                {isCompleted && <CheckCircle2 className="h-3 w-3" />}
-                                                {isFailedStep && <AlertTriangle className="h-3 w-3" />}
-                                                {isActive && <RotateCw className="h-3 w-3 animate-spin text-indigo-500" />}
-                                            </span>
-                                            <div className="flex flex-col">
-                                                <span className={`text-sm font-medium ${isActive ? "text-indigo-600" : isCompleted ? "text-emerald-600" : isFailedStep ? "text-red-600" : "text-slate-500"}`}>
-                                                    {step.label}
-                                                </span>
-                                                {isActive && <span className="text-xs text-muted-foreground animate-pulse">{subStage}</span>}
-                                                {isFailedStep && <span className="text-xs text-red-600">失败</span>}
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="pt-6 flex justify-center items-center min-h-[200px]">
-                            {canPreview ? (
-                                <div className="text-center space-y-2">
-                                    <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
-                                    <p className="font-medium text-emerald-600">翻译已完成</p>
-                                </div>
-                            ) : isFailed ? (
-                                <div className="text-center space-y-2">
-                                    <AlertTriangle className="h-16 w-16 text-red-500 mx-auto" />
-                                    <p className="font-medium text-red-600">翻译失败</p>
-                                    <p className="text-xs text-slate-500">{error || status}</p>
-                                </div>
-                            ) : (
-                                <div className="text-center space-y-2">
-                                    <RotateCw className="h-16 w-16 text-indigo-500 animate-spin mx-auto" />
-                                    <p className="text-sm font-medium text-foreground">{subStage}</p>
-                                    <p className="text-xs text-slate-400 capitalize">{normalizedStatus === 'processing' && isValidating ? '正在校验结果' : normalizedStatus}</p>
-                                    {logs.length > 0 && logs[logs.length - 1]?.includes("rate limited") && (
-                                        <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 animate-pulse">
-                                            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
-                                            <p className="text-xs text-amber-500 dark:text-amber-400 text-left">
-                                                API 速率受限，正在自动重试。建议配置自定义 API Key 以提升稳定性。
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Right Column: Logs */}
-                <div className="lg:col-span-2">
-                    <Card className="h-full flex flex-col">
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>实时日志</CardTitle>
-                            <div className="flex gap-2">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Code className="h-4 w-4" /></Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="flex-1">
-                            <LogViewer logs={logs} />
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      {isGuest && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          <p className="flex-1 text-sm text-amber-300">
+            <span className="font-semibold">{t("processing.guest_mode")}</span>
+            {t("processing.you_won_t_be_able_to_access_the_translation_results_again_after_leaving_this_page")}
+            <button
+              onClick={() => navigate("/login")}
+              className="ml-2 inline-flex items-center gap-1 underline underline-offset-2 hover:text-amber-200"
+            >
+              <LogIn className="h-3 w-3" />
+              {t("processing.sign_in_to_save_to_history")}
+            </button>
+          </p>
         </div>
-    )
+      )}
+
+      {taskWarnings && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <p className="flex-1 text-sm text-amber-300">
+            <span className="font-semibold">{t("processing.formatting_note")}</span>
+            {t("task.detail.formattingWarning", { warningText: taskWarnings })}
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {canPreview ? t("task.result.completed") : t("task.result.inProgress")}
+          </h1>
+          <p className="text-muted-foreground">
+            {t("processing.track_translation_task_status_in_real_time")}
+          </p>
+        </div>
+
+        {canPreview ? (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => window.open(`${API_BASE_URL}/api/download/${activeTaskId}/source`, "_blank")}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {t("task.steps.downloadSource")}
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => navigate("/preview")}
+            >
+              {t("common.actions.viewResult")}
+            </Button>
+          </div>
+        ) : isFailed ? (
+          <Button variant="outline" onClick={() => navigate("/")}>
+            {t("common.actions.backToHome")}
+          </Button>
+        ) : (
+          <Button variant="destructive" onClick={() => navigate("/")}>
+            {t("processing.cancel_task")}
+          </Button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="col-span-1 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("processing.task_status")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="relative ml-3 space-y-8 border-l-2 border-slate-200 py-2 pl-6 dark:border-slate-800">
+                {steps.map((step, index) => {
+                  const isActive = !canPreview && !isFailed && index === currentStepIndex
+                  const isFailedStep = isFailed && index === currentStepIndex
+                  const isCompleted = index < currentStepIndex || canPreview
+
+                  return (
+                    <div key={step.id} className="relative">
+                      <span
+                        className={`absolute -left-[31px] flex h-6 w-6 items-center justify-center rounded-full border-2 bg-background ${
+                          isCompleted
+                            ? "border-emerald-500 bg-emerald-500 text-white"
+                            : isFailedStep
+                              ? "border-red-500 bg-red-500 text-white"
+                              : isActive
+                                ? "animate-pulse border-2 border-indigo-500"
+                                : "border-slate-300"
+                        }`}
+                      >
+                        {isCompleted && <CheckCircle2 className="h-3 w-3" />}
+                        {isFailedStep && <AlertTriangle className="h-3 w-3" />}
+                        {isActive && <RotateCw className="h-3 w-3 animate-spin text-indigo-500" />}
+                      </span>
+                      <div className="flex flex-col">
+                        <span
+                          className={`text-sm font-medium ${
+                            isActive
+                              ? "text-indigo-600"
+                              : isCompleted
+                                ? "text-emerald-600"
+                                : isFailedStep
+                                  ? "text-red-600"
+                                  : "text-slate-500"
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                        {isActive && (
+                          <span className="animate-pulse text-xs text-muted-foreground">
+                            {currentDetail}
+                          </span>
+                        )}
+                        {isFailedStep && (
+                          <span className="text-xs text-red-600">{failureText}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="flex min-h-[200px] items-center justify-center pt-6">
+              {canPreview ? (
+                <div className="space-y-2 text-center">
+                  <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-500" />
+                  <p className="font-medium text-emerald-600">{t("task.result.completed")}</p>
+                </div>
+              ) : isFailed ? (
+                <div className="space-y-2 text-center">
+                  <AlertTriangle className="mx-auto h-16 w-16 text-red-500" />
+                  <p className="font-medium text-red-600">{t("task.result.failed")}</p>
+                  <p className="text-xs text-slate-500">{failureText}</p>
+                </div>
+              ) : (
+                <div className="space-y-2 text-center">
+                  <RotateCw className="mx-auto h-16 w-16 animate-spin text-indigo-500" />
+                  <p className="text-sm font-medium text-foreground">{currentDetail}</p>
+                  <p className="text-xs capitalize text-slate-400">{copy.stageLabel || copy.statusLabel}</p>
+                  {copy.isRateLimited && (
+                    <div className="mt-3 flex animate-pulse items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                      <p className="text-left text-xs text-amber-500 dark:text-amber-400">
+                        {copy.detailLabel}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-2">
+          <Card className="flex h-full flex-col">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>{t("processing.live_logs")}</CardTitle>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Code className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1">
+              <LogViewer logs={logs} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
 }

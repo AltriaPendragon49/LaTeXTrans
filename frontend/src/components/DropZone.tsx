@@ -6,9 +6,20 @@ import { cn } from '@/lib/utils'
 import { Upload, X, File, CheckCircle2, AlertTriangle, Loader2, FileArchive } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from 'react-i18next'
+
+type UploadErrorShape = {
+    response?: {
+        data?: {
+            detail?: string
+        }
+    }
+    message?: string
+}
 
 export const DropZone = () => {
     const { setTaskId, setLatexValidation, setArxivId, resetTranslationState } = useStore()
+    const { t } = useTranslation()
     const [isDragActive, setIsDragActive] = useState(false)
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
     const [progress, setProgress] = useState(0)
@@ -25,17 +36,17 @@ export const DropZone = () => {
         }
     }, [])
 
-    const processFile = async (file: File) => {
+    const processFile = useCallback(async (file: File) => {
         const validExtensions = ['.zip', '.rar', '.tar', '.gz', '.tgz', '.tex']
         const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
 
         if (!validExtensions.includes(ext)) {
-            toast.error('文件类型不支持，请上传 .zip、.rar、.tar.gz 或 .tex')
+            toast.error(t('upload.unsupported_file_type_upload_a_zip_rar_tar_gz_or_tex_file'))
             return
         }
 
         if (file.size > 50 * 1024 * 1024) {
-            toast.error('文件大小超过 50MB 限制')
+            toast.error(t('upload.file_size_exceeds_the_50_mb_limit'))
             return
         }
 
@@ -66,24 +77,25 @@ export const DropZone = () => {
             if (response.latex_validation) {
                 setLatexValidation(response.latex_validation)
                 if (response.latex_validation.is_valid) {
-                    toast.success('文件上传成功，且通过校验')
+                    toast.success(t('upload.file_uploaded_successfully_and_passed_validation'))
                 } else {
-                    toast.warning('文件上传成功，但存在校验问题')
+                    toast.warning(t('upload.file_uploaded_successfully_but_validation_found_issues'))
                 }
             } else {
-                toast.success('文件上传成功')
+                toast.success(t('upload.file_uploaded_successfully'))
             }
 
             // Clear ArXiv ID to switch mode
             setArxivId(null)
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             clearInterval(interval)
             setUploadStatus('error')
-            const msg = error.response?.data?.detail || error.message || '上传失败'
-            toast.error(msg)
+            const uploadError = error as UploadErrorShape
+            console.error('[DropZone] Upload failed', uploadError)
+            toast.error(t('upload.upload_failed'))
         }
-    }
+    }, [resetTranslationState, setArxivId, setLatexValidation, setTaskId, t])
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault()
@@ -93,7 +105,7 @@ export const DropZone = () => {
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
             processFile(e.dataTransfer.files[0])
         }
-    }, [])
+    }, [processFile])
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         e.preventDefault()
@@ -159,9 +171,9 @@ export const DropZone = () => {
                                     <Upload className="w-8 h-8 text-primary/80" />
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-lg font-medium">点击上传或拖拽文件到此处</p>
+                                    <p className="text-lg font-medium">{t('upload.click_to_upload_or_drag_a_file_here')}</p>
                                     <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                                        支持 ZIP、RAR、TAR.GZ 压缩包或单个 .tex 文件（最大 50MB）
+                                        {t('upload.supports_zip_rar_tar_gz_archives_or_a_single_tex_file_max_50_mb')}
                                     </p>
                                 </div>
                             </motion.div>
@@ -189,7 +201,7 @@ export const DropZone = () => {
                                         animate={{ width: `${progress}%` }}
                                     />
                                 </div>
-                                <p className="text-xs text-muted-foreground animate-pulse">正在上传并校验...</p>
+                                <p className="text-xs text-muted-foreground animate-pulse">{t('upload.uploading_and_validating')}</p>
                             </motion.div>
                         )}
 
@@ -214,7 +226,7 @@ export const DropZone = () => {
                                     className="text-muted-foreground hover:text-foreground mt-2"
                                 >
                                     <X className="w-4 h-4 mr-2" />
-                                    更换文件
+                                    {t('upload.replace_file')}
                                 </Button>
                             </motion.div>
                         )}
@@ -229,9 +241,9 @@ export const DropZone = () => {
                                 <div className="p-3 rounded-full bg-destructive/10 text-destructive mb-2">
                                     <AlertTriangle className="w-8 h-8" />
                                 </div>
-                                <p className="font-medium text-destructive">上传失败</p>
+                                <p className="font-medium text-destructive">{t('upload.upload_failed')}</p>
                                 <Button variant="outline" size="sm" onClick={resetUpload}>
-                                    重试
+                                    {t('common.actions.retry')}
                                 </Button>
                             </motion.div>
                         )}
@@ -260,13 +272,13 @@ export const DropZone = () => {
 
                             <div className="space-y-2 w-full">
                                 <h4 className={cn("font-medium", !latexValidation.is_valid && "text-destructive")}>
-                                    {latexValidation.is_valid ? "LaTeX 项目有效" : "LaTeX 项目无效"}
+                                    {latexValidation.is_valid ? t('upload.valid_latex_project') : t('upload.invalid_latex_project')}
                                 </h4>
 
                                 {latexValidation.main_file && (
                                     <div className="flex items-center gap-2 text-muted-foreground">
                                         <File className="w-4 h-4" />
-                                        <span>主入口文件：<span className="text-foreground font-mono">{latexValidation.main_file}</span></span>
+                                        <span>{t('upload.main_entry_file')}<span className="text-foreground font-mono">{latexValidation.main_file}</span></span>
                                     </div>
                                 )}
 
