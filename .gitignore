@@ -59,6 +59,7 @@ test_output.txt
 .codex/
 .agent/
 openspec/daily_report
+arxiv-trans/
 
 
 backend_data_backup.tar.gz

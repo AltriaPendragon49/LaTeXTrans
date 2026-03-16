@@ -11,6 +11,7 @@ from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
 from backend.app.services.latex.utils import (
+    mask_residual_structure_tokens,
     mask_sensitive_commands,
     unmask_sensitive_commands,
 )
@@ -70,12 +71,28 @@ class TranslatorAgent(BaseToolAgent):
     STATUS_FALLBACK_SOURCE_COMPILE_FIRST = "fallback_source_compile_first"
     STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE = "structural_fallback_pending_compile"
     STATUS_FALLBACK_SOURCE_API_FAILURE = "fallback_source_api_failure"
+    STATUS_PAYLOAD_INVARIANT_PASSTHROUGH = "payload_invariant_passthrough"
     STATUS_SOURCE_PASS_THROUGH = "source_pass_through"
+    STATUS_IMMUTABLE_PASSTHROUGH = "immutable_passthrough"
+    STATUS_REPAIR_SKIPPED_NON_TRANSLATABLE = "repair_skipped_non_translatable"
     STATUS_MATH_PRESERVED = "math_preserved"
     FALLBACK_SUBTYPE_NONE = "none"
     FALLBACK_SUBTYPE_MATH_ENV = "math_env_fallback"
     FALLBACK_SUBTYPE_LIST_ENV = "list_env_fallback"
     FALLBACK_SUBTYPE_OTHER_ENV = "other_env_fallback"
+    GENERIC_TEXT_ENVS = frozenset({
+        "abstract",
+        "quote",
+        "quotation",
+        "remark",
+        "proof",
+        "definition",
+        "example",
+        "theorem",
+        "lemma",
+        "proposition",
+        "corollary",
+    })
 
     @staticmethod
     def _coerce_bool(value: Any, default: bool = False) -> bool:
@@ -147,6 +164,7 @@ class TranslatorAgent(BaseToolAgent):
         self.c1_retry_enforced_once = False
         self.structural_fallback_parts: List[str] = []
         self.noop_sections: List[str] = []
+        self.payload_invariant_sections: List[str] = []
         self._oversize_downgrade_events: List[Dict[str, Any]] = []
         # eliminate-silent-fallback: structured fallback reports for repair loop
         self.fallback_reports: List[FallbackReport] = []
@@ -319,6 +337,10 @@ class TranslatorAgent(BaseToolAgent):
         if section_id not in self.noop_sections:
             self.noop_sections.append(section_id)
 
+    def _record_payload_invariant_section(self, section_id: str) -> None:
+        if section_id not in self.payload_invariant_sections:
+            self.payload_invariant_sections.append(section_id)
+
     def _sync_section_retry_count(self, section_id: str, section: Dict[str, Any]) -> None:
         if section_id not in self._section_retry_counts:
             raw = section.get("translation_retry_count", 0)
@@ -350,7 +372,11 @@ class TranslatorAgent(BaseToolAgent):
             section["no_op_detected"] = bool(no_op_detected)
         if fallback_reason:
             section["fallback_reason"] = fallback_reason
-        elif status in {self.STATUS_TRANSLATED, self.STATUS_TRANSLATED_AFTER_NOOP_RETRY}:
+        elif status in {
+            self.STATUS_TRANSLATED,
+            self.STATUS_TRANSLATED_AFTER_NOOP_RETRY,
+            self.STATUS_IMMUTABLE_PASSTHROUGH,
+        }:
             section.pop("fallback_reason", None)
 
     def _update_env_metadata(
@@ -379,6 +405,55 @@ class TranslatorAgent(BaseToolAgent):
     def _normalize_env_name(env_name: str) -> str:
         return (env_name or "").strip().lower()
 
+    def _is_generic_text_env(self, env_name: str) -> bool:
+        normalized = self._normalize_env_name(env_name)
+        if normalized in self.GENERIC_TEXT_ENVS:
+            return True
+        if normalized.endswith("*") and normalized[:-1] in self.GENERIC_TEXT_ENVS:
+            return True
+        return False
+
+    @staticmethod
+    def _split_env_wrapper(content: str, env_name: str) -> Optional[Tuple[str, str, str]]:
+        if not content or not env_name:
+            return None
+        pattern = re.compile(
+            rf"(?s)\A(?P<head>\s*\\begin\{{{re.escape(env_name)}\}}(?:\s*\[[^\]]*\])?\s*)(?P<body>.*?)(?P<tail>\s*\\end\{{{re.escape(env_name)}\}}\s*)\Z"
+        )
+        match = pattern.match(content)
+        if not match:
+            return None
+        return match.group("head"), match.group("body"), match.group("tail")
+
+    def _is_immutable_section(self, section: Dict[str, Any]) -> bool:
+        return bool(section.get("immutable_only")) or (
+            section.get("translation_status") == self.STATUS_IMMUTABLE_PASSTHROUGH
+        )
+
+    @staticmethod
+    def _get_section_translation_core(section: Dict[str, Any]) -> str:
+        if "core_translatable_content" in section:
+            return section.get("core_translatable_content") or ""
+        return section.get("content", "") or ""
+
+    @staticmethod
+    def _section_has_structure_shell(section: Dict[str, Any]) -> bool:
+        return bool(section.get("contains_structure_shell"))
+
+    @classmethod
+    def _reassemble_section_translation(cls, section: Dict[str, Any], translated_core: str) -> str:
+        if not cls._section_has_structure_shell(section):
+            return translated_core
+        return (
+            f"{section.get('leading_structure_shell', '') or ''}"
+            f"{translated_core or ''}"
+            f"{section.get('trailing_structure_shell', '') or ''}"
+        )
+
+    @staticmethod
+    def _is_payload_invariant_reason(reason: Optional[str]) -> bool:
+        return str(reason or "").startswith("invariant_")
+
     def _infer_env_fallback_subtype(self, env: Dict[str, Any]) -> str:
         env_name = self._normalize_env_name(str(env.get("env_name", "")))
         if env_name in {"eqnarray", "eqnarray*"}:
@@ -386,6 +461,13 @@ class TranslatorAgent(BaseToolAgent):
         if env_name in {"enumerate", "enumerate*", "itemize", "itemize*"}:
             return self.FALLBACK_SUBTYPE_LIST_ENV
         return self.FALLBACK_SUBTYPE_OTHER_ENV
+
+    @staticmethod
+    def _has_unrestored_env_artifacts(text: Optional[str]) -> bool:
+        candidate = text or ""
+        return "<ENV_RESTORE_FAILED>" in candidate or bool(
+            re.search(r"<ENV(?:_BEGIN|_END)?_[^>]+>", candidate)
+        )
 
     @staticmethod
     def _env_row_retry_key(placeholder: str, row_idx: int) -> str:
@@ -408,6 +490,10 @@ class TranslatorAgent(BaseToolAgent):
         isolated_math_text, math_map = isolate_inline_math(text)
         isolated_env_text, env_map = isolate_env_blocks(isolated_math_text)
         masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
+        masked_text, mask_mapping = mask_residual_structure_tokens(
+            masked_text,
+            mapping=mask_mapping,
+        )
         preprocessed_text = preprocess_risky_tokens(masked_text, math_map)
         masked_text = preprocessed_text
         return masked_text, {"math_map": math_map, "env_map": env_map, "mask_mapping": mask_mapping}
@@ -814,12 +900,22 @@ class TranslatorAgent(BaseToolAgent):
         placeholders_env = re.findall(placeholder_pattern_env, section["content"])
 
         # 鈹€鈹€ Phase 1: Translate section body 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        if self._is_immutable_section(section):
+            section = section.copy()
+            section["trans_content"] = section.get("content", "")
+            section["translated"] = False
+            self._update_section_metadata(
+                section,
+                status=self.STATUS_IMMUTABLE_PASSTHROUGH,
+                no_op_detected=False,
+            )
         # Section -1 is LaTeX preamble, never translate.
         # Section 0 may contain main body text, translate if it has translatable content.
-        if section["section"] == "-1":
+        elif section["section"] == "-1":
             pass  # Skip preamble
         elif section["section"] == "0":
-            if self._section_has_translatable_content(section["content"]):
+            section_payload = self._get_section_translation_core(section)
+            if self._section_has_translatable_content(section_payload):
                 logger.info(f"Section 0 contains translatable content, translating...")
                 section = await self._translate_section(section, session)
             # else: no translatable content, keep original
@@ -924,6 +1020,9 @@ class TranslatorAgent(BaseToolAgent):
                     # ── Phase 3 Guard: skip deterministically downgraded sections ──
                     if secs[i].get("translation_status") == DOWNGRADE_STATUS:
                         logger.info("Maxtry guard: skipping downgraded section %s", sec_num)
+                        continue
+                    if self._is_immutable_section(secs[i]):
+                        logger.info("Maxtry guard: skipping immutable passthrough section %s", sec_num)
                         continue
                     secs[i] = await self._translate_section(secs[i], session)
             # else:
@@ -1142,8 +1241,13 @@ class TranslatorAgent(BaseToolAgent):
                     if part:
                         self._apply_compile_first_fallback(part, error_report, recheck_report=error_report)
                     return
+                part = self._find_part_by_error(error_report, secs, caps, envs)
+                if part and part.get("translation_status") == self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH:
+                    logger.info("Skipping C1 retry for payload-invariant passthrough part: %s", error_report.get("num_or_ph"))
+                    return
                 ph_error = error_report.get("ph_error", "")
                 math_error = error_report.get("math_error", "")
+                completeness_error = error_report.get("completeness_error", "")
                 restoration_hint = (
                     "CRITICAL: Restore all LaTeX placeholders and math delimiters exactly as in the source. "
                 )
@@ -1151,6 +1255,8 @@ class TranslatorAgent(BaseToolAgent):
                     restoration_hint += f"Missing elements: {ph_error}. "
                 if math_error:
                     restoration_hint += f"Math issue: {math_error}."
+                if completeness_error:
+                    restoration_hint += f" Completeness issue: {completeness_error}."
 
                 part_type = error_report["part"]
                 identifier = error_report["num_or_ph"]
@@ -1218,6 +1324,10 @@ class TranslatorAgent(BaseToolAgent):
         # Process Type B errors: Translation retry (existing logic)
         async def process_type_b_error(error_report):
             async with sem:
+                part = self._find_part_by_error(error_report, secs, caps, envs)
+                if part and part.get("translation_status") == self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH:
+                    logger.info("Skipping Type B retry for payload-invariant passthrough part: %s", error_report.get("num_or_ph"))
+                    return False
                 error_message = []
                 if "command_error" in error_report:
                     error_message.append(error_report["command_error"])
@@ -1225,6 +1335,8 @@ class TranslatorAgent(BaseToolAgent):
                     error_message.append(error_report["ph_error"])
                 if "bracket_error" in error_report:
                     error_message.append(error_report["bracket_error"])
+                if "completeness_error" in error_report:
+                    error_message.append(error_report["completeness_error"])
                 if "global_ph_error" in error_report:
                     error_message.append(error_report["global_ph_error"])
                 error_message = "\n".join(error_message)
@@ -1354,7 +1466,19 @@ class TranslatorAgent(BaseToolAgent):
         transed_section = section.copy()
         section_num = str(section.get("section", ""))
         previous_context = section.get("previous_context")
+        source_content = section.get("content", "") or ""
+        translatable_content = self._get_section_translation_core(section)
         self._sync_section_retry_count(section_num, transed_section)
+
+        if self._is_immutable_section(section):
+            transed_section["trans_content"] = section.get("content", "")
+            transed_section["translated"] = False
+            self._update_section_metadata(
+                transed_section,
+                status=self.STATUS_IMMUTABLE_PASSTHROUGH,
+                no_op_detected=False,
+            )
+            return transed_section
 
         if section.get("oversize_no_safe_boundary"):
             # Persist deterministic gate inputs for audit/replay even when the
@@ -1406,7 +1530,7 @@ class TranslatorAgent(BaseToolAgent):
             if self.trans_mode in (0, 3):
                 return await self._request_llm_for_trans(
                     self.prompts["section_system_prompt"] + prompt_suffix,
-                    section["content"],
+                    translatable_content,
                     fail_part=section_num,
                     type="sec",
                     session=session,
@@ -1416,7 +1540,7 @@ class TranslatorAgent(BaseToolAgent):
                 if not self.term_dict:
                     return await self._request_llm_for_trans(
                         self.prompts["section_system_prompt"] + prompt_suffix,
-                        section["content"],
+                        translatable_content,
                         fail_part=section_num,
                         type="sec",
                         session=session,
@@ -1424,7 +1548,7 @@ class TranslatorAgent(BaseToolAgent):
                     )
                 return await self._request_llm_for_trans_with_terms(
                     self.prompts["section_system_prompt_with_dict"] + prompt_suffix,
-                    section["content"],
+                    translatable_content,
                     fail_part=section_num,
                     type="sec",
                     session=session,
@@ -1445,11 +1569,16 @@ class TranslatorAgent(BaseToolAgent):
                     self._increment_section_retry_count(section_num)
                     result = await fetch_translation(use_context=False)
 
-            translated_text = result if result is not None else section["content"]
+            translated_text = result if result is not None else translatable_content
             no_op_detected = False
             no_op_retry_success = False
+            api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
+            payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
 
-            if self._is_noop_translation(section["content"], translated_text):
+            if (
+                not payload_invariant_passthrough
+                and self._is_noop_translation(translatable_content, translated_text)
+            ):
                 no_op_detected = True
                 self._record_noop_section(section_num)
                 self._increment_section_retry_count(section_num)
@@ -1461,16 +1590,36 @@ class TranslatorAgent(BaseToolAgent):
                 retry_result = await fetch_translation(use_context=False, extra_instruction=force_retry_hint)
                 if retry_result is not None:
                     translated_text = retry_result
-                no_op_retry_success = not self._is_noop_translation(section["content"], translated_text)
-
-            transed_section["trans_content"] = translated_text
+                no_op_retry_success = not self._is_noop_translation(
+                    translatable_content,
+                    translated_text,
+                )
 
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
+            payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+
+            env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
+            if env_restore_preserved_source:
+                translated_text = translatable_content
+
+            transed_section["trans_content"] = self._reassemble_section_translation(
+                section,
+                translated_text,
+            )
             status = self.STATUS_TRANSLATED
             fallback_reason = None
-            if api_fallback_reason:
+            if env_restore_preserved_source:
                 status = self.STATUS_FALLBACK_SOURCE_API_FAILURE
+                fallback_reason = "section_env_restore_preserved_source"
+            elif api_fallback_reason:
+                status = (
+                    self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
+                    if payload_invariant_passthrough
+                    else self.STATUS_FALLBACK_SOURCE_API_FAILURE
+                )
                 fallback_reason = api_fallback_reason
+                if payload_invariant_passthrough:
+                    self._record_payload_invariant_section(section_num)
             elif no_op_detected and no_op_retry_success:
                 status = self.STATUS_TRANSLATED_AFTER_NOOP_RETRY
 
@@ -1483,7 +1632,7 @@ class TranslatorAgent(BaseToolAgent):
 
         elif self.trans_mode == 1:
             self._increment_section_retry_count(section_num)
-            transed_section["trans_content"] = await self._request_llm_for_retrans_error_parts(
+            retrans_content = await self._request_llm_for_retrans_error_parts(
                 self.prompts["retrans_error_parts_system_prompt"],
                 part=transed_section,
                 error_message=error_message,
@@ -1491,12 +1640,31 @@ class TranslatorAgent(BaseToolAgent):
                 type="sec",
                 session=session,
             )
+            env_restore_preserved_source = self._has_unrestored_env_artifacts(retrans_content)
+            transed_section["trans_content"] = (
+                section.get("content", "") if env_restore_preserved_source else retrans_content
+            )
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
+            payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+            if payload_invariant_passthrough:
+                self._record_payload_invariant_section(section_num)
             self._update_section_metadata(
                 transed_section,
-                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                status=(
+                    self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
+                    if payload_invariant_passthrough
+                    else (
+                        self.STATUS_FALLBACK_SOURCE_API_FAILURE
+                        if (env_restore_preserved_source or api_fallback_reason)
+                        else self.STATUS_TRANSLATED
+                    )
+                ),
                 no_op_detected=bool(transed_section.get("no_op_detected", False)),
-                fallback_reason=api_fallback_reason,
+                fallback_reason=(
+                    "section_env_restore_preserved_source"
+                    if env_restore_preserved_source
+                    else api_fallback_reason
+                ),
             )
 
         if self.trans_mode == 2:
@@ -1797,13 +1965,24 @@ class TranslatorAgent(BaseToolAgent):
         placeholder = env["placeholder"]
         anchored_text, item_map, expected_tokens = anchor_list_items_in_env_body(env.get("content", ""))
         if not expected_tokens:
-            transed_env["trans_content"] = await self._request_env_translation(
+            translated_content = await self._request_env_translation(
                 env=env,
                 text=env.get("content", ""),
                 placeholder=placeholder,
                 session=session,
                 error_message=error_message,
             )
+            if self._has_unrestored_env_artifacts(translated_content):
+                transed_env["trans_content"] = env.get("content", "")
+                self._update_env_metadata(
+                    transed_env,
+                    status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                    fallback_reason="list_env_restore_preserved_source",
+                    fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV,
+                    row_fallback_count=0,
+                )
+                return transed_env
+            transed_env["trans_content"] = translated_content
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
             self._update_env_metadata(
                 transed_env,
@@ -1831,6 +2010,16 @@ class TranslatorAgent(BaseToolAgent):
                 error_message=merged_error,
             )
             last_candidate = candidate
+            if self._has_unrestored_env_artifacts(candidate):
+                transed_env["trans_content"] = env.get("content", "")
+                self._update_env_metadata(
+                    transed_env,
+                    status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                    fallback_reason="list_env_restore_preserved_source",
+                    fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV,
+                    row_fallback_count=0,
+                )
+                return transed_env
             mismatch = validate_immutable_placeholder_sequence(candidate, expected_tokens, "ITEM")
             if not mismatch:
                 restored = restore_list_items_in_env_body(candidate, item_map)
@@ -1893,6 +2082,63 @@ class TranslatorAgent(BaseToolAgent):
             transed_env = await self._translate_eqnarray_env(env, session, error_message=error_message)
         elif env_name in {"enumerate", "enumerate*", "itemize", "itemize*"}:
             transed_env = await self._translate_list_env(env, session, error_message=error_message)
+        elif self._is_generic_text_env(env_name):
+            wrapper = self._split_env_wrapper(env.get("content", ""), env_name)
+            if wrapper is None:
+                translated_content = await self._request_env_translation(
+                    env=env,
+                    text=env.get("content", ""),
+                    placeholder=placeholder,
+                    session=session,
+                    error_message=error_message,
+                )
+                if self._has_unrestored_env_artifacts(translated_content):
+                    transed_env["trans_content"] = env.get("content", "")
+                    self._update_env_metadata(
+                        transed_env,
+                        status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                        fallback_reason="env_wrapper_restore_preserved_source",
+                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
+                        row_fallback_count=0,
+                    )
+                    return transed_env
+                transed_env["trans_content"] = translated_content
+                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                self._update_env_metadata(
+                    transed_env,
+                    status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                    fallback_reason=api_fallback_reason,
+                    fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
+                    row_fallback_count=0,
+                )
+            else:
+                env_head, env_body, env_tail = wrapper
+                translated_body = await self._request_env_translation(
+                    env=env,
+                    text=env_body,
+                    placeholder=placeholder,
+                    session=session,
+                    error_message=error_message,
+                )
+                if self._has_unrestored_env_artifacts(translated_body):
+                    translated_body = env_body
+                    self._update_env_metadata(
+                        transed_env,
+                        status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                        fallback_reason="env_wrapper_restore_preserved_source",
+                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
+                        row_fallback_count=0,
+                    )
+                transed_env["trans_content"] = f"{env_head}{translated_body}{env_tail}"
+                if transed_env.get("translation_status") != self.STATUS_FALLBACK_SOURCE_API_FAILURE:
+                    api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                    self._update_env_metadata(
+                        transed_env,
+                        status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                        fallback_reason=api_fallback_reason,
+                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
+                        row_fallback_count=0,
+                    )
         else:
             transed_env["trans_content"] = await self._request_env_translation(
                 env=env,

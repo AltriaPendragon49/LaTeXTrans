@@ -155,6 +155,40 @@ class TranslationRepairAgent:
         self.target_language = config.get("target_language", "zh")
         self.source_language = config.get("source_language", "en")
 
+    @staticmethod
+    def _normalized_failure_signature(report: FallbackReport) -> str:
+        evidence = report.validation_evidence or {}
+        evidence_bits = []
+        if isinstance(evidence, dict):
+            for key in sorted(evidence):
+                evidence_bits.append(f"{key}={evidence.get(key)}")
+        root_cause = report.root_cause or ""
+        return f"{report.chunk_scope}|{report.fallback_kind}|{root_cause}|{'|'.join(evidence_bits)}"
+
+    @staticmethod
+    def _should_skip_non_translatable(report: FallbackReport, target_dict: Dict[str, Any]) -> bool:
+        if not isinstance(target_dict, dict):
+            return False
+        if target_dict.get("immutable_only"):
+            return True
+        if target_dict.get("chunk_kind") == "placeholder_only":
+            return True
+        if target_dict.get("translation_status") == "immutable_passthrough":
+            return True
+        if target_dict.get("fallback_reason") == "oversize_no_safe_boundary":
+            return True
+        evidence = report.validation_evidence or {}
+        math_error = ""
+        ph_error = ""
+        if isinstance(evidence, dict):
+            math_error = str(evidence.get("math_error") or "")
+            ph_error = str(evidence.get("ph_error") or "")
+        if "env_restore_failed" in math_error:
+            return True
+        if "Missing placeholders:" in ph_error and int(target_dict.get("translatable_char_count") or 0) == 0:
+            return True
+        return False
+
     # ------------------------------------------------------------------
     # Prompt construction — three context-aware branches
     # ------------------------------------------------------------------
@@ -358,7 +392,7 @@ class TranslationRepairAgent:
         fallback_reports: List[FallbackReport],
         sections: List[Dict[str, Any]],
         envs: List[Dict[str, Any]],
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Apply bounded LLM repair to all fallback segments.
 
         Modifies sections and envs in-place (copies returned).
@@ -366,6 +400,8 @@ class TranslationRepairAgent:
         """
         sections = list(sections)
         envs = list(envs)
+        repair_events: List[Dict[str, Any]] = []
+        seen_signatures: set[str] = set()
 
         for report in fallback_reports:
             matched_sec = next(
@@ -380,7 +416,28 @@ class TranslationRepairAgent:
             target_dict = matched_sec if matched_sec is not None else matched_env
             if target_dict is None:
                 continue
-                
+
+            failure_signature = self._normalized_failure_signature(report)
+            if failure_signature in seen_signatures:
+                target_dict["repair_rejection_reason"] = "deduplicated-same-failure"
+                repair_events.append({
+                    "event": "repair_deduplicated_same_failure",
+                    "chunk_scope": report.chunk_scope,
+                    "fallback_kind": report.fallback_kind,
+                })
+                continue
+            seen_signatures.add(failure_signature)
+
+            if self._should_skip_non_translatable(report, target_dict):
+                target_dict["translation_status"] = "repair_skipped_non_translatable"
+                target_dict["repair_rejection_reason"] = "non-translatable-chunk"
+                repair_events.append({
+                    "event": "repair_skipped_immutable_chunk",
+                    "chunk_scope": report.chunk_scope,
+                    "fallback_kind": report.fallback_kind,
+                })
+                continue
+
             original = target_dict.get("trans_content") or target_dict.get("content") or ""
 
             # oversize segments cannot be repaired by LLM (same token limit applies)
@@ -411,4 +468,4 @@ class TranslationRepairAgent:
             elif rejection_reason:
                 target_dict["repair_rejection_reason"] = rejection_reason
 
-        return sections, envs
+        return sections, envs, repair_events

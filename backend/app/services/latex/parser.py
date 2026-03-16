@@ -8,12 +8,36 @@ Adapted from prototype system with:
 - sys.stderr redirection removed
 """
 
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable, List
 from .utils import *
 import tiktoken
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+_PLACEHOLDER_ATOM_RE = re.compile(
+    r"<(?:PLACEHOLDER_[^>]+|ENV(?:_BEGIN|_END)?_[^>]+|ITEM_[^>]+|EQROW_[^>]+|INLMATH_[^>]+)>"
+)
+_LATEX_COMMAND_TOKEN_RE = re.compile(r"\\(?:[A-Za-z@]+|\S)")
+_STRUCTURAL_SYMBOL_RE = re.compile(r"[\{\}\[\]\(\)\$&_^~%#]")
+_SECTION_CHUNK_ID_RE = re.compile(r"^(?P<base>.+)_chunk_\d+$")
+_STRUCTURE_SHELL_ATOM = (
+    r"(?:"
+    r"\\(?:begin|end)\s*\{\s*[^{}]+\s*\}"
+    r"|\\(?:newpage|clearpage)\b"
+    r"|<(?:PLACEHOLDER_[^>]+|ENV(?:_BEGIN|_END)?_[^>]+|ITEM_[^>]+|EQROW_[^>]+|EQCOMMENT_[^>]+|INLMATH_[^>]+)>"
+    r")"
+)
+_STRUCTURE_SHELL_PREFIX_RE = re.compile(
+    rf"^(?P<shell>(?:\s*{_STRUCTURE_SHELL_ATOM})+\s*)",
+    re.DOTALL,
+)
+_STRUCTURE_SHELL_SUFFIX_RE = re.compile(
+    rf"(?P<shell>\s*(?:{_STRUCTURE_SHELL_ATOM}\s*)+)$",
+    re.DOTALL,
+)
 
 
 class LatexParser:
@@ -90,10 +114,21 @@ class LatexParser:
                 section_content = self._extract_captions(section["content"])
                 self.sections_json[i]["content"] = self._extract_envs(section_content)
 
+        enc = self._get_token_encoder()
+        for i, section in enumerate(self.sections_json):
+            self.sections_json[i] = self._annotate_section_chunk(section, enc, max_tokens=4000)
+
         if on_progress:
             on_progress("parsing", 100, "Parsing complete")
         
         logger.info(f"Parsing complete: {total_sections} sections processed")
+
+    @staticmethod
+    def _get_token_encoder():
+        try:
+            return tiktoken.get_encoding("o200k_base")
+        except ValueError:
+            return tiktoken.get_encoding("cl100k_base")
 
     def _merge_inputs(self, tex: str) -> str:
         """
@@ -424,6 +459,7 @@ class LatexParser:
             tokens = len(enc.encode(content))
             
             if tokens <= max_tokens:
+                self._annotate_section_chunk(section, enc, max_tokens)
                 chunked_sections.append(section)
                 continue
                 
@@ -485,7 +521,7 @@ class LatexParser:
                         new_section["chunk_token_count"] = chunk_tokens
                         if chunk_tokens > max_tokens:
                             new_section["oversize_no_safe_boundary"] = True
-                            
+                        self._annotate_section_chunk(new_section, enc, max_tokens)
                         chunked_sections.append(new_section)
                         sub_chunk_idx += 1
                         
@@ -520,9 +556,150 @@ class LatexParser:
                 new_section["chunk_token_count"] = chunk_tokens
                 if chunk_tokens > max_tokens:
                     new_section["oversize_no_safe_boundary"] = True
+                self._annotate_section_chunk(new_section, enc, max_tokens)
                 chunked_sections.append(new_section)
-                
-        self.sections_json = chunked_sections
+
+        self.sections_json = self._collapse_placeholder_only_chunks(chunked_sections, enc, max_tokens)
+
+    @staticmethod
+    def _base_section_id(section_id: str) -> str:
+        if not section_id:
+            return ""
+        match = _SECTION_CHUNK_ID_RE.match(section_id)
+        if match:
+            return match.group("base")
+        return section_id
+
+    @staticmethod
+    def _strip_structural_shell(text: str) -> str:
+        stripped = _PLACEHOLDER_ATOM_RE.sub(" ", text or "")
+        stripped = _LATEX_COMMAND_TOKEN_RE.sub(" ", stripped)
+        stripped = _STRUCTURAL_SYMBOL_RE.sub(" ", stripped)
+        stripped = re.sub(r"\s+", " ", stripped)
+        return stripped.strip()
+
+    @staticmethod
+    def _extract_structure_shells(content: str) -> Dict[str, Any]:
+        text = content or ""
+        leading_shell = ""
+        trailing_shell = ""
+        core_content = text
+
+        leading_match = _STRUCTURE_SHELL_PREFIX_RE.match(core_content)
+        if leading_match:
+            leading_shell = leading_match.group("shell")
+            core_content = core_content[leading_match.end():]
+
+        trailing_match = _STRUCTURE_SHELL_SUFFIX_RE.search(core_content)
+        if trailing_match:
+            trailing_shell = trailing_match.group("shell")
+            core_content = core_content[:trailing_match.start()]
+
+        contains_structure_shell = bool(leading_shell or trailing_shell)
+        structure_shell_only = contains_structure_shell and not core_content.strip()
+        return {
+            "leading_structure_shell": leading_shell,
+            "core_translatable_content": core_content if contains_structure_shell else text,
+            "trailing_structure_shell": trailing_shell,
+            "contains_structure_shell": contains_structure_shell,
+            "structure_shell_only": structure_shell_only,
+        }
+
+    def _annotate_structure_shells(self, section: Dict[str, Any]) -> Dict[str, Any]:
+        section.update(self._extract_structure_shells(section.get("content", "") or ""))
+        return section
+
+    def _annotate_section_chunk(self, section: Dict[str, Any], enc: Any, max_tokens: int) -> Dict[str, Any]:
+        content = section.get("content", "") or ""
+        self._annotate_structure_shells(section)
+        stripped = self._strip_structural_shell(section.get("core_translatable_content", content))
+        placeholder_only = bool(content.strip()) and _PLACEHOLDER_ATOM_RE.sub("", content).strip() == ""
+        translatable_char_count = len(re.findall(r"[A-Za-z\u00C0-\u024F\u4e00-\u9fff]", stripped))
+
+        chunk_kind = "normal"
+        if placeholder_only:
+            chunk_kind = "placeholder_only"
+        elif translatable_char_count == 0:
+            chunk_kind = "low_text_density"
+        elif section.get("oversize_no_safe_boundary"):
+            chunk_kind = "oversize"
+
+        immutable_only = chunk_kind in {"placeholder_only", "low_text_density"} and translatable_char_count == 0
+        if section.get("structure_shell_only"):
+            immutable_only = True
+
+        section["chunk_token_count"] = int(section.get("chunk_token_count") or len(enc.encode(content)))
+        section["chunk_kind"] = chunk_kind
+        section["immutable_only"] = bool(immutable_only)
+        section["translatable_char_count"] = int(translatable_char_count)
+
+        if immutable_only:
+            section["trans_content"] = content
+            section["translation_status"] = "immutable_passthrough"
+
+        return section
+
+    def _collapse_placeholder_only_chunks(
+        self,
+        sections: List[Dict[str, Any]],
+        enc: Any,
+        max_tokens: int,
+    ) -> List[Dict[str, Any]]:
+        collapsed: List[Dict[str, Any]] = []
+        deferred_prefix = ""
+        deferred_base = ""
+
+        for section in sections:
+            current = self._annotate_section_chunk(section, enc, max_tokens)
+            current_section_id = str(current.get("section", ""))
+            current_base = self._base_section_id(current_section_id)
+
+            if current.get("chunk_kind") == "placeholder_only" and "_chunk_" in current_section_id:
+                if collapsed and self._base_section_id(str(collapsed[-1].get("section", ""))) == current_base:
+                    collapsed[-1]["content"] = (collapsed[-1].get("content", "") or "") + current.get("content", "")
+                    collapsed[-1].pop("trans_content", None)
+                    self._annotate_section_chunk(collapsed[-1], enc, max_tokens)
+                    if collapsed[-1]["chunk_token_count"] > max_tokens:
+                        collapsed[-1]["oversize_no_safe_boundary"] = True
+                        collapsed[-1]["chunk_kind"] = "oversize"
+                    continue
+
+                deferred_prefix += current.get("content", "")
+                deferred_base = current_base
+                continue
+
+            if deferred_prefix and deferred_base == current_base:
+                current["content"] = deferred_prefix + (current.get("content", "") or "")
+                current.pop("trans_content", None)
+                self._annotate_section_chunk(current, enc, max_tokens)
+                if current["chunk_token_count"] > max_tokens:
+                    current["oversize_no_safe_boundary"] = True
+                    if current["chunk_kind"] == "normal":
+                        current["chunk_kind"] = "oversize"
+                deferred_prefix = ""
+                deferred_base = ""
+
+            collapsed.append(current)
+
+        if deferred_prefix:
+            if collapsed and self._base_section_id(str(collapsed[-1].get("section", ""))) == deferred_base:
+                collapsed[-1]["content"] = (collapsed[-1].get("content", "") or "") + deferred_prefix
+                collapsed[-1].pop("trans_content", None)
+                self._annotate_section_chunk(collapsed[-1], enc, max_tokens)
+                if collapsed[-1]["chunk_token_count"] > max_tokens:
+                    collapsed[-1]["oversize_no_safe_boundary"] = True
+                    if collapsed[-1]["chunk_kind"] == "normal":
+                        collapsed[-1]["chunk_kind"] = "oversize"
+            else:
+                orphan_chunk = {
+                    "section": f"{deferred_base}_chunk_orphan" if deferred_base else "orphan_chunk",
+                    "content": deferred_prefix,
+                    "trans_content": deferred_prefix,
+                }
+                self._annotate_section_chunk(orphan_chunk, enc, max_tokens)
+                collapsed.append(orphan_chunk)
+
+        return collapsed
 
     @staticmethod
     def _is_safe_split_boundary(text: str) -> bool:
@@ -568,5 +745,3 @@ class LatexParser:
                 i += 1
 
         return depth == 0 and len(env_stack) == 0
-
-

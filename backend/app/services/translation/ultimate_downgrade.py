@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Optional, TYPE_CHECKING
 
+from backend.app.services.latex.utils import _extract_sectioning_commands
+
 if TYPE_CHECKING:
     from backend.app.services.agents.pipeline_schema import FallbackReport
 
@@ -68,6 +70,13 @@ _DOUBLE_DOLLAR_MATH = re.compile(r"\$\$.*?\$\$", re.DOTALL)
 # Placeholder pattern — must NOT be stripped or escaped
 _PLACEHOLDER_PATTERN = re.compile(
     r"<PLACEHOLDER_(?:ENV|CAP|ITEM|EQROW|MATH)_\d+>"
+)
+_SECTION_FALLBACK_PRESERVE_PATTERN = re.compile(
+    r"(<PLACEHOLDER_(?:ENV|CAP|ITEM|EQROW|MATH)_\d+>"
+    r"|\\(?:begin|end)\{[^}]+\}"
+    r"|\\(?:newpage|clearpage|appendix|noindent)\b"
+    r"|\\lettrine(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\}|\{[^{}]*\{[^{}]*\}[^{}]*\})+\}\{(?:[^{}]|\{[^{}]*\})+\})",
+    re.DOTALL,
 )
 
 
@@ -151,6 +160,97 @@ def _escape_latex_special(text: str) -> str:
     return text
 
 
+def _strip_downgrade_comment_lines(text: str) -> str:
+    """Remove leading downgrade comment lines from rendered fallback text."""
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    start = 0
+    while start < len(lines):
+        stripped = lines[start].strip()
+        if not stripped:
+            start += 1
+            continue
+        if stripped.startswith("% [LaTeX-Trans: ultimate downgrade") or stripped.startswith(
+            r"\% [LaTeX-Trans: ultimate downgrade"
+        ):
+            start += 1
+            continue
+        break
+    return "\n".join(lines[start:]).strip()
+
+
+def _looks_like_downgrade_output(text: str) -> bool:
+    if not text:
+        return False
+    return any(
+        line.strip().startswith("% [LaTeX-Trans: ultimate downgrade")
+        for line in text.splitlines()
+    )
+
+
+def _split_title_and_body(text: str) -> tuple[str, str]:
+    """Split downgrade text into a title candidate and body candidate."""
+    cleaned = _strip_downgrade_comment_lines(text)
+    if not cleaned:
+        return "", ""
+
+    blocks = [block.strip() for block in re.split(r"\n\s*\n+", cleaned) if block.strip()]
+    if not blocks:
+        return "", ""
+
+    first_block_lines = [line.strip() for line in blocks[0].splitlines() if line.strip()]
+    if not first_block_lines:
+        return "", "\n\n".join(blocks[1:]).strip()
+
+    title = first_block_lines[0]
+    body_blocks = []
+    if len(first_block_lines) > 1:
+        body_blocks.append("\n".join(first_block_lines[1:]).strip())
+    body_blocks.extend(blocks[1:])
+    body = "\n\n".join(block for block in body_blocks if block).strip()
+    return title, body
+
+
+def _wrap_structure_shells(
+    rendered_text: str,
+    *,
+    leading_structure_shell: str = "",
+    trailing_structure_shell: str = "",
+) -> str:
+    return f"{leading_structure_shell or ''}{rendered_text}{trailing_structure_shell or ''}"
+
+
+def _sanitize_downgrade_fragment(text: str) -> str:
+    natural = _extract_natural_language(text)
+    if not natural.strip():
+        return ""
+    return _escape_latex_special(natural)
+
+
+def _downgrade_text_preserving_structure_tokens(text: str) -> str:
+    if not text:
+        return ""
+
+    parts: list[str] = []
+    for fragment in _SECTION_FALLBACK_PRESERVE_PATTERN.split(text):
+        if not fragment:
+            continue
+        if _SECTION_FALLBACK_PRESERVE_PATTERN.fullmatch(fragment.strip()):
+            parts.append(fragment)
+            continue
+        sanitized = _sanitize_downgrade_fragment(fragment)
+        if sanitized:
+            parts.append(sanitized)
+
+    preserved = "".join(parts).strip()
+    if preserved:
+        return preserved
+
+    return _strip_downgrade_comment_lines(ultimate_downgrade_segment(text)).strip()
+
+
 def ultimate_downgrade_segment(
     translated_text: str,
     fallback_report: Optional["FallbackReport"] = None,
@@ -197,3 +297,60 @@ def ultimate_downgrade_segment(
     )
 
     return result
+
+
+def ultimate_downgrade_section_segment(
+    original_text: str,
+    translated_text: str,
+    *,
+    leading_structure_shell: str = "",
+    trailing_structure_shell: str = "",
+    fallback_report: Optional["FallbackReport"] = None,
+) -> str:
+    """Render a fallback section while preserving the original section wrapper."""
+    translated_entries = _extract_sectioning_commands(translated_text or "")
+    plain_downgrade = (
+        translated_text
+        if _looks_like_downgrade_output(translated_text)
+        else ultimate_downgrade_segment(translated_text, fallback_report)
+    )
+    if not plain_downgrade.strip():
+        return plain_downgrade
+
+    section_commands = _extract_sectioning_commands(original_text or "")
+    if not section_commands:
+        return _wrap_structure_shells(
+            plain_downgrade,
+            leading_structure_shell=leading_structure_shell,
+            trailing_structure_shell=trailing_structure_shell,
+        )
+
+    title, body = _split_title_and_body(plain_downgrade)
+    if translated_entries:
+        translated_title = translated_entries[0]["arg_inner"].strip()
+        if translated_title:
+            title = translated_title
+        translated_body = (translated_text or "")[translated_entries[0]["end"] :]
+        if translated_body.strip():
+            body = _downgrade_text_preserving_structure_tokens(translated_body)
+    if not title:
+        return _wrap_structure_shells(
+            plain_downgrade,
+            leading_structure_shell=leading_structure_shell,
+            trailing_structure_shell=trailing_structure_shell,
+        )
+
+    entry = section_commands[0]
+    command_prefix = original_text[entry["start"] : entry["arg_start"] + 1]
+    command_suffix = original_text[entry["arg_end"] - 1 : entry["end"]]
+    rebuilt_core = f"{command_prefix}{title}{command_suffix}"
+    if body:
+        rebuilt_core = f"{rebuilt_core}\n\n{body}"
+
+    leading_shell = leading_structure_shell if leading_structure_shell else original_text[: entry["start"]]
+    trailing_shell = trailing_structure_shell or ""
+    return _wrap_structure_shells(
+        rebuilt_core,
+        leading_structure_shell=leading_shell,
+        trailing_structure_shell=trailing_shell,
+    )

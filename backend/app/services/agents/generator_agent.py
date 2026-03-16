@@ -43,6 +43,24 @@ class GeneratorAgent(BaseToolAgent):
         self.project_dir = project_dir
         self.output_dir = output_dir
         self.latex_engine = config.get("latex_engine", "auto")
+        self._structure_guard_warning: Optional[Dict[str, Any]] = None
+
+    def _update_replay_bundle(self, **fields: Any) -> Optional[str]:
+        if not self.output_dir:
+            return None
+        replay_path = Path(self.output_dir) / "replay_bundle.json"
+        payload: Dict[str, Any] = {}
+        if replay_path.exists():
+            try:
+                loaded = json.loads(replay_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    payload = loaded
+            except Exception:
+                payload = {}
+        payload.setdefault("replay_version", "v1")
+        payload.update({k: v for k, v in fields.items() if v is not None})
+        replay_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return str(replay_path)
 
     def _write_structure_replay_bundle(
         self,
@@ -77,9 +95,14 @@ class GeneratorAgent(BaseToolAgent):
                 "tex_write_decision": "written",
                 "guard_phase": guard_phase,
                 "failure_reason_code": reason_code,
+                "guard_reason_code": reason_code,
                 "structure_guard_message": message,
                 "main_tex_path": main_tex,
                 "main_tex_digest": main_digest,
+                "guard_blocking": True,
+                "guard_warning_only": False,
+                "compile_attempted": False,
+                "compile_verdict_source": "guard",
             }
         )
         if details:
@@ -122,6 +145,7 @@ class GeneratorAgent(BaseToolAgent):
 
         self.update_progress(80, "Checking project structure...")
         structure_result = validate_project_structure(str(main_tex))
+        self._structure_guard_warning = None
         if not structure_result.get("ok", False):
             reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
             message = str(structure_result.get("message") or "Structure guard rejected LaTeX bundle")
@@ -146,9 +170,54 @@ class GeneratorAgent(BaseToolAgent):
                 "failure_class": "structural",
                 "guard_phase": "precompile",
                 "replay_bundle_ref": replay_bundle_ref,
+                "guard_blocking": True,
+                "guard_warning_only": False,
+                "compile_attempted": False,
+                "compile_verdict_source": "guard",
             }
 
+        if structure_result.get("warning_only"):
+            reason_code = str(structure_result.get("reason_code") or "structure_guard_warning")
+            message = str(structure_result.get("message") or "Structure guard emitted warning")
+            details = structure_result.get("details") or {}
+            guard_scope = structure_result.get("guard_scope") or "project"
+            replay_bundle_ref = self._update_replay_bundle(
+                tex_write_decision="written",
+                guard_phase="precompile",
+                guard_reason_code=reason_code,
+                structure_guard_message=message,
+                structure_guard_details=details if isinstance(details, dict) else {},
+                guard_blocking=False,
+                guard_warning_only=True,
+                guard_scope=guard_scope,
+                main_tex_path=str(main_tex),
+                main_tex_digest=sha256(Path(main_tex).read_text(encoding="utf-8", errors="replace").encode("utf-8")).hexdigest(),
+                compile_attempted=False,
+            )
+            self._structure_guard_warning = {
+                "reason_code": reason_code,
+                "message": message,
+                "details": details,
+                "guard_scope": guard_scope,
+                "replay_bundle_ref": replay_bundle_ref,
+            }
+            logger.warning("Structure guard emitted warning only: %s (%s)", message, reason_code)
+
         return Path(main_tex), None
+
+    def _augment_result_with_guard_warning(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        warning = self._structure_guard_warning
+        if not warning:
+            return result
+        warning_text = f"[Structure Guard Warning] {warning['message']}"
+        existing_warnings = result.get("warnings")
+        result["warnings"] = warning_text if not existing_warnings else f"{warning_text} | {existing_warnings}"
+        result["guard_warning_only"] = True
+        result["guard_reason_code"] = warning.get("reason_code")
+        result["guard_scope"] = warning.get("guard_scope")
+        result["replay_bundle_ref"] = warning.get("replay_bundle_ref")
+        result["guard_details"] = warning.get("details")
+        return result
 
     def execute(self) -> Dict[str, Any]:
         """
@@ -244,12 +313,19 @@ class GeneratorAgent(BaseToolAgent):
                 logger.info(f"Using user-specified engine order: {preferred_order}")
         
         # Use new intelligent compiler with fallback
+        self._update_replay_bundle(
+            compile_attempted=True,
+            compile_verdict_source="compiler",
+            guard_blocking=False,
+            guard_warning_only=bool(self._structure_guard_warning),
+        )
         result = compile_with_intelligent_fallback(
             tex_file=str(main_tex),
             output_dir=transed_latex_dir,
             preferred_order=preferred_order,
             target_language=target_language,
         )
+        result = self._augment_result_with_guard_warning(result)
 
         pdf_file = result.get("pdf_path")
         if pdf_file and not Path(pdf_file).exists():
@@ -267,6 +343,11 @@ class GeneratorAgent(BaseToolAgent):
                 "warnings": result.get("warnings"),
                 "engine": result.get("engine"),
                 "error_count": result.get("error_count", 0),
+                "guard_warning_only": result.get("guard_warning_only", False),
+                "guard_reason_code": result.get("guard_reason_code"),
+                "guard_scope": result.get("guard_scope"),
+                "guard_details": result.get("guard_details"),
+                "replay_bundle_ref": result.get("replay_bundle_ref"),
             }
 
         self.update_progress(100, "PDF compilation failed")
@@ -283,6 +364,11 @@ class GeneratorAgent(BaseToolAgent):
             "warnings": result.get("warnings"),
             "engine": result.get("engine"),
             "error_count": result.get("error_count", 0),
+            "guard_warning_only": result.get("guard_warning_only", False),
+            "guard_reason_code": result.get("guard_reason_code"),
+            "guard_scope": result.get("guard_scope"),
+            "guard_details": result.get("guard_details"),
+            "replay_bundle_ref": result.get("replay_bundle_ref"),
         }
 
     async def execute_async(self) -> Dict[str, Any]:
@@ -358,6 +444,12 @@ class GeneratorAgent(BaseToolAgent):
             compile_queue_wait_ms = int((time.monotonic() - wait_started_at) * 1000)
             self.update_progress(80, "Compiling PDF document")
             compile_started_at = time.monotonic()
+            self._update_replay_bundle(
+                compile_attempted=True,
+                compile_verdict_source="compiler",
+                guard_blocking=False,
+                guard_warning_only=bool(self._structure_guard_warning),
+            )
             result = await compile_with_intelligent_fallback_async(
                 tex_file=str(main_tex),
                 output_dir=transed_latex_dir,
@@ -369,6 +461,7 @@ class GeneratorAgent(BaseToolAgent):
             compile_exec_ms = int((time.monotonic() - compile_started_at) * 1000)
         finally:
             compile_sem.release()
+        result = self._augment_result_with_guard_warning(result)
         logger.info(
             "Compile timing for %s: queue_wait=%dms exec=%dms",
             Path(main_tex).name,
@@ -391,6 +484,11 @@ class GeneratorAgent(BaseToolAgent):
                 "error_count": result.get("error_count", 0),
                 "compile_queue_wait_ms": compile_queue_wait_ms,
                 "compile_exec_ms": compile_exec_ms,
+                "guard_warning_only": result.get("guard_warning_only", False),
+                "guard_reason_code": result.get("guard_reason_code"),
+                "guard_scope": result.get("guard_scope"),
+                "guard_details": result.get("guard_details"),
+                "replay_bundle_ref": result.get("replay_bundle_ref"),
             }
 
         self.update_progress(100, "PDF compilation failed")
@@ -404,6 +502,11 @@ class GeneratorAgent(BaseToolAgent):
             "error_count": result.get("error_count", 0),
             "compile_queue_wait_ms": compile_queue_wait_ms,
             "compile_exec_ms": compile_exec_ms,
+            "guard_warning_only": result.get("guard_warning_only", False),
+            "guard_reason_code": result.get("guard_reason_code"),
+            "guard_scope": result.get("guard_scope"),
+            "guard_details": result.get("guard_details"),
+            "replay_bundle_ref": result.get("replay_bundle_ref"),
         }
         
     def _create_transed_latex_folder(self, src_dir: str) -> str:

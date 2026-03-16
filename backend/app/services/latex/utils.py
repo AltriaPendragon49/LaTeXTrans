@@ -32,6 +32,11 @@ from http.client import IncompleteRead
 
 logger = logging.getLogger(__name__)
 
+
+_SECTIONING_COMMAND_PATTERN = re.compile(
+    r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?(?=\s*(?:\[|\{))"
+)
+
 # Regex pattern constants
 options = r"\[[^\[\]]*?\]"
 spaces = r"[ \t]*"
@@ -817,11 +822,7 @@ def _has_well_formed_sectioning_commands(text: str) -> bool:
 
     Expected shape: optional `[...]` then required `{...}`.
     """
-    section_pattern = re.compile(
-        r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\b"
-    )
-
-    for match in section_pattern.finditer(text):
+    for match in _SECTIONING_COMMAND_PATTERN.finditer(text):
         i = _skip_whitespace(text, match.end())
 
         if i < len(text) and text[i] == "[":
@@ -839,12 +840,8 @@ def _has_well_formed_sectioning_commands(text: str) -> bool:
 
 def _extract_sectioning_commands(text: str) -> List[Dict[str, Any]]:
     """Extract sectioning commands with byte ranges and mandatory title argument."""
-    section_pattern = re.compile(
-        r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\b"
-    )
-
     commands = []
-    for match in section_pattern.finditer(text):
+    for match in _SECTIONING_COMMAND_PATTERN.finditer(text):
         i = _skip_whitespace(text, match.end())
 
         if i < len(text) and text[i] == "[":
@@ -896,14 +893,11 @@ def restore_sectioning_command_structure(original: str, translated: str) -> str:
     if not original or not translated:
         return translated
 
-    section_pattern = re.compile(
-        r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\b"
-    )
-    original_commands = section_pattern.findall(original)
+    original_commands = _SECTIONING_COMMAND_PATTERN.findall(original)
     if not original_commands:
         return translated
 
-    translated_commands = section_pattern.findall(translated)
+    translated_commands = _SECTIONING_COMMAND_PATTERN.findall(translated)
     if original_commands != translated_commands:
         logger.warning("Restored section block due to sectioning command mismatch")
         return original
@@ -3197,6 +3191,9 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
 #     handle deeply nested braces without catastrophic backtracking.
 #   - CCSXML environment pattern spans multiple lines (regex.DOTALL).
 PROTECTED_COMMANDS: List[re.Pattern] = [
+    re.compile(
+        r'<(?:PLACEHOLDER|ENV|ENV_BEGIN|ENV_END|ITEM|EQROW|EQCOMMENT)_[^>]+>'
+    ),
     # \begin{CCSXML}...\end{CCSXML}  — ACM CCS XML block (multi-line)
     regex.compile(
         r'\\begin\{CCSXML\}.*?\\end\{CCSXML\}',
@@ -3253,6 +3250,7 @@ _PLACEHOLDER_FUZZY_RE = re.compile(
 def mask_sensitive_commands(
     content: str,
     registry: Optional[List] = None,
+    mapping: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, Dict[str, str]]:
     """
     Mask sensitive LaTeX commands before sending content to an LLM.
@@ -3277,12 +3275,18 @@ def mask_sensitive_commands(
     if registry is None:
         registry = PROTECTED_COMMANDS
 
-    mapping: Dict[str, str] = {}
-    counter = [0]  # mutable so nested closure can increment
+    effective_mapping: Dict[str, str] = dict(mapping or {})
+
+    highest_index = -1
+    for placeholder in effective_mapping:
+        m = _PLACEHOLDER_RE.match(placeholder)
+        if m:
+            highest_index = max(highest_index, int(m.group(1)))
+    counter = [highest_index + 1]  # mutable so nested closure can increment
 
     def _replace(m: re.Match) -> str:
         placeholder = f"<{_PLACEHOLDER_PREFIX}_{counter[0]}>"
-        mapping[placeholder] = m.group(0)
+        effective_mapping[placeholder] = m.group(0)
         counter[0] += 1
         return placeholder
 
@@ -3293,14 +3297,40 @@ def mask_sensitive_commands(
     # Protect command heads only (arguments remain visible to LLM).
     masked = PROTECTED_COMMAND_HEAD_RE.sub(_replace, masked)
 
-    if mapping:
+    if effective_mapping:
         logger.debug(
             "mask_sensitive_commands: masked %d region(s): %s",
-            len(mapping),
-            list(mapping.keys()),
+            len(effective_mapping),
+            list(effective_mapping.keys()),
         )
 
-    return masked, mapping
+    return masked, effective_mapping
+
+
+RESIDUAL_STRUCTURE_TOKENS: List[re.Pattern] = [
+    regex.compile(
+        r'\\(?:begin|end)\s*\{\s*[^{}]+\s*\}'
+    ),
+    re.compile(r'(?<!\\)\$(?!\$)'),
+]
+
+
+def mask_residual_structure_tokens(
+    content: str,
+    mapping: Optional[Dict[str, str]] = None,
+) -> Tuple[str, Dict[str, str]]:
+    """
+    Mask residual raw structure tokens that survive normal isolation passes.
+
+    This is a narrow compatibility layer for section/chunk payloads that were
+    split across structural boundaries, leaving orphaned ``\\begin{...}``,
+    ``\\end{...}``, or lone ``$`` tokens in otherwise translatable prose.
+    """
+    return mask_sensitive_commands(
+        content,
+        registry=RESIDUAL_STRUCTURE_TOKENS,
+        mapping=mapping,
+    )
 
 
 def unmask_sensitive_commands(

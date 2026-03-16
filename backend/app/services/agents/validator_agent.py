@@ -31,6 +31,66 @@ ERROR_TYPE_C = "C"  # Structural consistency errors - algorithmic fix required (
 ERROR_TYPE_C1 = "C1"  # Structural: Local/Contained -- 1 LLM retry allowed
 ERROR_TYPE_C2 = "C2"  # Structural: Global/Structural -- NO LLM retry
 
+_LONG_ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z]{2,}(?:'[A-Za-z]{2,})?\b")
+_LONG_ENGLISH_GAP_RE = re.compile(r"^[\s,.;:!?()\[\]\"'`~\-–—/\\]+$")
+_ALL_CAPS_ACRONYM_RE = re.compile(r"^[A-Z]{2,}$")
+_URL_RE = re.compile(r"https?://\S+|mailto:\S+", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_PLACEHOLDER_TOKEN_RE = re.compile(r"<[A-Z][A-Z0-9_]*>")
+_NON_PROSE_COMMAND_RE = re.compile(
+    r"\\(?:url|href|email|author|affiliation|address|institution|institute|thanks|"
+    r"cite|citet|citep|citealt|citealp|citenum|citeauthor|citeyear|label|ref|eqref|"
+    r"autoref|cref|Cref|bibliography|bibliographystyle)\*?"
+    r"(?:\[[^\]]*\]){0,2}(?:\{[^{}]*\})?",
+    re.DOTALL,
+)
+_LATEX_ENV_TOKEN_RE = re.compile(r"\\(?:begin|end)\s*\{[^{}]+\}")
+_LATEX_COMMAND_HEAD_RE = re.compile(r"\\[A-Za-z@]+\*?")
+
+
+def find_long_english_prose_spans(text: str, *, min_words: int = 18) -> List[str]:
+    normalized = text or ""
+    if not normalized:
+        return []
+
+    normalized = _URL_RE.sub(" ", normalized)
+    normalized = _EMAIL_RE.sub(" ", normalized)
+    normalized = _NON_PROSE_COMMAND_RE.sub(" ", normalized)
+    normalized = _LATEX_ENV_TOKEN_RE.sub(" ", normalized)
+    normalized = _PLACEHOLDER_TOKEN_RE.sub(" ", normalized)
+    normalized = _LATEX_COMMAND_HEAD_RE.sub(" ", normalized)
+    normalized = normalized.replace("{", " ").replace("}", " ")
+
+    spans: List[str] = []
+    current_words: List[str] = []
+    span_start: Optional[int] = None
+    span_end: Optional[int] = None
+    previous_end: Optional[int] = None
+
+    for match in _LONG_ENGLISH_WORD_RE.finditer(normalized):
+        word = match.group(0)
+        if _ALL_CAPS_ACRONYM_RE.fullmatch(word):
+            continue
+
+        gap = normalized[previous_end:match.start()] if previous_end is not None else ""
+        if current_words and not _LONG_ENGLISH_GAP_RE.fullmatch(gap or " "):
+            if len(current_words) >= min_words and span_start is not None and span_end is not None:
+                spans.append(normalized[span_start:span_end].strip())
+            current_words = []
+            span_start = None
+            span_end = None
+
+        if not current_words:
+            span_start = match.start()
+        current_words.append(word)
+        span_end = match.end()
+        previous_end = match.end()
+
+    if len(current_words) >= min_words and span_start is not None and span_end is not None:
+        spans.append(normalized[span_start:span_end].strip())
+
+    return [span for span in spans if span]
+
 
 def classify_error(error_report: Dict[str, Any]) -> str:
     """
@@ -219,6 +279,7 @@ class ValidatorAgent(BaseToolAgent):
         immutable_placeholder_error = self._validate_immutable_placeholders(part)
         list_structure_error = self._validate_list_item_structure(part)
         escaped_dollar_error = self._validate_escaped_dollar_leak(part)
+        completeness_error = self._validate_long_english_prose(part)
         error_report = {}
 
         if (
@@ -231,6 +292,7 @@ class ValidatorAgent(BaseToolAgent):
             and not immutable_placeholder_error
             and not list_structure_error
             and not escaped_dollar_error
+            and not completeness_error
         ):
             return None
         else: 
@@ -265,6 +327,8 @@ class ValidatorAgent(BaseToolAgent):
             ]
             if math_issues:
                 error_report["math_error"] = "\n".join(math_issues)
+            if completeness_error:
+                error_report["completeness_error"] = completeness_error
             
             # Add error classification (A/B/C) for targeted handling
             error_report["error_type"] = classify_error(error_report)
@@ -755,6 +819,25 @@ class ValidatorAgent(BaseToolAgent):
                 "PROTECTED_CMD placeholder — unmask restoration may have failed"
             )
         return None
+
+    def _validate_long_english_prose(self, part: Dict[str, Any]) -> Optional[str]:
+        if "section" not in part:
+            return None
+        section_id = str(part.get("section", ""))
+        if section_id in {"-1", "0"}:
+            return None
+
+        translated = part.get("trans_content") or ""
+        spans = find_long_english_prose_spans(translated, min_words=18)
+        if not spans:
+            return None
+
+        sample = spans[0][:180]
+        return (
+            "long_english_prose_span: remaining English prose detected. "
+            "Translate the residual English prose while keeping LaTeX commands, "
+            f"placeholders, math, and structure shell unchanged. Sample: {sample}"
+        )
 
     def _validate_global_input_placeholder_stack(self, sections: List[Dict], inputs: List[Dict]) -> List[Dict]:
         """Validate global begin/end placeholder stack for extracted \\input blocks."""

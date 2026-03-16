@@ -13,11 +13,19 @@ import re
 import logging
 from .utils import *
 from .utils import restore_mangled_placeholders
+from backend.app.services.translation.ultimate_downgrade import (
+    ultimate_downgrade_section_segment,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class LatexConstructor:
+    SECTION_FALLBACK_STATUSES = {
+        "final_target_language_fallback_applied",
+        "ultimate_downgrade_applied",
+    }
+
     def __init__(self, 
                  sections: List[Dict[str, Any]], 
                  captions: List[Dict[str, Any]], 
@@ -82,7 +90,28 @@ class LatexConstructor:
             on_progress("reconstructing", 100, "Reconstruction complete")
         
         logger.info("LaTeX reconstruction complete")
-    
+
+    @classmethod
+    def _is_section_fallback_applied(cls, section: Dict[str, Any]) -> bool:
+        return str(section.get("translation_status", "")) in cls.SECTION_FALLBACK_STATUSES
+
+    @classmethod
+    def _recover_fallback_section_content(
+        cls,
+        section: Dict[str, Any],
+        original: str,
+        translated: str,
+    ) -> str:
+        synthesized = ultimate_downgrade_section_segment(
+            original,
+            translated,
+            leading_structure_shell=section.get("leading_structure_shell", "") or "",
+            trailing_structure_shell=section.get("trailing_structure_shell", "") or "",
+        )
+        if synthesized and synthesized != original:
+            return synthesized
+        return translated
+
     def _merge_sections(self) -> str:
         """Merge all the sections to a tex"""
         logger.debug(f"Merging {len(self.sections)} sections")
@@ -91,6 +120,17 @@ class LatexConstructor:
             original = section.get("content", "")
             translated = section.get("trans_content") or original
             content = restore_sectioning_command_structure(original, translated)
+            if (
+                self._is_section_fallback_applied(section)
+                and translated
+                and translated != original
+                and content == original
+            ):
+                logger.warning(
+                    "Prevented fallback section from reverting to source English during reconstruction: %s",
+                    section.get("section", "<unknown>"),
+                )
+                content = self._recover_fallback_section_content(section, original, translated)
             content = restore_display_math_delimiters(original, content)
             content = restore_display_math_shell_structure(original, content)
             content = restore_twopartpiecewise_commands(original, content)
