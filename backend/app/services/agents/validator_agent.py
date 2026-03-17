@@ -169,6 +169,8 @@ def classify_error(error_report: Dict[str, Any]) -> str:
         return ERROR_TYPE_C2
     if "env_restore_failed" in math_error:
         return ERROR_TYPE_C2
+    if "document_boundary_leak" in math_error:
+        return ERROR_TYPE_C2
 
     # Math-mode delimiter mismatch (isolated, no global error) -> C1
     if "math_delimiter_mismatch" in math_error:
@@ -279,6 +281,7 @@ class ValidatorAgent(BaseToolAgent):
         immutable_placeholder_error = self._validate_immutable_placeholders(part)
         list_structure_error = self._validate_list_item_structure(part)
         escaped_dollar_error = self._validate_escaped_dollar_leak(part)
+        document_boundary_error = self._validate_document_boundary_leak(part)
         completeness_error = self._validate_long_english_prose(part)
         error_report = {}
 
@@ -292,6 +295,7 @@ class ValidatorAgent(BaseToolAgent):
             and not immutable_placeholder_error
             and not list_structure_error
             and not escaped_dollar_error
+            and not document_boundary_error
             and not completeness_error
         ):
             return None
@@ -322,6 +326,7 @@ class ValidatorAgent(BaseToolAgent):
                     immutable_placeholder_error,
                     list_structure_error,
                     escaped_dollar_error,
+                    document_boundary_error,
                 ]
                 if e
             ]
@@ -837,6 +842,33 @@ class ValidatorAgent(BaseToolAgent):
             "long_english_prose_span: remaining English prose detected. "
             "Translate the residual English prose while keeping LaTeX commands, "
             f"placeholders, math, and structure shell unchanged. Sample: {sample}"
+        )
+
+    def _validate_document_boundary_leak(self, part: Dict[str, Any]) -> Optional[str]:
+        if "section" not in part:
+            return None
+        if str(part.get("chunk_role") or "") == "document_root":
+            return None
+
+        translated = part.get("trans_content") or ""
+        if not translated:
+            return None
+
+        leading_shell = part.get("leading_structure_shell") or ""
+        trailing_shell = part.get("trailing_structure_shell") or ""
+        body = translated
+        if leading_shell and body.startswith(leading_shell):
+            body = body[len(leading_shell):]
+        if trailing_shell and body.endswith(trailing_shell):
+            body = body[: -len(trailing_shell)]
+
+        if not re.search(r"\\(?:begin|end)\s*\{document\}", body):
+            return None
+
+        return (
+            "document_boundary_leak: document-level boundary token leaked into section body. "
+            "Remove duplicated \\begin{document}/\\end{document} from the translated body "
+            "while keeping only the parser-owned structure shell."
         )
 
     def _validate_global_input_placeholder_stack(self, sections: List[Dict], inputs: List[Dict]) -> List[Dict]:

@@ -64,6 +64,10 @@ COMPILE_FALLBACK_PENDING_STATUSES = {
     TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
 }
 
+
+def _should_skip_deterministic_section_downgrade(section: Dict[str, Any]) -> bool:
+    return TranslatorAgent._is_document_root_section_chunk(section)
+
 # ---------------------------------------------------------------------------
 # State Schema
 # ---------------------------------------------------------------------------
@@ -898,6 +902,12 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                 scope_key in report_by_scope
                 and sec.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
             ):
+                if _should_skip_deterministic_section_downgrade(sec):
+                    source_safe_content = sec.get("content") or ""
+                    if source_safe_content.strip():
+                        sec["trans_content"] = source_safe_content
+                    sec["document_root_fallback_preserved"] = True
+                    continue
                 current_target_text = sec.get("trans_content") or ""
                 if current_target_text.strip():
                     sec["trans_content"] = ultimate_downgrade_section_segment(
@@ -1102,6 +1112,9 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
         for sec in sections:
             scope_key = str(sec.get("section", ""))
             if scope_key in section_scope_set:
+                if _should_skip_deterministic_section_downgrade(sec):
+                    sec["document_root_fallback_preserved"] = True
+                    continue
                 current_target_text = sec.get("trans_content") or sec.get("content") or ""
                 if current_target_text:
                     report = next(

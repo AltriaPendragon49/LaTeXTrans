@@ -440,6 +440,17 @@ class TranslatorAgent(BaseToolAgent):
     def _section_has_structure_shell(section: Dict[str, Any]) -> bool:
         return bool(section.get("contains_structure_shell"))
 
+    @staticmethod
+    def _get_section_chunk_role(section: Dict[str, Any]) -> str:
+        return str(section.get("chunk_role") or "normal")
+
+    @classmethod
+    def _is_document_root_section_chunk(cls, section: Dict[str, Any]) -> bool:
+        if cls._get_section_chunk_role(section) == "document_root":
+            return True
+        content = section.get("content", "") or ""
+        return bool(re.search(r"\\document(?:class|style)\b", content))
+
     @classmethod
     def _reassemble_section_translation(cls, section: Dict[str, Any], translated_core: str) -> str:
         if not cls._section_has_structure_shell(section):
@@ -469,6 +480,92 @@ class TranslatorAgent(BaseToolAgent):
             re.search(r"<ENV(?:_BEGIN|_END)?_[^>]+>", candidate)
         )
 
+    async def _retry_env_translation_on_restore_artifacts(
+        self,
+        *,
+        env: Dict[str, Any],
+        text: str,
+        placeholder: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> Optional[str]:
+        retry_hint = (
+            "Previous output leaked internal placeholder tokens such as "
+            "<ENV_BEGIN_...> or <ENV_END_...>. Translate the same content again into the "
+            "target language, keep LaTeX commands unchanged, and do not output any "
+            "angle-bracket placeholder tokens."
+        )
+        combined_error = f"{error_message}\n{retry_hint}" if error_message else retry_hint
+        retried = await self._request_env_translation(
+            env=env,
+            text=text,
+            placeholder=placeholder,
+            session=session,
+            error_message=combined_error,
+        )
+        if self._has_unrestored_env_artifacts(retried):
+            return None
+        return retried
+
+    async def _recover_generic_text_env_body_as_plain_text(
+        self,
+        *,
+        env: Dict[str, Any],
+        text: str,
+        placeholder: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> Optional[str]:
+        recovery_hint = (
+            "Previous environment-specific translation attempts failed structural restoration. "
+            "Translate only the plain natural-language body into the target language. "
+            "Do not output any synthetic placeholder tokens or environment boundary markers."
+        )
+        prompt_suffix = f"\n[Recovery Requirement]\n{recovery_hint}"
+        if error_message:
+            prompt_suffix += f"\n{error_message}"
+
+        recovered = ""
+        if self.trans_mode == 1:
+            retry_part = {
+                "content": text,
+                "trans_content": env.get("trans_content", text),
+            }
+            recovered = await self._request_llm_for_retrans_error_parts(
+                self.prompts["retrans_error_parts_system_prompt"],
+                part=retry_part,
+                error_message=recovery_hint if not error_message else f"{error_message}\n{recovery_hint}",
+                fail_part=placeholder,
+                type="env",
+                session=session,
+            )
+        elif self.trans_mode == 2 and self.term_dict:
+            recovered = await self._request_llm_for_trans_with_terms(
+                self.prompts["section_system_prompt_with_dict"] + prompt_suffix,
+                text,
+                fail_part=placeholder,
+                type="env",
+                session=session,
+            )
+        else:
+            recovered = await self._request_llm_for_trans(
+                self.prompts["section_system_prompt"] + prompt_suffix,
+                text,
+                fail_part=placeholder,
+                type="env",
+                session=session,
+            )
+
+        if not isinstance(recovered, str):
+            return None
+        if not recovered:
+            return None
+        if self._has_unrestored_env_artifacts(recovered):
+            return None
+        if self._is_source_preserved_translation(text, recovered):
+            return None
+        return recovered
+
     @staticmethod
     def _env_row_retry_key(placeholder: str, row_idx: int) -> str:
         return f"part:env:{placeholder}:row:{row_idx}"
@@ -486,8 +583,18 @@ class TranslatorAgent(BaseToolAgent):
         en_words = len(re.findall(r"\b[A-Za-z]{3,}\b", translated))
         return similarity >= 0.97 and cjk_count < 16 and en_words >= 80
 
+    @classmethod
+    def _is_source_preserved_translation(cls, original: str, translated: str) -> bool:
+        if not original or not translated:
+            return False
+        normalized_src = re.sub(r"\s+", " ", original).strip()
+        normalized_tgt = re.sub(r"\s+", " ", translated).strip()
+        if not normalized_src or not normalized_tgt:
+            return False
+        return normalized_src == normalized_tgt or cls._is_noop_translation(original, translated)
+
     def _prepare_llm_payload_text(self, text: str) -> Tuple[str, Dict[str, Any]]:
-        isolated_math_text, math_map = isolate_inline_math(text)
+        isolated_math_text, math_map = isolate_math_spans(text)
         isolated_env_text, env_map = isolate_env_blocks(isolated_math_text)
         masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
         masked_text, mask_mapping = mask_residual_structure_tokens(
@@ -909,10 +1016,18 @@ class TranslatorAgent(BaseToolAgent):
                 status=self.STATUS_IMMUTABLE_PASSTHROUGH,
                 no_op_detected=False,
             )
-        # Section -1 is LaTeX preamble, never translate.
+        # Document-root / preamble chunks are source-safe only and must never
+        # be routed through normal prose translation, even when chunked.
         # Section 0 may contain main body text, translate if it has translatable content.
-        elif section["section"] == "-1":
-            pass  # Skip preamble
+        elif self._is_document_root_section_chunk(section):
+            section = section.copy()
+            section["trans_content"] = section.get("content", "")
+            section["translated"] = False
+            self._update_section_metadata(
+                section,
+                status=self.STATUS_IMMUTABLE_PASSTHROUGH,
+                no_op_detected=False,
+            )
         elif section["section"] == "0":
             section_payload = self._get_section_translation_core(section)
             if self._section_has_translatable_content(section_payload):
@@ -1009,14 +1124,14 @@ class TranslatorAgent(BaseToolAgent):
         if sec_nums:
             self.log(f"Retranslating for {sec_nums}")
             for sec_num in sec_nums:
-                # Section -1 is preamble, always skip
-                # Section 0 should be translated if it has translatable content
-                if sec_num == "-1":
-                    continue
-                if sec_num == "0" and not self._section_has_translatable_content(secs[sec_dict.get(sec_num, 0)]["content"]):
-                    continue
                 if sec_num in sec_dict:
                     i = sec_dict[sec_num]
+                    # Document-root / preamble chunks are never retranslatable.
+                    if self._is_document_root_section_chunk(secs[i]):
+                        continue
+                    # Section 0 should be translated only if it has translatable content.
+                    if sec_num == "0" and not self._section_has_translatable_content(secs[i]["content"]):
+                        continue
                     # ── Phase 3 Guard: skip deterministically downgraded sections ──
                     if secs[i].get("translation_status") == DOWNGRADE_STATUS:
                         logger.info("Maxtry guard: skipping downgraded section %s", sec_num)
@@ -2085,19 +2200,55 @@ class TranslatorAgent(BaseToolAgent):
         elif self._is_generic_text_env(env_name):
             wrapper = self._split_env_wrapper(env.get("content", ""), env_name)
             if wrapper is None:
+                source_text = env.get("content", "")
                 translated_content = await self._request_env_translation(
                     env=env,
-                    text=env.get("content", ""),
+                    text=source_text,
                     placeholder=placeholder,
                     session=session,
                     error_message=error_message,
                 )
                 if self._has_unrestored_env_artifacts(translated_content):
-                    transed_env["trans_content"] = env.get("content", "")
+                    retried_content = await self._retry_env_translation_on_restore_artifacts(
+                        env=env,
+                        text=source_text,
+                        placeholder=placeholder,
+                        session=session,
+                        error_message=error_message,
+                    )
+                    if retried_content is not None:
+                        translated_content = retried_content
+                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                needs_plain_text_recovery = (
+                    self._has_unrestored_env_artifacts(translated_content)
+                    or bool(api_fallback_reason)
+                    or self._is_source_preserved_translation(source_text, translated_content)
+                )
+                if needs_plain_text_recovery:
+                    recovered_content = await self._recover_generic_text_env_body_as_plain_text(
+                        env=env,
+                        text=source_text,
+                        placeholder=placeholder,
+                        session=session,
+                        error_message=error_message,
+                    )
+                    if recovered_content is not None:
+                        translated_content = recovered_content
+                        self._clear_api_fallback("env", placeholder)
+                source_preserved_after_recovery = self._is_source_preserved_translation(
+                    source_text,
+                    translated_content,
+                )
+                if self._has_unrestored_env_artifacts(translated_content) or source_preserved_after_recovery:
+                    transed_env["trans_content"] = source_text
                     self._update_env_metadata(
                         transed_env,
                         status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
-                        fallback_reason="env_wrapper_restore_preserved_source",
+                        fallback_reason=(
+                            "env_plain_text_recovery_preserved_source"
+                            if source_preserved_after_recovery
+                            else "env_wrapper_restore_preserved_source"
+                        ),
                         fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
                         row_fallback_count=0,
                     )
@@ -2121,11 +2272,46 @@ class TranslatorAgent(BaseToolAgent):
                     error_message=error_message,
                 )
                 if self._has_unrestored_env_artifacts(translated_body):
+                    retried_body = await self._retry_env_translation_on_restore_artifacts(
+                        env=env,
+                        text=env_body,
+                        placeholder=placeholder,
+                        session=session,
+                        error_message=error_message,
+                    )
+                    if retried_body is not None:
+                        translated_body = retried_body
+                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                needs_plain_text_recovery = (
+                    self._has_unrestored_env_artifacts(translated_body)
+                    or bool(api_fallback_reason)
+                    or self._is_source_preserved_translation(env_body, translated_body)
+                )
+                if needs_plain_text_recovery:
+                    recovered_body = await self._recover_generic_text_env_body_as_plain_text(
+                        env=env,
+                        text=env_body,
+                        placeholder=placeholder,
+                        session=session,
+                        error_message=error_message,
+                    )
+                    if recovered_body is not None:
+                        translated_body = recovered_body
+                        self._clear_api_fallback("env", placeholder)
+                source_preserved_after_recovery = self._is_source_preserved_translation(
+                    env_body,
+                    translated_body,
+                )
+                if self._has_unrestored_env_artifacts(translated_body) or source_preserved_after_recovery:
                     translated_body = env_body
                     self._update_env_metadata(
                         transed_env,
                         status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
-                        fallback_reason="env_wrapper_restore_preserved_source",
+                        fallback_reason=(
+                            "env_plain_text_recovery_preserved_source"
+                            if source_preserved_after_recovery
+                            else "env_wrapper_restore_preserved_source"
+                        ),
                         fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
                         row_fallback_count=0,
                     )

@@ -14,3 +14,9 @@ The validator MUST reject any LLM output where the set of placeholders does not 
 2. When output restoration or validation runs
 3. Then the system MUST treat that translation attempt as failed
 4. And MUST restore or preserve the source environment wrapper instead of persisting broken synthetic markers.
+
+#### Scenario: Display math does not trigger raw-structure fail-fast
+1. Given a translation payload that contains display math such as `$$...$$` or `\[...\]`
+2. When payload preparation and fail-fast validation run before the LLM request
+3. Then the system MUST protect those math spans before raw-structure checks evaluate the payload
+4. And MUST restore the exact original display-math content after the model response is processed.

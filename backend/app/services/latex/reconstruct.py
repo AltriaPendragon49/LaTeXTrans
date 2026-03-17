@@ -15,6 +15,7 @@ from .utils import *
 from .utils import restore_mangled_placeholders
 from backend.app.services.translation.ultimate_downgrade import (
     ultimate_downgrade_section_segment,
+    sanitize_section_translation_shells,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,25 @@ class LatexConstructor:
             return synthesized
         return translated
 
+    @staticmethod
+    def _sanitize_section_translation(section: Dict[str, Any], translated: str) -> str:
+        if not translated or not bool(section.get("contains_structure_shell")):
+            return translated
+
+        leading_shell = section.get("leading_structure_shell", "") or ""
+        trailing_shell = section.get("trailing_structure_shell", "") or ""
+        sanitized_body = sanitize_section_translation_shells(
+            translated,
+            leading_structure_shell=leading_shell,
+            trailing_structure_shell=trailing_shell,
+        )
+        if sanitized_body == translated:
+            return translated
+
+        section["document_boundary_leak_detected"] = True
+        section["shell_token_deduped"] = True
+        return f"{leading_shell}{sanitized_body}{trailing_shell}"
+
     def _merge_sections(self) -> str:
         """Merge all the sections to a tex"""
         logger.debug(f"Merging {len(self.sections)} sections")
@@ -119,6 +139,7 @@ class LatexConstructor:
         for section in self.sections:
             original = section.get("content", "")
             translated = section.get("trans_content") or original
+            translated = self._sanitize_section_translation(section, translated)
             content = restore_sectioning_command_structure(original, translated)
             if (
                 self._is_section_fallback_applied(section)

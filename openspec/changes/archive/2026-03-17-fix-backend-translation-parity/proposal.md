@@ -1,0 +1,74 @@
+## Why
+- Backend-specific structural checks can reject LaTeX that the prototype successfully compiles.
+- Backend chunking can isolate immutable placeholder-only fragments and still route them through translation and repair, corrupting downstream reconstruction.
+- Generic text environment translation relies on fragile environment-boundary placeholder restoration that can leak synthetic boundary markers into output.
+- Section and retry payloads still expose synthetic placeholders directly to the LLM, allowing begin/end placeholder tags to be translated or reordered.
+- List environments that contain nested equations or cases can accept translations whose inner environment restoration already failed, leaving residual synthetic tokens in the assembled project.
+- Section splitting can leave cross-chunk structure shells (`\begin{...}`, `\end{...}`, `\newpage`) attached to prose, which currently trips payload invariants and falls back to raw English source text.
+- Successful compile runs can still leave `structural_fallback_pending_compile` segments stranded because post-compile fallback routing only runs on compile failure.
+- Existing validation misses locally catastrophic long English prose spans when aggregate retention metrics still look acceptable.
+- Starred section commands such as `\section*{...}` can still be misclassified as malformed during reconstruction, causing translated tail sections to revert back to source English.
+- Section-level downgrade can still destroy internal structural tokens embedded inside a translated body (for example placeholders, `\end{...}`, `\newpage`, or `\lettrine`), which can make the regenerated project structurally invalid after post-compile fallback.
+- Math-heavy sections that rely on display math such as `$$...$$` or `\[...\]` can still trip payload invariants, forcing `payload_invariant_passthrough` and leaving large English source blocks in the final output.
+- Final target-language fallback can still over-escape inline math, citations, references, footnotes, and similar inline LaTeX constructs into unreadable literals such as `\textasciitilde{}`, `\textbackslash{}`, or `\$...\$`.
+- Document-root translation payloads can still expose structural preamble commands such as `\usepackage{...}` or `\input{...}` to the language model, allowing package names and file stems to be rewritten and breaking style loading plus citation macros during compile.
+- Generic text environments such as `abstract` can still fall straight back to preserved English source text after a single env-placeholder restoration leak, even when a targeted retry would recover a valid target-language translation.
+- The compile pipeline can still accept a PDF whose natbib citations remain unresolved, causing final rendered citations to collapse into `(?)` or `(??)` and degrading readability relative to the legacy system.
+- Document-root compile-first fallback chunks can still retain a broken translated payload after post-compile fallback explicitly skips them, causing the retry generate pass to lose `\documentclass` / preamble structure and fail main-tex detection.
+- Deterministic target-language fallback can still strip paragraph-heading macros and collapse whitespace around preserved structure tokens, making labels or section boundaries run into prose and visually compressing translated PDFs enough to appear truncated.
+- Generic text environments such as `abstract` can still preserve unchanged English source text when the first environment request falls back because of API / invariant failure but no env-marker leak is present, even though a safe plain-text body retry remains possible.
+- Deterministic target-language fallback can still strip bibliography commands and safe semantic custom macros embedded in fallbacked sections, removing `\bibliography{...}` / `\bibliographystyle{...}` handoff plus shrinking macro-heavy prose in the final PDF.
+- Chunked document-root sections such as `-1_chunk_1` can still bypass the existing preamble-skip rule, allowing LLM explanatory chatter to leak before `\documentclass` and render as a spurious blank first page.
+- Deterministic target-language fallback can still drop `\maketitle` when it is embedded inside a fallbacked body chunk, which removes the rendered title / teaser / abstract block on the first page of some papers.
+- The compiler can still run BibTeX for projects that manually `\input{...bbl}`, overwriting a prebuilt bibliography with an empty `.bbl` even when citation keys and `.bib` files exist.
+
+## What Changes
+- Relax precompile structure guard so macro-body environment tokens produce warnings instead of hard aborts where appropriate.
+- Make parser chunking placeholder-aware and mark immutable chunks for passthrough.
+- Preserve source environment wrappers for generic text environments and translate only the body.
+- Protect synthetic placeholders in section/environment payloads during LLM transport and restore them exactly after response handling.
+- Mask residual raw structure tokens (`\begin{...}`, `\end{...}`, lone `$`) before payload invariants run, using the same protected-command transport channel.
+- Extract leading/trailing structure shells from section chunks, translate only the core prose, and reattach shells verbatim after translation.
+- Fail closed to source content when section or list-environment post-processing still contains synthetic ENV restoration artifacts.
+- Short-circuit repair retries for immutable or non-translatable chunks.
+- Split payload-invariant passthrough from generic API fallback so invariant-protected sections do not masquerade as no-op retries.
+- Add long-English-prose completeness validation and route those failures through targeted retry.
+- Run post-compile target-language fallback once whenever compile fallback reports exist, even if the initial compile produced a PDF.
+- Add an audit script and regression tests for targeted parity cases.
+- Accept starred sectioning commands during reconstruction so translated `\section*{...}` / `\subsection*{...}` blocks are preserved instead of reverted to source text.
+- Preserve internal structure tokens inside section fallback bodies while still downgrading the surrounding natural-language prose, so post-compile fallback cannot silently unbalance environment stacks.
+- Mask both inline and display math spans before payload invariants run so math-heavy sections continue through translation instead of being preserved as raw source.
+- Preserve safe inline LaTeX constructs such as math spans, citations, references, footnotes, links, and common text-formatting commands during section fallback so target-language output remains readable.
+- Protect structural preamble commands and their arguments during payload transport so package names, bibliography/style identifiers, and file includes remain byte-stable across translation.
+- Retry generic text environment translation once with a restoration-specific correction hint before preserving source text, while still failing closed if synthetic env markers survive the retry.
+- Treat unresolved natbib citation warnings as a compilation-quality regression signal so the pipeline does not accept a "successful" PDF whose citations are still rendered as question marks.
+- Add a bibliography-aware recompilation path after deterministic post-compile fallback so BibTeX/XeLaTeX convergence is re-established before selecting the final output PDF.
+- Restore source-safe content for skipped document-root compile-first chunks before retry generation.
+- Preserve paragraph-heading macros plus paragraph and command boundaries during deterministic section fallback.
+- Retry generic text environment bodies once more when the first translation falls back unchanged because of API / invariant failure, not just when env markers leak.
+- Preserve bibliography commands and safe semantic inline custom macros during deterministic section fallback.
+- Treat all document-root chunks, including chunked `-1_*` variants, as source-safe passthrough and never send them to normal section translation.
+- Preserve `\maketitle` during deterministic section fallback when it appears adjacent to translatable first-section content.
+- Detect manual `\input{...bbl}` bibliography workflows during compilation, restore prebuilt `.bbl` content when needed, and suppress BibTeX runs that would overwrite it.
+
+## Impact
+- Backend should no longer fail known valid prototype outputs before compile.
+- Backend should stop sending placeholder-only chunks to the LLM.
+- Backend should stop emitting translated placeholder names or residual `ENV_BEGIN`/`ENV_END` markers into reconstructed `.tex` files.
+- Failure classification becomes more accurate by separating guard warnings from true compile failures.
+- Backend should stop preserving large English prose blocks in papers that the prototype fully translates.
+- Audit output should explicitly show invariant-triggered passthrough, structure-shell sections, long-English spans, and pending compile-fallback leftovers.
+- Backend should preserve translated tail matter written with starred section commands instead of reverting it to English.
+- Post-compile section fallback should no longer corrupt embedded placeholders or environment-boundary tokens and trigger `structure_invalid` regressions.
+- Math-heavy backend sections should stop falling back to English solely because display math leaked raw dollar tokens into the LLM payload.
+- Backend fallback output should remain readable around formulas and references instead of degrading them into escaped TeX control-sequence literals.
+- Backend should stop breaking document styles or bibliography/citation macros because preamble command arguments were translated or escaped.
+- Backend should reduce avoidable English retention inside `abstract`-like environments without allowing leaked synthetic env markers into reconstructed `.tex` output.
+- Backend should stop shipping final PDFs whose citations still render as `(?)` or `(??)` after post-compile fallback and recompilation.
+- Retry generation should no longer lose the main TeX entry just because a skipped document-root fallback chunk kept a broken translated preamble payload.
+- Deterministic fallback output should keep paragraph heads and blank-line structure so translated PDFs do not appear to lose content through aggressive compaction.
+- Abstract-like environments should no longer remain English solely because the first translation attempt fell back to source text without leaking env markers.
+- Fallbacked sections should no longer drop bibliography handoff commands or erase semantic custom macros, reducing avoidable content shrinkage in macro-heavy translated PDFs.
+- Document-root chunk translation should no longer inject explanatory prose ahead of `\documentclass`, avoiding spurious blank cover pages.
+- First-page title blocks that depend on `\maketitle` should survive deterministic fallback in papers whose intro chunk begins immediately after `\begin{document}`.
+- Projects that rely on prebuilt `.bbl` inputs should retain resolved citations instead of regressing to `(?)` after the backend compile pipeline reruns BibTeX.

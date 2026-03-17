@@ -1,0 +1,53 @@
+## 1. Spec and audit
+- [x] 1.1 Add OpenSpec deltas for guard behavior, immutable chunks, and wrapper-preserving env translation
+- [x] 1.2 Add backend regression audit script for paired backend/prototype outputs
+
+## 2. Runtime fixes
+- [x] 2.1 Relax structure guard blocking logic for macro-body false positives
+- [x] 2.2 Add placeholder-aware chunk classification and immutable passthrough
+- [x] 2.3 Preserve generic text environment wrappers during translation
+- [x] 2.4 Short-circuit repeated repair on immutable/non-translatable chunks
+- [x] 2.5 Protect synthetic placeholders during LLM transport for section and environment translation
+- [x] 2.6 Fail closed to source content when section/list-environment env restoration leaves synthetic markers behind
+- [x] 2.7 Mask residual raw structure tokens before payload invariants run
+- [x] 2.8 Extract and reattach section structure shells around translatable core prose
+- [x] 2.9 Split payload-invariant passthrough from generic API fallback / no-op retry
+- [x] 2.10 Run post-compile target-language fallback even after successful compile when pending reports exist
+- [x] 2.11 Add long-English-prose completeness validation for section outputs
+- [x] 2.12 Preserve section wrappers or target-language body during section fallback reconstruction
+- [x] 2.13 Accept starred section wrappers during reconstruction and fallback
+- [x] 2.14 Preserve internal structure tokens inside fallback section bodies
+- [x] 2.15 Mask display-math spans during LLM payload preparation to avoid invariant passthrough
+- [x] 2.16 Preserve math/reference-like inline LaTeX commands during section fallback rendering
+- [x] 2.17 Protect structural preamble commands during LLM payload transport
+- [x] 2.18 Retry generic text env translation once before source-preserving fallback on leaked env markers
+- [x] 2.19 Escalate unresolved natbib citation warnings out of "perfect compile" selection
+- [x] 2.20 Re-establish bibliography convergence after post-compile target-language fallback recompilation
+- [x] 2.21 Add a stronger generic-text-env fallback path so abstract-like environments do not preserve English when a safe target-language retry path still exists
+- [x] 2.22 Restore source-safe document-root content before retry generation when post-compile fallback skips compile-first root chunks
+- [x] 2.23 Preserve paragraph-heading macros plus label/paragraph boundaries during deterministic section fallback
+- [x] 2.24 Retry generic text env plain-text recovery after API/invariant source fallback, not only after env-marker leaks
+- [x] 2.25 Preserve bibliography commands and safe semantic custom macros during deterministic section fallback
+- [x] 2.26 Treat all document-root chunks as source-safe passthrough, including chunked `-1_*` variants
+- [x] 2.27 Preserve `\maketitle` during deterministic section fallback for intro chunks with leading document shells
+- [x] 2.28 Detect manual `\input{...bbl}` workflows during compile and suppress BibTeX runs that would overwrite prebuilt bibliographies
+
+## 3. Validation
+- [x] 3.1 Add regression tests for structure guard
+- [x] 3.2 Add regression tests for parser chunking and env translation
+- [x] 3.3 Add regression tests for repair short-circuit behavior
+- [x] 3.4 Validate OpenSpec and targeted backend tests
+- [x] 3.5 Add regression coverage for synthetic placeholder transport masking and env-restore fallback
+- [x] 3.6 Extend audit output with invariant passthrough, structure-shell, long-English, and pending-fallback metrics
+- [x] 3.7 Preserve section wrappers or target-language body during section fallback reconstruction
+- [x] 3.8 Audit final main tex for long English spans after reconstruction
+- [x] 3.9 Add regression coverage for starred section reconstruction and internal section-body structure tokens
+- [x] 3.10 Add regression coverage for display-math payload masking and readable fallback rendering around formulas/references
+- [x] 3.11 Add regression coverage for preamble-command masking and generic text env retry-after-leak behavior
+- [x] 3.12 Add regression coverage for unresolved-citation compile rejection and bibliography-aware retry after post-compile fallback
+- [x] 3.13 Add regression coverage for abstract-style generic text env fallback beyond leaked env-token retries
+- [x] 3.14 Add regression coverage for skipped document-root retry generation and paragraph-boundary preservation in deterministic fallback
+- [x] 3.15 Add regression coverage for abstract env recovery after API/invariant source fallback
+- [x] 3.16 Add regression coverage for bibliography/custom-macro preservation in deterministic fallback
+- [x] 3.17 Add regression coverage for chunked document-root passthrough and `\maketitle` preservation during deterministic fallback
+- [x] 3.18 Add regression coverage for manual `.bbl` compile workflows so BibTeX does not erase prebuilt citations

@@ -28,6 +28,8 @@ LATEX_RUNTIME_MODE_HOST = "host"
 LATEX_RUNTIME_MODE_DOCKER = "docker"
 LATEX_DOCKER_IMAGE_ENV = "LATEX_DOCKER_IMAGE"
 LATEX_DOCKER_IMAGE_DEFAULT = "latextrans-runtime:texlive2025"
+_MANUAL_BBL_INPUT_RE = re.compile(r"\\(?:input|include)\{([^{}]+?\.bbl)\}")
+_BIBLIOGRAPHY_DRIVER_RE = re.compile(r"\\(?:bibliography|addbibresource)\b|\\printbibliography\b")
 
 
 class LatexExecutor(Protocol):
@@ -126,6 +128,61 @@ def _get_latex_executor() -> LatexExecutor:
         f"Unknown {LATEX_RUNTIME_MODE_ENV}={runtime_mode!r}. "
         f"Expected '{LATEX_RUNTIME_MODE_HOST}' or '{LATEX_RUNTIME_MODE_DOCKER}'."
     )
+
+
+def _has_real_bib_files(tex_dir: Path) -> bool:
+    return any(
+        not bib.name.endswith("-blx.bib")
+        for bib in Path(tex_dir).rglob("*.bib")
+    )
+
+
+def _iter_manual_bbl_inputs(tex_path: Path) -> List[Path]:
+    try:
+        tex_content = tex_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return []
+    tex_dir = tex_path.parent
+    return [tex_dir / rel_path for rel_path in _MANUAL_BBL_INPUT_RE.findall(tex_content)]
+
+
+def _has_bibliography_driver(tex_path: Path) -> bool:
+    try:
+        tex_content = tex_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return False
+    return bool(_BIBLIOGRAPHY_DRIVER_RE.search(tex_content))
+
+
+def _prepare_bibliography_inputs(tex_path: Path) -> str:
+    tex_path = Path(tex_path)
+    tex_dir = tex_path.parent
+    has_real_bib = _has_real_bib_files(tex_dir)
+    manual_bbl_targets = _iter_manual_bbl_inputs(tex_path)
+    has_driver = _has_bibliography_driver(tex_path)
+
+    if manual_bbl_targets and not has_driver:
+        restored_targets = 0
+        for bbl_path in manual_bbl_targets:
+            alt_bbl_path = bbl_path.with_suffix(bbl_path.suffix + ".tex")
+            needs_restore = not bbl_path.exists() or bbl_path.stat().st_size == 0
+            if needs_restore and alt_bbl_path.exists() and alt_bbl_path.stat().st_size > 0:
+                bbl_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(alt_bbl_path, bbl_path)
+                restored_targets += 1
+        logger.info(
+            "Bibliography detection: manual prebuilt .bbl input%s detected -> using -bibtex-",
+            f" (restored {restored_targets})" if restored_targets else "",
+        )
+        return "-bibtex-"
+
+    bibtex_flag = "-bibtex" if has_real_bib else "-bibtex-"
+    logger.info(
+        "Bibliography detection: %s .bib files -> using %s",
+        "found" if has_real_bib else "no",
+        bibtex_flag,
+    )
+    return bibtex_flag
 
 
 def _validate_generated_pdf_structure(pdf_path: Path) -> Tuple[bool, Optional[str]]:
@@ -550,11 +607,17 @@ def find_main_tex_file(directory: str) -> Optional[str]:
                 logger.info(f"Found main tex by common name: {name}")
                 return str(candidate)
         
-        # Last resort: first .tex file
-        if tex_files:
-            logger.warning(f"No main tex found, using first file: {tex_files[0].name}")
+        # Last resort: only safe when there is exactly one .tex file.
+        if len(tex_files) == 1:
+            logger.warning(f"No main tex found, using sole tex file: {tex_files[0].name}")
             return str(tex_files[0])
-        
+        if tex_files:
+            logger.error(
+                "No reliable main tex found in %s; ambiguous tex files: %s",
+                search_dir,
+                [tex_file.name for tex_file in tex_files[:10]],
+            )
+
         return None
     
     # First, try to find in the top-level directory
@@ -633,6 +696,8 @@ class CompilationResult:
         quality_issue_count: int = 0,
         quality_issues: Optional[List[str]] = None,
         quality_issue_severe: bool = False,
+        bibliography_issue_count: int = 0,
+        bibliography_issues: Optional[List[str]] = None,
     ):
         self.success = success
         self.pdf_path = pdf_path
@@ -643,6 +708,8 @@ class CompilationResult:
         self.quality_issue_count = quality_issue_count
         self.quality_issues = quality_issues or []
         self.quality_issue_severe = quality_issue_severe
+        self.bibliography_issue_count = bibliography_issue_count
+        self.bibliography_issues = bibliography_issues or []
 
 
 def _remove_stale_expected_pdf(pdf_path: Path) -> None:
@@ -816,6 +883,50 @@ def parse_log_quality_issues(
         return 0, [], False
 
     return issue_count, samples, issue_count >= severe_threshold
+
+
+def parse_log_bibliography_issues(
+    log_path: str,
+    max_samples: int = 10,
+) -> Tuple[int, List[str]]:
+    """
+    Parse LaTeX logs for unresolved bibliography/citation warnings that still
+    yield a PDF but render citations as `(?)` / `(??)`.
+    """
+    if not os.path.exists(log_path):
+        return 0, []
+
+    patterns = [
+        re.compile(r"Package natbib Warning: Citation `[^`]+'.*undefined", re.IGNORECASE),
+        re.compile(r"LaTeX Warning: Citation `[^`]+'.*undefined", re.IGNORECASE),
+        re.compile(r"LaTeX Warning: There were undefined citations\.", re.IGNORECASE),
+    ]
+
+    issue_count = 0
+    samples: List[str] = []
+    seen: set[str] = set()
+
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if any(pattern.search(line) for pattern in patterns):
+                    issue_count += 1
+                    if line not in seen and len(samples) < max_samples:
+                        samples.append(line)
+                        seen.add(line)
+    except Exception as e:
+        logger.warning(f"Failed to parse bibliography issues from log {log_path}: {e}")
+        return 0, []
+
+    return issue_count, samples
+
+
+def _blocking_quality_issue_count(result: "CompilationResult", language: str) -> int:
+    cjk_quality = result.quality_issue_count if language == "cjk" else 0
+    return cjk_quality + int(getattr(result, "bibliography_issue_count", 0) or 0)
 
 
 def _extract_content_between_braces(text: str, start_index: int) -> str:
@@ -1017,21 +1128,15 @@ def compile_latex(
         # -file-line-error: better error messages
         # -synctex=1: for editor integration
         
-        # Detect if project has real .bib files (excluding auto-generated *-blx.bib by biblatex)
-        # ArXiv submissions often include pre-built .bbl without .bib files.
-        # Forcing -bibtex in that case causes bibtex to fail and overwrite the .bbl with an empty one.
         tex_dir = tex_path.parent
-        has_real_bib = any(
-            not bib.name.endswith("-blx.bib")
-            for bib in Path(tex_dir).rglob("*.bib")
-        )
-        bibtex_flag = "-bibtex" if has_real_bib else "-bibtex-"
-        logger.info(f"Bibliography detection: {'found' if has_real_bib else 'no'} .bib files -> using {bibtex_flag}")
+        has_real_bib = _has_real_bib_files(tex_dir)
+        manual_prebuilt_bbl = bool(_iter_manual_bbl_inputs(tex_path)) and not _has_bibliography_driver(tex_path)
+        bibtex_flag = _prepare_bibliography_inputs(tex_path)
 
         # When no .bib files exist, we must use a fallback to standard thebibliography
         # because modern biblatex v3.3+ cannot parse older biblatex v3.2 .bbl format 
         # (causes undefined control sequences or text garbling).
-        if not has_real_bib:
+        if not has_real_bib and not manual_prebuilt_bbl:
             _fallback_biblatex_to_thebibliography(str(tex_dir), str(out_path))
         
         
@@ -1105,12 +1210,15 @@ def compile_latex(
     quality_issue_count = 0
     quality_issues: List[str] = []
     quality_issue_severe = False
+    bibliography_issue_count = 0
+    bibliography_issues: List[str] = []
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
         quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
             str(log_path),
             enable_quality_gate=True,
         )
+        bibliography_issue_count, bibliography_issues = parse_log_bibliography_issues(str(log_path))
 
     if (not pdf_exists) and error_count == 0:
         fallback_error = (
@@ -1127,6 +1235,7 @@ def compile_latex(
         f"PDF={'yes' if pdf_exists else 'no'}, "
         f"Errors={error_count}, "
         f"QualityIssues={quality_issue_count}, "
+        f"BibliographyIssues={bibliography_issue_count}, "
         f"Exit Code={last_exit_code}"
     )
     
@@ -1140,6 +1249,8 @@ def compile_latex(
         quality_issue_count=quality_issue_count,
         quality_issues=quality_issues,
         quality_issue_severe=quality_issue_severe,
+        bibliography_issue_count=bibliography_issue_count,
+        bibliography_issues=bibliography_issues,
     )
 
 
@@ -1175,13 +1286,10 @@ async def compile_latex_async(
 
     try:
         tex_dir = tex_path.parent
-        has_real_bib = any(
-            not bib.name.endswith("-blx.bib")
-            for bib in Path(tex_dir).rglob("*.bib")
-        )
-        bibtex_flag = "-bibtex" if has_real_bib else "-bibtex-"
-        logger.info(f"Bibliography detection: {'found' if has_real_bib else 'no'} .bib files -> using {bibtex_flag}")
-        if not has_real_bib:
+        has_real_bib = _has_real_bib_files(tex_dir)
+        manual_prebuilt_bbl = bool(_iter_manual_bbl_inputs(tex_path)) and not _has_bibliography_driver(tex_path)
+        bibtex_flag = _prepare_bibliography_inputs(tex_path)
+        if not has_real_bib and not manual_prebuilt_bbl:
             _fallback_biblatex_to_thebibliography(str(tex_dir), str(out_path))
 
         cmd = [
@@ -1250,12 +1358,15 @@ async def compile_latex_async(
     quality_issue_count = 0
     quality_issues: List[str] = []
     quality_issue_severe = False
+    bibliography_issue_count = 0
+    bibliography_issues: List[str] = []
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
         quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
             str(log_path),
             enable_quality_gate=True,
         )
+        bibliography_issue_count, bibliography_issues = parse_log_bibliography_issues(str(log_path))
 
     if (not pdf_exists) and error_count == 0:
         errors = [f"{tex_filename}: compilation failed without parsable log errors (exit code {last_exit_code})"]
@@ -1272,6 +1383,8 @@ async def compile_latex_async(
         quality_issue_count=quality_issue_count,
         quality_issues=quality_issues,
         quality_issue_severe=quality_issue_severe,
+        bibliography_issue_count=bibliography_issue_count,
+        bibliography_issues=bibliography_issues,
     )
 
 
@@ -1363,12 +1476,15 @@ def _compile_latex_direct(
     quality_issue_count = 0
     quality_issues: List[str] = []
     quality_issue_severe = False
+    bibliography_issue_count = 0
+    bibliography_issues: List[str] = []
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
         quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
             str(log_path),
             enable_quality_gate=True,
         )
+        bibliography_issue_count, bibliography_issues = parse_log_bibliography_issues(str(log_path))
 
     if (not pdf_exists) and error_count == 0:
         fallback_error = (
@@ -1385,6 +1501,7 @@ def _compile_latex_direct(
         f"PDF={'yes' if pdf_exists else 'no'}, "
         f"Errors={error_count}, "
         f"QualityIssues={quality_issue_count}, "
+        f"BibliographyIssues={bibliography_issue_count}, "
         f"Exit Code={last_exit_code}"
     )
     
@@ -1398,6 +1515,8 @@ def _compile_latex_direct(
         quality_issue_count=quality_issue_count,
         quality_issues=quality_issues,
         quality_issue_severe=quality_issue_severe,
+        bibliography_issue_count=bibliography_issue_count,
+        bibliography_issues=bibliography_issues,
     )
 
 
@@ -1480,12 +1599,15 @@ async def _compile_latex_direct_async(
     quality_issue_count = 0
     quality_issues: List[str] = []
     quality_issue_severe = False
+    bibliography_issue_count = 0
+    bibliography_issues: List[str] = []
     if log_path.exists():
         error_count, errors = parse_log_errors(str(log_path))
         quality_issue_count, quality_issues, quality_issue_severe = parse_log_quality_issues(
             str(log_path),
             enable_quality_gate=True,
         )
+        bibliography_issue_count, bibliography_issues = parse_log_bibliography_issues(str(log_path))
 
     if (not pdf_exists) and error_count == 0:
         errors = [f"{tex_filename}: compilation failed without parsable log errors (exit code {last_exit_code})"]
@@ -1502,6 +1624,8 @@ async def _compile_latex_direct_async(
         quality_issue_count=quality_issue_count,
         quality_issues=quality_issues,
         quality_issue_severe=quality_issue_severe,
+        bibliography_issue_count=bibliography_issue_count,
+        bibliography_issues=bibliography_issues,
     )
 
 
@@ -1844,7 +1968,7 @@ def compile_with_intelligent_fallback(
 
     def _is_perfect(result: CompilationResult) -> bool:
         """Return True iff the compilation is error-free (and CJK quality-OK)."""
-        effective_quality = result.quality_issue_count if language == "cjk" else 0
+        effective_quality = _blocking_quality_issue_count(result, language)
         return result.success and result.error_count == 0 and effective_quality == 0
 
     try:
@@ -2030,7 +2154,7 @@ def compile_with_intelligent_fallback(
 
             results[engine] = result
 
-            effective_quality_issue_count = result.quality_issue_count if language == "cjk" else 0
+            effective_quality_issue_count = _blocking_quality_issue_count(result, language)
 
             # Perfect compilation: no hard errors and no CJK quality issues.
             if result.success and result.error_count == 0 and effective_quality_issue_count == 0:
@@ -2219,16 +2343,16 @@ def compile_with_intelligent_fallback(
             engines_with_pdf.sort(
                 key=lambda x: (
                     x[1].error_count,
-                    x[1].quality_issue_count if language == "cjk" else 0,
+                    _blocking_quality_issue_count(x[1], language),
                 )
             )
             best_engine, best_result = engines_with_pdf[0]
 
             if language == "cjk":
                 comparison = ", ".join(
-                    f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}"
-                    for eng, res in dedup.items()
-                )
+                    f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}, bibliography={getattr(res, 'bibliography_issue_count', 0)}"
+                for eng, res in dedup.items()
+            )
             else:
                 comparison = ", ".join(
                     f"{eng}: {res.error_count}" for eng, res in dedup.items()
@@ -2578,7 +2702,7 @@ async def compile_with_intelligent_fallback_async(
         return result
 
     def _is_perfect(result: CompilationResult) -> bool:
-        effective_quality = result.quality_issue_count if language == "cjk" else 0
+        effective_quality = _blocking_quality_issue_count(result, language)
         return result.success and result.error_count == 0 and effective_quality == 0
 
     async def _compile_one(engine: str) -> CompilationResult:
@@ -2736,7 +2860,7 @@ async def compile_with_intelligent_fallback_async(
                     logger.warning(f"Engine {engine} returned a non-existent PDF path: {pdf_candidate}")
                     result.pdf_path = None
 
-            effective_quality_issue_count = result.quality_issue_count if language == "cjk" else 0
+            effective_quality_issue_count = _blocking_quality_issue_count(result, language)
             if result.success and result.error_count == 0 and effective_quality_issue_count == 0:
                 if language == "cjk" and engine == "pdflatex":
                     logger.debug("pdflatex produced 0 errors for CJK; continuing for merit selection")
@@ -2849,12 +2973,15 @@ async def compile_with_intelligent_fallback_async(
             engines_with_pdf.sort(
                 key=lambda x: (
                     x[1].error_count,
-                    x[1].quality_issue_count if language == "cjk" else 0,
+                    _blocking_quality_issue_count(x[1], language),
                 )
             )
             best_engine, best_result = engines_with_pdf[0]
             if language == "cjk":
-                comparison = ", ".join(f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}" for eng, res in dedup.items())
+                comparison = ", ".join(
+                    f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}, bibliography={getattr(res, 'bibliography_issue_count', 0)}"
+                    for eng, res in dedup.items()
+                )
             else:
                 comparison = ", ".join(f"{eng}: {res.error_count}" for eng, res in dedup.items())
             logger.warning(f"Selected {best_engine} PDF with {best_result.error_count} errors ({comparison})")

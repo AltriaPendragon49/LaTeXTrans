@@ -38,6 +38,10 @@ _STRUCTURE_SHELL_SUFFIX_RE = re.compile(
     rf"(?P<shell>\s*(?:{_STRUCTURE_SHELL_ATOM}\s*)+)$",
     re.DOTALL,
 )
+_DOCUMENTCLASS_RE = re.compile(r"\\document(?:class|style)\b")
+_PREAMBLE_COMMAND_RE = re.compile(
+    r"\\(?:usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|def|title|author|date)\b"
+)
 
 
 class LatexParser:
@@ -615,6 +619,7 @@ class LatexParser:
         stripped = self._strip_structural_shell(section.get("core_translatable_content", content))
         placeholder_only = bool(content.strip()) and _PLACEHOLDER_ATOM_RE.sub("", content).strip() == ""
         translatable_char_count = len(re.findall(r"[A-Za-z\u00C0-\u024F\u4e00-\u9fff]", stripped))
+        base_section_id = self._base_section_id(str(section.get("section", "")))
 
         chunk_kind = "normal"
         if placeholder_only:
@@ -624,12 +629,27 @@ class LatexParser:
         elif section.get("oversize_no_safe_boundary"):
             chunk_kind = "oversize"
 
+        chunk_role = "normal"
+        if (
+            base_section_id == "-1"
+            or _DOCUMENTCLASS_RE.search(content)
+            or (
+                "\\begin{document}" not in content
+                and _PREAMBLE_COMMAND_RE.search(content)
+                and not re.search(r"\\(?:section|subsection|subsubsection|paragraph|chapter)\*?\{", content)
+            )
+        ):
+            chunk_role = "document_root"
+        elif section.get("contains_structure_shell"):
+            chunk_role = "section_with_structure_shell"
+
         immutable_only = chunk_kind in {"placeholder_only", "low_text_density"} and translatable_char_count == 0
         if section.get("structure_shell_only"):
             immutable_only = True
 
         section["chunk_token_count"] = int(section.get("chunk_token_count") or len(enc.encode(content)))
         section["chunk_kind"] = chunk_kind
+        section["chunk_role"] = chunk_role
         section["immutable_only"] = bool(immutable_only)
         section["translatable_char_count"] = int(translatable_char_count)
 

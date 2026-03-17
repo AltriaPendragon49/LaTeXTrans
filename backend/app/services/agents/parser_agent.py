@@ -19,7 +19,7 @@ from backend.app.services.latex import prompts as pm
 from backend.app.services.latex.parser import LatexParser
 from backend.app.services.latex.utils import (
     isolate_env_blocks,
-    isolate_inline_math,
+    isolate_math_spans,
     mask_residual_structure_tokens,
     mask_sensitive_commands,
     preprocess_risky_tokens,
@@ -91,7 +91,7 @@ class ParserAgent(BaseToolAgent):
 
     @staticmethod
     def _prepare_llm_payload_text(text: str) -> str:
-        isolated_math_text, math_map = isolate_inline_math(text)
+        isolated_math_text, math_map = isolate_math_spans(text)
         isolated_env_text, _env_map = isolate_env_blocks(isolated_math_text)
         masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
         masked_text, _mask_mapping = mask_residual_structure_tokens(

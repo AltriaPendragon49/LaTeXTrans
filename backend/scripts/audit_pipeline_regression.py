@@ -68,6 +68,14 @@ def _invariant_fallback_sections(sections: List[Dict[str, Any]]) -> List[str]:
     ]
 
 
+def _status_sections(sections: List[Dict[str, Any]], status: str) -> List[str]:
+    return [
+        str(section.get("section", ""))
+        for section in sections or []
+        if str(section.get("translation_status", "")) == status
+    ]
+
+
 def _structure_shell_sections(sections: List[Dict[str, Any]]) -> List[str]:
     return [
         str(section.get("section", ""))
@@ -151,6 +159,8 @@ def _artifact_summary(base: Path) -> Dict[str, Any]:
     summary["chunk_ids"] = [str(section.get("section", "")) for section in sections]
     summary["placeholder_only_chunks"] = _placeholder_only_chunks(sections)
     summary["invariant_fallback_sections"] = _invariant_fallback_sections(sections)
+    summary["payload_invariant_passthrough_sections"] = _status_sections(sections, "payload_invariant_passthrough")
+    summary["fallback_source_api_failure_sections"] = _status_sections(sections, "fallback_source_api_failure")
     summary["structure_shell_sections"] = _structure_shell_sections(sections)
     summary["section_statuses"] = _count_status(sections)
     summary["env_statuses"] = _count_status(envs)
@@ -219,6 +229,10 @@ def _markdown_report(pairs: List[Dict[str, Any]]) -> str:
         lines.append(f"- Prototype placeholder-only chunks: `{pair['diff']['prototype_placeholder_only_chunks']}`")
         lines.append(f"- Backend invariant fallback sections: `{pair['backend']['invariant_fallback_sections']}`")
         lines.append(f"- Prototype invariant fallback sections: `{pair['prototype']['invariant_fallback_sections']}`")
+        lines.append(f"- Backend payload invariant passthrough sections: `{pair['backend']['payload_invariant_passthrough_sections']}`")
+        lines.append(f"- Prototype payload invariant passthrough sections: `{pair['prototype']['payload_invariant_passthrough_sections']}`")
+        lines.append(f"- Backend source fallback sections: `{pair['backend']['fallback_source_api_failure_sections']}`")
+        lines.append(f"- Prototype source fallback sections: `{pair['prototype']['fallback_source_api_failure_sections']}`")
         lines.append(f"- Backend structure-shell sections: `{pair['backend']['structure_shell_sections']}`")
         lines.append(f"- Prototype structure-shell sections: `{pair['prototype']['structure_shell_sections']}`")
         lines.append(f"- Backend long-English span count: `{pair['backend']['long_english_span_count']}`")

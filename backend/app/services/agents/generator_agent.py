@@ -131,7 +131,7 @@ class GeneratorAgent(BaseToolAgent):
     ) -> tuple[Optional[Path], Optional[Dict[str, Any]]]:
         main_tex = find_main_tex_file(transed_latex_dir)
         if not main_tex:
-            error_summary = f"No main .tex file found in {transed_latex_dir}"
+            error_summary = f"No reliable main .tex file found in {transed_latex_dir}"
             logger.error(error_summary)
             self.update_progress(100, "No main .tex file found")
             return None, {

@@ -38,6 +38,14 @@ import { getTaskCopy } from '@/i18n/task-copy'
 
 const MAX_BATCH = 9
 const VALID_EXTS = ['.zip', '.rar', '.tar', '.gz', '.tgz', '.tex']
+const BATCH_POLL_INTERVAL_MS = 3000
+const TERMINAL_BATCH_STATUSES = new Set([
+    'completed',
+    'completed_with_warnings',
+    'failed',
+    'failed_compilation',
+    'structure_invalid',
+])
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -259,17 +267,45 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
 
     // Track task IDs for which persist_failed warning has already been shown
     const warnedPersistFailed = useRef<Set<string>>(new Set())
+    const activePollsRef = useRef<Set<string>>(new Set())
+    const isMountedRef = useRef(true)
+
+    useEffect(() => {
+        isMountedRef.current = true
+
+        return () => {
+            isMountedRef.current = false
+            activePollsRef.current.clear()
+        }
+    }, [])
 
     // ── Poll helper
     const pollTask = useCallback(
         async (task_id: string, setter: React.Dispatch<React.SetStateAction<BatchTask[]>>) => {
-            const INTERVAL = 3000
-            const MAX = 200
-            for (let i = 0; i < MAX; i++) {
-                await new Promise(r => setTimeout(r, INTERVAL))
-                try {
-                    const s = await getTaskStatus(task_id)
-                    // Detect persist_failed flag and show one-time warning toast
+            if (activePollsRef.current.has(task_id)) {
+                return
+            }
+
+            activePollsRef.current.add(task_id)
+
+            try {
+                while (isMountedRef.current) {
+                    await new Promise(r => setTimeout(r, BATCH_POLL_INTERVAL_MS))
+                    if (!isMountedRef.current) {
+                        break
+                    }
+
+                    let s
+                    try {
+                        s = await getTaskStatus(task_id)
+                    } catch {
+                        continue
+                    }
+
+                    if (!isMountedRef.current) {
+                        break
+                    }
+
                     if (s.persist_failed && !warnedPersistFailed.current.has(task_id)) {
                         warnedPersistFailed.current.add(task_id)
                         toast.warning(
@@ -277,6 +313,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                             { duration: 8000 }
                         )
                     }
+
                     setter(prev =>
                         prev.map(t =>
                             t.task_id === task_id
@@ -294,11 +331,13 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
                                 : t
                         )
                     )
-                    if (['completed', 'completed_with_warnings', 'failed', 'failed_compilation', 'structure_invalid'].includes(s.status))
+
+                    if (TERMINAL_BATCH_STATUSES.has(String(s.status || '').toLowerCase())) {
                         break
-                } catch {
-                    // ignore transient
+                    }
                 }
+            } finally {
+                activePollsRef.current.delete(task_id)
             }
         },
         [t]

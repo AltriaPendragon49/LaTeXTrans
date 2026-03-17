@@ -71,10 +71,75 @@ _DOUBLE_DOLLAR_MATH = re.compile(r"\$\$.*?\$\$", re.DOTALL)
 _PLACEHOLDER_PATTERN = re.compile(
     r"<PLACEHOLDER_(?:ENV|CAP|ITEM|EQROW|MATH)_\d+>"
 )
+_DOCUMENT_BOUNDARY_RE = re.compile(r"\\(?:begin|end)\s*\{document\}")
+_NESTED_BRACED_ARG_PATTERN = (
+    r"\{(?:[^{}]|\{[^{}]*\}|\{[^{}]*\{[^{}]*\}[^{}]*\})*\}"
+)
+_OPTIONAL_LATEX_ARGS_PATTERN = r"(?:\[[^\[\]]*\]\s*){0,2}"
+_REFERENCE_LIKE_COMMAND_PATTERN = (
+    r"(?:~)?\\(?:label|ref|eqref|pageref|autoref|cref|Cref|cite|citet|citep|citealt|"
+    r"citealp|citenum|citeauthor|citeyear)\*?"
+    + _OPTIONAL_LATEX_ARGS_PATTERN
+    + _NESTED_BRACED_ARG_PATTERN
+)
+_TEXT_COMMAND_PATTERN = (
+    r"\\(?:emph|textbf|textit|texttt|underline|textrm|textsc|textsl|textsf|mbox)\*?"
+    + _NESTED_BRACED_ARG_PATTERN
+)
+_FOOTNOTE_COMMAND_PATTERN = (
+    r"\\(?:footnote|footnotemark|footnotetext)\*?"
+    + _OPTIONAL_LATEX_ARGS_PATTERN
+    + _NESTED_BRACED_ARG_PATTERN
+)
+_LINK_COMMAND_PATTERN = (
+    r"\\(?:url|path)\*?"
+    + _NESTED_BRACED_ARG_PATTERN
+    + r"|\\href\*?"
+    + _NESTED_BRACED_ARG_PATTERN
+    + _NESTED_BRACED_ARG_PATTERN
+)
+_BIBLIOGRAPHY_COMMAND_PATTERN = (
+    r"\\(?:bibliography|bibliographystyle|addbibresource|nocite)\*?"
+    + _OPTIONAL_LATEX_ARGS_PATTERN
+    + _NESTED_BRACED_ARG_PATTERN
+    + r"|\\printbibliography\*?(?:\[[^\[\]]*\]\s*){0,3}"
+)
+_SAFE_SEMANTIC_MACRO_PATTERN = (
+    r"\\(?!(?:LoadClass|ProvidesClass|NeedsTeXFormat|RequirePackage|"
+    r"RequirePackageWithOptions|PassOptionsToPackage|PassOptionsToClass|"
+    r"DeclareOption|ExecuteOptions|ProcessOptions|AtBeginDocument|AtEndDocument|"
+    r"DeclareMathOperator|NewDocumentCommand|RenewDocumentCommand|"
+    r"ProvideDocumentCommand|DeclareDocumentCommand)\b)"
+    r"(?:[A-Z]{2,}[A-Za-z@]*|[A-Za-z@]*[A-Z][A-Za-z@]*[A-Z][A-Za-z@]*)\*?"
+    + _OPTIONAL_LATEX_ARGS_PATTERN
+    + r"(?:" + _NESTED_BRACED_ARG_PATTERN + r"){0,2}"
+)
+_PARAGRAPH_HEADING_COMMAND_PATTERN = (
+    r"\\(?:PAR|PARR|parhead|parheadno|parheadsc)\*?"
+    + _NESTED_BRACED_ARG_PATTERN
+)
 _SECTION_FALLBACK_PRESERVE_PATTERN = re.compile(
     r"(<PLACEHOLDER_(?:ENV|CAP|ITEM|EQROW|MATH)_\d+>"
-    r"|\\(?:begin|end)\{[^}]+\}"
-    r"|\\(?:newpage|clearpage|appendix|noindent)\b"
+    r"|\$\$.*?\$\$"
+    r"|\\\[.*?\\\]"
+    r"|\\\((?:.|\n)*?\\\)"
+    r"|(?<!\$)\$(?!\$)[^\$\r\n]+?(?<!\$)\$(?!\$)"
+    r"|\\(?:begin|end)\{(?!document\})[^}]+\}"
+    r"|\\(?:maketitle|newpage|clearpage|appendix|noindent)\b"
+    r"|"
+    + _REFERENCE_LIKE_COMMAND_PATTERN +
+    r"|"
+    + _TEXT_COMMAND_PATTERN +
+    r"|"
+    + _FOOTNOTE_COMMAND_PATTERN +
+    r"|"
+    + _LINK_COMMAND_PATTERN +
+    r"|"
+    + _BIBLIOGRAPHY_COMMAND_PATTERN +
+    r"|"
+    + _SAFE_SEMANTIC_MACRO_PATTERN +
+    r"|"
+    + _PARAGRAPH_HEADING_COMMAND_PATTERN +
     r"|\\lettrine(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\}|\{[^{}]*\{[^{}]*\}[^{}]*\})+\}\{(?:[^{}]|\{[^{}]*\})+\})",
     re.DOTALL,
 )
@@ -222,11 +287,71 @@ def _wrap_structure_shells(
     return f"{leading_structure_shell or ''}{rendered_text}{trailing_structure_shell or ''}"
 
 
+def _strip_document_boundary_tokens(text: str) -> str:
+    if not text:
+        return ""
+    stripped = _DOCUMENT_BOUNDARY_RE.sub("", text)
+    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+    return stripped.strip()
+
+
+def _strip_owned_shell_from_body(
+    text: str,
+    *,
+    leading_structure_shell: str = "",
+    trailing_structure_shell: str = "",
+) -> str:
+    body = text or ""
+    if leading_structure_shell:
+        while body.startswith(leading_structure_shell):
+            body = body[len(leading_structure_shell):].lstrip()
+    if trailing_structure_shell:
+        while body.endswith(trailing_structure_shell):
+            body = body[: -len(trailing_structure_shell)].rstrip()
+    return body
+
+
+def sanitize_section_translation_shells(
+    text: str,
+    *,
+    leading_structure_shell: str = "",
+    trailing_structure_shell: str = "",
+) -> str:
+    body = _strip_owned_shell_from_body(
+        text,
+        leading_structure_shell=leading_structure_shell,
+        trailing_structure_shell=trailing_structure_shell,
+    )
+    return _strip_document_boundary_tokens(body)
+
+
+def _normalize_preserved_whitespace(text: str) -> str:
+    if not text:
+        return ""
+    if "\n\n" in text:
+        return "\n\n"
+    if "\n" in text or "\r" in text:
+        return "\n"
+    if any(char in text for char in (" ", "\t")):
+        return " "
+    return ""
+
+
 def _sanitize_downgrade_fragment(text: str) -> str:
+    if not text:
+        return ""
+    if not text.strip():
+        return _normalize_preserved_whitespace(text)
+
     natural = _extract_natural_language(text)
     if not natural.strip():
         return ""
-    return _escape_latex_special(natural)
+    leading_ws_match = re.match(r"^\s+", text)
+    trailing_ws_match = re.search(r"\s+$", text)
+    leading_ws = _normalize_preserved_whitespace(leading_ws_match.group(0) if leading_ws_match else "")
+    trailing_ws = _normalize_preserved_whitespace(trailing_ws_match.group(0) if trailing_ws_match else "")
+    escaped = _escape_latex_special(natural.strip())
+    return f"{leading_ws}{escaped}{trailing_ws}"
 
 
 def _downgrade_text_preserving_structure_tokens(text: str) -> str:
@@ -244,7 +369,10 @@ def _downgrade_text_preserving_structure_tokens(text: str) -> str:
         if sanitized:
             parts.append(sanitized)
 
-    preserved = "".join(parts).strip()
+    preserved = "".join(parts)
+    preserved = re.sub(r"[ \t]+\n", "\n", preserved)
+    preserved = re.sub(r"\n{3,}", "\n\n", preserved)
+    preserved = preserved.strip()
     if preserved:
         return preserved
 
@@ -308,6 +436,11 @@ def ultimate_downgrade_section_segment(
     fallback_report: Optional["FallbackReport"] = None,
 ) -> str:
     """Render a fallback section while preserving the original section wrapper."""
+    translated_text = sanitize_section_translation_shells(
+        translated_text,
+        leading_structure_shell=leading_structure_shell,
+        trailing_structure_shell=trailing_structure_shell,
+    )
     translated_entries = _extract_sectioning_commands(translated_text or "")
     plain_downgrade = (
         translated_text
@@ -332,7 +465,13 @@ def ultimate_downgrade_section_segment(
             title = translated_title
         translated_body = (translated_text or "")[translated_entries[0]["end"] :]
         if translated_body.strip():
-            body = _downgrade_text_preserving_structure_tokens(translated_body)
+            body = _downgrade_text_preserving_structure_tokens(
+                sanitize_section_translation_shells(
+                    translated_body,
+                    leading_structure_shell=leading_structure_shell,
+                    trailing_structure_shell=trailing_structure_shell,
+                )
+            )
     if not title:
         return _wrap_structure_shells(
             plain_downgrade,
@@ -343,7 +482,17 @@ def ultimate_downgrade_section_segment(
     entry = section_commands[0]
     command_prefix = original_text[entry["start"] : entry["arg_start"] + 1]
     command_suffix = original_text[entry["arg_end"] - 1 : entry["end"]]
+    interstitial_shell = ""
+    if leading_structure_shell and original_text.startswith(leading_structure_shell):
+        original_interstitial = original_text[len(leading_structure_shell) : entry["start"]]
+        if original_interstitial:
+            if _extract_natural_language(original_interstitial).strip():
+                interstitial_shell = _downgrade_text_preserving_structure_tokens(original_interstitial)
+            else:
+                interstitial_shell = original_interstitial
     rebuilt_core = f"{command_prefix}{title}{command_suffix}"
+    if interstitial_shell:
+        rebuilt_core = f"{interstitial_shell}{rebuilt_core}"
     if body:
         rebuilt_core = f"{rebuilt_core}\n\n{body}"
 

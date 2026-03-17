@@ -31,7 +31,6 @@ MANIFEST
 *.spec
 
 # 单元测试 / 覆盖率报告
-backend/tests/*
 htmlcov/
 .tox/
 .nox/
@@ -202,4 +201,4 @@ start.sh
 # captured_configs
 tests/captured_configs/
 tests/captured_configs/*
-tests/
+tests/api_for_test.md

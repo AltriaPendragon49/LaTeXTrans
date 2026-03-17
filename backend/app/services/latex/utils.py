@@ -3194,6 +3194,12 @@ PROTECTED_COMMANDS: List[re.Pattern] = [
     re.compile(
         r'<(?:PLACEHOLDER|ENV|ENV_BEGIN|ENV_END|ITEM|EQROW|EQCOMMENT)_[^>]+>'
     ),
+    regex.compile(
+        r'\\(?:documentclass|documentstyle|usepackage|RequirePackage|input|include|includeonly|bibliographystyle|bibliography)'
+        r'(?:\[[^\[\]]*\])?'
+        r'\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
+        regex.DOTALL,
+    ),
     # \begin{CCSXML}...\end{CCSXML}  — ACM CCS XML block (multi-line)
     regex.compile(
         r'\\begin\{CCSXML\}.*?\\end\{CCSXML\}',
@@ -3471,6 +3477,18 @@ def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
 # Phase 1 — Input-Layer Defense
 # Isolate inline math and pre-escape risky tokens before LLM translation.
 # ---------------------------------------------------------------------------
+
+# Pattern: display math $$...$$
+_DISPLAY_DOLLAR_RE = re.compile(
+    r'\$\$(.+?)\$\$',
+    re.DOTALL,
+)
+
+# Pattern: display math \[...\]
+_DISPLAY_BRACKET_RE = re.compile(
+    r'\\\[(.+?)\\\]',
+    re.DOTALL,
+)
 
 # Pattern: single-line inline math  $...$  (not $$...$$)
 _INLINE_DOLLAR_RE = re.compile(
@@ -3955,6 +3973,33 @@ def isolate_inline_math(text: str) -> tuple:
     # Replace \(...\) first (they're unambiguous)
     result = _INLINE_PAREN_RE.sub(lambda m: _replace(m.group(0)), text)
     # Then replace $...$  (single-line only)
+    result = _INLINE_DOLLAR_RE.sub(lambda m: _replace(m.group(0)), result)
+
+    return result, math_map
+
+
+def isolate_math_spans(text: str) -> tuple:
+    """
+    Isolate both display and inline math spans behind ``<INLMATH_NN>`` tags.
+
+    This is used for LLM payload preparation so raw ``$$...$$`` blocks do not
+    trip the invariant that forbids unescaped ``$`` tokens.
+    """
+    if not text:
+        return text, {}
+
+    math_map: dict = {}
+    counter = [0]
+
+    def _replace(original_span: str) -> str:
+        counter[0] += 1
+        placeholder = f"<INLMATH_{counter[0]:02d}>"
+        math_map[placeholder] = original_span
+        return placeholder
+
+    result = _DISPLAY_BRACKET_RE.sub(lambda m: _replace(m.group(0)), text)
+    result = _DISPLAY_DOLLAR_RE.sub(lambda m: _replace(m.group(0)), result)
+    result = _INLINE_PAREN_RE.sub(lambda m: _replace(m.group(0)), result)
     result = _INLINE_DOLLAR_RE.sub(lambda m: _replace(m.group(0)), result)
 
     return result, math_map
