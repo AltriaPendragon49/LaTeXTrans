@@ -240,3 +240,31 @@ The system SHALL expose compile-time structure validation as a distinct precompi
 - **THEN** the system MUST record its execution duration in runtime logs or audit metrics
 - **AND** the recorded duration MUST measure the validation call itself rather than surrounding compile execution time.
 
+### Requirement: Standalone Orchestration Runtime Independence
+The translation orchestrator SHALL be runnable in a standalone CLI environment without FastAPI lifecycle hooks, task queues, or task-manager persistence.
+
+#### Scenario: Running the orchestrator in standalone CLI mode
+- **WHEN** the standalone CLI invokes `CoordinatorAgent.workflow_latextrans`
+- **THEN** the orchestrator MUST run without importing FastAPI, Supabase, or `task_manager`
+- **AND** progress reporting MUST flow through CLI logging or progress callbacks
+- **AND** compile-runtime observability MUST be written to local task logs rather than backend runtime state stores.
+
+### Requirement: Validation Retry Stagnation Short-Circuit
+The orchestration layer SHALL terminate validation retry loops early when repeated retries no longer reduce the remaining structural error set.
+
+#### Scenario: Retry loop makes no progress
+- **WHEN** validation is rerun after a retry/repair step
+- **AND** the remaining error set is unchanged from the previous validation round
+- **THEN** the system MUST short-circuit further retry rounds for that run
+- **AND** MUST record a `validation_retry_short_circuited_no_progress` event in `task_log.json`
+- **AND** MUST continue with the existing fallback / compile path instead of looping again.
+
+### Requirement: Task-Start Runtime Observability
+The orchestration layer SHALL persist the effective runtime configuration used for a task start, including masked LLM settings required for parity debugging.
+
+#### Scenario: Task-start log records effective LLM runtime config
+- **WHEN** the coordinator writes the `task_started` event into `task_log.json`
+- **THEN** the payload MUST include the effective runtime configuration used by the task
+- **AND** MUST include masked `llm_config` fields such as `base_url`, `model`, timeout-related values, and masked API-key presence
+- **AND** MUST NOT persist the raw API key.
+

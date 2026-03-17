@@ -24,6 +24,9 @@ import math
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+import aiohttp
+from .llm_runtime import build_llm_client_timeout, resolve_llm_timeout
+
 from .pipeline_schema import FallbackReport
 
 logger = logging.getLogger(__name__)
@@ -152,6 +155,7 @@ class TranslationRepairAgent:
         self.model = llm_cfg.get("model", "gpt-4o")
         self.base_url = llm_cfg.get("base_url")
         self.api_key = llm_cfg.get("api_key")
+        self.timeout_seconds = resolve_llm_timeout(config, default=120)
         self.target_language = config.get("target_language", "zh")
         self.source_language = config.get("source_language", "en")
 
@@ -296,7 +300,7 @@ class TranslationRepairAgent:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             }
-            timeout = aiohttp.ClientTimeout(total=60)
+            timeout = build_llm_client_timeout(self.config, default=self.timeout_seconds)
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     self.base_url, json=payload, headers=headers, timeout=timeout

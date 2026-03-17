@@ -63,6 +63,51 @@ def test_target_language_ja_forces_cjk_engine_family(monkeypatch, tmp_path):
     assert isinstance(result["compat_shims_applied"], list)
 
 
+def test_cjk_prefers_xelatex_pdf_over_lualatex_even_with_more_errors(monkeypatch, tmp_path):
+    main_tex = tmp_path / "paper" / "main.tex"
+    out_dir = tmp_path / "out"
+    _write_minimal_tex(
+        main_tex,
+        r"\documentclass{article}"
+        "\n"
+        r"\begin{document}"
+        "\nHello world."
+        "\n"
+        r"\end{document}",
+    )
+
+    def fake_compile_latex(tex_file, output_dir, engine="pdflatex", max_runs=2):
+        out_dir_local = Path(output_dir)
+        out_dir_local.mkdir(parents=True, exist_ok=True)
+        stem = Path(tex_file).stem
+        pdf_path = out_dir_local / f"{stem}.{engine}.pdf"
+        log_path = out_dir_local / f"{stem}.{engine}.log"
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+        log_path.write_text("", encoding="utf-8")
+        error_count = 2 if engine == "xelatex" else 1
+        return compiler.CompilationResult(
+            success=False,
+            pdf_path=str(pdf_path),
+            log_path=str(log_path),
+            error_count=error_count,
+            errors=[f"{engine} warning"],
+            exit_code=1,
+        )
+
+    monkeypatch.setattr(compiler, "compile_latex", fake_compile_latex)
+    monkeypatch.setattr(compiler, "_upgrade_outdated_cls_files", lambda _tex_dir: None)
+
+    result = compiler.compile_with_intelligent_fallback(
+        tex_file=str(main_tex),
+        output_dir=str(out_dir),
+        preferred_order=["xelatex", "lualatex"],
+        target_language="zh",
+    )
+
+    assert result["status"] == "completed_with_warnings"
+    assert result["engine"] == "xelatex"
+
+
 def test_hwemoji_is_shimmed_for_xelatex(monkeypatch, tmp_path):
     """
     When Stage 0 fails, Stage 1 must apply the hwemoji compatibility shim for xelatex.

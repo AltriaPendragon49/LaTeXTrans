@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 import aiohttp
 from pydantic import BaseModel, field_validator, model_validator
+from .llm_runtime import build_llm_client_timeout, resolve_llm_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +140,11 @@ class CompilationDiagnosticNode:
 
     def __init__(self, config: Dict[str, Any], task_id: str = "") -> None:
         llm_cfg = config.get("llm_config", {}) or {}
+        self._config = config
         self._api_key: str = llm_cfg.get("api_key", "")
         self._base_url: str = llm_cfg.get("base_url", "")
         self._model: str = llm_cfg.get("model", "gpt-4o")
+        self._timeout_seconds: int = resolve_llm_timeout(config, default=120)
         self._task_id: str = task_id
 
     def _build_user_message(self, error_summary: str, error_count: int) -> str:
@@ -220,7 +223,7 @@ class CompilationDiagnosticNode:
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        timeout = aiohttp.ClientTimeout(total=60)
+        timeout = build_llm_client_timeout(self._config, default=self._timeout_seconds)
 
         raw = ""
         try:

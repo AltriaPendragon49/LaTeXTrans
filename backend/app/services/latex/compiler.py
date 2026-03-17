@@ -2205,12 +2205,19 @@ def compile_with_intelligent_fallback(
             # Pick the best engine from Stage 2: prefer the one with fewest errors
             # that produced a PDF; fall back to whichever engine ran last.
             best_s2_engine = engines[-1]
-            if result_items_for_selection_with_pdf:
+            if language == "cjk":
+                xelatex_pdf_engine = next(
+                    (eng for eng, _res in result_items_for_selection_with_pdf if eng == "xelatex"),
+                    None,
+                )
+                if xelatex_pdf_engine is not None:
+                    best_s2_engine = xelatex_pdf_engine
+            if best_s2_engine == engines[-1] and result_items_for_selection_with_pdf:
                 best_s2_engine = min(
                     result_items_for_selection_with_pdf,
                     key=lambda x: x[1].error_count,
                 )[0]
-            elif result_items_for_selection:
+            elif best_s2_engine == engines[-1] and result_items_for_selection:
                 best_s2_engine = min(
                     result_items_for_selection,
                     key=lambda x: x[1].error_count,
@@ -2340,13 +2347,29 @@ def compile_with_intelligent_fallback(
                 engines_with_pdf = modern_engines_with_pdf
 
         if engines_with_pdf:
-            engines_with_pdf.sort(
-                key=lambda x: (
-                    x[1].error_count,
-                    _blocking_quality_issue_count(x[1], language),
+            if language == "cjk":
+                xelatex_candidate = next(
+                    ((eng, res) for eng, res in engines_with_pdf if eng == "xelatex"),
+                    None,
                 )
-            )
-            best_engine, best_result = engines_with_pdf[0]
+                if xelatex_candidate is not None:
+                    best_engine, best_result = xelatex_candidate
+                else:
+                    engines_with_pdf.sort(
+                        key=lambda x: (
+                            x[1].error_count,
+                            _blocking_quality_issue_count(x[1], language),
+                        )
+                    )
+                    best_engine, best_result = engines_with_pdf[0]
+            else:
+                engines_with_pdf.sort(
+                    key=lambda x: (
+                        x[1].error_count,
+                        _blocking_quality_issue_count(x[1], language),
+                    )
+                )
+                best_engine, best_result = engines_with_pdf[0]
 
             if language == "cjk":
                 comparison = ", ".join(
@@ -2970,13 +2993,29 @@ async def compile_with_intelligent_fallback_async(
                 engines_with_pdf = modern_engines_with_pdf
 
         if engines_with_pdf:
-            engines_with_pdf.sort(
-                key=lambda x: (
-                    x[1].error_count,
-                    _blocking_quality_issue_count(x[1], language),
+            if language == "cjk":
+                xelatex_candidate = next(
+                    ((eng, res) for eng, res in engines_with_pdf if eng == "xelatex"),
+                    None,
                 )
-            )
-            best_engine, best_result = engines_with_pdf[0]
+                if xelatex_candidate is not None:
+                    best_engine, best_result = xelatex_candidate
+                else:
+                    engines_with_pdf.sort(
+                        key=lambda x: (
+                            x[1].error_count,
+                            _blocking_quality_issue_count(x[1], language),
+                        )
+                    )
+                    best_engine, best_result = engines_with_pdf[0]
+            else:
+                engines_with_pdf.sort(
+                    key=lambda x: (
+                        x[1].error_count,
+                        _blocking_quality_issue_count(x[1], language),
+                    )
+                )
+                best_engine, best_result = engines_with_pdf[0]
             if language == "cjk":
                 comparison = ", ".join(
                     f"{eng}: errors={res.error_count}, quality={res.quality_issue_count}, bibliography={getattr(res, 'bibliography_issue_count', 0)}"

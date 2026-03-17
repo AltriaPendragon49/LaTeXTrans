@@ -18,6 +18,7 @@ import logging
 from typing import Any, Dict
 
 import aiohttp
+from .llm_runtime import build_llm_client_timeout, resolve_llm_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +69,11 @@ class ControlledRepairAgent:
 
     def __init__(self, config: Dict[str, Any]) -> None:
         llm_cfg = config.get("llm_config", {}) or {}
+        self._config = config
         self._api_key: str = llm_cfg.get("api_key", "")
         self._base_url: str = llm_cfg.get("base_url", "")
         self._model: str = llm_cfg.get("model", "gpt-4o")
+        self._timeout_seconds: int = resolve_llm_timeout(config, default=120)
 
     def _build_payload(self, content: str) -> Dict[str, Any]:
         return {
@@ -116,7 +119,7 @@ class ControlledRepairAgent:
         content = env.get("content", "")
         payload = self._build_payload(content)
         headers = self._build_headers()
-        timeout = aiohttp.ClientTimeout(total=120)
+        timeout = build_llm_client_timeout(self._config, default=self._timeout_seconds)
 
         repaired_content = await self._call_once_with_single_retry(
             session=session,

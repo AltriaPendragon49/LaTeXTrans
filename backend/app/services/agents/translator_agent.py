@@ -16,6 +16,12 @@ from backend.app.services.latex.utils import (
     unmask_sensitive_commands,
 )
 from backend.app.core.timezone_utils import get_cst_now
+from backend.app.core.config import settings
+from .llm_runtime import (
+    build_llm_client_timeout,
+    resolve_llm_max_concurrent_requests,
+    resolve_llm_timeout,
+)
 from pathlib import Path
 import os
 import re
@@ -136,6 +142,11 @@ class TranslatorAgent(BaseToolAgent):
         self.generate_terminology = generate_terminology
         self.terminology_table = []  # 瀛樺偍鏈瀵? [(婧愭湳璇? 璇戞湳璇?, ...]
         self.term_dict = {}
+        self.request_timeout_seconds = resolve_llm_timeout(config, default=settings.llm_timeout)
+        self.llm_max_concurrent_requests = resolve_llm_max_concurrent_requests(
+            config,
+            default=settings.llm_max_concurrent_requests,
+        )
         self.summary = ''
         self.prev_text = ''
         self.prev_transed_text = ''
@@ -566,6 +577,65 @@ class TranslatorAgent(BaseToolAgent):
             return None
         return recovered
 
+    async def _rescue_generic_text_env_by_paragraph(
+        self,
+        *,
+        text: str,
+        placeholder: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> Optional[str]:
+        normalized = (text or "").replace("\r\n", "\n")
+        if not normalized.strip():
+            return None
+
+        paragraph_hint = (
+            "Previous attempts preserved the source text. "
+            "Translate each paragraph into the target language. "
+            "Do not copy the English source. Keep LaTeX commands unchanged."
+        )
+        prompt_suffix = f"\n[Paragraph Rescue]\n{paragraph_hint}"
+        if error_message:
+            prompt_suffix += f"\n{error_message}"
+
+        pieces = re.split(r"(\n\s*\n+)", normalized)
+        rescued: List[str] = []
+        translated_any = False
+
+        for idx, piece in enumerate(pieces):
+            if not piece or re.fullmatch(r"\n\s*\n+", piece):
+                rescued.append(piece)
+                continue
+            if not piece.strip():
+                rescued.append(piece)
+                continue
+
+            rescued_piece = await self._request_llm_for_trans(
+                self.prompts["section_system_prompt"] + prompt_suffix,
+                piece,
+                fail_part=f"{placeholder}:paragraph:{idx}",
+                type="env",
+                session=session,
+            )
+            if not isinstance(rescued_piece, str) or not rescued_piece.strip():
+                return None
+            if self._has_unrestored_env_artifacts(rescued_piece):
+                return None
+            if self._is_source_preserved_translation(piece, rescued_piece):
+                return None
+
+            rescued.append(rescued_piece)
+            translated_any = True
+
+        combined = "".join(rescued)
+        if not translated_any:
+            return None
+        if self._has_unrestored_env_artifacts(combined):
+            return None
+        if self._is_source_preserved_translation(text, combined):
+            return None
+        return combined
+
     @staticmethod
     def _env_row_retry_key(placeholder: str, row_idx: int) -> str:
         return f"part:env:{placeholder}:row:{row_idx}"
@@ -684,7 +754,7 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json",
         }
 
-        _timeout = aiohttp.ClientTimeout(total=180)
+        _timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
         # ── Rate-limit (429) handling ────────────────────────────────────────
         # NOTE: global_llm_semaphore is an INFRA GUARD only (prevents system
         # overload). It has no authority over Phase 2 business scheduling.
@@ -814,7 +884,7 @@ class TranslatorAgent(BaseToolAgent):
             self.update_progress(5, f"Starting translating for project: {os.path.basename(self.project_dir)}")
 
             async with aiohttp.ClientSession() as session:
-                sem = asyncio.Semaphore(10)
+                sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
 
                 async def process_section(i, sec):
                     async with sem:
@@ -884,7 +954,7 @@ class TranslatorAgent(BaseToolAgent):
             self.update_progress(5, f"Quick scan mode: translating abstract and conclusion only")
 
             async with aiohttp.ClientSession() as session:
-                sem = asyncio.Semaphore(10)
+                sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
 
                 # 1. Translate abstract environment (in envs)
                 abstract_translated = False
@@ -1303,7 +1373,7 @@ class TranslatorAgent(BaseToolAgent):
         - Type B (recoverable): Allow one translation retry
         - Type C (structural): Apply algorithmic fix without LLM retry
         """
-        sem = asyncio.Semaphore(20)
+        sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
         completed = 0
         total = len(self.errors_report)
         self.structural_fallback_denominator = self._compute_structural_fallback_denominator(secs, caps, envs)
@@ -2235,6 +2305,16 @@ class TranslatorAgent(BaseToolAgent):
                     if recovered_content is not None:
                         translated_content = recovered_content
                         self._clear_api_fallback("env", placeholder)
+                    else:
+                        rescued_content = await self._rescue_generic_text_env_by_paragraph(
+                            text=source_text,
+                            placeholder=placeholder,
+                            session=session,
+                            error_message=error_message,
+                        )
+                        if rescued_content is not None:
+                            translated_content = rescued_content
+                            self._clear_api_fallback("env", placeholder)
                 source_preserved_after_recovery = self._is_source_preserved_translation(
                     source_text,
                     translated_content,
@@ -2298,6 +2378,16 @@ class TranslatorAgent(BaseToolAgent):
                     if recovered_body is not None:
                         translated_body = recovered_body
                         self._clear_api_fallback("env", placeholder)
+                    else:
+                        rescued_body = await self._rescue_generic_text_env_by_paragraph(
+                            text=env_body,
+                            placeholder=placeholder,
+                            session=session,
+                            error_message=error_message,
+                        )
+                        if rescued_body is not None:
+                            translated_body = rescued_body
+                            self._clear_api_fallback("env", placeholder)
                 source_preserved_after_recovery = self._is_source_preserved_translation(
                     env_body,
                     translated_body,
@@ -2486,7 +2576,7 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
 
-        _timeout = aiohttp.ClientTimeout(total=180)
+        _timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
@@ -2538,7 +2628,7 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
         
-        _timeout = aiohttp.ClientTimeout(total=180)
+        _timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
@@ -2585,7 +2675,7 @@ class TranslatorAgent(BaseToolAgent):
             "Content-Type": "application/json"
         }
         
-        _timeout = aiohttp.ClientTimeout(total=180)
+        _timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:

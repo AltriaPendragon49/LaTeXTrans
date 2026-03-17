@@ -22,14 +22,18 @@ from backend.app.services.config_capture import capture_task_config
 from backend.app.core.config import get_settings, TaskStatus
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
+from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
 from backend.app.core.supabase_client import get_supabase_admin_client, create_supabase_admin_client
-from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids
+from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids, get_arxiv_category
 from backend.app.utils.async_blocking import run_db_blocking
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
+CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS = 10
+CLI_PARITY_MODEL_CONTEXT_TOKENS = 32000
+CLI_PARITY_PROMPT_RESERVE_TOKENS = 4096
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
@@ -202,7 +206,7 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
             "base_url": base_url if base_url else None,
             "api_key": advanced_config.custom_api_key,
             "model": advanced_config.translation_model,
-            "timeout": 60
+            "timeout": settings.llm_timeout
         }
 
     # Priority 2: Try to get user's stored API config from system settings
@@ -224,7 +228,7 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
                 "base_url": base_url if base_url else None,
                 "api_key": user_api_config["api_key"],
                 "model": advanced_config.translation_model,
-                "timeout": 60
+                "timeout": settings.llm_timeout
             }
         else:
             logger.warning(f"No API key found in system settings for user {user_id}")
@@ -253,7 +257,7 @@ async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str =
             "base_url": base_url if base_url else None,
             "api_key": advanced_config.custom_api_key,
             "model": advanced_config.translation_model,
-            "timeout": 60
+            "timeout": settings.llm_timeout
         }
 
     if user_id:
@@ -267,7 +271,7 @@ async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str =
                 "base_url": base_url if base_url else None,
                 "api_key": user_api_config["api_key"],
                 "model": advanced_config.translation_model,
-                "timeout": 60
+                "timeout": settings.llm_timeout
             }
         logger.warning(f"No API key found in system settings for user {user_id}")
 
@@ -555,24 +559,54 @@ async def run_translation(
         llm_config = await build_llm_config_async(advanced_config, user_id)
         
         # Build config dict for CoordinatorAgent with all advanced settings
+        task_llm_max_concurrent_requests = resolve_task_llm_max_concurrent_requests(
+            default=settings.llm_max_concurrent_requests,
+            cap=CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS,
+        )
+        category_map: dict[str, list[str]] = {}
+        if arxiv_id:
+            try:
+                category_map = await asyncio.to_thread(get_arxiv_category, [arxiv_id])
+            except Exception as exc:
+                logger.warning("Failed to fetch arXiv category for %s: %s", arxiv_id, exc)
+
+        formatting = (
+            advanced_config.formatting.model_dump(exclude_none=True)
+            if advanced_config.formatting is not None
+            else None
+        )
         agent_config = {
             "sys_name": "LaTeXTrans",
             "target_language": target_language,
             "source_language": source_language,
             "mode": TRANSLATION_MODE_MAP.get(advanced_config.translation_mode, 0),
+            "translation_mode": advanced_config.translation_mode,
             "latex_engine": advanced_config.compile_strategy,
             "use_verification_agent": False,
             "generate_terminology": advanced_config.generate_terminology_table,
+            "generate_terminology_table": advanced_config.generate_terminology_table,
+            "update_term": False,
+            "user_term": "",
+            "category": category_map,
+            "formatting": formatting,
+            "use_compilation_diagnostics": True,
             "enable_compile_first_structural_fallback": settings.enable_compile_first_structural_fallback,
             "enable_post_compile_target_language_fallback": settings.enable_post_compile_target_language_fallback,
             "structural_fallback_ratio_cap": settings.structural_fallback_ratio_cap,
             "structural_fallback_cap_mode": settings.structural_fallback_cap_mode,
+            "model_context_tokens": settings.model_context_tokens or CLI_PARITY_MODEL_CONTEXT_TOKENS,
+            "prompt_reserve_tokens": settings.prompt_reserve_tokens or CLI_PARITY_PROMPT_RESERVE_TOKENS,
+            "llm_max_concurrent_requests": task_llm_max_concurrent_requests,
+            "task_id": task_id,
+            "output_dir": str(output_dir),
+            "tex_sources_dir": str(settings.uploads_dir),
             "llm_config": llm_config
         }
-        
+
         logger.info(f"Agent config: mode={agent_config['mode']}, "
                     f"engine={agent_config['latex_engine']}, "
-                    f"verify={agent_config['use_verification_agent']}")
+                    f"verify={agent_config['use_verification_agent']}, "
+                    f"llm_max_concurrent_requests={agent_config['llm_max_concurrent_requests']}")
 
         captured_config_file = capture_task_config(
             task_id=task_id,

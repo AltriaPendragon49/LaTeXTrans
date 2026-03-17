@@ -142,6 +142,38 @@ def test_generic_text_env_uses_plain_text_recovery_after_api_source_fallback(tmp
     agent._request_llm_for_trans.assert_awaited()
 
 
+def test_generic_text_env_uses_paragraph_rescue_after_plain_text_recovery_still_noops(tmp_path: Path):
+    agent = _build_agent(tmp_path)
+    env = {
+        "placeholder": "<PLACEHOLDER_ENV_2_para_recover>",
+        "env_name": "abstract",
+        "content": "\\begin{abstract}\nHello world.\n\nSecond paragraph.\n\\end{abstract}\n",
+        "need_trans": True,
+    }
+
+    async def _fallback_to_source(*args, **kwargs):
+        agent._mark_api_fallback("env", env["placeholder"], "invariant_command_mismatch")
+        return "Hello world.\n\nSecond paragraph.\n"
+
+    agent._request_env_translation = AsyncMock(side_effect=_fallback_to_source)
+    agent._request_llm_for_trans = AsyncMock(
+        side_effect=[
+            "Hello world.\n\nSecond paragraph.\n",
+            "你好，世界。\n",
+            "第二段。\n",
+        ]
+    )
+
+    result = asyncio.run(agent._translate_env(env, MagicMock()))
+
+    assert result["translation_status"] == agent.STATUS_TRANSLATED
+    assert "你好，世界。" in result["trans_content"]
+    assert "第二段。" in result["trans_content"]
+    assert "Hello world." not in result["trans_content"]
+    assert "Second paragraph." not in result["trans_content"]
+    assert agent._request_llm_for_trans.await_count == 3
+
+
 def test_list_env_falls_back_to_source_when_nested_env_tokens_leak(tmp_path: Path):
     agent = _build_agent(tmp_path)
     env = {

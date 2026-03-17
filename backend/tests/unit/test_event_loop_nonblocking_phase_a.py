@@ -124,6 +124,69 @@ def test_validate_node_does_not_pin_event_loop(monkeypatch, tmp_path):
     assert max_gap < 0.05, f"event loop stalled during validate node (max_gap={max_gap:.3f}s)"
 
 
+def test_validate_node_short_circuits_stagnant_retries(monkeypatch, tmp_path):
+    from backend.app.services.agents import langgraph_orchestrator as orch
+
+    class _StaticValidator:
+        def __init__(self, *args, **kwargs):
+            self.code_like_filtered_bare_tokens = 0
+
+        def execute(self, *args, **kwargs):
+            return [
+                {
+                    "part": "sec",
+                    "num_or_ph": "1",
+                    "error_type": "C1",
+                    "command_error": "same-error",
+                }
+            ]
+
+    class _CountingTranslator:
+        structural_fallback_count = 0
+        structural_fallback_ratio = 0.0
+        structural_fallback_cap = 0.38
+        structural_fallback_cap_mode = "soft"
+        structural_fallback_parts = []
+        noop_sections = []
+        c1_retry_enforced_once = False
+        structural_fallback_warning = None
+
+        def __init__(self):
+            self.calls = 0
+            self.trans_mode = 0
+            self.errors_report = []
+
+        async def execute(self, *args, **kwargs):
+            self.calls += 1
+            return None
+
+    monkeypatch.setattr(orch, "ValidatorAgent", _StaticValidator)
+
+    transed_project_dir = tmp_path / "zh_proj"
+    transed_project_dir.mkdir(parents=True, exist_ok=True)
+    (transed_project_dir / "sections_map.json").write_text("[]", encoding="utf-8")
+    (transed_project_dir / "envs_map.json").write_text("[]", encoding="utf-8")
+
+    translator = _CountingTranslator()
+    state = {
+        "config": {"target_language": "zh"},
+        "project_dir": str(tmp_path / "proj"),
+        "transed_project_dir": str(transed_project_dir),
+        "mode": 0,
+        "translator_agent": translator,
+        "base_name": "proj",
+        "task_id": "task-1",
+        "on_progress": None,
+    }
+
+    result = asyncio.run(orch.node_validate_and_retry(state))
+
+    assert translator.calls == 1
+    logs = json.loads((transed_project_dir / "task_log.json").read_text(encoding="utf-8"))
+    assert any(entry["event"] == "validation_retry_short_circuited_no_progress" for entry in logs)
+    assert "fallback_reports" in result
+
+
 def test_parallel_tasks_not_serialized_by_parser_phase(monkeypatch, tmp_path):
     """
     Behavior gate:
@@ -163,4 +226,3 @@ def test_parallel_tasks_not_serialized_by_parser_phase(monkeypatch, tmp_path):
 
     elapsed = asyncio.run(_run())
     assert elapsed < 0.50, f"parser tasks look serialized (elapsed={elapsed:.3f}s)"
-

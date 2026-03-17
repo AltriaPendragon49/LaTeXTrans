@@ -53,8 +53,16 @@ class Settings(BaseSettings):
         validation_alias="LLM_MODEL"
     )
     llm_timeout: int = Field(
-        default=60,
+        default=120,
         validation_alias="LLM_TIMEOUT"
+    )
+    model_context_tokens: int = Field(
+        default=32000,
+        validation_alias="MODEL_CONTEXT_TOKENS"
+    )
+    prompt_reserve_tokens: int = Field(
+        default=4096,
+        validation_alias="PROMPT_RESERVE_TOKENS"
     )
     
     # Translation Settings
@@ -153,7 +161,7 @@ class Settings(BaseSettings):
     # - OpenAI Tier 1: ~500 RPM → use 50-100
     # - Self-hosted Triton NIM: no hard limit → use 100-200
     llm_max_concurrent_requests: int = Field(
-        default=30,
+        default=10,
         validation_alias="LLM_MAX_CONCURRENT_REQUESTS",
         description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
     )
@@ -209,6 +217,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        protected_namespaces=("settings_",),
     )
 
     @field_validator("cors_origins", mode="before")
@@ -252,7 +261,9 @@ class Settings(BaseSettings):
             "api_key": self.llm_api_key,
             "base_url": self.llm_base_url,
             "model": self.llm_model,
-            "timeout": self.llm_timeout
+            "timeout": self.llm_timeout,
+            "model_context_tokens": self.model_context_tokens,
+            "prompt_reserve_tokens": self.prompt_reserve_tokens,
         }
     
     def load_toml_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:

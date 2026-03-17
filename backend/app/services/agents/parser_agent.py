@@ -25,6 +25,7 @@ from backend.app.services.latex.utils import (
     preprocess_risky_tokens,
 )
 from backend.app.core.config import get_settings
+from .llm_runtime import build_llm_client_timeout, resolve_llm_max_concurrent_requests, resolve_llm_timeout
 from pathlib import Path
 import os
 import requests
@@ -88,6 +89,11 @@ class ParserAgent(BaseToolAgent):
         self.model = config.get("llm_config", {}).get("model", llm_config["model"])
         self.base_url = config.get("llm_config", {}).get("base_url", llm_config["base_url"])
         self.API_KEY = config.get("llm_config", {}).get("api_key", llm_config["api_key"])
+        self.request_timeout_seconds = resolve_llm_timeout(config, default=settings.llm_timeout)
+        self.llm_max_concurrent_requests = resolve_llm_max_concurrent_requests(
+            config,
+            default=settings.llm_max_concurrent_requests,
+        )
 
     @staticmethod
     def _prepare_llm_payload_text(text: str) -> str:
@@ -210,7 +216,12 @@ class ParserAgent(BaseToolAgent):
         
         for attempt in range(1, 4):
             try:
-                response = requests.post(self.base_url, json=payload, headers=headers, timeout=100)
+                response = requests.post(
+                    self.base_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=self.request_timeout_seconds,
+                )
                 response.raise_for_status()
                 result = response.json()
                 output = result["choices"][0]["message"]["content"].strip()
@@ -268,7 +279,7 @@ class ParserAgent(BaseToolAgent):
                         self.base_url, 
                         json=payload, 
                         headers=headers, 
-                        timeout=aiohttp.ClientTimeout(total=100)
+                        timeout=build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
                     ) as response:
                         response.raise_for_status()
                         result = await response.json()
@@ -299,7 +310,7 @@ class ParserAgent(BaseToolAgent):
         Parallel execution for environment translation judgment.
         Uses asyncio.gather for concurrent LLM calls with progress tracking.
         """
-        semaphore = asyncio.Semaphore(5)  # Limit concurrent calls to avoid rate limiting
+        semaphore = asyncio.Semaphore(self.llm_max_concurrent_requests)
         total_envs = len(env_need_trans)
         completed_count = [0]  # Use list for mutable reference in closure
         

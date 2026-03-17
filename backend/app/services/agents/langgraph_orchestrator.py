@@ -68,6 +68,34 @@ COMPILE_FALLBACK_PENDING_STATUSES = {
 def _should_skip_deterministic_section_downgrade(section: Dict[str, Any]) -> bool:
     return TranslatorAgent._is_document_root_section_chunk(section)
 
+
+def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) -> tuple[tuple[Any, ...], ...]:
+    signature: list[tuple[Any, ...]] = []
+    for item in errors_report or []:
+        if not isinstance(item, dict):
+            continue
+        signature.append(
+            (
+                item.get("part"),
+                item.get("num_or_ph"),
+                item.get("error_type"),
+                item.get("command_error"),
+                item.get("ph_error"),
+                item.get("bracket_error"),
+                item.get("math_error"),
+                item.get("env_boundary_error"),
+                item.get("protected_cmd_error"),
+                item.get("immutable_placeholder_error"),
+                item.get("list_structure_error"),
+                item.get("escaped_dollar_error"),
+                item.get("document_boundary_error"),
+                item.get("completeness_error"),
+                item.get("global_ph_error"),
+            )
+        )
+    signature.sort()
+    return tuple(signature)
+
 # ---------------------------------------------------------------------------
 # State Schema
 # ---------------------------------------------------------------------------
@@ -282,6 +310,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
 
         MAX_RETRIES = 3
         retry_count = 0
+        previous_error_signature = _normalize_error_signature(errors_report)
 
         if mode == 3:
             # Quick scan mode: skip repair to preserve semantic boundary
@@ -307,7 +336,24 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                 translator_agent.errors_report = errors_report
                 await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
                 errors_report = await run_blocking(lambda: validator_agent.execute(errors_report))
+                current_error_signature = _normalize_error_signature(errors_report)
                 retry_count += 1
+                if errors_report and current_error_signature == previous_error_signature:
+                    logger.warning(
+                        "Validation retry made no progress; short-circuiting remaining retries after attempt %d/%d",
+                        retry_count,
+                        MAX_RETRIES,
+                    )
+                    _write_task_log(
+                        transed_project_dir,
+                        "validation_retry_short_circuited_no_progress",
+                        {
+                            "attempt": retry_count,
+                            "remaining_errors_count": len(errors_report),
+                        },
+                    )
+                    break
+                previous_error_signature = current_error_signature
 
         final_errors_count = len(errors_report) if errors_report else 0
         fallback_count = int(getattr(translator_agent, "structural_fallback_count", 0) or 0)
@@ -1305,12 +1351,20 @@ async def run_pipeline(
     task_id: str = config.get("task_id") or base_name
 
     os.makedirs(transed_project_dir, exist_ok=True)
+    log_config = {k: v for k, v in config.items() if k != "llm_config"}
+    llm_config = dict(config.get("llm_config") or {})
+    if llm_config:
+        api_key = str(llm_config.get("api_key") or "")
+        if api_key:
+            llm_config["api_key_masked"] = "*" * min(max(len(api_key), 8), 24)
+            llm_config.pop("api_key", None)
+        log_config["llm_config"] = llm_config
     _write_task_log(
         transed_project_dir,
         "task_started",
         {
             "project": base_name,
-            "config": {k: v for k, v in config.items() if k != "llm_config"},
+            "config": log_config,
         },
     )
 
