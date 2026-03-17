@@ -5,7 +5,7 @@
  * Requires authentication - shows prompt for guests.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useStore } from '@/store/useStore'
@@ -78,7 +78,7 @@ const TERMINAL_FAIL_STATUSES = new Set(['failed', 'failed_compilation', 'structu
 
 export default function HistoryPage() {
     const navigate = useNavigate()
-    const { isAuthenticated, loading: authLoading } = useAuth()
+    const { isAuthenticated, loading: authLoading, session } = useAuth()
     const { setTaskId, setArxivId } = useStore()
     const { t, i18n } = useTranslation()
 
@@ -97,6 +97,17 @@ export default function HistoryPage() {
     // Batch selection state
     const [selectionMode, setSelectionMode] = useState(false)
     const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
+    const retryTimeoutRef = useRef<number | null>(null)
+
+    const HISTORY_RETRY_DELAY_MS = 1000
+    const MAX_HISTORY_RETRIES = 2
+
+    const clearScheduledRetry = useCallback(() => {
+        if (retryTimeoutRef.current !== null) {
+            window.clearTimeout(retryTimeoutRef.current)
+            retryTimeoutRef.current = null
+        }
+    }, [])
 
     const toggleExpand = (taskId: string, e: React.MouseEvent) => {
         e.stopPropagation() // 防止触发卡片点击
@@ -112,12 +123,24 @@ export default function HistoryPage() {
     }
 
     // Fetch history
-    const fetchHistory = useCallback(async (pageNum: number, append: boolean = false) => {
+    const fetchHistory = useCallback(async (pageNum: number, append: boolean = false, attempt: number = 0) => {
+        clearScheduledRetry()
         setLoading(true)
-        setError(null)
+        if (attempt === 0) {
+            setError(null)
+        }
 
         try {
-            const token = await getAccessToken()
+            const token = session?.access_token ?? await getAccessToken()
+            if (!token) {
+                if (attempt < MAX_HISTORY_RETRIES) {
+                    retryTimeoutRef.current = window.setTimeout(() => {
+                        void fetchHistory(pageNum, append, attempt + 1)
+                    }, HISTORY_RETRY_DELAY_MS)
+                    return
+                }
+                throw new Error(t('history.failed_to_load_history'))
+            }
 
             const response = await fetch(
                 `${API_BASE_URL}/api/history?page=${pageNum}&page_size=10`,
@@ -130,6 +153,12 @@ export default function HistoryPage() {
             )
 
             if (!response.ok) {
+                if ((response.status >= 500 || response.status === 401) && attempt < MAX_HISTORY_RETRIES) {
+                    retryTimeoutRef.current = window.setTimeout(() => {
+                        void fetchHistory(pageNum, append, attempt + 1)
+                    }, HISTORY_RETRY_DELAY_MS)
+                    return
+                }
                 throw new Error(t('history.failed_to_load_history'))
             }
 
@@ -144,11 +173,19 @@ export default function HistoryPage() {
             setTotal(data.total)
             setPage(pageNum)
         } catch (err) {
+            if (attempt < MAX_HISTORY_RETRIES) {
+                retryTimeoutRef.current = window.setTimeout(() => {
+                    void fetchHistory(pageNum, append, attempt + 1)
+                }, HISTORY_RETRY_DELAY_MS)
+                return
+            }
             setError(err instanceof Error ? err.message : t('history.failed_to_load_history'))
         } finally {
-            setLoading(false)
+            if (retryTimeoutRef.current === null) {
+                setLoading(false)
+            }
         }
-    }, [t])
+    }, [clearScheduledRetry, session?.access_token, t])
 
     // Load more handler
     const loadMore = () => {
@@ -162,7 +199,8 @@ export default function HistoryPage() {
         if (isAuthenticated) {
             fetchHistory(1)
         }
-    }, [fetchHistory, isAuthenticated])
+        return clearScheduledRetry
+    }, [clearScheduledRetry, fetchHistory, isAuthenticated])
 
     // Delete handlers
     const handleDeleteClick = (taskId: string, e: React.MouseEvent) => {

@@ -53,6 +53,10 @@ def create_supabase_client_with_token(access_token: Optional[str] = None) -> Opt
         settings.supabase_url,
         settings.supabase_anon_key
     )
+    try:
+        setattr(client, "_access_token", access_token)
+    except Exception:
+        pass
     
     # 设置用户的 access_token
     # RLS 将使用 auth.uid() 识别用户
@@ -64,6 +68,18 @@ def create_supabase_client_with_token(access_token: Optional[str] = None) -> Opt
         # 继续使用客户端，让 RLS 处理
     
     return client
+
+
+def clone_supabase_client_with_same_auth(client: Optional[Client]) -> Optional[Client]:
+    """Create a short-lived authenticated clone from an existing user-scoped client."""
+    if client is None:
+        return None
+
+    access_token = getattr(client, "_access_token", None)
+    if not access_token:
+        return None
+
+    return create_supabase_client_with_token(access_token)
 
 
 async def get_supabase_client_from_request(

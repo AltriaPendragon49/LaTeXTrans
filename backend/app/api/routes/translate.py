@@ -380,6 +380,35 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
         return None
 
 
+async def persist_task_config_hash(task_id: str, config_hash: str) -> bool:
+    """Persist config_hash for an already-created authenticated task row."""
+    try:
+        client = get_supabase_admin_client()
+        if not client:
+            logger.warning("Supabase admin client not available for config_hash persistence")
+            return False
+
+        def _shared_call():
+            return client.table("translation_tasks").update({
+                "config_hash": config_hash
+            }).eq("task_id", task_id).execute()
+
+        def _per_call_client():
+            c = create_supabase_admin_client()
+            if not c:
+                return None
+            return c.table("translation_tasks").update({
+                "config_hash": config_hash
+            }).eq("task_id", task_id).execute()
+
+        await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
+        logger.info(f"Stored config_hash in database for task {task_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to store config_hash for task {task_id}: {e}")
+        return False
+
+
 async def copy_output(source_output: str, task_id: str) -> str:
     """
     深拷贝已有 output 到新任务目录
@@ -804,19 +833,6 @@ async def start_translation(
                 detail=f"Too many active tasks. You have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete."
             )
 
-    # ✅ Update source/target language in memory BEFORE persisting,
-    # so the DB record captures the real translation config.
-    task_manager.update_task(
-        task_id=task_id,
-        source_language=request.source_language,
-        target_language=request.target_language,
-    )
-
-    # ✅ Persist to database (delayed creation)
-    if not task_manager.persist_task_if_needed(task_id):
-        logger.warning(f"Failed to persist task {task_id}, but continuing with translation")
-
-    # Calculate and store config_hash for future reuse
     config_hash = compute_config_hash(
         arxiv_id=task.get("arxiv_id"),
         source_language=request.source_language,
@@ -827,35 +843,22 @@ async def start_translation(
     )
     logger.info(f"Computed config_hash for task {task_id}: {config_hash}")
 
-    # Store advanced config in task record
+    # Keep the final config snapshot in memory before delayed persistence so
+    # both the initial insert and any retry can include the same metadata.
     task_manager.update_task(
         task_id=task_id,
+        source_language=request.source_language,
+        target_language=request.target_language,
         advanced_config=request.advanced_config.model_dump(),
-        user_id=user_id
+        config_hash=config_hash,
     )
 
-    # Store config_hash in database
-    if user_id:
-        try:
-            client = get_supabase_admin_client()
-            if client:
-                def _shared_call():
-                    return client.table("translation_tasks").update({
-                        "config_hash": config_hash
-                    }).eq("task_id", task_id).execute()
-
-                def _per_call_client():
-                    c = create_supabase_admin_client()
-                    if not c:
-                        return None
-                    return c.table("translation_tasks").update({
-                        "config_hash": config_hash
-                    }).eq("task_id", task_id).execute()
-
-                await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
-                logger.info(f"Stored config_hash in database for task {task_id}")
-        except Exception as e:
-            logger.warning(f"Failed to store config_hash: {e}")
+    # ✅ Persist to database (delayed creation)
+    persisted = task_manager.persist_task_if_needed(task_id)
+    if not persisted:
+        logger.warning(f"Failed to persist task {task_id}, but continuing with translation")
+    elif user_id:
+        await persist_task_config_hash(task_id, config_hash)
 
     # Enqueue translation via TaskQueue
     if tq:
@@ -1026,11 +1029,19 @@ async def batch_translate(
 
             # ✅ Update source/target language and config in memory BEFORE persisting,
             # so the DB record captures actual translation config instead of defaults.
+            config_hash = compute_config_hash(
+                arxiv_id=arxiv_id,
+                source_language=request.source_language,
+                target_language=request.target_language,
+                translation_mode=request.advanced_config.translation_mode,
+                compile_strategy=request.advanced_config.compile_strategy,
+            )
             task_manager.update_task(
                 task_id=task_id,
                 source_language=request.source_language,
                 target_language=request.target_language,
                 advanced_config=request.advanced_config.model_dump(),
+                config_hash=config_hash,
             )
 
             # ✅ Persist to DB immediately (synchronous fast attempt).
@@ -1046,6 +1057,8 @@ async def batch_translate(
                 asyncio.create_task(
                     task_manager.persist_task_with_retry(task_id, retries=2, delay=5.0)
                 )
+            else:
+                await persist_task_config_hash(task_id, config_hash)
 
             task_ids.append(task_id)
 

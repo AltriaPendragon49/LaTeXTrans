@@ -19,13 +19,75 @@ import json
 import logging
 from pathlib import Path
 
-from backend.app.core.auth import get_supabase_client_from_request
+from backend.app.core.auth import (
+    get_supabase_client_from_request,
+    clone_supabase_client_with_same_auth,
+)
 from backend.app.core.config import get_settings
 from backend.app.utils.async_blocking import run_db_blocking
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
 router = APIRouter()
+
+
+def _build_history_list_query(
+    supabase: Client,
+    *,
+    page: int,
+    page_size: int,
+    status_filter: Optional[str],
+):
+    query = supabase.table("translation_tasks").select(
+        """task_id, source_type, arxiv_id, translation_mode, status, progress, 
+           created_at, completed_at, source_language, target_language, 
+           compile_strategy, translation_model, output_path,
+           generate_glossary, use_author_api, formatting""",
+        count="exact"
+    )
+
+    if status_filter:
+        query = query.eq("status", status_filter)
+
+    offset = (page - 1) * page_size
+    query = query.order("created_at", desc=True).range(offset, offset + page_size - 1)
+    return query, offset
+
+
+async def _execute_history_list_query(
+    supabase: Client,
+    *,
+    page: int,
+    page_size: int,
+    status_filter: Optional[str],
+):
+    query, offset = _build_history_list_query(
+        supabase,
+        page=page,
+        page_size=page_size,
+        status_filter=status_filter,
+    )
+
+    def _shared_call():
+        return query.execute()
+
+    def _per_call():
+        cloned = clone_supabase_client_with_same_auth(supabase)
+        if cloned is None:
+            return _shared_call()
+        per_call_query, _ = _build_history_list_query(
+            cloned,
+            page=page,
+            page_size=page_size,
+            status_filter=status_filter,
+        )
+        return per_call_query.execute()
+
+    result = await run_db_blocking(
+        _shared_call,
+        per_call_client_call=_per_call,
+    )
+    return result, offset
 
 # ---------------------------------------------------------------------------
 # Lazy task-log status reconciliation
@@ -160,23 +222,12 @@ async def get_user_history(
         )
     
     try:
-        # RLS 自动过滤：只返回当前用户的任务
-        query = supabase.table("translation_tasks").select(
-            """task_id, source_type, arxiv_id, translation_mode, status, progress, 
-               created_at, completed_at, source_language, target_language, 
-               compile_strategy, translation_model, output_path,
-               generate_glossary, use_author_api, formatting""",
-            count="exact"
+        result, offset = await _execute_history_list_query(
+            supabase,
+            page=page,
+            page_size=page_size,
+            status_filter=status_filter,
         )
-        
-        if status_filter:
-            query = query.eq("status", status_filter)
-        
-        # Add ordering and pagination
-        offset = (page - 1) * page_size
-        query = query.order("created_at", desc=True).range(offset, offset + page_size - 1)
-        
-        result = await run_db_blocking(lambda: query.execute())
 
         # DEBUG: trace what RLS returns for each task
         for _t in (result.data or []):

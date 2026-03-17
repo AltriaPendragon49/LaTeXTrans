@@ -228,6 +228,7 @@ class TaskManager:
                 "user_id": user_id,
                 "source_language": source_language,
                 "target_language": target_language,
+                "config_hash": None,
                 "failure_intercepted": False,
                 "failed_output_path": None,
                 "compile_pid": None,
@@ -273,6 +274,7 @@ class TaskManager:
         user_id: Optional[str] = None,
         source_language: Optional[str] = None,
         target_language: Optional[str] = None,
+        config_hash: Optional[str] = None,
         compile_pid: Optional[int] = None,
         compile_engine: Optional[str] = None,
         compile_started_at: Optional[str] = None,
@@ -406,6 +408,10 @@ class TaskManager:
             if target_language is not None:
                 task["target_language"] = target_language
                 db_updates["target_language"] = target_language
+
+            if config_hash is not None:
+                task["config_hash"] = config_hash
+                db_updates["config_hash"] = config_hash
 
             # Runtime-only compilation metadata (never persisted).
             if compile_pid is not None:
@@ -961,7 +967,8 @@ class TaskManager:
                 arxiv_id=task.get("arxiv_id"),
                 source_language=task.get("source_language", "en"),
                 target_language=task.get("target_language", "zh"),
-                advanced_config=task.get("advanced_config")
+                advanced_config=task.get("advanced_config"),
+                config_hash=task.get("config_hash"),
             )
             logger.info(f"[TaskManager] Persisted task {task_id} to database")
             return True
@@ -1276,7 +1283,8 @@ class TaskManager:
         arxiv_id: Optional[str],
         source_language: str,
         target_language: str,
-        advanced_config: Optional[Dict[str, Any]]
+        advanced_config: Optional[Dict[str, Any]],
+        config_hash: Optional[str] = None,
     ):
         """
         Persist task creation to Supabase (authenticated users only)
@@ -1310,6 +1318,8 @@ class TaskManager:
                 "detail_code": "task_waiting",
                 "detail_params": None,
             }
+            if config_hash:
+                db_record["config_hash"] = config_hash
             
             # Extract advanced config fields if available
             if advanced_config and isinstance(advanced_config, dict):
