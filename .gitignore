@@ -12,6 +12,9 @@ ENV/
 env.bak
 env.resource
 
+notes.md
+task_plan.md
+
 # Python
 __pycache__/
 *.py[cod]

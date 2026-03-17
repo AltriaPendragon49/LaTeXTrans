@@ -109,16 +109,18 @@ class Settings(BaseSettings):
     # Supports comma-separated CORS_ORIGINS env.
     # Wildcard is intentionally disallowed for production safety.
     cors_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "https://latextrans.pages.dev",
-            "https://latextrans.online",
-        ],
-        validation_alias="CORS_ORIGINS",
-    )
+    default_factory=lambda: [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://latextrans.pages.dev",
+        "https://latextrans.online",
+        "https://latextrans.niutrans.com",
+    ],
+    validation_alias="CORS_ORIGINS",
+)
+
     
     # Task Queue Settings
     max_concurrent_translations: int = Field(
