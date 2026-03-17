@@ -10,7 +10,7 @@ os.environ.setdefault("LLM_MODEL", "gpt-4o")
 from fastapi.security import HTTPAuthorizationCredentials
 
 from backend.app.api.routes import translate as translate_route
-from backend.app.models.config_models import AdvancedConfig
+from backend.app.models.config_models import AdvancedConfig, FormattingConfig
 from backend.app.services.task_manager import TaskManager
 
 
@@ -117,11 +117,12 @@ def test_batch_translate_persists_config_hash(monkeypatch):
         lambda: None,
     )
 
+    formatting = FormattingConfig(font_size=12.0, line_spacing=1.0, paragraph_indent=True)
     request = translate_route.BatchTranslateRequest(
         arxiv_ids=["2508.18791"],
         source_language="en",
         target_language="zh",
-        advanced_config=AdvancedConfig(),
+        advanced_config=AdvancedConfig(formatting=formatting),
     )
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer",
@@ -134,4 +135,11 @@ def test_batch_translate_persists_config_hash(monkeypatch):
     assert len(captured_hashes) == 1
     task_id, config_hash = captured_hashes[0]
     assert task_id == "task-1"
-    assert config_hash
+    assert config_hash == translate_route.compute_config_hash(
+        arxiv_id="2508.18791",
+        source_language="en",
+        target_language="zh",
+        translation_mode="full",
+        compile_strategy="auto",
+        formatting=formatting,
+    )
