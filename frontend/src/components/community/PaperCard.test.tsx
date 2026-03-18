@@ -25,7 +25,6 @@ const paper: CommunityPaper = {
     id: "asset-1",
     task_id: "task-1",
     asset_type: "translated_pdf",
-    file_path: "/tmp/translated.pdf",
     file_name: "translated.pdf",
     mime_type: "application/pdf",
     created_at: "2026-03-18T02:00:00Z",

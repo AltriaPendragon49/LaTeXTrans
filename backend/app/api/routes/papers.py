@@ -4,10 +4,12 @@ import base64
 import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from backend.app.api.routes.translate import TranslateRequest
 from backend.app.services import paper_service
 
 router = APIRouter(prefix="/papers")
@@ -33,7 +35,6 @@ class AssetSummary(BaseModel):
     id: str
     task_id: Optional[str] = None
     asset_type: str
-    file_path: str
     file_name: str
     mime_type: str
     created_at: Optional[str] = None
@@ -67,6 +68,7 @@ class PaperSummary(BaseModel):
     view_count: Optional[int] = None
     download_count: Optional[int] = None
     latest_asset: Optional[AssetSummary] = None
+    assets: Optional[Dict[str, AssetSummary]] = None
     viewer_state: Optional[ViewerState] = None
 
 
@@ -93,6 +95,29 @@ class PaperDetailResponse(BaseModel):
 class PaperViewResponse(BaseModel):
     paper_id: str
     view_count: int
+
+
+class PaperTranslateResponse(BaseModel):
+    paper_id: str
+    task_id: str
+    status: str
+    reused_existing_task: bool
+    processing_url: str
+
+
+class PaperPreviewResponse(BaseModel):
+    paper_id: str
+    task_id: Optional[str] = None
+    asset: AssetSummary
+    html_content: str
+    generated_at: Optional[str] = None
+
+
+class PaperDownloadSessionResponse(BaseModel):
+    paper_id: str
+    asset_id: str
+    download_url: str
+    expires_at: str
 
 
 @router.post("/submit", response_model=PaperSubmitResponse)
@@ -174,3 +199,47 @@ async def get_paper_detail(
 @router.post("/{paper_id}/view", response_model=PaperViewResponse)
 async def record_paper_view(paper_id: str):
     return await paper_service.record_community_paper_view(paper_id=paper_id)
+
+
+@router.post("/{paper_id}/translate", response_model=PaperTranslateResponse)
+async def translate_paper(
+    paper_id: str,
+    request: TranslateRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+):
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return await paper_service.start_paper_translation(
+        paper_id=paper_id,
+        request=request,
+        credentials=credentials,
+    )
+
+
+@router.get("/{paper_id}/preview", response_model=PaperPreviewResponse)
+async def preview_paper(paper_id: str):
+    return await paper_service.get_paper_preview(paper_id=paper_id)
+
+
+@router.post("/{paper_id}/download-session", response_model=PaperDownloadSessionResponse)
+async def create_download_session(paper_id: str):
+    return await paper_service.create_paper_download_session(paper_id=paper_id)
+
+
+@router.get("/{paper_id}/download")
+async def download_paper(
+    paper_id: str,
+    token: str = Query(..., min_length=8),
+):
+    payload = await paper_service.resolve_paper_download(paper_id=paper_id, token=token)
+    asset = payload["asset"]
+    return FileResponse(
+        path=payload["file_path"],
+        media_type=asset.get("mime_type") or "application/octet-stream",
+        filename=asset.get("file_name") or f"{paper_id}.pdf",
+    )

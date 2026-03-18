@@ -92,6 +92,11 @@ class Settings(BaseSettings):
         validation_alias="ENCRYPTION_KEY",
         description="Key for encrypting sensitive data like API keys"
     )
+    community_download_token_secret: Optional[str] = Field(
+        default=None,
+        validation_alias="COMMUNITY_DOWNLOAD_TOKEN_SECRET",
+        description="Signing secret for short-lived community paper download tokens",
+    )
     
     # LaTeX Compiler Settings
     latex_bin_dir: Optional[str] = Field(
@@ -104,6 +109,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data")
     uploads_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "uploads")
     outputs_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "outputs")
+    community_papers_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "community_papers")
     terms_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "terms")
     task_configs_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "task_configs")
     failed_tasks_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "failed_tasks")
@@ -251,6 +257,7 @@ class Settings(BaseSettings):
         # Ensure all directories exist
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
         self.outputs_dir.mkdir(parents=True, exist_ok=True)
+        self.community_papers_dir.mkdir(parents=True, exist_ok=True)
         self.terms_dir.mkdir(parents=True, exist_ok=True)
         self.task_configs_dir.mkdir(parents=True, exist_ok=True)
         self.failed_tasks_dir.mkdir(parents=True, exist_ok=True)

@@ -15,7 +15,7 @@ import json
 import shutil
 from pathlib import Path
 
-from backend.app.services.task_manager import get_task_manager
+from backend.app.services.task_manager import get_task_manager, get_task_queue
 from backend.app.services.agents.coordinator_agent import CoordinatorAgent
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services.config_capture import capture_task_config
@@ -37,6 +37,18 @@ CLI_PARITY_PROMPT_RESERVE_TOKENS = 4096
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
+
+
+def _schedule_community_publish_watch(task_id: str, user_id: Optional[str]) -> None:
+    if not user_id:
+        return
+
+    async def _watch() -> None:
+        from backend.app.services import paper_service
+
+        await paper_service.watch_task_and_publish_community_library(task_id=task_id)
+
+    asyncio.create_task(_watch())
 
 
 class TranslateRequest(BaseModel):
@@ -846,7 +858,6 @@ async def start_translation(
         )
 
     # Check user quota (authenticated users only)
-    from backend.app.services.task_manager import get_task_queue
     tq = get_task_queue()
     if user_id and tq:
         user_active = tq.get_user_active_count(user_id)
@@ -915,6 +926,8 @@ async def start_translation(
             )
         )
 
+    _schedule_community_publish_watch(task_id, user_id)
+
     return TranslateResponse(
         task_id=task_id,
         status="queued",
@@ -932,7 +945,6 @@ async def get_queue_status(
     Returns:
         Queue status including active count, queue size, and max concurrent
     """
-    from backend.app.services.task_manager import get_task_queue
     tq = get_task_queue()
 
     if not tq:
@@ -1013,7 +1025,6 @@ async def batch_translate(
         )
 
     # Check user quota
-    from backend.app.services.task_manager import get_task_queue
     tq = get_task_queue()
     if tq:
         user_active = tq.get_user_active_count(user_id)

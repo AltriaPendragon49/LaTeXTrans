@@ -1,5 +1,5 @@
 ## 1. Start Gate
-- [ ] 1.1 Confirm Days 1-4 are complete enough to test the full paper-first main path.
+- [ ] 1.1 Confirm Days 1-4 plus Day 04B are complete enough to test the full paper-first main path.
 - [ ] 1.2 Mark Day 5 as `In Progress` in `texts/社区打造十天OpenSpec执行索引.md`.
 
 ## 2. Delivery Scope

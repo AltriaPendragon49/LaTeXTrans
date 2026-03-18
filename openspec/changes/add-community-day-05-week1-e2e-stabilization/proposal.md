@@ -10,5 +10,5 @@
 
 ## Impact
 - Adds capability `community-week1-readiness`.
-- Depends on `add-community-day-04-paper-translation-preview-download`.
+- Depends on `add-community-day-04b-paper-library-storage-and-publish-flow`.
 - Acts as the release gate for the second half of the 10-day plan.

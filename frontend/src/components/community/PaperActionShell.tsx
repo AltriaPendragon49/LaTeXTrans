@@ -6,6 +6,7 @@ import {
   MessageSquare,
   ShieldAlert,
   Star,
+  Timer,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -17,18 +18,42 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-const ACTIONS = [
-  { key: "translate", icon: Languages, labelKey: "community.actions.translate" },
-  { key: "preview", icon: Eye, labelKey: "community.actions.preview" },
-  { key: "download", icon: Download, labelKey: "community.actions.download" },
-  { key: "like", icon: Heart, labelKey: "community.actions.like" },
-  { key: "favorite", icon: Star, labelKey: "community.actions.favorite" },
-  { key: "comment", icon: MessageSquare, labelKey: "community.actions.comment" },
-  { key: "report", icon: ShieldAlert, labelKey: "community.actions.report" },
-] as const
+interface ActionConfig {
+  key: string
+  icon: typeof Languages
+  labelKey: string
+  enabled: boolean
+  onClick?: () => void
+}
 
-export function PaperActionShell() {
+interface PaperActionShellProps {
+  onTranslate: () => void
+  onPreview: () => void
+  onDownload: () => void
+  onViewProgress: () => void
+  canViewProgress: boolean
+  canDownload: boolean
+}
+
+export function PaperActionShell({
+  onTranslate,
+  onPreview,
+  onDownload,
+  onViewProgress,
+  canViewProgress,
+  canDownload,
+}: PaperActionShellProps) {
   const { t } = useTranslation()
+  const actions: ActionConfig[] = [
+    { key: "translate", icon: Languages, labelKey: "community.actions.translate", enabled: true, onClick: onTranslate },
+    { key: "progress", icon: Timer, labelKey: "community.actions.viewProgress", enabled: canViewProgress, onClick: onViewProgress },
+    { key: "preview", icon: Eye, labelKey: "community.actions.preview", enabled: true, onClick: onPreview },
+    { key: "download", icon: Download, labelKey: "community.actions.download", enabled: canDownload, onClick: onDownload },
+    { key: "like", icon: Heart, labelKey: "community.actions.like", enabled: false },
+    { key: "favorite", icon: Star, labelKey: "community.actions.favorite", enabled: false },
+    { key: "comment", icon: MessageSquare, labelKey: "community.actions.comment", enabled: false },
+    { key: "report", icon: ShieldAlert, labelKey: "community.actions.report", enabled: false },
+  ]
 
   return (
     <TooltipProvider>
@@ -43,14 +68,15 @@ export function PaperActionShell() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {ACTIONS.map(({ key, icon: Icon, labelKey }) => (
+          {actions.map(({ key, icon: Icon, labelKey, enabled, onClick }) => (
             <Tooltip key={key}>
               <TooltipTrigger asChild>
                 <div>
                   <Button
                     type="button"
-                    disabled
+                    disabled={!enabled}
                     aria-label={t(labelKey)}
+                    onClick={onClick}
                     variant="outline"
                     className="h-11 w-full justify-start rounded-[18px] border-white/10 bg-white/[0.025] px-4 text-slate-100"
                   >
