@@ -7,12 +7,14 @@ import { AuthProvider } from "./contexts/AuthContext"
 
 const Layout = lazy(() => import("./layout"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
+const CommunityFeedPage = lazy(() => import("./pages/CommunityFeed"))
 const ProcessingPage = lazy(() => import("./pages/Processing"))
 const ComparisonsPage = lazy(() => import("./pages/Comparisons"))
 const Login = lazy(() => import("./pages/Login"))
 const HistoryPage = lazy(() => import("./pages/History"))
 const SettingsPage = lazy(() => import("./pages/Settings"))
 const ProfilePage = lazy(() => import("./pages/Profile"))
+const PaperDetailPage = lazy(() => import("./pages/PaperDetail"))
 
 function RouteLoading() {
   const { t } = useTranslation()
@@ -42,7 +44,9 @@ function App() {
         <Routes>
           <Route path="/login" element={withSuspense(<Login />)} />
           <Route path="/" element={withSuspense(<Layout />)}>
-            <Route index element={withSuspense(<Dashboard />)} />
+            <Route index element={withSuspense(<CommunityFeedPage />)} />
+            <Route path="translate" element={withSuspense(<Dashboard />)} />
+            <Route path="paper/:paperId" element={withSuspense(<PaperDetailPage />)} />
             <Route path="processing" element={withSuspense(<ProcessingPage />)} />
             <Route path="preview" element={withSuspense(<ComparisonsPage />)} />
             <Route path="history" element={withSuspense(<HistoryPage />)} />

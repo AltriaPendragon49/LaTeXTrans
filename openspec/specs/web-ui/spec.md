@@ -4,14 +4,14 @@
 定义 LaTeXTrans 前端 Web UI 规范，包括 Dashboard、翻译配置、进度监控、PDF 预览等界面。
 ## Requirements
 ### Requirement: Responsive Web Dashboard
-The system MUST provide a responsive web-based dashboard for user interaction.
+The system MUST provide a responsive web-based translation workspace while allowing the product homepage to become a community browse surface.
 
-#### Scenario: User navigates to the home page
+#### Scenario: User navigates to the translation workspace
 Given the backend server is running
-When the user accesses the web root URL
+When the user accesses `/translate`
 Then the Dashboard page should be displayed
 And a prominent input field for ArXiv ID should be visible
-And the sidebar navigation should be present
+And shared sidebar navigation should remain available
 
 ### Requirement: Translation Configuration
 The system MUST allow users to configure translation parameters via the UI.

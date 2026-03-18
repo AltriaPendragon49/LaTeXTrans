@@ -32,10 +32,12 @@ describe("Layout language integration", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("访客模式")).toBeInTheDocument()
-    expect(screen.getByText("菜单")).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("layout.guestMode"))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("layout.menu"))).toBeInTheDocument()
 
-    const trigger = screen.getByRole("combobox", { name: "选择全局界面语言" })
+    const trigger = screen.getByRole("combobox", {
+      name: i18n.t("common.choose_global_interface_language"),
+    })
     trigger.focus()
     fireEvent.keyDown(trigger, { key: "ArrowDown" })
 
@@ -47,6 +49,6 @@ describe("Layout language integration", () => {
     })
 
     expect(screen.getByText("Menu")).toBeInTheDocument()
-    expect(screen.getByText("LaTeX Translation Platform")).toBeInTheDocument()
+    expect(screen.getByText("Community Feed")).toBeInTheDocument()
   })
 })

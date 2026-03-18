@@ -480,6 +480,8 @@ def _paper_summary(
         "title": paper.get("title"),
         "authors": paper.get("authors") or [],
         "categories": paper.get("categories") or [],
+        "abstract_raw": paper.get("abstract_raw"),
+        "abstract_translated": paper.get("abstract_translated"),
         "community_status": paper.get("community_status"),
         "trans_status": paper.get("trans_status"),
         "created_at": paper.get("created_at"),

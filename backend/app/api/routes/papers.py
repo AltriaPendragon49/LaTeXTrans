@@ -51,6 +51,8 @@ class PaperSummary(BaseModel):
     title: str
     authors: List[Any] = []
     categories: List[str] = []
+    abstract_raw: Optional[str] = None
+    abstract_translated: Optional[str] = None
     community_status: str
     trans_status: str
     created_at: Optional[str] = None
