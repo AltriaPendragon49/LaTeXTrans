@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { LogIn, Loader2, PenSquare, User } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { LanguageSelector } from "@/components/LanguageSelector"
+import { ThemeToggle } from "@/components/ThemeToggle"
 
 export default function Layout() {
     const navigate = useNavigate()
@@ -18,39 +19,40 @@ export default function Layout() {
     const subtitle = isCommunityRoute ? "" : t("common.new_translation")
 
     return (
-        <div className="dark min-h-screen bg-[#151515] text-slate-100">
+        <div className="min-h-screen bg-[var(--shell-bg)] text-[var(--shell-text)] transition-colors">
             <SidebarProvider>
                 <AppSidebar />
                 <main className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
-                    <div className="sticky top-0 z-10 border-b border-white/8 bg-[#161616]/90 px-4 py-3 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.8)] backdrop-blur">
+                    <div className="sticky top-0 z-10 border-b border-[color:var(--shell-border-strong)] bg-[var(--shell-surface)] px-4 py-3 shadow-[var(--shell-shadow)] backdrop-blur">
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex min-w-0 items-center gap-3">
-                                <SidebarTrigger className="h-10 w-10 rounded-2xl border border-white/10 bg-white/[0.03] text-slate-100 hover:bg-white/[0.06]" />
+                                <SidebarTrigger className="h-10 w-10 rounded-2xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]" />
                                 <div className="min-w-0">
                                     {subtitle ? (
                                         <div className="flex items-center gap-2">
-                                            <PenSquare className="h-4 w-4 text-slate-400" />
-                                            <p className="truncate text-xs uppercase tracking-[0.22em] text-slate-500">
+                                            <PenSquare className="h-4 w-4 text-[var(--shell-icon)]" />
+                                            <p className="truncate text-xs uppercase tracking-[0.22em] text-[var(--shell-text-muted)]">
                                                 {subtitle}
                                             </p>
                                         </div>
                                     ) : null}
-                                    <div className="truncate text-base font-semibold tracking-tight text-white">
+                                    <div className="truncate text-base font-semibold tracking-tight text-[var(--shell-heading)]">
                                         {title}
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2 pr-1">
+                            <div className="flex flex-wrap items-center justify-end gap-2 pr-1">
                                 <LanguageSelector />
+                                <ThemeToggle />
                                 {loading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-[var(--shell-icon)]" />
                                 ) : isAuthenticated ? (
                                     <Button
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => navigate('/profile')}
-                                        className="h-11 rounded-2xl border border-white/10 bg-white/[0.03] px-3 text-slate-100 hover:bg-white/[0.06]"
+                                        className="h-11 rounded-2xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]"
                                     >
                                         <User className="h-4 w-4" />
                                         <span className="max-w-[120px] truncate text-sm">
@@ -62,13 +64,13 @@ export default function Layout() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => navigate('/login')}
-                                        className="h-11 rounded-2xl border-white/10 bg-white/[0.03] px-4 text-slate-100 hover:bg-white/[0.06]"
+                                        className="h-11 rounded-2xl border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]"
                                     >
                                         <LogIn className="h-4 w-4" />
                                         {t("common.actions.signIn")}
                                     </Button>
                                 ) : (
-                                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400">
+                                    <span className="rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-text-muted)]">
                                         {t("layout.guestMode")}
                                     </span>
                                 )}

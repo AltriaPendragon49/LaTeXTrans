@@ -8,18 +8,18 @@ export function PaperFeedEmptyState() {
   const { t } = useTranslation()
 
   return (
-    <div className="rounded-[32px] border border-dashed border-white/12 bg-slate-950/50 px-6 py-14 text-center">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.03]">
-        <Inbox className="h-7 w-7 text-slate-300" />
+    <div className="rounded-[32px] border border-dashed border-[color:var(--shell-border)] bg-[var(--shell-surface)] px-6 py-14 text-center">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)]">
+        <Inbox className="h-7 w-7 text-[var(--shell-icon)]" />
       </div>
       <div className="mx-auto mt-5 max-w-xl space-y-2">
-        <h2 className="text-2xl font-semibold text-white">{t("community.empty.title")}</h2>
-        <p className="text-sm text-slate-400">{t("community.empty.description")}</p>
+        <h2 className="text-2xl font-semibold text-[var(--shell-heading)]">{t("community.empty.title")}</h2>
+        <p className="text-sm text-[var(--shell-text-muted)]">{t("community.empty.description")}</p>
       </div>
       <Button
         asChild
         variant="outline"
-        className="mt-6 h-11 rounded-2xl border-white/10 bg-white/[0.03] text-slate-100"
+        className="mt-6 h-11 rounded-2xl border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)]"
       >
         <Link to="/translate">{t("community.empty.cta")}</Link>
       </Button>

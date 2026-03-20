@@ -101,6 +101,19 @@ def test_normal_user_submit_arxiv_without_existing_creates_fallback(monkeypatch)
     )
     monkeypatch.setattr(
         paper_service,
+        "_fetch_arxiv_metadata",
+        lambda _arxiv_id: asyncio.sleep(
+            0,
+            result={
+                "title": "Recovered arXiv title",
+                "authors": ["Alice", "Bob"],
+                "categories": ["cs.CV", "cs.LG"],
+                "abstract_raw": "Recovered abstract",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
         "_insert_paper",
         lambda payload: asyncio.sleep(
             0,
@@ -122,6 +135,10 @@ def test_normal_user_submit_arxiv_without_existing_creates_fallback(monkeypatch)
 
     assert result["paper"]["community_status"] == "user_fallback"
     assert result["admission_result"] == "created"
+    assert result["paper"]["title"] == "Recovered arXiv title"
+    assert result["paper"]["authors"] == ["Alice", "Bob"]
+    assert result["paper"]["categories"] == ["cs.CV", "cs.LG"]
+    assert result["paper"]["abstract_raw"] == "Recovered abstract"
 
 
 def test_normal_user_submit_arxiv_reuses_existing_official(monkeypatch):
@@ -302,7 +319,7 @@ def test_normal_user_upload_creates_fallback(monkeypatch):
                 "authors": [],
                 "categories": [],
                 "community_status": "user_fallback",
-                "trans_status": "queued",
+                "trans_status": payload.get("trans_status", "not_started"),
                 "created_at": "2026-03-18T00:00:00+00:00",
                 "official_published_at": None,
                 "community_selected_task_id": "task-upload",
@@ -327,6 +344,7 @@ def test_normal_user_upload_creates_fallback(monkeypatch):
     )
 
     assert result["paper"]["community_status"] == "user_fallback"
+    assert result["paper"]["trans_status"] == "not_started"
     assert result["task"]["task_id"] == "task-upload"
     assert result["admission_result"] == "created"
 

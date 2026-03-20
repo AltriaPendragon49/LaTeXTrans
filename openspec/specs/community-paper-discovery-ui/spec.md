@@ -10,12 +10,13 @@ The system SHALL expose the community Feed as the primary web homepage and prese
 - **WHEN** a user navigates to `/`
 - **THEN** the system SHALL render the community Feed homepage shell
 - **AND** the page SHALL visually prioritize browseable community papers over translation inputs
-- **AND** the design SHALL follow a restrained dark research-reading direction inspired by alphaXiv without reproducing alphaXiv branding or navigation structure.
+- **AND** the default experience SHALL preserve the restrained dark research-reading direction inspired by alphaXiv without reproducing alphaXiv branding or navigation structure.
 
-#### Scenario: Shared shell avoids redundant kicker labels
-- **WHEN** the community homepage or paper detail shell renders
-- **THEN** the shared shell SHALL prioritize the page title over decorative kicker labels
-- **AND** labels such as `Research Console` SHALL not be required for comprehension or navigation.
+#### Scenario: Switch community browsing to daytime mode
+- **WHEN** a user changes the shared shell theme from dark to day mode
+- **THEN** the community feed and paper detail surfaces SHALL adopt a bright, white-led reading palette
+- **AND** cards, toolbars, metadata chips, and preview surfaces SHALL remain visually grouped without depending on dark-only contrast tricks
+- **AND** the daytime mode SHALL preserve the same browse and reading information hierarchy as dark mode.
 
 ### Requirement: Feed sort and browse shell
 The community homepage SHALL provide the MVP browse controls needed to inspect official-first community content.

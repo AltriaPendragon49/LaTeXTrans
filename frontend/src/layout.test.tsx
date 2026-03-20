@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import i18n from "@/i18n"
 import Layout from "@/layout"
+import { resetThemeMock } from "@/test/theme"
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -19,6 +20,7 @@ describe("Layout language integration", () => {
   beforeEach(async () => {
     localStorage.clear()
     await i18n.changeLanguage("zh")
+    resetThemeMock("dark")
   })
 
   it("updates shared layout text when the ui language changes", async () => {
@@ -34,6 +36,9 @@ describe("Layout language integration", () => {
 
     expect(screen.getByText(i18n.t("layout.guestMode"))).toBeInTheDocument()
     expect(screen.getByText(i18n.t("layout.menu"))).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: i18n.t("theme.toggle.switchToLight") }),
+    ).toBeInTheDocument()
 
     const trigger = screen.getByRole("combobox", {
       name: i18n.t("common.choose_global_interface_language"),

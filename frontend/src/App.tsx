@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from "react"
 import { Loader2 } from "lucide-react"
 import { BrowserRouter, Route, Routes } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { ThemeProvider } from "@/theme/theme-provider"
 
 import { AuthProvider } from "./contexts/AuthContext"
 
@@ -39,24 +40,26 @@ function Glossary() {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={withSuspense(<Login />)} />
-          <Route path="/" element={withSuspense(<Layout />)}>
-            <Route index element={withSuspense(<CommunityFeedPage />)} />
-            <Route path="translate" element={withSuspense(<Dashboard />)} />
-            <Route path="paper/:paperId" element={withSuspense(<PaperDetailPage />)} />
-            <Route path="processing" element={withSuspense(<ProcessingPage />)} />
-            <Route path="preview" element={withSuspense(<ComparisonsPage />)} />
-            <Route path="history" element={withSuspense(<HistoryPage />)} />
-            <Route path="glossary" element={<Glossary />} />
-            <Route path="settings" element={withSuspense(<SettingsPage />)} />
-            <Route path="profile" element={withSuspense(<ProfilePage />)} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={withSuspense(<Login />)} />
+            <Route path="/" element={withSuspense(<Layout />)}>
+              <Route index element={withSuspense(<CommunityFeedPage />)} />
+              <Route path="translate" element={withSuspense(<Dashboard />)} />
+              <Route path="paper/:paperId" element={withSuspense(<PaperDetailPage />)} />
+              <Route path="processing" element={withSuspense(<ProcessingPage />)} />
+              <Route path="preview" element={withSuspense(<ComparisonsPage />)} />
+              <Route path="history" element={withSuspense(<HistoryPage />)} />
+              <Route path="glossary" element={<Glossary />} />
+              <Route path="settings" element={withSuspense(<SettingsPage />)} />
+              <Route path="profile" element={withSuspense(<ProfilePage />)} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
 

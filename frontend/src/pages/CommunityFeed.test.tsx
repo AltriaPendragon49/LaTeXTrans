@@ -37,6 +37,24 @@ describe("CommunityFeedPage", () => {
     expect(screen.getByRole("button", { name: "Latest" })).toBeInTheDocument()
   })
 
+  it("renders loading placeholders while the feed is pending", () => {
+    useCommunityPapersMock.mockReturnValue({
+      items: [],
+      total: 0,
+      loading: true,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter>
+        <CommunityFeedPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("community-feed-loading")).toBeInTheDocument()
+  })
+
   it("re-renders when switching sort tabs", () => {
     useCommunityPapersMock.mockReturnValue({
       items: [],
@@ -55,6 +73,24 @@ describe("CommunityFeedPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Translated" }))
 
     expect(useCommunityPapersMock).toHaveBeenLastCalledWith("translated", "")
+  })
+
+  it("renders an empty state when no papers match the current view", () => {
+    useCommunityPapersMock.mockReturnValue({
+      items: [],
+      total: 0,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter>
+        <CommunityFeedPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("No community papers match this view yet")).toBeInTheDocument()
   })
 
   it("renders an error state when the feed fails", () => {

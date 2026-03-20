@@ -1,10 +1,13 @@
 import "@testing-library/jest-dom/vitest"
+import type { ReactNode } from "react"
 import { vi } from "vitest"
+import { setThemeMock, themeState } from "@/test/theme"
 
 vi.mock("next-themes", () => ({
+  ThemeProvider: ({ children }: { children: ReactNode }) => children,
   useTheme: () => ({
-    theme: "light",
-    setTheme: vi.fn(),
+    theme: themeState.theme,
+    setTheme: setThemeMock,
   }),
 }))
 

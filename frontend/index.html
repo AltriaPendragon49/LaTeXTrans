@@ -9,7 +9,77 @@
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+      <div class="animate-pulse rounded-[28px] border border-slate-200/70 bg-white/80 px-5 py-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+        <div class="h-10 w-48 rounded-full bg-slate-200/70 dark:bg-slate-800"></div>
+        <div class="mt-4 h-4 w-72 rounded-full bg-slate-200/60 dark:bg-slate-800/80"></div>
+      </div>
+      <div id="community-bootstrap-list" class="grid gap-4"></div>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const apiBaseValue = "%VITE_API_BASE_URL%"
+      const apiBase =
+        apiBaseValue && !apiBaseValue.includes("VITE_API_BASE_URL")
+          ? apiBaseValue.replace(/\/+$/, "")
+          : ""
+      const listNode = document.getElementById("community-bootstrap-list")
+
+      function renderCards(payload) {
+        if (!listNode || !payload || !Array.isArray(payload.items) || payload.items.length === 0) {
+          return
+        }
+
+        listNode.innerHTML = ""
+
+        payload.items.forEach((paper) => {
+          const card = document.createElement("a")
+          card.href = `/paper/${paper.id}`
+          card.className =
+            "block rounded-[24px] border border-slate-200/70 bg-white/85 px-5 py-4 text-slate-900 shadow-sm transition hover:-translate-y-0.5 dark:border-slate-800 dark:bg-slate-950/75 dark:text-slate-100"
+
+          const status = document.createElement("div")
+          status.className = "text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400"
+          status.textContent = `${paper.community_status || "community"} · ${paper.trans_status || "unknown"}`
+
+          const title = document.createElement("h2")
+          title.className = "mt-3 text-lg font-semibold"
+          title.textContent = paper.title || paper.arxiv_id || "Paper"
+
+          const meta = document.createElement("p")
+          meta.className = "mt-2 text-sm text-slate-600 dark:text-slate-300"
+          meta.textContent = Array.isArray(paper.categories) && paper.categories.length
+            ? paper.categories.join(" · ")
+            : paper.arxiv_id || ""
+
+          card.appendChild(status)
+          card.appendChild(title)
+          card.appendChild(meta)
+          listNode.appendChild(card)
+        })
+      }
+
+      if (!apiBase || !listNode) {
+        return
+      }
+
+      window.__COMMUNITY_BOOTSTRAP_PROMISE__ = fetch(`${apiBase}/api/papers?sort=latest&limit=3`, {
+        credentials: "omit",
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload) => {
+          if (payload && Array.isArray(payload.items)) {
+            window.__COMMUNITY_BOOTSTRAP__ = { feed: payload }
+            renderCards(payload)
+            return payload
+          }
+          return null
+        })
+        .catch(() => null)
+    })()
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

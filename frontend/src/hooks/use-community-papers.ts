@@ -5,25 +5,45 @@ import type { CommunityFeedSort, CommunityPaper } from "@/types/community"
 
 const SEARCH_DEBOUNCE_MS = 250
 
+function getBootstrappedFeed(sort: CommunityFeedSort, query: string) {
+  if (sort !== "latest" || query.trim()) {
+    return null
+  }
+  return window.__COMMUNITY_BOOTSTRAP__?.feed ?? null
+}
+
 export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
-  const [items, setItems] = useState<CommunityPaper[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const bootstrappedFeed = getBootstrappedFeed(sort, query)
+  const [items, setItems] = useState<CommunityPaper[]>(bootstrappedFeed?.items ?? [])
+  const [total, setTotal] = useState(bootstrappedFeed?.total ?? 0)
+  const [loading, setLoading] = useState(!bootstrappedFeed)
   const [error, setError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
   const normalizedQuery = useMemo(() => query.trim(), [query])
 
   useEffect(() => {
     let isCancelled = false
+    const shouldUseBootstrap = sort === "latest" && !normalizedQuery
+    const bootstrapPromise = shouldUseBootstrap ? window.__COMMUNITY_BOOTSTRAP_PROMISE__ : undefined
 
-    setLoading(true)
+    setLoading(!bootstrappedFeed)
     setError(null)
 
-    const timer = window.setTimeout(async () => {
+    const load = async () => {
       try {
+        if (bootstrapPromise && !window.__COMMUNITY_BOOTSTRAP__?.feed) {
+          const bootstrapResponse = await bootstrapPromise
+          if (!isCancelled && bootstrapResponse) {
+            setItems(bootstrapResponse.items)
+            setTotal(bootstrapResponse.total)
+            setLoading(false)
+          }
+        }
+
         const response = await getCommunityPapers({
           sort,
           q: normalizedQuery || undefined,
+          limit: undefined,
         })
         if (!isCancelled) {
           setItems(response.items)
@@ -40,13 +60,21 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
           setLoading(false)
         }
       }
-    }, SEARCH_DEBOUNCE_MS)
+    }
+
+    const shouldDebounce = Boolean(normalizedQuery)
+    const timer = shouldDebounce ? window.setTimeout(() => void load(), SEARCH_DEBOUNCE_MS) : null
+    if (!shouldDebounce) {
+      void load()
+    }
 
     return () => {
       isCancelled = true
-      window.clearTimeout(timer)
+      if (timer) {
+        window.clearTimeout(timer)
+      }
     }
-  }, [normalizedQuery, reloadToken, sort])
+  }, [bootstrappedFeed, normalizedQuery, reloadToken, sort])
 
   return {
     items,

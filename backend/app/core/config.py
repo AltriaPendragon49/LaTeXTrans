@@ -97,6 +97,11 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_DOWNLOAD_TOKEN_SECRET",
         description="Signing secret for short-lived community paper download tokens",
     )
+    community_baseline_seed_path: Optional[Path] = Field(
+        default=None,
+        validation_alias="COMMUNITY_BASELINE_SEED_PATH",
+        description="Optional JSON seed file used as a baseline public community feed when no public papers exist.",
+    )
     
     # LaTeX Compiler Settings
     latex_bin_dir: Optional[str] = Field(

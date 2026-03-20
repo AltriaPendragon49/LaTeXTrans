@@ -7,12 +7,16 @@ import hmac
 import json
 import logging
 import mimetypes
+import re
 import shutil
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import httpx
+import requests
 from fastapi import HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -22,6 +26,8 @@ from backend.app.api.routes import translate as translate_route
 from backend.app.api.routes import upload as upload_route
 from backend.app.core.config import TaskStatus, get_settings
 from backend.app.core.supabase_client import get_supabase_admin_client
+from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex
+from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_preview_service
 from backend.app.services.task_manager import get_task_manager, get_task_queue
 from backend.app.utils.async_blocking import run_db_blocking
@@ -40,10 +46,305 @@ TERMINAL_TASK_STATUSES = {
     "failed_compilation",
     "structure_invalid",
 }
+_preview_recovery_inflight: set[str] = set()
+_detail_repair_inflight: set[str] = set()
+_preview_payload_cache: Dict[str, Dict[str, Any]] = {}
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+async def _run_db_blocking_with_retry(
+    operation_name: str,
+    operation,
+    *,
+    retries: int = 1,
+) -> Any:
+    for attempt in range(retries + 1):
+        try:
+            return await run_db_blocking(operation)
+        except httpx.RemoteProtocolError:
+            if attempt >= retries:
+                raise
+            logger.warning(
+                "Transient Supabase disconnect during %s; retrying (%s/%s)",
+                operation_name,
+                attempt + 1,
+                retries + 1,
+            )
+            await asyncio.sleep(0.2)
+
+
+def _normalize_metadata_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = " ".join(str(value).split()).strip()
+    return normalized or None
+
+
+def _count_cjk_characters(value: Optional[str]) -> int:
+    text = _normalize_metadata_text(value) or ""
+    return len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]", text))
+
+
+def _looks_untranslated_for_zh(value: Optional[str]) -> bool:
+    text = _normalize_metadata_text(value) or ""
+    if not text:
+        return True
+    if _count_cjk_characters(text) > 0:
+        return False
+    return len(re.findall(r"[A-Za-z]", text)) >= 20
+
+
+def _should_replace_translated_abstract(
+    current_value: Optional[str],
+    candidate_value: Optional[str],
+    raw_abstract: Optional[str],
+) -> bool:
+    current = _normalize_metadata_text(current_value)
+    candidate = _normalize_metadata_text(candidate_value)
+    raw = _normalize_metadata_text(raw_abstract)
+    if not candidate:
+        return False
+    if not current:
+        return True
+    if current == candidate:
+        return False
+    if raw and current == raw:
+        return True
+    if _looks_untranslated_for_zh(current) and _count_cjk_characters(candidate) > 0:
+        return True
+    return False
+
+
+def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
+    response = requests.get(
+        "https://export.arxiv.org/api/query",
+        params={"id_list": arxiv_id},
+        headers={"User-Agent": "LaTexTrans/CommunityWeek1Fix"},
+        timeout=15,
+    )
+    response.raise_for_status()
+
+    root = ET.fromstring(response.text)
+    namespace = {"atom": "http://www.w3.org/2005/Atom"}
+    entry = root.find("atom:entry", namespace)
+    if entry is None:
+        return {}
+
+    title = _normalize_metadata_text(entry.findtext("atom:title", default="", namespaces=namespace))
+    abstract_raw = _normalize_metadata_text(entry.findtext("atom:summary", default="", namespaces=namespace))
+    authors = [
+        _normalize_metadata_text(author.findtext("atom:name", default="", namespaces=namespace))
+        for author in entry.findall("atom:author", namespace)
+    ]
+    categories = []
+    for category in entry.findall("atom:category", namespace):
+        term = _normalize_metadata_text(category.attrib.get("term"))
+        if term and term not in categories:
+            categories.append(term)
+
+    return {
+        "title": title,
+        "authors": [author for author in authors if author],
+        "categories": categories,
+        "abstract_raw": abstract_raw,
+    }
+
+
+async def _fetch_arxiv_metadata(arxiv_id: str) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(_fetch_arxiv_metadata_sync, arxiv_id)
+    except Exception as exc:
+        logger.warning("Failed to fetch arXiv metadata for %s: %s", arxiv_id, exc)
+        return {}
+
+
+def _needs_arxiv_metadata_hydration(paper: Dict[str, Any]) -> bool:
+    if paper.get("source") != "arxiv" or not paper.get("arxiv_id"):
+        return False
+    title = str(paper.get("title") or "").strip()
+    return (
+        not title
+        or title.startswith("arXiv:")
+        or not (paper.get("authors") or [])
+        or not (paper.get("categories") or [])
+        or not (paper.get("abstract_raw") or "").strip()
+    )
+
+
+def _best_available_metadata_payload(paper: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    title = _normalize_metadata_text(str(paper.get("title") or ""))
+    metadata_title = _normalize_metadata_text(metadata.get("title"))
+    if metadata_title and (not title or title.startswith("arXiv:")):
+        payload["title"] = metadata_title
+    if metadata.get("authors") and not (paper.get("authors") or []):
+        payload["authors"] = metadata["authors"]
+    if metadata.get("categories") and not (paper.get("categories") or []):
+        payload["categories"] = metadata["categories"]
+    if metadata.get("abstract_raw") and not _normalize_metadata_text(paper.get("abstract_raw")):
+        payload["abstract_raw"] = metadata["abstract_raw"]
+    return payload
+
+
+def _extract_plaintext_abstract_from_directory(directory: Path) -> Optional[str]:
+    if not directory.exists():
+        return None
+
+    main_tex = find_main_tex_file(directory)
+    if main_tex and Path(main_tex).exists():
+        try:
+            latex = Path(main_tex).read_text(encoding="utf-8")
+            abstract = extract_abstract(latex)
+            if abstract not in {"No abstract", "No title", ""}:
+                plain_text = _normalize_metadata_text(extract_text_from_tex(abstract))
+                if plain_text:
+                    return plain_text
+        except Exception:
+            pass
+
+    envs_map_path = directory / "envs_map.json"
+    if envs_map_path.exists():
+        try:
+            env_rows = json.loads(envs_map_path.read_text(encoding="utf-8"))
+        except Exception:
+            env_rows = []
+        if isinstance(env_rows, list):
+            for row in env_rows:
+                if str(row.get("env_name") or "").strip() != "abstract":
+                    continue
+                content = row.get("trans_content") or row.get("content") or ""
+                plain_text = _normalize_metadata_text(extract_text_from_tex(str(content)))
+                if plain_text:
+                    return plain_text
+
+    return None
+
+
+def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
+    candidates: List[Path] = []
+    seen: set[str] = set()
+
+    def _add_directory(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        try:
+            normalized = str(path.resolve())
+        except Exception:
+            normalized = str(path)
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        if path.exists() and path.is_dir():
+            candidates.append(path)
+
+    task = task_manager.get_task(task_id) if task_id else None
+    if task:
+        stored_output = _resolve_storage_path(task.get("output_path") or "")
+        _add_directory(stored_output)
+
+    task_root = Path(settings.outputs_dir) / task_id
+    _add_directory(task_root)
+    if task_root.exists() and task_root.is_dir():
+        for child in sorted(task_root.iterdir()):
+            if child.is_dir():
+                _add_directory(child)
+
+    return candidates
+
+
+def _extract_translated_abstract_from_task(task_id: str) -> Optional[str]:
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        abstract = _extract_plaintext_abstract_from_directory(output_dir)
+        if abstract:
+            return abstract
+    return None
+
+
+async def _hydrate_arxiv_metadata_if_needed(paper: Dict[str, Any]) -> Dict[str, Any]:
+    if not _needs_arxiv_metadata_hydration(paper):
+        return paper
+
+    metadata = await _fetch_arxiv_metadata(str(paper.get("arxiv_id")))
+    payload = _best_available_metadata_payload(paper, metadata)
+    if not payload:
+        return paper
+
+    payload["updated_at"] = _utc_now_iso()
+    return await _update_paper(str(paper["id"]), payload)
+
+
+async def _hydrate_translated_abstract_if_needed(
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    current_abstract = _normalize_metadata_text(paper.get("abstract_translated"))
+    if current_abstract and not _looks_untranslated_for_zh(current_abstract):
+        return paper
+
+    for task_id in _candidate_task_ids_for_asset_recovery(paper, asset_map):
+        abstract_translated = _extract_translated_abstract_from_task(task_id)
+        if _should_replace_translated_abstract(
+            current_abstract,
+            abstract_translated,
+            paper.get("abstract_raw"),
+        ):
+            return await _update_paper(
+                str(paper["id"]),
+                {
+                    "abstract_translated": abstract_translated,
+                    "updated_at": _utc_now_iso(),
+                },
+            )
+
+    return paper
+
+
+async def _repair_public_detail_in_background(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]],
+) -> None:
+    if paper_id in _detail_repair_inflight:
+        return
+
+    _detail_repair_inflight.add(paper_id)
+    try:
+        repaired = await _hydrate_arxiv_metadata_if_needed(paper)
+        await _hydrate_translated_abstract_if_needed(repaired, asset_map=asset_map)
+    except Exception as exc:
+        logger.warning("Failed to repair public detail for paper %s: %s", paper_id, exc)
+    finally:
+        _detail_repair_inflight.discard(paper_id)
+
+
+def _schedule_public_detail_repair(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]],
+) -> bool:
+    needs_metadata = _needs_arxiv_metadata_hydration(paper)
+    current_abstract = _normalize_metadata_text(paper.get("abstract_translated"))
+    needs_translated_abstract = not current_abstract or _looks_untranslated_for_zh(current_abstract)
+
+    if paper_id in _detail_repair_inflight:
+        return False
+
+    if not needs_metadata and not needs_translated_abstract:
+        return False
+
+    asyncio.create_task(
+        _repair_public_detail_in_background(
+            paper_id=paper_id,
+            paper=paper,
+            asset_map=asset_map,
+        )
+    )
+    return True
 
 
 def _resolve_storage_path(stored_path: Optional[str]) -> Path:
@@ -54,6 +355,247 @@ def _resolve_storage_path(stored_path: Optional[str]) -> Path:
     if candidate.is_absolute():
         return candidate
     return settings.base_dir / candidate
+
+
+def _normalize_search_text(value: Optional[str]) -> str:
+    return " ".join(str(value or "").split()).strip().lower()
+
+
+def _matches_paper_query(paper: Dict[str, Any], query: Optional[str]) -> bool:
+    normalized_query = _normalize_search_text(query)
+    if not normalized_query:
+        return True
+
+    searchable_parts = [
+        paper.get("title"),
+        paper.get("arxiv_id"),
+        paper.get("abstract_raw"),
+        paper.get("abstract_translated"),
+        " ".join(str(category) for category in (paper.get("categories") or [])),
+        " ".join(
+            str(author.get("name") if isinstance(author, dict) else author)
+            for author in (paper.get("authors") or [])
+        ),
+    ]
+    haystack = _normalize_search_text(" ".join(part for part in searchable_parts if part))
+    return normalized_query in haystack
+
+
+def _load_baseline_seed_rows() -> List[Dict[str, Any]]:
+    baseline_path = getattr(settings, "community_baseline_seed_path", None)
+    if not baseline_path:
+        return []
+
+    path = Path(baseline_path)
+    if not path.exists():
+        logger.warning("Community baseline seed file is configured but missing: %s", path)
+        return []
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to parse community baseline seed file %s: %s", path, exc)
+        return []
+
+    rows = payload.get("items") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        return []
+
+    normalized_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        normalized = dict(row)
+        normalized.setdefault("visibility", "public")
+        normalized.setdefault("status", "published")
+        normalized_rows.append(normalized)
+    return normalized_rows
+
+
+def _preview_asset_needs_refresh(preview_path: Path) -> bool:
+    if not preview_path.exists():
+        return True
+
+    try:
+        html_content = preview_path.read_text(encoding="utf-8")
+    except Exception:
+        return True
+
+    return _preview_html_needs_refresh(html_content)
+
+
+def _preview_html_needs_refresh(html_content: str) -> bool:
+    stale_markers = (
+        'data-reader-version="reader-v1"',
+        'data-reader-version="reader-v2"',
+        'data-reader-version="reader-v3"',
+        'data-reader-version="reader-v4"',
+        'data-reader-version="reader-v5"',
+        'data-reader-version="reader-v6"',
+        'data-reader-version="reader-v7"',
+        'data-reader-version="reader-v8"',
+        'data-reader-version="day4"',
+        "\\begin{document}",
+        "\\clearpage",
+        "\\begin{figure",
+        "\\begin{algorithm",
+        "\\paragraph{",
+        "\\PARR{",
+        "\\KwData",
+        "\\SetAlgoLined",
+        "\\For{",
+        "\\multirow{",
+        "\\resizebox{",
+        "\\hdashline",
+        "\\textsubscript{",
+        "[1.1pt]",
+        "LNCE=",
+        "paper-preview__latex",
+        "<PLACEHOLDER_",
+        "<PROTECTED_",
+    )
+    if any(marker in html_content for marker in stale_markers):
+        return True
+
+    current_marker = f'data-reader-version="{paper_preview_service.PREVIEW_READER_VERSION}"'
+    if current_marker in html_content:
+        return False
+
+    version_match = re.search(r'data-reader-version="([^"]+)"', html_content)
+    if version_match:
+        return version_match.group(1) != paper_preview_service.PREVIEW_READER_VERSION
+
+    return False
+
+
+def _preview_payload_cache_key(
+    preview_path: Path,
+    preview_asset: Dict[str, Any],
+) -> Optional[str]:
+    if not preview_path.exists():
+        return None
+
+    try:
+        stat_result = preview_path.stat()
+    except OSError:
+        return None
+
+    resolved_path = preview_path.resolve() if hasattr(preview_path, "resolve") else preview_path
+    st_mtime_ns = getattr(stat_result, "st_mtime_ns", None)
+    if st_mtime_ns is None:
+        st_mtime = getattr(stat_result, "st_mtime", None)
+        st_mtime_ns = int(float(st_mtime) * 1_000_000_000) if st_mtime is not None else 0
+    st_size = getattr(stat_result, "st_size", 0)
+
+    return "|".join(
+        [
+            str(resolved_path),
+            str(preview_asset.get("id") or ""),
+            str(preview_asset.get("created_at") or ""),
+            str(st_mtime_ns),
+            str(st_size),
+        ]
+    )
+
+
+def _load_preview_payload(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    preview_asset: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
+    if not preview_path.exists():
+        return None
+
+    cache_key = _preview_payload_cache_key(preview_path, preview_asset)
+    if cache_key:
+        cached_payload = _preview_payload_cache.get(cache_key)
+        if cached_payload is not None:
+            return cached_payload
+
+    try:
+        html_content = preview_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    if _preview_html_needs_refresh(html_content):
+        return None
+
+    payload = {
+        "paper_id": paper_id,
+        "task_id": preview_asset.get("task_id") or paper.get("community_selected_task_id"),
+        "asset": _serialize_public_asset(preview_asset),
+        "html_content": html_content.replace("<script", "&lt;script"),
+        "generated_at": preview_asset.get("created_at"),
+    }
+    if cache_key:
+        _preview_payload_cache[cache_key] = payload
+    return payload
+
+
+def _build_preview_payload(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    preview_asset: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    return _load_preview_payload(
+        paper_id=paper_id,
+        paper=paper,
+        preview_asset=preview_asset,
+    )
+
+
+async def _recover_preview_asset_in_background(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]],
+) -> None:
+    if paper_id in _preview_recovery_inflight:
+        return
+
+    _preview_recovery_inflight.add(paper_id)
+    try:
+        current_asset_map = asset_map or {}
+        for task_id in _candidate_task_ids_for_asset_recovery(paper, current_asset_map):
+            preview_asset = await _resolve_preview_html_asset(
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_map=current_asset_map,
+            )
+            if preview_asset:
+                return
+    except Exception as exc:
+        logger.warning("Failed to recover preview asset for paper %s: %s", paper_id, exc)
+    finally:
+        _preview_recovery_inflight.discard(paper_id)
+
+
+def _schedule_preview_recovery(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]],
+) -> bool:
+    if paper_id in _preview_recovery_inflight:
+        return False
+
+    if paper.get("trans_status") not in {"completed", "completed_with_warnings"}:
+        return False
+
+    if not _candidate_task_ids_for_asset_recovery(paper, asset_map):
+        return False
+
+    asyncio.create_task(
+        _recover_preview_asset_in_background(
+            paper_id=paper_id,
+            paper=paper,
+            asset_map=asset_map,
+        )
+    )
+    return True
 
 
 def _store_relative_path(path: Path | str) -> str:
@@ -95,6 +637,13 @@ def _community_asset_destination(
 
 
 def _copy_into_community_library(source_path: Path, destination_path: Path) -> Path:
+    try:
+        if source_path.resolve() == destination_path.resolve():
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            return destination_path
+    except FileNotFoundError:
+        pass
+
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     if destination_path.exists():
         if destination_path.is_dir():
@@ -148,7 +697,8 @@ async def resolve_submitter_context(
             detail="Supabase admin client unavailable",
         )
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "resolve_submitter_context",
         lambda: (
             admin_client.table("user_roles")
             .select("role")
@@ -186,7 +736,8 @@ async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "fetch_paper_by_id",
         lambda: (
             admin_client.table("papers")
             .select(_paper_select_clause())
@@ -204,7 +755,8 @@ async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "fetch_paper_by_arxiv_id",
         lambda: (
             admin_client.table("papers")
             .select(_paper_select_clause())
@@ -234,7 +786,7 @@ async def _fetch_paper_by_title(*, title: str, source: Optional[str] = None) -> 
             query = query.eq("source", source)
         return query.execute()
 
-    result = await run_db_blocking(_query)
+    result = await _run_db_blocking_with_retry("fetch_paper_by_title", _query)
     rows = result.data or []
     return rows[0] if rows else None
 
@@ -244,7 +796,8 @@ async def _insert_paper(payload: Dict[str, Any]) -> Dict[str, Any]:
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "insert_paper",
         lambda: admin_client.table("papers").insert(payload).execute()
     )
     rows = result.data or []
@@ -258,7 +811,8 @@ async def _update_paper(paper_id: str, payload: Dict[str, Any]) -> Dict[str, Any
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "update_paper",
         lambda: admin_client.table("papers").update(payload).eq("id", paper_id).execute()
     )
     rows = result.data or []
@@ -275,7 +829,8 @@ async def _fetch_asset_rows_for_paper(paper_id: str) -> List[Dict[str, Any]]:
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "fetch_asset_rows_for_paper",
         lambda: (
             admin_client.table("paper_assets")
             .select("id, paper_id, task_id, asset_type, file_path, file_name, mime_type, is_latest, created_at")
@@ -313,7 +868,8 @@ async def _upsert_latest_asset(
     resolved_name = file_name or Path(file_path).name
     resolved_mime = mime_type or mimetypes.guess_type(resolved_name)[0] or "application/octet-stream"
 
-    await run_db_blocking(
+    await _run_db_blocking_with_retry(
+        "clear_latest_asset",
         lambda: (
             admin_client.table("paper_assets")
             .update({"is_latest": False})
@@ -322,7 +878,8 @@ async def _upsert_latest_asset(
             .execute()
         )
     )
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "insert_latest_asset",
         lambda: (
             admin_client.table("paper_assets")
             .insert(
@@ -354,7 +911,8 @@ async def _fetch_latest_assets(paper_ids: List[str]) -> Dict[str, Dict[str, Any]
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "fetch_latest_assets",
         lambda: (
             admin_client.table("paper_assets")
             .select("id, paper_id, task_id, asset_type, file_path, file_name, mime_type, is_latest, created_at")
@@ -425,6 +983,96 @@ def _select_latest_asset_from_map(asset_map: Optional[Dict[str, Dict[str, Any]]]
     return None
 
 
+def _normalize_paper_state_from_assets(
+    paper: Dict[str, Any],
+    *,
+    latest_asset: Optional[Dict[str, Any]] = None,
+    asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    normalized = dict(paper)
+    selected_latest_asset = latest_asset or _select_latest_asset_from_map(asset_map)
+    translated_asset: Optional[Dict[str, Any]] = None
+    if asset_map:
+        translated_asset = asset_map.get("preview_html") or asset_map.get("translated_pdf")
+    if (
+        translated_asset is None
+        and selected_latest_asset
+        and selected_latest_asset.get("asset_type") in {"preview_html", "translated_pdf"}
+    ):
+        translated_asset = selected_latest_asset
+
+    if translated_asset:
+        normalized["trans_status"] = "completed"
+        if translated_asset.get("task_id"):
+            normalized["community_selected_task_id"] = translated_asset.get("task_id")
+        if translated_asset.get("id"):
+            normalized["community_selected_asset_id"] = translated_asset.get("id")
+
+    return normalized
+
+
+def _candidate_task_ids_for_asset_recovery(
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[str]:
+    candidates: List[str] = []
+    if asset_map:
+        for asset_type in ("preview_html", "translated_pdf", "source_archive"):
+            asset = asset_map.get(asset_type)
+            task_id = asset.get("task_id") if asset else None
+            if task_id and task_id not in candidates:
+                candidates.append(str(task_id))
+    for task_id in (paper.get("trans_latest_task_id"), paper.get("community_selected_task_id")):
+        if task_id and task_id not in candidates:
+            candidates.append(str(task_id))
+    return candidates
+
+
+def _candidate_source_directories_for_preview(
+    *,
+    paper_id: str,
+    task_id: str,
+    asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[Path]:
+    candidates: List[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        try:
+            normalized = str(path.resolve())
+        except Exception:
+            normalized = str(path)
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        if path.exists() and path.is_dir():
+            candidates.append(path)
+
+    if asset_map:
+        source_asset = asset_map.get("source_archive")
+        if source_asset and source_asset.get("file_path"):
+            _add(_resolve_storage_path(source_asset.get("file_path")))
+
+    task = task_manager.get_task(task_id) if task_id else None
+    if task:
+        _add(_resolve_storage_path(task.get("source_path") or ""))
+
+    paper_source_root = _community_library_root(paper_id) / "source"
+    _add(paper_source_root)
+    if paper_source_root.exists():
+        for child in sorted(paper_source_root.iterdir()):
+            if child.is_dir():
+                _add(child)
+
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        _add(output_dir)
+        _add(output_dir.parent)
+
+    return candidates
+
+
 def _public_asset_map(asset_map: Optional[Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, Dict[str, Any]]]:
     if not asset_map:
         return None
@@ -448,7 +1096,8 @@ async def _fetch_viewer_state(
     if admin_client is None:
         return default_state
 
-    likes = await run_db_blocking(
+    likes = await _run_db_blocking_with_retry(
+        "fetch_viewer_likes",
         lambda: (
             admin_client.table("paper_likes")
             .select("paper_id")
@@ -457,7 +1106,8 @@ async def _fetch_viewer_state(
             .execute()
         )
     )
-    favorites = await run_db_blocking(
+    favorites = await _run_db_blocking_with_retry(
+        "fetch_viewer_favorites",
         lambda: (
             admin_client.table("paper_favorites")
             .select("paper_id")
@@ -535,7 +1185,8 @@ async def _increment_paper_download_count(paper_id: str) -> Dict[str, Any]:
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "increment_paper_download_count",
         lambda: (
             admin_client.rpc(
                 "increment_paper_download_count",
@@ -554,62 +1205,84 @@ async def _resolve_translated_pdf_asset(
     paper_id: str,
     task_id: str,
 ) -> Optional[Dict[str, Any]]:
-    task = task_manager.get_task(task_id)
-    if not task:
-        return None
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        pdf_path = download_route._find_translated_pdf(output_dir)
+        if not pdf_path or not pdf_path.exists():
+            continue
 
-    output_dir = _resolve_storage_path(task.get("output_path") or "")
-    if not output_dir.exists():
-        return None
+        destination = _community_asset_destination(
+            paper_id=paper_id,
+            task_id=task_id,
+            asset_type="translated_pdf",
+            source_name=pdf_path.name,
+        )
+        copied = _copy_into_community_library(pdf_path, destination)
 
-    pdf_path = download_route._find_translated_pdf(output_dir)
-    if not pdf_path or not pdf_path.exists():
-        return None
-    destination = _community_asset_destination(
-        paper_id=paper_id,
-        task_id=task_id,
-        asset_type="translated_pdf",
-        source_name=pdf_path.name,
-    )
-    copied = _copy_into_community_library(pdf_path, destination)
+        asset = await _upsert_latest_asset(
+            paper_id=paper_id,
+            task_id=task_id,
+            asset_type="translated_pdf",
+            file_path=_store_relative_path(copied),
+            file_name=copied.name,
+            mime_type="application/pdf",
+        )
+        await _update_paper(
+            paper_id,
+            {
+                "trans_latest_asset_pdf_id": asset.get("id"),
+                "updated_at": _utc_now_iso(),
+            },
+        )
+        return asset
 
-    asset = await _upsert_latest_asset(
-        paper_id=paper_id,
-        task_id=task_id,
-        asset_type="translated_pdf",
-        file_path=_store_relative_path(copied),
-        file_name=copied.name,
-        mime_type="application/pdf",
-    )
-    await _update_paper(
-        paper_id,
-        {
-            "trans_latest_asset_pdf_id": asset.get("id"),
-            "updated_at": _utc_now_iso(),
-        },
-    )
-    return asset
+    return None
+
+
+async def _ensure_translated_pdf_asset(
+    *,
+    paper: Dict[str, Any],
+    asset_map: Dict[str, Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    translated_asset = asset_map.get("translated_pdf")
+    if translated_asset:
+        return translated_asset
+
+    for task_id in _candidate_task_ids_for_asset_recovery(paper, asset_map):
+        translated_asset = await _resolve_translated_pdf_asset(
+            paper_id=str(paper["id"]),
+            task_id=task_id,
+        )
+        if translated_asset:
+            asset_map["translated_pdf"] = translated_asset
+            return translated_asset
+
+    return None
 
 
 async def _resolve_preview_html_asset(
     *,
     paper_id: str,
     task_id: str,
+    asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    task = task_manager.get_task(task_id)
-    if not task:
-        return None
+    preview_asset: Optional[Dict[str, str]] = None
+    source_dirs = _candidate_source_directories_for_preview(
+        paper_id=paper_id,
+        task_id=task_id,
+        asset_map=asset_map,
+    )
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        try:
+            preview_asset = paper_preview_service.generate_preview_html(
+                output_dir,
+                target_dir=_community_library_root(paper_id) / "preview",
+                source_dirs=source_dirs,
+            )
+            break
+        except FileNotFoundError:
+            continue
 
-    output_dir = _resolve_storage_path(task.get("output_path") or "")
-    if not output_dir.exists():
-        return None
-
-    try:
-        preview_asset = paper_preview_service.generate_preview_html(
-            output_dir,
-            target_dir=_community_library_root(paper_id) / "preview",
-        )
-    except FileNotFoundError:
+    if not preview_asset:
         return None
 
     return await _upsert_latest_asset(
@@ -748,20 +1421,27 @@ def _paper_payload(
     title: str,
     created_by: str,
     community_status: str,
+    authors: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    abstract_raw: Optional[str] = None,
+    abstract_translated: Optional[str] = None,
     arxiv_id: Optional[str] = None,
     task_id: Optional[str] = None,
     selected_asset_id: Optional[str] = None,
     official_published_at: Optional[str] = None,
+    trans_status: str = "queued",
 ) -> Dict[str, Any]:
     return {
         "source": source,
         "arxiv_id": arxiv_id,
         "title": title,
-        "authors": [],
-        "categories": [],
+        "authors": authors or [],
+        "categories": categories or [],
+        "abstract_raw": abstract_raw,
+        "abstract_translated": abstract_translated,
         "visibility": "public",
         "status": "published",
-        "trans_status": "queued",
+        "trans_status": trans_status,
         "created_by": created_by,
         "trans_latest_task_id": task_id,
         "community_status": community_status,
@@ -867,18 +1547,22 @@ async def _sync_task_assets_for_paper(
             task_id=task_id,
             source_path=task.get("source_path"),
         )
-        update_payload: Dict[str, Any] = {
-            "trans_status": "processing" if task.get("status") == "processing" else "queued",
-            "community_selected_task_id": task_id,
-            "updated_at": _utc_now_iso(),
-        }
+        task_status = task.get("status")
+        update_payload: Dict[str, Any] = {"updated_at": _utc_now_iso()}
+        if task_status == "pending":
+            update_payload["trans_status"] = "not_started"
+        else:
+            update_payload["trans_status"] = "processing" if task_status == "processing" else "queued"
+            update_payload["community_selected_task_id"] = task_id
         if asset:
             source_asset_id = asset.get("id")
             update_payload["community_selected_asset_id"] = source_asset_id
         if promote_to_official:
             update_payload["community_status"] = COMMUNITY_STATUS_OFFICIAL
             update_payload["official_published_at"] = _utc_now_iso()
-        await _update_paper(paper_id, update_payload)
+        paper = await _update_paper(paper_id, update_payload)
+        if task_status == "pending":
+            return {"done": True, "status": "pending", "paper": paper}
 
     if task.get("status") in {"completed", "completed_with_warnings"}:
         translated_asset = await _resolve_translated_pdf_asset(
@@ -1023,6 +1707,11 @@ def _paper_summary(
     asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
     viewer_state: Optional[Dict[str, bool]] = None,
 ) -> Dict[str, Any]:
+    paper = _normalize_paper_state_from_assets(
+        paper,
+        latest_asset=latest_asset,
+        asset_map=asset_map,
+    )
     selected_latest_asset = latest_asset or _select_latest_asset_from_map(asset_map)
     return {
         "id": paper.get("id"),
@@ -1076,6 +1765,7 @@ async def submit_uploaded_paper(
             community_status=community_status,
             task_id=upload_response.task_id,
             official_published_at=official_published_at,
+            trans_status="not_started",
         )
     )
 
@@ -1088,6 +1778,7 @@ async def submit_uploaded_paper(
         paper = await _update_paper(
             paper["id"],
             {
+                "trans_status": "not_started",
                 "community_selected_asset_id": asset["id"],
                 "updated_at": _utc_now_iso(),
             },
@@ -1134,6 +1825,7 @@ async def submit_arxiv_paper(
         request=arxiv_route.ArxivRequest(arxiv_id=arxiv_id),
         credentials=credentials,
     )
+    metadata = await _fetch_arxiv_metadata(arxiv_id)
 
     if existing:
         update_payload: Dict[str, Any] = {
@@ -1144,6 +1836,7 @@ async def submit_arxiv_paper(
             "official_published_at": _utc_now_iso(),
             "updated_at": _utc_now_iso(),
         }
+        update_payload.update(_best_available_metadata_payload(existing, metadata))
         paper = await _update_paper(existing["id"], update_payload)
         admission_result = "created"
     else:
@@ -1151,9 +1844,12 @@ async def submit_arxiv_paper(
             _paper_payload(
                 source="arxiv",
                 arxiv_id=arxiv_id,
-                title=f"arXiv:{arxiv_id}",
+                title=metadata.get("title") or f"arXiv:{arxiv_id}",
                 created_by=context["user_id"],
                 community_status=admission["community_status"],
+                authors=metadata.get("authors"),
+                categories=metadata.get("categories"),
+                abstract_raw=metadata.get("abstract_raw"),
                 task_id=arxiv_response.task_id,
                 official_published_at=_utc_now_iso() if context["is_admin"] else None,
             )
@@ -1208,30 +1904,40 @@ async def start_paper_translation(
     source_asset = asset_map.get("source_archive")
     if source_asset and source_asset.get("file_path"):
         resolved_source_path = _resolve_storage_path(source_asset["file_path"])
-        task_id = task_manager.create_task(
-            source_type=paper.get("source") or "upload",
-            arxiv_id=paper.get("arxiv_id"),
-            user_id=context["user_id"],
-            source_language=request.source_language,
-            target_language=request.target_language,
-            persist_to_db=False,
-        )
-        task_manager.update_task(
-            task_id=task_id,
-            source_path=str(resolved_source_path).replace("\\", "/"),
-            source_available=True,
-            arxiv_id=paper.get("arxiv_id"),
-            source_language=request.source_language,
-            target_language=request.target_language,
-            advanced_config=request.advanced_config.model_dump(),
-            user_id=context["user_id"],
-        )
-        task_manager.persist_task_if_needed(task_id)
-        translation_result = await _enqueue_existing_task_translation(
-            task_id=task_id,
-            request=request,
-            credentials=credentials,
-        )
+        if resolved_source_path.exists():
+            task_id = task_manager.create_task(
+                source_type=paper.get("source") or "upload",
+                arxiv_id=paper.get("arxiv_id"),
+                user_id=context["user_id"],
+                source_language=request.source_language,
+                target_language=request.target_language,
+                persist_to_db=False,
+            )
+            task_manager.update_task(
+                task_id=task_id,
+                source_path=str(resolved_source_path).replace("\\", "/"),
+                source_available=True,
+                arxiv_id=paper.get("arxiv_id"),
+                source_language=request.source_language,
+                target_language=request.target_language,
+                advanced_config=request.advanced_config.model_dump(),
+                user_id=context["user_id"],
+            )
+            task_manager.persist_task_if_needed(task_id)
+            translation_result = await _enqueue_existing_task_translation(
+                task_id=task_id,
+                request=request,
+                credentials=credentials,
+            )
+        elif paper.get("source") == "arxiv" and paper.get("arxiv_id"):
+            translation_result = await _start_arxiv_paper_translation(
+                paper=paper,
+                request=request,
+                context=context,
+            )
+            task_id = translation_result["task_id"]
+        else:
+            raise HTTPException(status_code=422, detail="Paper source is unavailable for translation")
     elif paper.get("source") == "arxiv" and paper.get("arxiv_id"):
         translation_result = await _start_arxiv_paper_translation(
             paper=paper,
@@ -1271,28 +1977,47 @@ async def get_paper_preview(*, paper_id: str) -> Dict[str, Any]:
     paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
     preview_asset = asset_map.get("preview_html")
+    preview_payload = (
+        _build_preview_payload(
+            paper_id=paper_id,
+            paper=paper,
+            preview_asset=preview_asset,
+        )
+        if preview_asset
+        else None
+    )
+    if preview_payload:
+        return preview_payload
+    if preview_asset:
+        preview_asset = None
+
+    if not preview_asset:
+        for task_id in _candidate_task_ids_for_asset_recovery(paper, asset_map):
+            preview_asset = await _resolve_preview_html_asset(
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_map=asset_map,
+            )
+            if preview_asset:
+                break
     if not preview_asset:
         raise HTTPException(status_code=404, detail="Preview not available")
 
-    preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
-    if not preview_path.exists():
-        raise HTTPException(status_code=404, detail="Preview file not found")
+    preview_payload = _build_preview_payload(
+        paper_id=paper_id,
+        paper=paper,
+        preview_asset=preview_asset,
+    )
+    if preview_payload:
+        return preview_payload
 
-    html_content = preview_path.read_text(encoding="utf-8")
-    html_content = html_content.replace("<script", "&lt;script")
-    return {
-        "paper_id": paper_id,
-        "task_id": preview_asset.get("task_id") or paper.get("community_selected_task_id"),
-        "asset": _serialize_public_asset(preview_asset),
-        "html_content": html_content,
-        "generated_at": preview_asset.get("created_at"),
-    }
+    raise HTTPException(status_code=404, detail="Preview file not found")
 
 
 async def create_paper_download_session(*, paper_id: str) -> Dict[str, Any]:
-    await _ensure_public_paper(paper_id)
+    paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
-    translated_asset = asset_map.get("translated_pdf")
+    translated_asset = await _ensure_translated_pdf_asset(paper=paper, asset_map=asset_map)
     if not translated_asset:
         raise HTTPException(status_code=404, detail="Translated PDF not available")
 
@@ -1318,9 +2043,9 @@ async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]
     if payload.get("paper_id") != paper_id:
         raise HTTPException(status_code=403, detail="Download token does not match paper")
 
-    await _ensure_public_paper(paper_id)
+    paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
-    translated_asset = asset_map.get("translated_pdf")
+    translated_asset = await _ensure_translated_pdf_asset(paper=paper, asset_map=asset_map)
     if not translated_asset:
         raise HTTPException(status_code=404, detail="Translated PDF not available")
     if payload.get("asset_id") != translated_asset.get("id"):
@@ -1330,7 +2055,10 @@ async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Translated PDF file not found")
 
-    await _increment_paper_download_count(paper_id)
+    try:
+        await _increment_paper_download_count(paper_id)
+    except Exception as exc:
+        logger.warning("Failed to increment download count for paper %s: %s", paper_id, exc)
     return {
         "paper_id": paper_id,
         "asset": translated_asset,
@@ -1343,38 +2071,52 @@ async def list_community_papers(
     sort: str = "latest",
     q: Optional[str] = None,
     viewer_user_id: Optional[str] = None,
+    limit: Optional[int] = None,
 ) -> Dict[str, Any]:
-    del q
-
     admin_client = get_supabase_admin_client()
-    if admin_client is None:
+    papers: List[Dict[str, Any]] = []
+    source_mode = "database"
+    if admin_client is not None:
+        result = await _run_db_blocking_with_retry(
+            "list_community_papers",
+            lambda: (
+                admin_client.table("papers")
+                .select(_paper_select_clause())
+                .eq("visibility", "public")
+                .neq("status", "removed")
+                .execute()
+            )
+        )
+        papers = result.data or []
+
+    if not papers:
+        baseline_rows = _load_baseline_seed_rows()
+        if baseline_rows:
+            papers = baseline_rows
+            source_mode = "baseline_seed"
+
+    if not papers and admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
-        lambda: (
-            admin_client.table("papers")
-            .select(_paper_select_clause())
-            .eq("visibility", "public")
-            .neq("status", "removed")
-            .execute()
-        )
-    )
-    papers = result.data or []
+    papers = [paper for paper in papers if _matches_paper_query(paper, q)]
     papers = _sort_papers(papers, sort)
+    if limit is not None and limit > 0:
+        papers = papers[:limit]
 
     paper_ids = [paper["id"] for paper in papers]
-    latest_assets = await _fetch_latest_assets(paper_ids)
+    latest_assets = await _fetch_latest_assets(paper_ids) if admin_client is not None else {}
     items = [
         _paper_summary(paper, latest_asset=latest_assets.get(paper["id"]))
         for paper in papers
     ]
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": len(items), "source_mode": source_mode}
 
 
 async def get_community_paper_detail(
     *,
     paper_id: str,
     viewer_user_id: Optional[str] = None,
+    fast_path: bool = False,
 ) -> Dict[str, Any]:
     paper = await _fetch_paper_by_id(paper_id)
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
@@ -1387,10 +2129,41 @@ async def get_community_paper_detail(
         latest_asset = _select_latest_asset_from_map(asset_map)
     except HTTPException:
         latest_asset = (await _fetch_latest_assets([paper_id])).get(paper_id)
+    if fast_path:
+        _schedule_public_detail_repair(
+            paper_id=paper_id,
+            paper=paper,
+            asset_map=asset_map,
+        )
+    else:
+        paper = await _hydrate_arxiv_metadata_if_needed(paper)
+        paper = await _hydrate_translated_abstract_if_needed(
+            paper,
+            asset_map=asset_map,
+        )
     viewer_state = (await _fetch_viewer_state([paper_id], user_id=viewer_user_id)).get(
         paper_id,
         {"liked": False, "favorited": False},
     )
+    preview_payload: Optional[Dict[str, Any]] = None
+    reader_state = "unavailable"
+    if asset_map:
+        preview_asset = asset_map.get("preview_html")
+        if preview_asset:
+            preview_payload = _build_preview_payload(
+                paper_id=paper_id,
+                paper=paper,
+                preview_asset=preview_asset,
+            )
+        if preview_payload:
+            reader_state = "ready"
+        elif _schedule_preview_recovery(
+            paper_id=paper_id,
+            paper=paper,
+            asset_map=asset_map,
+        ) or paper.get("trans_status") in {"queued", "processing"}:
+            reader_state = "warming"
+
     return {
         "paper": _paper_summary(
             paper,
@@ -1398,6 +2171,8 @@ async def get_community_paper_detail(
             asset_map=asset_map,
             viewer_state=viewer_state,
         ),
+        "preview": preview_payload,
+        "reader_state": reader_state,
     }
 
 
@@ -1406,7 +2181,8 @@ async def record_community_paper_view(*, paper_id: str) -> Dict[str, Any]:
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
 
-    result = await run_db_blocking(
+    result = await _run_db_blocking_with_retry(
+        "increment_paper_view_count",
         lambda: (
             admin_client.rpc(
                 "increment_paper_view_count",

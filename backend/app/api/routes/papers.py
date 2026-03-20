@@ -4,7 +4,7 @@ import base64
 import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -86,10 +86,13 @@ class PaperSubmitResponse(BaseModel):
 class PaperListResponse(BaseModel):
     items: List[PaperSummary]
     total: int
+    source_mode: str = "database"
 
 
 class PaperDetailResponse(BaseModel):
     paper: PaperSummary
+    preview: Optional["PaperPreviewResponse"] = None
+    reader_state: str = "unavailable"
 
 
 class PaperViewResponse(BaseModel):
@@ -118,6 +121,9 @@ class PaperDownloadSessionResponse(BaseModel):
     asset_id: str
     download_url: str
     expires_at: str
+
+
+PaperDetailResponse.model_rebuild()
 
 
 @router.post("/submit", response_model=PaperSubmitResponse)
@@ -172,28 +178,39 @@ async def submit_paper(
 
 @router.get("", response_model=PaperListResponse)
 async def list_papers(
+    response: Response,
     sort: str = "latest",
     q: Optional[str] = None,
+    limit: Optional[int] = Query(default=None, ge=1, le=12),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ):
     user_id = _decode_user_id(credentials)
-    return await paper_service.list_community_papers(
+    payload = await paper_service.list_community_papers(
         sort=sort,
         q=q,
         viewer_user_id=user_id,
+        limit=limit,
     )
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+    response.headers["X-Community-Source-Mode"] = payload.get("source_mode", "database")
+    return payload
 
 
 @router.get("/{paper_id}", response_model=PaperDetailResponse)
 async def get_paper_detail(
     paper_id: str,
+    response: Response,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ):
     user_id = _decode_user_id(credentials)
-    return await paper_service.get_community_paper_detail(
+    payload = await paper_service.get_community_paper_detail(
         paper_id=paper_id,
         viewer_user_id=user_id,
+        fast_path=True,
     )
+    response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=120"
+    response.headers["X-Reader-State"] = payload.get("reader_state", "unavailable")
+    return payload
 
 
 @router.post("/{paper_id}/view", response_model=PaperViewResponse)
@@ -222,8 +239,10 @@ async def translate_paper(
 
 
 @router.get("/{paper_id}/preview", response_model=PaperPreviewResponse)
-async def preview_paper(paper_id: str):
-    return await paper_service.get_paper_preview(paper_id=paper_id)
+async def preview_paper(paper_id: str, response: Response):
+    payload = await paper_service.get_paper_preview(paper_id=paper_id)
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
+    return payload
 
 
 @router.post("/{paper_id}/download-session", response_model=PaperDownloadSessionResponse)

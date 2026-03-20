@@ -36,9 +36,9 @@ export function PaperFeedToolbar({
   const { t } = useTranslation()
 
   return (
-    <div className="rounded-[24px] border border-white/10 bg-[#1b1b1b] p-4 shadow-[0_18px_40px_-34px_rgba(0,0,0,0.78)]">
+    <div className="rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[var(--shell-panel-shadow)]">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="inline-flex flex-wrap gap-2 rounded-[18px] border border-white/10 bg-[#222222] p-1">
+        <div className="inline-flex flex-wrap gap-2 rounded-[18px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] p-1">
           {SORTS.map((entry) => (
             <button
               key={entry}
@@ -47,8 +47,8 @@ export function PaperFeedToolbar({
               className={cn(
                 "min-h-11 rounded-[14px] px-4 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
                 sort === entry
-                  ? "bg-slate-500/14 text-slate-50 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)]"
-                  : "text-slate-300 hover:bg-white/[0.04] hover:text-white",
+                  ? "bg-slate-500/14 text-[var(--shell-heading)] shadow-[inset_0_0_0_1px_var(--shell-border)]"
+                  : "text-[var(--shell-text-soft)] hover:bg-[var(--shell-pill)] hover:text-[var(--shell-heading)]",
               )}
             >
               {getSortLabel(entry, t)}
@@ -58,19 +58,19 @@ export function PaperFeedToolbar({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative min-w-0 sm:w-[320px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--shell-text-muted)]" />
             <Input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder={t("community.feed.searchPlaceholder")}
               aria-label={t("community.feed.searchAriaLabel")}
-              className="h-11 rounded-[18px] border-white/10 bg-[#222222] pl-9 text-slate-100 placeholder:text-slate-500"
+              className="h-11 rounded-[18px] border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] pl-9 text-[var(--shell-heading)] placeholder:text-[var(--shell-text-muted)]"
             />
           </div>
 
           <Button
             asChild
-            className="h-11 rounded-[18px] bg-[#607487] px-5 text-white shadow-[0_16px_36px_-24px_rgba(0,0,0,0.75)] hover:bg-[#6c8195]"
+            className="h-11 rounded-[18px] bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] shadow-sm hover:bg-[var(--shell-accent-hover)]"
           >
             <Link to="/translate">
               <Sparkles className="h-4 w-4" />

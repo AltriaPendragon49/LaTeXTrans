@@ -51,10 +51,22 @@ export interface CommunityPaper {
 export interface CommunityPaperListResponse {
   items: CommunityPaper[]
   total: number
+  source_mode?: "database" | "baseline_seed"
 }
 
 export interface CommunityPaperDetailResponse {
   paper: CommunityPaper
+  preview?: CommunityPaperPreviewResponse | null
+  reader_state?: "ready" | "warming" | "unavailable"
+}
+
+export interface CommunityPaperSubmitResponse {
+  paper: CommunityPaper
+  task: {
+    task_id: string | null
+    status: string | null
+  }
+  admission_result: string
 }
 
 export interface CommunityPaperTranslateResponse {

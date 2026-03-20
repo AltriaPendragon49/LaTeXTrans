@@ -24,16 +24,16 @@ export function LanguageSelector() {
     <Select value={currentLanguage} onValueChange={handleValueChange}>
       <SelectTrigger
         aria-label={t("common.choose_global_interface_language")}
-        className="h-11 w-[176px] rounded-2xl border border-white/10 bg-white/[0.04] pr-2 text-sm text-slate-100 shadow-[0_12px_32px_-20px_rgba(0,0,0,0.85)] transition-colors hover:bg-white/[0.06] focus:ring-2 focus:ring-slate-400"
+        className="h-11 w-[176px] rounded-2xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] pr-2 text-sm text-[var(--shell-heading)] shadow-sm transition-colors hover:bg-[var(--shell-pill-hover)] focus:ring-2 focus:ring-slate-400"
       >
         <div className="flex items-center gap-2">
-          <Languages className="h-4 w-4 text-slate-400" />
+          <Languages className="h-4 w-4 text-[var(--shell-icon)]" />
           <SelectValue />
         </div>
       </SelectTrigger>
-      <SelectContent className="min-w-[176px] border-white/10 bg-slate-950 text-slate-100">
+      <SelectContent className="min-w-[176px] border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] text-[var(--shell-heading)]">
         {UI_LANGUAGES.map((language) => (
-          <SelectItem key={language.code} value={language.code} className="cursor-pointer focus:bg-white/[0.08] focus:text-white">
+          <SelectItem key={language.code} value={language.code} className="cursor-pointer focus:bg-[var(--shell-pill-hover)] focus:text-[var(--shell-heading)]">
             <div className="flex items-center gap-2">
               <span className="font-medium">{language.nativeLabel}</span>
             </div>

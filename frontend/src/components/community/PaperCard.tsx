@@ -3,6 +3,8 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
+import { preloadPaperDetailRoute, prefetchCommunityPaperDetail } from "@/lib/community-api"
+import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -55,6 +57,12 @@ function formatAuthors(authors: unknown[], fallback: string) {
 export function PaperCard({ paper }: PaperCardProps) {
   const { t } = useTranslation()
 
+  function prefetchDetailNavigation() {
+    void preloadPaperDetailRoute()
+    void prefetchCommunityPaperDetail(paper.id)
+    void preloadPaperPreviewEnhancer()
+  }
+
   const authorsLabel = useMemo(
     () => formatAuthors(paper.authors, t("community.card.authorsUnavailable")),
     [paper.authors, t],
@@ -77,10 +85,10 @@ export function PaperCard({ paper }: PaperCardProps) {
   return (
     <Card
       className={cn(
-        "group relative overflow-hidden rounded-[24px] border bg-[#1b1b1b] text-slate-100 shadow-[0_24px_48px_-42px_rgba(0,0,0,0.85)] transition duration-200 hover:-translate-y-0.5 hover:border-white/16 hover:shadow-[0_28px_56px_-42px_rgba(0,0,0,0.88)]",
+        "group relative overflow-hidden rounded-[24px] border bg-[var(--shell-surface)] text-[var(--shell-text)] shadow-[var(--shell-panel-shadow)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shell-panel-shadow-strong)]",
         paper.community_status === "official"
-          ? "border-slate-300/14"
-          : "border-white/10",
+          ? "border-slate-300/25 dark:border-slate-300/14"
+          : "border-[color:var(--shell-border)]",
       )}
     >
       <div
@@ -94,7 +102,7 @@ export function PaperCard({ paper }: PaperCardProps) {
         <div className="flex flex-wrap items-center gap-2">
           <PaperStatusBadge kind="community" value={paper.community_status} />
           <PaperStatusBadge kind="translation" value={paper.trans_status} />
-          <div className="ml-auto rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <div className="ml-auto rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
             {paper.source === "arxiv"
               ? t("community.detail.sourceArxiv")
               : t("community.detail.sourceUpload")}
@@ -105,26 +113,29 @@ export function PaperCard({ paper }: PaperCardProps) {
           <div className="space-y-3">
           <Link
             to={`/paper/${paper.id}`}
-            className="inline-flex max-w-full items-start text-balance text-2xl font-semibold leading-tight tracking-tight text-white transition hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            onMouseEnter={prefetchDetailNavigation}
+            onFocus={prefetchDetailNavigation}
+            onPointerDown={prefetchDetailNavigation}
+            className="inline-flex max-w-full items-start text-balance text-2xl font-semibold leading-tight tracking-tight text-[var(--shell-heading)] transition hover:text-[var(--shell-text-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
           >
             <span className="line-clamp-2">{paper.title}</span>
           </Link>
 
-          <p className="text-sm leading-6 text-slate-300">{authorsLabel}</p>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{categoriesLabel}</p>
-          <p className="line-clamp-4 max-w-4xl text-sm leading-7 text-slate-300">
+          <p className="text-sm leading-6 text-[var(--shell-text-soft)]">{authorsLabel}</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">{categoriesLabel}</p>
+          <p className="line-clamp-4 max-w-4xl text-sm leading-7 text-[var(--shell-text-soft)]">
             {abstractPreview}
           </p>
           </div>
 
-          <div className="space-y-4 rounded-[20px] border border-white/8 bg-[#202020] p-4">
+          <div className="space-y-4 rounded-[20px] border border-[color:var(--shell-border-strong)] bg-[var(--shell-surface-strong)] p-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
                 {t("community.detail.communitySelectionTitle")}
               </p>
-              <p className="mt-2 text-sm leading-6 text-slate-200">{assetLabel}</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--shell-text)]">{assetLabel}</p>
             </div>
-            <div className="rounded-[16px] border border-white/8 bg-[#181818] px-3 py-3 text-xs text-slate-400">
+            <div className="rounded-[16px] border border-[color:var(--shell-border-strong)] bg-[var(--shell-surface-muted)] px-3 py-3 text-xs text-[var(--shell-text-muted)]">
               {paper.arxiv_id
                 ? t("community.card.arxivId", { value: paper.arxiv_id })
                 : t("community.card.uploadSource")}
@@ -132,9 +143,14 @@ export function PaperCard({ paper }: PaperCardProps) {
             <Button
               asChild
               variant="ghost"
-              className="min-h-11 w-full rounded-[18px] border border-white/10 bg-white/[0.03] px-4 text-slate-100 hover:bg-white/[0.06] hover:text-white"
+              className="min-h-11 w-full rounded-[18px] border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)] hover:text-[var(--shell-heading)]"
             >
-              <Link to={`/paper/${paper.id}`}>
+              <Link
+                to={`/paper/${paper.id}`}
+                onMouseEnter={prefetchDetailNavigation}
+                onFocus={prefetchDetailNavigation}
+                onPointerDown={prefetchDetailNavigation}
+              >
                 {t("community.card.viewDetail")}
                 <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </Link>
@@ -142,7 +158,7 @@ export function PaperCard({ paper }: PaperCardProps) {
           </div>
         </div>
 
-        <div className="mt-6 border-t border-white/8 pt-5">
+        <div className="mt-6 border-t border-[color:var(--shell-border-strong)] pt-5">
           <PaperMetaRow
             publishedAt={publishedAt}
             views={paper.view_count}
@@ -153,7 +169,7 @@ export function PaperCard({ paper }: PaperCardProps) {
           />
         </div>
 
-        <div className="mt-4 text-xs text-slate-500">
+        <div className="mt-4 text-xs text-[var(--shell-text-muted)]">
           {paper.arxiv_id
             ? t("community.card.arxivId", { value: paper.arxiv_id })
             : t("community.card.uploadSource")}

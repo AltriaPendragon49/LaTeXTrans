@@ -117,7 +117,6 @@ class SupabaseFlusher:
             self._drain_events.append(done)
         self._has_work.set()
         done.wait(timeout=timeout)
-
     def _run(self) -> None:
         """Background worker -- wakes on _has_work, drains pending dict, writes."""
         while not self._stop:
@@ -148,6 +147,14 @@ class SupabaseFlusher:
         """Request graceful shutdown."""
         self._stop = True
         self._has_work.set()
+
+
+def _is_duplicate_task_insert_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "duplicate key value violates unique constraint" in message
+        and "translation_tasks_task_id_key" in message
+    )
 
 
 class TaskManager:
@@ -960,7 +967,7 @@ class TaskManager:
         
         # 调用持久化方法(会自动处理已存在的情况)
         try:
-            self._persist_task_create(
+            persisted = self._persist_task_create(
                 task_id=task_id,
                 user_id=user_id,
                 source_type=task.get("source_type", "upload"),
@@ -970,8 +977,9 @@ class TaskManager:
                 advanced_config=task.get("advanced_config"),
                 config_hash=task.get("config_hash"),
             )
-            logger.info(f"[TaskManager] Persisted task {task_id} to database")
-            return True
+            if persisted:
+                logger.info(f"[TaskManager] Persisted task {task_id} to database")
+            return persisted
         except Exception as e:
             logger.error(f"[TaskManager] Failed to persist task {task_id}: {e}")
             return False
@@ -1285,7 +1293,7 @@ class TaskManager:
         target_language: str,
         advanced_config: Optional[Dict[str, Any]],
         config_hash: Optional[str] = None,
-    ):
+    ) -> bool:
         """
         Persist task creation to Supabase (authenticated users only)
         
@@ -1302,7 +1310,7 @@ class TaskManager:
             client = get_supabase_admin_client()
             if not client:
                 logger.warning(f"[TaskManager] Supabase admin client not available, skipping persistence for task {task_id}")
-                return
+                return False
             
             # Build database record
             db_record = {
@@ -1340,11 +1348,27 @@ class TaskManager:
                     db_record["formatting"] = fmt if fmt else None
             
             # Insert into database
-            result = client.table("translation_tasks").insert(db_record).execute()
-            logger.info(f"[TaskManager] ✅ Persisted task {task_id} to Supabase for user {user_id}")
-        
+            client.table("translation_tasks").insert(db_record).execute()
+            logger.info(f"[TaskManager] Persisted task {task_id} to Supabase for user {user_id}")
+            return True
+
         except Exception as e:
+            if _is_duplicate_task_insert_error(e):
+                update_record = {key: value for key, value in db_record.items() if key != "task_id"}
+                try:
+                    client.table("translation_tasks").update(update_record).eq("task_id", task_id).execute()
+                    logger.info(
+                        f"[TaskManager] Task {task_id} already existed in Supabase; refreshed existing row"
+                    )
+                    return True
+                except Exception as update_error:
+                    logger.error(
+                        f"[TaskManager] Failed to refresh existing task {task_id} in Supabase: {update_error}",
+                        exc_info=True,
+                    )
+                    return False
             logger.error(f"[TaskManager] Failed to persist task {task_id} to Supabase: {e}", exc_info=True)
+            return False
     
     def _persist_task_update(self, task_id: str, updates: Dict[str, Any]):
         """

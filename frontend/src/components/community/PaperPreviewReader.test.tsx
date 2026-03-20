@@ -1,24 +1,28 @@
 import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import i18n from "@/i18n"
 import { PaperPreviewReader } from "@/components/community/PaperPreviewReader"
 
 const getCommunityPaperPreviewMock = vi.fn()
-const renderMathInElementMock = vi.fn()
+const sanitizeMock = vi.fn((value: string) => value)
+const enhancePaperPreviewElementMock = vi.fn().mockResolvedValue(undefined)
+const preloadPaperPreviewEnhancerMock = vi.fn().mockResolvedValue(undefined)
 
 vi.mock("@/lib/community-api", () => ({
   getCommunityPaperPreview: (...args: unknown[]) => getCommunityPaperPreviewMock(...args),
 }))
 
-vi.mock("dompurify", () => ({
-  default: {
-    sanitize: (value: string) => value,
-  },
+vi.mock("@/lib/paper-preview-enhancer", () => ({
+  preloadPaperPreviewEnhancer: (...args: unknown[]) => preloadPaperPreviewEnhancerMock(...args),
+  enhancePaperPreviewElement: (...args: unknown[]) => enhancePaperPreviewElementMock(...args),
 }))
 
-vi.mock("katex/contrib/auto-render", () => ({
-  default: (...args: unknown[]) => renderMathInElementMock(...args),
+vi.mock("dompurify", () => ({
+  default: {
+    sanitize: (value: string) => sanitizeMock(value),
+  },
 }))
 
 describe("PaperPreviewReader", () => {
@@ -27,7 +31,55 @@ describe("PaperPreviewReader", () => {
     await i18n.changeLanguage("en")
   })
 
-  it("renders inline translated html and triggers math rendering", async () => {
+  it("reuses prepared html when an equivalent preview payload refreshes", async () => {
+    const preview = {
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview-stable",
+        task_id: "task-1",
+        asset_type: "preview_html" as const,
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      html_content: "<h2>Intro</h2><p>Stable reader body</p>",
+      generated_at: "2026-03-18T02:00:00Z",
+    }
+
+    const { rerender } = render(
+      <PaperPreviewReader
+        paperId="paper-1"
+        initialPreview={preview}
+        readerState="ready"
+      />,
+    )
+
+    expect(await screen.findByText("Intro")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(enhancePaperPreviewElementMock).toHaveBeenCalledTimes(1)
+    })
+    expect(sanitizeMock).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <PaperPreviewReader
+        paperId="paper-1"
+        initialPreview={{
+          ...preview,
+          asset: { ...preview.asset },
+        }}
+        readerState="ready"
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("Stable reader body")).toBeInTheDocument()
+    })
+    expect(sanitizeMock).toHaveBeenCalledTimes(1)
+    expect(enhancePaperPreviewElementMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders inline translated html and lazy-loads reader enhancement only after preview arrives", async () => {
     getCommunityPaperPreviewMock.mockResolvedValue({
       paper_id: "paper-1",
       task_id: "task-1",
@@ -39,17 +91,32 @@ describe("PaperPreviewReader", () => {
         mime_type: "text/html",
         created_at: "2026-03-18T02:00:00Z",
       },
-      html_content: "<h2>引言</h2><p>中文段落 $E=mc^2$。</p>",
+      html_content: "<h2>Intro</h2><p>Reader body $E=mc^2$</p>",
       generated_at: "2026-03-18T02:00:00Z",
     })
 
     render(<PaperPreviewReader paperId="paper-1" />)
 
-    expect(await screen.findByText("引言")).toBeInTheDocument()
-    expect(screen.getByText("中文段落 $E=mc^2$。")).toBeInTheDocument()
+    expect(await screen.findByText("Intro")).toBeInTheDocument()
     await waitFor(() => {
-      expect(renderMathInElementMock).toHaveBeenCalled()
+      expect(enhancePaperPreviewElementMock).toHaveBeenCalledWith(
+        expect.any(HTMLElement),
+        expect.objectContaining({
+          previewAssetId: "asset-preview",
+          previewSignature: expect.any(String),
+        }),
+      )
     })
+    expect(screen.getByTestId("paper-preview-content")).toHaveAttribute("data-reader-layout", "scholarly")
+    expect(screen.getByTestId("paper-preview-viewport").className).toContain("overflow-x-hidden")
+  })
+
+  it("does not load reader enhancement while warming", async () => {
+    render(<PaperPreviewReader paperId="paper-1" readerState="warming" />)
+
+    expect(await screen.findByText("Translated reader is warming up")).toBeInTheDocument()
+    expect(preloadPaperPreviewEnhancerMock).not.toHaveBeenCalled()
+    expect(enhancePaperPreviewElementMock).not.toHaveBeenCalled()
   })
 
   it("renders an empty state when the preview is unavailable", async () => {
@@ -58,5 +125,59 @@ describe("PaperPreviewReader", () => {
     render(<PaperPreviewReader paperId="paper-1" />)
 
     expect(await screen.findByText("Translated reader not available")).toBeInTheDocument()
+  })
+
+  it("adds a table expand affordance and opens the expanded reader sheet", async () => {
+    const preview = {
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview-table",
+        task_id: "task-1",
+        asset_type: "preview_html" as const,
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      html_content:
+        "<article class=\"paper-preview\"><section class=\"paper-preview__section\"><figure class=\"paper-preview__figure paper-preview__figure--table\"><div class=\"paper-preview__table-wrap\"><table class=\"paper-preview__table\"><tbody><tr><th>Model</th><th>Score</th></tr><tr><td>Alpha</td><td>98</td></tr></tbody></table></div><figcaption class=\"paper-preview__caption\">Leaderboard</figcaption></figure></section></article>",
+      generated_at: "2026-03-18T02:00:00Z",
+    }
+
+    render(<PaperPreviewReader paperId="paper-1" initialPreview={preview} readerState="ready" />)
+
+    const expandButton = await screen.findByRole("button", { name: "Expand table" })
+    await userEvent.click(expandButton)
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(screen.getAllByText("Leaderboard").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0)
+  })
+
+  it("scrolls to internal reader references inside the preview viewport", async () => {
+    const scrollIntoViewMock = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
+
+    const preview = {
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview-xref",
+        task_id: "task-1",
+        asset_type: "preview_html" as const,
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      html_content:
+        "<article class=\"paper-preview\"><section class=\"paper-preview__section\"><p><a class=\"paper-preview__xref\" href=\"#section-2\">Section</a></p><h2 id=\"section-2\">Section 2</h2></section></article>",
+      generated_at: "2026-03-18T02:00:00Z",
+    }
+
+    render(<PaperPreviewReader paperId="paper-1" initialPreview={preview} readerState="ready" />)
+
+    await userEvent.click(await screen.findByRole("link", { name: "Section" }))
+
+    expect(scrollIntoViewMock).toHaveBeenCalled()
   })
 })

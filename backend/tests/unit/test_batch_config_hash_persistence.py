@@ -29,6 +29,41 @@ class _InsertQuery:
         return _Result()
 
 
+class _DuplicateInsertQuery:
+    def __init__(self, inserted_records, updated_records):
+        self._inserted_records = inserted_records
+        self._updated_records = updated_records
+        self._update_payload = None
+        self._task_id = None
+
+    def insert(self, record):
+        self._inserted_records.append(record)
+        self._update_payload = None
+        return self
+
+    def update(self, record):
+        self._update_payload = record
+        return self
+
+    def eq(self, field, value):
+        assert field == "task_id"
+        self._task_id = value
+        return self
+
+    def execute(self):
+        if self._update_payload is not None:
+            self._updated_records.append((self._task_id, self._update_payload))
+
+            class _Result:
+                data = [{"ok": True}]
+
+            return _Result()
+
+        raise Exception(
+            'duplicate key value violates unique constraint "translation_tasks_task_id_key"'
+        )
+
+
 class _InsertClient:
     def __init__(self, inserted_records):
         self._inserted_records = inserted_records
@@ -36,6 +71,16 @@ class _InsertClient:
     def table(self, table_name):
         assert table_name == "translation_tasks"
         return _InsertQuery(self._inserted_records)
+
+
+class _DuplicateInsertClient:
+    def __init__(self, inserted_records, updated_records):
+        self._inserted_records = inserted_records
+        self._updated_records = updated_records
+
+    def table(self, table_name):
+        assert table_name == "translation_tasks"
+        return _DuplicateInsertQuery(self._inserted_records, self._updated_records)
 
 
 def _make_fake_jwt(user_id: str) -> str:
@@ -73,6 +118,39 @@ def test_persist_task_if_needed_includes_config_hash(monkeypatch):
 
     assert task_manager.persist_task_if_needed(task_id) is True
     assert inserted_records[-1]["config_hash"] == "hash-batch-task"
+
+
+def test_persist_task_if_needed_treats_duplicate_insert_as_success(monkeypatch):
+    inserted_records = []
+    updated_records = []
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_supabase_admin_client",
+        lambda: _DuplicateInsertClient(inserted_records, updated_records),
+    )
+
+    task_manager = TaskManager()
+    task_id = task_manager.create_task(
+        source_type="arxiv",
+        arxiv_id="2508.18791",
+        user_id="user-1",
+        persist_to_db=False,
+    )
+
+    task_manager.update_task(
+        task_id=task_id,
+        source_language="en",
+        target_language="zh",
+        advanced_config={
+            "translation_mode": "full",
+            "compile_strategy": "auto",
+        },
+        config_hash="hash-batch-task",
+    )
+
+    assert task_manager.persist_task_if_needed(task_id) is True
+    assert inserted_records[-1]["task_id"] == task_id
+    assert updated_records[-1][0] == task_id
+    assert updated_records[-1][1]["config_hash"] == "hash-batch-task"
 
 
 def test_batch_translate_persists_config_hash(monkeypatch):

@@ -67,21 +67,21 @@ export function PaperMetaRow({
 
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center gap-2.5 text-xs text-[var(--shell-text-muted)]">
         {items.map(({ key, icon: Icon, label, ariaLabel }) => (
           <div
             key={key}
             aria-label={ariaLabel}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] px-3"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3"
           >
-            <Icon className="h-3.5 w-3.5 text-slate-500" />
+            <Icon className="h-3.5 w-3.5 text-[var(--shell-text-muted)]" />
             <span className="tabular-nums">{label}</span>
           </div>
         ))}
       </div>
 
-      <div className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border border-white/8 bg-white/[0.03] px-3 text-xs text-slate-300">
-        <Files className="h-3.5 w-3.5 text-slate-500" />
+      <div className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 text-xs text-[var(--shell-text-soft)]">
+        <Files className="h-3.5 w-3.5 text-[var(--shell-text-muted)]" />
         <span className="truncate">{assetLabel ?? t("community.card.assetUnavailable")}</span>
       </div>
     </div>

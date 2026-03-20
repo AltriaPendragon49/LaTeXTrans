@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react"
 
-import { getCommunityPaperDetail, recordCommunityPaperView } from "@/lib/community-api"
-import type { CommunityPaper } from "@/types/community"
+import {
+  getCachedCommunityPaperDetail,
+  getCommunityPaperDetail,
+  recordCommunityPaperView,
+} from "@/lib/community-api"
+import type { CommunityPaper, CommunityPaperPreviewResponse } from "@/types/community"
 
 export function usePaperDetail(paperId: string | undefined) {
-  const [paper, setPaper] = useState<CommunityPaper | null>(null)
-  const [loading, setLoading] = useState(true)
+  const cachedDetail = paperId ? getCachedCommunityPaperDetail(paperId) : null
+  const [paper, setPaper] = useState<CommunityPaper | null>(cachedDetail?.paper ?? null)
+  const [preview, setPreview] = useState<CommunityPaperPreviewResponse | null>(cachedDetail?.preview ?? null)
+  const [readerState, setReaderState] = useState<"ready" | "warming" | "unavailable">(
+    cachedDetail?.reader_state ?? "unavailable",
+  )
+  const [loading, setLoading] = useState(!cachedDetail)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
 
@@ -14,6 +23,8 @@ export function usePaperDetail(paperId: string | undefined) {
 
     if (!paperId) {
       setPaper(null)
+      setPreview(null)
+      setReaderState("unavailable")
       setLoading(false)
       setError(null)
       setNotFound(true)
@@ -21,6 +32,12 @@ export function usePaperDetail(paperId: string | undefined) {
     }
 
     setLoading(true)
+    if (cachedDetail) {
+      setPaper(cachedDetail.paper)
+      setPreview(cachedDetail.preview ?? null)
+      setReaderState(cachedDetail.reader_state ?? "unavailable")
+      setLoading(false)
+    }
     setError(null)
     setNotFound(false)
 
@@ -32,6 +49,8 @@ export function usePaperDetail(paperId: string | undefined) {
         }
 
         setPaper(response.paper)
+        setPreview(response.preview ?? null)
+        setReaderState(response.reader_state ?? "unavailable")
         setLoading(false)
 
         void recordCommunityPaperView(paperId).catch(() => {
@@ -47,6 +66,8 @@ export function usePaperDetail(paperId: string | undefined) {
         setError(message)
         setLoading(false)
         setPaper(null)
+        setPreview(null)
+        setReaderState("unavailable")
         setNotFound(/404/.test(message) || /not found/i.test(message))
       }
     })()
@@ -54,10 +75,12 @@ export function usePaperDetail(paperId: string | undefined) {
     return () => {
       isCancelled = true
     }
-  }, [paperId])
+  }, [cachedDetail, paperId])
 
   return {
     paper,
+    preview,
+    readerState,
     loading,
     error,
     notFound,

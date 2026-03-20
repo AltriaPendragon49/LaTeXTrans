@@ -38,47 +38,47 @@ export default function CommunityFeedPage() {
   )
 
   return (
-    <div className="min-h-full bg-[#151515] px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[var(--shell-bg)] px-4 py-6 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-5">
-        <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1b1b1b] px-5 py-6 shadow-[0_24px_50px_-44px_rgba(0,0,0,0.78)] sm:px-7">
+        <section className="overflow-hidden rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] px-5 py-6 shadow-[var(--shell-panel-shadow)] sm:px-7">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.62fr)_260px]">
             <div className="max-w-3xl space-y-4">
               <div className="space-y-3">
-                <h1 className="max-w-4xl text-balance text-[clamp(2.1rem,4.6vw,3.6rem)] font-semibold tracking-[-0.04em] text-white">
+                <h1 className="max-w-4xl text-balance text-[clamp(2.1rem,4.6vw,3.6rem)] font-semibold tracking-[-0.04em] text-[var(--shell-heading)]">
                   {t("community.feed.title")}
                 </h1>
-                <p className="max-w-2xl text-[15px] leading-7 text-slate-300">
+                <p className="max-w-2xl text-[15px] leading-7 text-[var(--shell-text-soft)]">
                   {t("community.feed.description")}
                 </p>
               </div>
-              <div className="grid gap-3 border-t border-white/8 pt-4 md:grid-cols-[minmax(0,170px)_minmax(0,1fr)]">
-                <div className="rounded-[22px] border border-white/10 bg-[#202020] p-4">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-                    <LibraryBig className="h-4 w-4 text-slate-400" />
+              <div className="grid gap-3 border-t border-[color:var(--shell-border-strong)] pt-4 md:grid-cols-[minmax(0,170px)_minmax(0,1fr)]">
+                <div className="rounded-[22px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] p-4">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
+                    <LibraryBig className="h-4 w-4 text-[var(--shell-icon)]" />
                     <span>{t("community.feed.summary.trackedLabel")}</span>
                   </div>
-                  <p className="mt-3 text-3xl font-semibold tracking-tight text-white">{total}</p>
+                  <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--shell-heading)]">{total}</p>
                 </div>
-                <div className="rounded-[22px] border border-white/10 bg-[#202020] p-4 text-sm text-slate-300">
+                <div className="rounded-[22px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] p-4 text-sm text-[var(--shell-text-soft)]">
                   <div className="flex items-start gap-3">
-                    <Telescope className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                    <Telescope className="mt-0.5 h-4 w-4 shrink-0 text-[var(--shell-icon)]" />
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
                         {t("community.feed.summary.officialLabel")}
                       </p>
-                      <p className="mt-2 leading-6 text-slate-300">{t("community.feed.officialPriorityHint")}</p>
+                      <p className="mt-2 leading-6 text-[var(--shell-text-soft)]">{t("community.feed.officialPriorityHint")}</p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-3 rounded-[22px] border border-white/10 bg-[#202020] p-4">
+            <div className="space-y-3 rounded-[22px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-xs uppercase tracking-[0.22em] text-slate-500">
+                <div className="text-xs uppercase tracking-[0.22em] text-[var(--shell-text-muted)]">
                   {t("community.feed.title")}
                 </div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-600">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)] opacity-80">
                   {t("community.feed.summary.officialLabel")}
                 </div>
               </div>
@@ -86,19 +86,19 @@ export default function CommunityFeedPage() {
                 {summary.map((entry) => (
                   <div
                     key={entry.key}
-                    className="rounded-[18px] border border-white/8 bg-[#181818] px-4 py-3"
+                    className="rounded-[18px] border border-[color:var(--shell-border-strong)] bg-[var(--shell-surface-muted)] px-4 py-3"
                   >
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{entry.label}</p>
-                    <p className="mt-2 text-xl font-semibold text-white">{entry.value}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">{entry.label}</p>
+                    <p className="mt-2 text-xl font-semibold text-[var(--shell-heading)]">{entry.value}</p>
                   </div>
                 ))}
               </div>
-              <div className="rounded-[18px] border border-white/10 bg-[#181818] px-4 py-3 text-sm text-slate-300">
+              <div className="rounded-[18px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] px-4 py-3 text-sm text-[var(--shell-text-soft)]">
                 <div className="flex items-start gap-2">
-                  <Sparkles className="mt-0.5 h-4 w-4 text-slate-400" />
+                  <Sparkles className="mt-0.5 h-4 w-4 text-[var(--shell-icon)]" />
                   <div>
-                    <p className="font-medium text-white">{t("community.feed.summary.officialLabel")}</p>
-                    <p className="mt-1 text-slate-400">{t("community.feed.officialPriorityHint")}</p>
+                    <p className="font-medium text-[var(--shell-heading)]">{t("community.feed.summary.officialLabel")}</p>
+                    <p className="mt-1 text-[var(--shell-text-muted)]">{t("community.feed.officialPriorityHint")}</p>
                   </div>
                 </div>
               </div>
@@ -116,18 +116,18 @@ export default function CommunityFeedPage() {
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-3 px-1">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+              <p className="text-xs uppercase tracking-[0.22em] text-[var(--shell-text-muted)]">
                 {t("community.feed.summary.trackedLabel")}
               </p>
-              <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-white">{total}</h2>
+              <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-[var(--shell-heading)]">{total}</h2>
             </div>
-            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-slate-400 md:inline-flex">
+            <div className="hidden items-center gap-2 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 py-2 text-sm text-[var(--shell-text-muted)] md:inline-flex">
               <span>{t("community.feed.summary.officialLabel")}</span>
-              <ArrowRight className="h-4 w-4 text-slate-500" />
+              <ArrowRight className="h-4 w-4 text-[var(--shell-text-muted)]" />
             </div>
           </div>
           {loading ? (
-            <div className="grid gap-4">
+            <div data-testid="community-feed-loading" className="grid gap-4">
               {Array.from({ length: 3 }).map((_, index) => (
                 <PaperCardSkeleton key={index} />
               ))}

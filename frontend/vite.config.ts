@@ -23,6 +23,10 @@ export default defineConfig({
             return 'pdf'
           }
 
+          if (id.includes('katex') || id.includes('dompurify')) {
+            return 'reader'
+          }
+
           if (id.includes('@supabase')) {
             return 'supabase'
           }
