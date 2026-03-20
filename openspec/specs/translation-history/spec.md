@@ -84,12 +84,17 @@ Failed tasks that were automatically quarantined and deleted from `translation_t
 - **AND** 新任务 output 与源 output 目录独立（深拷贝）
 
 ### Requirement: Config Hash Storage
-系统 SHALL 在 translation_tasks 表中存储翻译配置签名用于快速匹配，签名包含排版配置。
+The system SHALL store translation configuration signatures in the `translation_tasks` table for fast matching, including formatting configuration when present.
 
 #### Scenario: 创建任务时生成 config_hash
 - **WHEN** 翻译任务创建或翻译配置确定时
-- **THEN** 系统计算 config_hash 并存储到 translation_tasks 表
-- **AND** config_hash 基于 arxiv_id、source_language、target_language、translation_mode、compile_strategy、formatting 生成
+- **THEN** 系统计算 `config_hash` 并存储到 `translation_tasks` 表
+- **AND** `config_hash` 基于 `arxiv_id`、`source_language`、`target_language`、`translation_mode`、`compile_strategy`、`formatting` 生成
+
+#### Scenario: Batch-created authenticated task keeps config_hash through deferred persistence
+- **WHEN** an authenticated batch arXiv task computes its final translation configuration before the initial Supabase row exists
+- **THEN** the task runtime snapshot MUST retain the computed `config_hash`
+- **AND** the first successful persistence attempt, including a background retry after an initial failure, MUST write that `config_hash` into `translation_tasks`.
 
 ### Requirement: Deferred Task Persistence
 系统 SHALL 在翻译阶段才将任务持久化到数据库，上传/下载阶段仅创建内存任务。

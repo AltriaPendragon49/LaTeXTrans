@@ -113,7 +113,7 @@
 - **WHEN** `batch_translate` 端点调用 `persist_task_if_needed()` 失败
 - **THEN** 系统通过 `asyncio.create_task()` 在后台启动 `persist_task_with_retry()`
 - **AND** 重试最多 2 次，每次间隔 5 秒
-- **AND** HTTP 响应不受影响，正常返回 task_ids
+- **AND** HTTP 响应不受影响，正常返回 `task_ids`
 
 #### Scenario: 重试成功后任务正常持久化
 - **WHEN** 后台重试期间 Supabase 网络恢复
@@ -128,9 +128,12 @@
 
 #### Scenario: 前端检测到持久化失败并警告用户
 - **WHEN** `BatchTranslation.tsx` 的 `pollTask` 轮询到 `persist_failed=True`
-- **AND** 该 task_id 尚未弹出过警告
-- **THEN** 前端弹出一次性警告 toast："由于后端服务器网络问题，未能存入数据库，请注意保存翻译结果！"
-- **AND** 同一任务不重复弹出警告
+- **THEN** 前端 MUST 向用户显示该任务未保存到历史记录的明确警告
+
+#### Scenario: Batch persistence retry preserves config_hash for output reuse
+- **WHEN** an authenticated batch-created task has already computed `config_hash` before the initial Supabase insert succeeds
+- **THEN** the eventual successful persistence attempt MUST keep that `config_hash`
+- **AND** later matching single-task or batch-task requests MUST remain eligible for output reuse.
 
 ### Requirement: Dashboard Configuration Sharing
 Advanced Configuration SHALL 对所有翻译 Tab 均可见，配置在单论文翻译与批量翻译之间共享。
