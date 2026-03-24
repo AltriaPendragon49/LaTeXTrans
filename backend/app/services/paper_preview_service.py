@@ -1585,10 +1585,40 @@ def _replace_reference_commands_in_html(html_body: str, render_state: Dict[str, 
     return processed
 
 
+def _render_preview_header(paper_metadata: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(paper_metadata, dict):
+        return ""
+
+    title = html.escape(str(paper_metadata.get("title") or "").strip(), quote=False)
+    authors = [
+        html.escape(str(author or "").strip(), quote=False)
+        for author in (paper_metadata.get("authors") or [])
+        if str(author or "").strip()
+    ]
+    if not title and not authors:
+        return ""
+
+    authors_html = ""
+    if authors:
+        authors_html = (
+            "<p class=\"paper-preview__authors\">"
+            + ", ".join(authors)
+            + "</p>"
+        )
+
+    return (
+        "<header class=\"paper-preview__header\">"
+        + (f"<h1 class=\"paper-preview__title\">{title}</h1>" if title else "")
+        + authors_html
+        + "</header>"
+    )
+
+
 def generate_preview_html(
     output_dir: Path,
     target_dir: Path | None = None,
     source_dirs: Optional[Iterable[Path | str]] = None,
+    paper_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     output_root = Path(output_dir)
     sections = _load_json(output_root / "sections_map.json")
@@ -1612,8 +1642,10 @@ def generate_preview_html(
     preview_root = Path(target_dir) if target_dir is not None else output_root
     preview_root.mkdir(parents=True, exist_ok=True)
     preview_path = preview_root / "preview.html"
+    preview_header = _render_preview_header(paper_metadata)
     preview_html = (
         f"<article class=\"paper-preview\" data-reader-version=\"{PREVIEW_READER_VERSION}\">"
+        f"{preview_header}"
         f"{html_body}"
         "</article>"
     )

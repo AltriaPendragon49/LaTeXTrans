@@ -1,0 +1,17 @@
+- [x] Create the new OpenSpec change package for the skill-driven community agent runtime.
+- [x] Add backend unit tests for skill visibility, slot-only finalize, query extraction quality, generation skill tracing, and translation consistency validation.
+- [x] Implement the community-agent runtime package with typed skills, planner loop, formatter, validator, and Tavily client.
+- [x] Refactor `backend/app/services/community_agent_service.py` into a compatibility fa莽ade over the new runtime.
+- [x] Extend `backend/app/api/routes/community_agent.py` to accept `skill_toggles.external_search`.
+- [x] Add frontend tests and implementation for the non-persistent external search toggle in `CommunityFeed` and `CommunityConversation`.
+- [x] Update locale files and run i18n validation.
+- [x] Run OpenSpec validation and targeted backend/frontend test suites.
+- [x] Repair legacy planner compatibility for browser-observed payload variants (`skill`, legacy import flow) and keep the conversation workspace visibly in-progress while runs are pending.
+- [x] Re-run final browser acceptance on backend `9001` with frontend `5173`, including the Chinese arXiv-id summary path and visible in-flight progress.
+- [x] Add failing tests for language-aware agent answers, authenticated conversation persistence/deletion, and preview reader metadata/scroll behavior.
+- [x] Update the planner/composer/fallback formatter so answer language follows the user's question language, especially for Chinese prompts.
+- [x] Ensure arXiv-id questions auto-import missing papers, start translation when needed, and return grounded paper actions consistently.
+- [x] Persist community-agent conversation histories for authenticated users in Supabase, require sign-in for agent conversations, and support deleting saved conversations.
+- [x] Restore preview HTML metadata/figure rendering fidelity and keep scrolling isolated to the reader viewport.
+- [x] Re-run targeted tests, `openspec validate refactor-community-agent-skill-react-orchestrator --strict --no-interactive`, and real browser acceptance on backend `9001` + frontend `5173`.
+- [x] Cover CJK-adjacent arXiv-id questions such as `2602.24209讲了什么` with unit/service tests and a fresh browser acceptance pass on backend `9001` + frontend `5173`.

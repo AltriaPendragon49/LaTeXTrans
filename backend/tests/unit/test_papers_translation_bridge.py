@@ -49,17 +49,115 @@ def _paper(**overrides):
     return base
 
 
-def test_translate_paper_route_requires_authentication():
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            papers_route.translate_paper(
-                paper_id="paper-1",
-                request=TranslateRequest(source_language="en", target_language="zh"),
-                credentials=None,
-            )
-        )
+def test_translate_paper_route_allows_public_translation_without_auth(monkeypatch):
+    monkeypatch.setattr(
+        papers_route.paper_service,
+        "start_paper_translation",
+        lambda **kwargs: asyncio.sleep(
+            0,
+            result={
+                "paper_id": kwargs["paper_id"],
+                "task_id": "task-public",
+                "status": "queued",
+                "reused_existing_task": False,
+                "processing_url": "/processing?taskId=task-public",
+            },
+        ),
+    )
 
-    assert exc_info.value.status_code == 401
+    result = asyncio.run(
+        papers_route.translate_paper(
+            paper_id="paper-1",
+            request=TranslateRequest(source_language="en", target_language="zh"),
+            credentials=None,
+        )
+    )
+
+    assert result["paper_id"] == "paper-1"
+    assert result["status"] == "queued"
+
+
+def test_start_paper_translation_uses_null_user_for_public_runs(monkeypatch, tmp_path):
+    created = {}
+    source_dir = tmp_path / "source-paper"
+    source_dir.mkdir()
+    monkeypatch.setattr(paper_service.asyncio, "create_task", lambda coro: coro.close())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper(source="upload")),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "source_archive": {
+                    "id": "asset-source",
+                    "paper_id": "paper-1",
+                    "task_id": "task-upload",
+                    "asset_type": "source_archive",
+                    "file_path": str(source_dir),
+                    "file_name": "source-paper",
+                    "mime_type": "application/x-tex",
+                    "created_at": "2026-03-18T00:00:00+00:00",
+                }
+            },
+        ),
+    )
+
+    class _TaskManager:
+        def create_task(self, **kwargs):
+            created["create_task"] = kwargs
+            return "task-public"
+
+        def update_task(self, task_id, **kwargs):
+            created["update_task"] = (task_id, kwargs)
+
+        def persist_task_if_needed(self, task_id):
+            created["persist_task"] = task_id
+            return True
+
+        def get_task(self, task_id):
+            return {
+                "task_id": task_id,
+                "source_available": True,
+                "status": "pending",
+                "source_path": str(source_dir),
+                "arxiv_id": None,
+            }
+
+    monkeypatch.setattr(paper_service, "task_manager", _TaskManager())
+    monkeypatch.setattr(
+        paper_service,
+        "_enqueue_existing_task_translation",
+        lambda **kwargs: asyncio.sleep(0, result={"task_id": kwargs["task_id"], "status": "queued"}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_update_paper",
+        lambda paper_id, payload: asyncio.sleep(
+            0,
+            result=_paper(
+                id=paper_id,
+                trans_status=payload.get("trans_status", "queued"),
+                community_selected_task_id=payload.get("community_selected_task_id"),
+                community_selected_asset_id=payload.get("community_selected_asset_id"),
+            ),
+        ),
+    )
+
+    result = asyncio.run(
+        paper_service.start_paper_translation(
+            paper_id="paper-1",
+            request=TranslateRequest(source_language="en", target_language="zh"),
+            credentials=None,
+        )
+    )
+
+    assert created["create_task"]["user_id"] is None
+    assert result["task_id"] == "task-public"
 
 
 def test_start_paper_translation_reuses_active_selected_task(monkeypatch):

@@ -5,12 +5,13 @@ Loads settings from environment variables and TOML config files.
 Provides configuration for LLM API, storage paths, and task status enums.
 """
 
+import json
 import os
 from typing import Optional, Dict, Any
 from enum import Enum
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 import toml
 
 
@@ -97,6 +98,16 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_DOWNLOAD_TOKEN_SECRET",
         description="Signing secret for short-lived community paper download tokens",
     )
+    community_agent_tavily_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("COMMUNITY_AGENT_TAVILY_API_KEY", "COMMUNITY_AGENT_SEARCH_API_KEY"),
+        description="API key for Tavily-backed external search in the community agent runtime.",
+    )
+    community_agent_tavily_base_url: str = Field(
+        default="https://api.tavily.com",
+        validation_alias=AliasChoices("COMMUNITY_AGENT_TAVILY_BASE_URL", "COMMUNITY_AGENT_SEARCH_API_URL"),
+        description="Base URL for Tavily-backed external search in the community agent runtime.",
+    )
     community_baseline_seed_path: Optional[Path] = Field(
         default=None,
         validation_alias="COMMUNITY_BASELINE_SEED_PATH",
@@ -131,6 +142,8 @@ class Settings(BaseSettings):
     default_factory=lambda: [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://latextrans.pages.dev",
@@ -225,10 +238,11 @@ class Settings(BaseSettings):
     reload: bool = True
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=("backend/.env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         protected_namespaces=("settings_",),
+        extra="ignore",
     )
 
     @field_validator("cors_origins", mode="before")
@@ -238,7 +252,18 @@ class Settings(BaseSettings):
             return value
 
         if isinstance(value, str):
-            origins = [item.strip() for item in value.split(",") if item.strip()]
+            normalized = value.strip()
+            if normalized.startswith("["):
+                try:
+                    parsed = json.loads(normalized)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, list):
+                    origins = [str(item).strip() for item in parsed if str(item).strip()]
+                else:
+                    origins = [item.strip().strip("\"'") for item in normalized.split(",") if item.strip()]
+            else:
+                origins = [item.strip().strip("\"'") for item in normalized.split(",") if item.strip()]
         elif isinstance(value, (list, tuple, set)):
             origins = [str(item).strip() for item in value if str(item).strip()]
         else:

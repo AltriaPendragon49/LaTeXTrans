@@ -4,17 +4,12 @@
 TBD - created by archiving change add-community-day-01-schema-rls-foundation. Update Purpose after archive.
 ## Requirements
 ### Requirement: Community schema entities are frozen
-The system SHALL establish a single paper-first schema contract before any daily implementation change starts.
+The community schema SHALL reserve room for source-readable and translated-readable paper states without requiring a second object model for English vs Chinese paper pages.
 
-#### Scenario: Define the Day 1 entity inventory
-- **WHEN** Day 1 is applied
-- **THEN** the change SHALL define the MVP entity set for `papers`, `paper_assets`, `paper_likes`, `paper_favorites`, `comments`, `reports`, `moderation_actions`, `notifications`, `user_roles`, and `user_bans`
-- **AND** later daily changes SHALL treat this entity set as the authoritative baseline unless they explicitly extend it.
-
-#### Scenario: Preserve existing translation tables
-- **WHEN** Day 1 community schema is applied
-- **THEN** the change SHALL add only new community tables
-- **AND** it SHALL not alter `public.translation_tasks` or `public.user_settings`.
+#### Scenario: Paper assets support English-readable and Chinese-readable states
+- **WHEN** the community stores paper assets
+- **THEN** the schema SHALL support asset semantics that distinguish readable English-source artifacts from readable translated artifacts
+- **AND** the product SHALL continue to treat those as states of the same `paper` object rather than separate papers.
 
 ### Requirement: Community indexes and integrity constraints are frozen
 The system SHALL define the baseline constraints and indexes needed for the Day 1 community schema.
@@ -48,15 +43,10 @@ The system SHALL define baseline RLS boundaries for end users, admins, and servi
 - **AND** notifications, user bans, and moderation actions SHALL not be publicly readable.
 
 ### Requirement: Community page boundaries are frozen for Days 2-10
-The system SHALL define `/`, `/paper/:paperId`, `/submit`, and `/admin/moderation` as the canonical community MVP surfaces.
+The community page-boundary contract SHALL allow the shared shell to prioritize the community flow while moving translation-oriented tool pages behind a secondary tools hub.
 
-#### Scenario: Freeze feed and detail surfaces
-- **WHEN** frontend pages are scoped for the 10-day rollout
-- **THEN** `/` SHALL remain the feed surface for latest, translated, and hot paper discovery
-- **AND** `/paper/:paperId` SHALL remain the paper-centric detail surface for metadata, translation status, assets, and interaction entry points.
-
-#### Scenario: Freeze submit and moderation surfaces
-- **WHEN** frontend pages are scoped for the 10-day rollout
-- **THEN** `/submit` SHALL remain the entry point for upload or arXiv-based paper intake
-- **AND** `/admin/moderation` SHALL remain the minimum moderation console for report review and moderation actions.
+#### Scenario: Shared shell prioritizes community over tools
+- **WHEN** the frontend shared shell is rendered for this phase
+- **THEN** the primary navigation SHALL be allowed to foreground the community homepage as the main first-level destination
+- **AND** translation-centric tools MAY move behind a secondary tools entry without violating the community page-boundary contract.
 

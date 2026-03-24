@@ -25,18 +25,12 @@ The system SHALL treat community papers as curated content, with official transl
 - **AND** subsequent community feed and detail reads SHALL default to the official selection.
 
 ### Requirement: Unified paper submit API
-The system SHALL expose one paper submit API that accepts upload or arXiv input under the community admission rules.
+The community paper intake layer SHALL support silent import/reuse for arXiv papers so the community flow can create readable English paper pages without an extra confirmation step.
 
-#### Scenario: Submit a paper from upload
-- **WHEN** an authenticated user submits a supported file to `POST /api/papers/submit`
-- **THEN** the system SHALL create a community `paper` record for that submission
-- **AND** it SHALL record a `paper_assets` source asset that points to the local source path.
-
-#### Scenario: Submit a paper from arXiv
-- **WHEN** an authenticated user submits an `arxiv_id` to `POST /api/papers/submit`
-- **THEN** the system SHALL create or reuse one community `paper` record
-- **AND** it SHALL preserve the linkage needed to track the underlying intake task and later assets
-- **AND** it SHALL populate title, authors, categories, and source abstract whenever arXiv metadata is available.
+#### Scenario: Import an arXiv paper into the community flow
+- **WHEN** the system needs to bring an arXiv paper into the community as part of discovery, agent conversation, or detail-flow translation
+- **THEN** the intake layer SHALL reuse an existing community paper when possible or create a new one when needed
+- **AND** the resulting paper SHALL be usable by the community detail flow as an English-readable paper before translated output exists.
 
 ### Requirement: Community feed list contract
 The system SHALL expose a stable paper-centric list model for community feed surfaces.
@@ -52,22 +46,17 @@ The system SHALL expose a stable paper-centric list model for community feed sur
 - **AND** the response SHALL include `community_status`, translation state, counts, and latest asset summary.
 
 ### Requirement: Community paper detail contract
-The system SHALL expose a stable paper-centric detail model for community paper pages.
+The community paper detail contract SHALL distinguish readable English-source state from translated-reader state and SHALL not equate compile failure with total translated unreadability.
 
-#### Scenario: Anonymous users read public paper detail
-- **WHEN** an anonymous client requests `GET /api/papers/{paper_id}`
-- **THEN** the system SHALL return only public paper detail
-- **AND** it SHALL expose viewer-state defaults without requiring authentication.
+#### Scenario: Detail contract exposes best available readable mode
+- **WHEN** a public community paper has English HTML, English PDF, translated HTML, or translated PDF artifacts in any healthy or degraded combination
+- **THEN** the detail contract SHALL expose the best available readable mode and its fallback options
+- **AND** the frontend SHALL not need to infer that state from raw paper status alone.
 
-#### Scenario: Authenticated users read viewer state
-- **WHEN** an authenticated client requests `GET /api/papers/{paper_id}`
-- **THEN** the system SHALL return the paper detail payload
-- **AND** it SHALL include the current user's `liked` and `favorited` flags.
-
-#### Scenario: Completed papers expose a usable abstract and reader
-- **WHEN** a community paper has completed translated output
-- **THEN** the detail payload SHALL expose the best available abstract, preferring translated abstract when recoverable
-- **AND** preview reads SHALL use the completed output to recover `preview_html` when the asset row is missing.
+#### Scenario: Failed task still yields readable artifacts
+- **WHEN** a terminal translation task still produced translated preview or translated PDF artifacts
+- **THEN** the detail contract SHALL surface those artifacts as readable output
+- **AND** the paper SHALL not be represented as fully untranslated just because compile validation failed.
 
 ### Requirement: Community paper view tracking
 The system SHALL support a dedicated paper view write path without introducing a new analytics table.

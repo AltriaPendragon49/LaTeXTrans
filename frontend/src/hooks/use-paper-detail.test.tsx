@@ -94,5 +94,6 @@ describe("usePaperDetail", () => {
     expect(screen.getByTestId("preview-name")).toHaveTextContent("preview.html")
 
     await waitFor(() => expect(getCommunityPaperDetailMock).toHaveBeenCalledWith("paper-1"))
+    await waitFor(() => expect(recordCommunityPaperViewMock).toHaveBeenCalledTimes(1))
   })
 })

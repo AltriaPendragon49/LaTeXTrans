@@ -25,6 +25,7 @@ interface PaperFeedToolbarProps {
   onSortChange: (value: CommunityFeedSort) => void
   query: string
   onQueryChange: (value: string) => void
+  showSearch?: boolean
 }
 
 export function PaperFeedToolbar({
@@ -32,6 +33,7 @@ export function PaperFeedToolbar({
   onSortChange,
   query,
   onQueryChange,
+  showSearch = true,
 }: PaperFeedToolbarProps) {
   const { t } = useTranslation()
 
@@ -56,28 +58,30 @@ export function PaperFeedToolbar({
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative min-w-0 sm:w-[320px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--shell-text-muted)]" />
-            <Input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder={t("community.feed.searchPlaceholder")}
-              aria-label={t("community.feed.searchAriaLabel")}
-              className="h-11 rounded-[18px] border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] pl-9 text-[var(--shell-heading)] placeholder:text-[var(--shell-text-muted)]"
-            />
-          </div>
+        {showSearch ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 sm:w-[320px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--shell-text-muted)]" />
+              <Input
+                value={query}
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder={t("community.feed.searchPlaceholder")}
+                aria-label={t("community.feed.searchAriaLabel")}
+                className="h-11 rounded-[18px] border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] pl-9 text-[var(--shell-heading)] placeholder:text-[var(--shell-text-muted)]"
+              />
+            </div>
 
-          <Button
-            asChild
-            className="h-11 rounded-[18px] bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] shadow-sm hover:bg-[var(--shell-accent-hover)]"
-          >
-            <Link to="/translate">
-              <Sparkles className="h-4 w-4" />
-              {t("community.nav.newTranslation")}
-            </Link>
-          </Button>
-        </div>
+            <Button
+              asChild
+              className="h-11 rounded-[18px] bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] shadow-sm hover:bg-[var(--shell-accent-hover)]"
+            >
+              <Link to="/tools?panel=translate">
+                <Sparkles className="h-4 w-4" />
+                {t("community.nav.paperTools")}
+              </Link>
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )

@@ -3,14 +3,12 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
-import { preloadPaperDetailRoute, prefetchCommunityPaperDetail } from "@/lib/community-api"
-import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
+import { preloadPaperDetailRoute, prefetchCommunityPaperDetail } from "@/lib/community-api"
+import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import type { CommunityPaper } from "@/types/community"
 
-import { PaperMetaRow } from "./PaperMetaRow"
 import { PaperStatusBadge } from "./PaperStatusBadge"
 
 interface PaperCardProps {
@@ -75,104 +73,72 @@ export function PaperCard({ paper }: PaperCardProps) {
   const assetLabel = paper.latest_asset
     ? `${getAssetTypeLabel(paper.latest_asset.asset_type, t)} · ${paper.latest_asset.file_name}`
     : t("community.card.assetUnavailable")
-  const abstractPreview =
-    paper.abstract_translated ||
-    paper.abstract_raw ||
-    t("community.card.abstractPlaceholder")
+
+  const abstractPreview = paper.abstract_translated || paper.abstract_raw || t("community.card.abstractPlaceholder")
 
   const publishedAt = paper.official_published_at ?? paper.created_at
 
   return (
-    <Card
-      className={cn(
-        "group relative overflow-hidden rounded-[24px] border bg-[var(--shell-surface)] text-[var(--shell-text)] shadow-[var(--shell-panel-shadow)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shell-panel-shadow-strong)]",
-        paper.community_status === "official"
-          ? "border-slate-300/25 dark:border-slate-300/14"
-          : "border-[color:var(--shell-border)]",
-      )}
-    >
-      <div
-        className={cn(
-          "absolute inset-y-0 left-0 w-1",
-          paper.community_status === "official" ? "bg-slate-300/55" : "bg-slate-500/28",
-        )}
-      />
-
+    <Card className="group overflow-hidden rounded-[26px] border border-[color:var(--shell-border)] bg-[color:color-mix(in_srgb,var(--shell-surface)_96%,transparent)] text-[var(--shell-text)] shadow-[var(--shell-panel-shadow)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shell-panel-shadow-strong)]">
       <div className="p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <PaperStatusBadge kind="community" value={paper.community_status} />
           <PaperStatusBadge kind="translation" value={paper.trans_status} />
-          <div className="ml-auto rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-            {paper.source === "arxiv"
-              ? t("community.detail.sourceArxiv")
-              : t("community.detail.sourceUpload")}
+          <div className="rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
+            {paper.source === "arxiv" ? t("community.detail.sourceArxiv") : t("community.detail.sourceUpload")}
           </div>
         </div>
 
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.54fr)_minmax(250px,0.7fr)]">
-          <div className="space-y-3">
+        <div className="mt-5 space-y-4">
           <Link
             to={`/paper/${paper.id}`}
             onMouseEnter={prefetchDetailNavigation}
             onFocus={prefetchDetailNavigation}
             onPointerDown={prefetchDetailNavigation}
-            className="inline-flex max-w-full items-start text-balance text-2xl font-semibold leading-tight tracking-tight text-[var(--shell-heading)] transition hover:text-[var(--shell-text-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            className="block space-y-3"
           >
-            <span className="line-clamp-2">{paper.title}</span>
+            <h2 className="text-balance text-[1.18rem] font-semibold leading-8 tracking-[-0.03em] text-[var(--shell-heading)] transition group-hover:text-white">
+              {paper.title}
+            </h2>
+
+            <div className="text-sm text-[var(--shell-text-soft)]">{authorsLabel}</div>
+
+            <div className="flex flex-wrap gap-2 text-xs text-[var(--shell-text-muted)]">
+              <span className="rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] px-3 py-1">
+                {categoriesLabel}
+              </span>
+            </div>
+
+            <p className="line-clamp-4 text-[14px] leading-7 text-[var(--shell-text-soft)]">{abstractPreview}</p>
           </Link>
 
-          <p className="text-sm leading-6 text-[var(--shell-text-soft)]">{authorsLabel}</p>
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">{categoriesLabel}</p>
-          <p className="line-clamp-4 max-w-4xl text-sm leading-7 text-[var(--shell-text-soft)]">
-            {abstractPreview}
-          </p>
-          </div>
-
-          <div className="space-y-4 rounded-[20px] border border-[color:var(--shell-border-strong)] bg-[var(--shell-surface-strong)] p-4">
+          <div className="grid gap-2 rounded-[20px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] px-4 py-3 text-sm text-[var(--shell-text-soft)]">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-                {t("community.detail.communitySelectionTitle")}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--shell-text)]">{assetLabel}</p>
+              {publishedAt
+                ? t("community.card.publishedAt", {
+                    value: new Date(publishedAt).toLocaleDateString(),
+                  })
+                : t("community.card.dateUnknown")}
             </div>
-            <div className="rounded-[16px] border border-[color:var(--shell-border-strong)] bg-[var(--shell-surface-muted)] px-3 py-3 text-xs text-[var(--shell-text-muted)]">
-              {paper.arxiv_id
-                ? t("community.card.arxivId", { value: paper.arxiv_id })
-                : t("community.card.uploadSource")}
+            <div>{assetLabel}</div>
+            <div>
+              {paper.arxiv_id ? t("community.card.arxivId", { value: paper.arxiv_id }) : t("community.card.uploadSource")}
             </div>
-            <Button
-              asChild
-              variant="ghost"
-              className="min-h-11 w-full rounded-[18px] border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)] hover:text-[var(--shell-heading)]"
-            >
-              <Link
-                to={`/paper/${paper.id}`}
-                onMouseEnter={prefetchDetailNavigation}
-                onFocus={prefetchDetailNavigation}
-                onPointerDown={prefetchDetailNavigation}
-              >
-                {t("community.card.viewDetail")}
-                <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </Link>
-            </Button>
           </div>
-        </div>
 
-        <div className="mt-6 border-t border-[color:var(--shell-border-strong)] pt-5">
-          <PaperMetaRow
-            publishedAt={publishedAt}
-            views={paper.view_count}
-            likes={paper.like_count}
-            favorites={paper.favorite_count}
-            comments={paper.comment_count}
-            assetLabel={assetLabel}
-          />
-        </div>
-
-        <div className="mt-4 text-xs text-[var(--shell-text-muted)]">
-          {paper.arxiv_id
-            ? t("community.card.arxivId", { value: paper.arxiv_id })
-            : t("community.card.uploadSource")}
+          <Button
+            asChild
+            className="h-11 rounded-full bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
+          >
+            <Link
+              to={`/paper/${paper.id}`}
+              onMouseEnter={prefetchDetailNavigation}
+              onFocus={prefetchDetailNavigation}
+              onPointerDown={prefetchDetailNavigation}
+            >
+              {t("community.card.viewDetail")}
+              <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </Link>
+          </Button>
         </div>
       </div>
     </Card>

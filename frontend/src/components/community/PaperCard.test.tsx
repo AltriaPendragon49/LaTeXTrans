@@ -66,7 +66,7 @@ describe("PaperCard", () => {
     )
 
     expect(screen.getByText("Attention Residuals for Community Discovery")).toBeInTheDocument()
-    expect(screen.getByText("Official")).toBeInTheDocument()
+    expect(screen.queryByText("Official")).not.toBeInTheDocument()
     expect(screen.getByText("Completed")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /view detail/i })).toHaveAttribute("href", "/paper/paper-1")
     expect(screen.getAllByText(/translated pdf/i).length).toBeGreaterThan(0)

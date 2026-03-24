@@ -29,13 +29,18 @@ describe("Layout language integration", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
-          <Route path="/" element={<Layout />} />
+          <Route path="/" element={<Layout />}>
+            <Route index element={<div>layout-test-child</div>} />
+          </Route>
         </Routes>
       </MemoryRouter>,
     )
 
     expect(screen.getByText(i18n.t("layout.guestMode"))).toBeInTheDocument()
-    expect(screen.getByText(i18n.t("layout.menu"))).toBeInTheDocument()
+    expect(screen.getAllByText(i18n.t("community.nav.community")).length).toBeGreaterThan(0)
+    expect(
+      screen.getByRole("button", { name: i18n.t("common.actions.toggleSidebar") }),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: i18n.t("theme.toggle.switchToLight") }),
     ).toBeInTheDocument()
@@ -53,7 +58,8 @@ describe("Layout language integration", () => {
       expect(screen.getByText("Guest mode")).toBeInTheDocument()
     })
 
-    expect(screen.getByText("Menu")).toBeInTheDocument()
-    expect(screen.getByText("Community Feed")).toBeInTheDocument()
+    expect(screen.getAllByText("Community").length).toBeGreaterThan(0)
+    expect(screen.getByRole("button", { name: "Toggle sidebar" })).toBeInTheDocument()
+    expect(screen.getByText("layout-test-child")).toBeInTheDocument()
   })
 })

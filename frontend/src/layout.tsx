@@ -14,19 +14,36 @@ export default function Layout() {
     const location = useLocation()
     const { user, isAuthenticated, loading, isSupabaseAvailable } = useAuth()
     const { t } = useTranslation()
-    const isCommunityRoute = location.pathname === "/" || location.pathname.startsWith("/paper/")
-    const title = isCommunityRoute ? t("community.feed.title") : t("community.nav.newTranslation")
-    const subtitle = isCommunityRoute ? "" : t("common.new_translation")
+    const isHomeRoute = location.pathname === "/"
+    const isPaperRoute = location.pathname.startsWith("/paper/")
+    const isConversationRoute = location.pathname.startsWith("/agent/")
+    const isToolsRoute = location.pathname.startsWith("/tools")
+    const title = isHomeRoute
+      ? t("community.nav.community")
+      : isPaperRoute
+        ? t("community.detail.workspaceTitle")
+      : isConversationRoute
+        ? t("community.conversation.title")
+      : isToolsRoute
+        ? t("community.nav.paperTools")
+        : t("dashboard.start_translation")
+    const subtitle = isHomeRoute || isPaperRoute
+      ? ""
+      : isConversationRoute
+        ? t("community.conversation.historyBadge")
+        : isToolsRoute
+          ? t("community.nav.paperTools")
+          : t("dashboard.start_translation")
 
     return (
         <div className="min-h-screen bg-[var(--shell-bg)] text-[var(--shell-text)] transition-colors">
-            <SidebarProvider>
+            <SidebarProvider defaultOpen={true}>
                 <AppSidebar />
-                <main className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
-                    <div className="sticky top-0 z-10 border-b border-[color:var(--shell-border-strong)] bg-[var(--shell-surface)] px-4 py-3 shadow-[var(--shell-shadow)] backdrop-blur">
-                        <div className="flex items-center justify-between gap-4">
+                <main className="relative flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
+                    <div className="sticky top-0 z-20 px-3 pb-2 pt-3 sm:px-4">
+                        <div className="mx-auto flex max-w-[1560px] flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[color:var(--shell-border)]/90 bg-[color:color-mix(in_srgb,var(--shell-surface)_96%,transparent)] px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.035)] backdrop-blur-md">
                             <div className="flex min-w-0 items-center gap-3">
-                                <SidebarTrigger className="h-10 w-10 rounded-2xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]" />
+                                <SidebarTrigger className="h-8.5 w-8.5 rounded-xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]" />
                                 <div className="min-w-0">
                                     {subtitle ? (
                                         <div className="flex items-center gap-2">
@@ -36,7 +53,7 @@ export default function Layout() {
                                             </p>
                                         </div>
                                     ) : null}
-                                    <div className="truncate text-base font-semibold tracking-tight text-[var(--shell-heading)]">
+                                    <div className="truncate text-sm font-semibold tracking-tight text-[var(--shell-heading)] sm:text-[15px]">
                                         {title}
                                     </div>
                                 </div>
@@ -77,7 +94,7 @@ export default function Layout() {
                             </div>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-auto">
+                    <div className="flex-1 overflow-auto pb-2.5">
                         <Outlet />
                     </div>
                 </main>

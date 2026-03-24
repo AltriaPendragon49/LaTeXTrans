@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 
 import i18n from "@/i18n"
 import CommunityFeedPage from "@/pages/CommunityFeed"
@@ -10,6 +11,12 @@ const useCommunityPapersMock = vi.fn()
 vi.mock("@/hooks/use-community-papers", () => ({
   useCommunityPapers: (...args: unknown[]) => useCommunityPapersMock(...args),
 }))
+
+function ConversationRouteSpy() {
+  const location = useLocation()
+
+  return <pre data-testid="conversation-state">{JSON.stringify(location.state)}</pre>
+}
 
 describe("CommunityFeedPage", () => {
   beforeEach(async () => {
@@ -33,8 +40,9 @@ describe("CommunityFeedPage", () => {
     )
 
     expect(useCommunityPapersMock).toHaveBeenCalledWith("latest", "")
-    expect(screen.getByRole("heading", { name: "Community Feed" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Latest" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: i18n.t("community.feed.launchTitle") })).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.feed.recentTitle"))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.agent.intent.search"))).toBeInTheDocument()
   })
 
   it("renders loading placeholders while the feed is pending", () => {
@@ -55,7 +63,7 @@ describe("CommunityFeedPage", () => {
     expect(screen.getByTestId("community-feed-loading")).toBeInTheDocument()
   })
 
-  it("re-renders when switching sort tabs", () => {
+  it("opens a seeded agent conversation with the selected prompt and tool toggles", async () => {
     useCommunityPapersMock.mockReturnValue({
       items: [],
       total: 0,
@@ -64,15 +72,27 @@ describe("CommunityFeedPage", () => {
       refetch: vi.fn(),
     })
 
+    const user = userEvent.setup()
+
     render(
-      <MemoryRouter>
-        <CommunityFeedPage />
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<CommunityFeedPage />} />
+          <Route path="/agent/:conversationId" element={<ConversationRouteSpy />} />
+        </Routes>
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "Translated" }))
+    await user.type(screen.getByRole("textbox", { name: i18n.t("community.agent.aria") }), "Explain this paper")
+    await user.click(screen.getByRole("switch", { name: i18n.t("community.agent.externalSearch.label") }))
+    await user.click(screen.getByRole("button", { name: i18n.t("community.agent.run") }))
 
-    expect(useCommunityPapersMock).toHaveBeenLastCalledWith("translated", "")
+    expect(JSON.parse(screen.getByTestId("conversation-state").textContent ?? "{}")).toMatchObject({
+      seedInput: "Explain this paper",
+      seedSkillToggles: {
+        external_search: true,
+      },
+    })
   })
 
   it("renders an empty state when no papers match the current view", () => {

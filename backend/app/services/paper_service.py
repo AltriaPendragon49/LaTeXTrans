@@ -14,9 +14,11 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
 import httpx
 import requests
+from bs4 import BeautifulSoup, NavigableString, Tag
 from fastapi import HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -39,6 +41,7 @@ settings = get_settings()
 
 COMMUNITY_STATUS_OFFICIAL = "official"
 COMMUNITY_STATUS_USER_FALLBACK = "user_fallback"
+_RUNTIME_PAPER_OVERRIDES: Dict[str, Dict[str, Any]] = {}
 TERMINAL_TASK_STATUSES = {
     "completed",
     "completed_with_warnings",
@@ -49,6 +52,7 @@ TERMINAL_TASK_STATUSES = {
 _preview_recovery_inflight: set[str] = set()
 _detail_repair_inflight: set[str] = set()
 _preview_payload_cache: Dict[str, Dict[str, Any]] = {}
+_source_html_cache: Dict[str, str] = {}
 
 
 def _utc_now_iso() -> str:
@@ -92,9 +96,46 @@ def _looks_untranslated_for_zh(value: Optional[str]) -> bool:
     text = _normalize_metadata_text(value) or ""
     if not text:
         return True
-    if _count_cjk_characters(text) > 0:
+    cjk_count = _count_cjk_characters(text)
+    letter_count = len(re.findall(r"[A-Za-z]", text))
+    if cjk_count >= 8:
         return False
-    return len(re.findall(r"[A-Za-z]", text)) >= 20
+    if cjk_count > 0 and letter_count == 0:
+        return False
+    if cjk_count > 0 and (cjk_count / max(letter_count, 1)) >= 0.08:
+        return False
+    return letter_count >= 20
+
+
+def _preview_html_looks_untranslated_for_zh(html_content: Optional[str]) -> bool:
+    if not html_content:
+        return True
+
+    try:
+        text = BeautifulSoup(html_content, "html.parser").get_text(" ", strip=True)
+    except Exception:
+        text = html_content
+
+    return _looks_untranslated_for_zh(text)
+
+
+def _preview_asset_has_translated_content(preview_asset: Optional[Dict[str, Any]]) -> bool:
+    if not preview_asset:
+        return False
+
+    preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
+    if not preview_path.exists():
+        return False
+
+    try:
+        html_content = preview_path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    if _preview_html_needs_refresh(html_content):
+        return False
+
+    return not _preview_html_looks_untranslated_for_zh(html_content)
 
 
 def _should_replace_translated_abstract(
@@ -412,6 +453,18 @@ def _load_baseline_seed_rows() -> List[Dict[str, Any]]:
     return normalized_rows
 
 
+def _apply_runtime_paper_override(paper: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if paper is None:
+        return None
+    paper_id = str(paper.get("id") or "").strip()
+    override = _RUNTIME_PAPER_OVERRIDES.get(paper_id)
+    if not override:
+        return paper
+    merged = dict(paper)
+    merged.update(override)
+    return merged
+
+
 def _preview_asset_needs_refresh(preview_path: Path) -> bool:
     if not preview_path.exists():
         return True
@@ -450,7 +503,6 @@ def _preview_html_needs_refresh(html_content: str) -> bool:
         "\\textsubscript{",
         "[1.1pt]",
         "LNCE=",
-        "paper-preview__latex",
         "<PLACEHOLDER_",
         "<PROTECTED_",
     )
@@ -521,6 +573,8 @@ def _load_preview_payload(
 
     if _preview_html_needs_refresh(html_content):
         return None
+    if _preview_html_looks_untranslated_for_zh(html_content):
+        return None
 
     payload = {
         "paper_id": paper_id,
@@ -561,6 +615,7 @@ async def _recover_preview_asset_in_background(
         current_asset_map = asset_map or {}
         for task_id in _candidate_task_ids_for_asset_recovery(paper, current_asset_map):
             preview_asset = await _resolve_preview_html_asset(
+                paper=paper,
                 paper_id=paper_id,
                 task_id=task_id,
                 asset_map=current_asset_map,
@@ -734,7 +789,12 @@ def _paper_select_clause() -> str:
 async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
     admin_client = get_supabase_admin_client()
     if admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
+        return _apply_runtime_paper_override(
+            next(
+                (row for row in _load_baseline_seed_rows() if str(row.get("id") or "") == paper_id),
+                None,
+            )
+        )
 
     result = await _run_db_blocking_with_retry(
         "fetch_paper_by_id",
@@ -747,13 +807,29 @@ async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
         )
     )
     rows = result.data or []
-    return rows[0] if rows else None
+    if rows:
+        return _apply_runtime_paper_override(rows[0])
+    return _apply_runtime_paper_override(
+        next(
+            (row for row in _load_baseline_seed_rows() if str(row.get("id") or "") == paper_id),
+            None,
+        )
+    )
 
 
 async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
     admin_client = get_supabase_admin_client()
     if admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
+        return _apply_runtime_paper_override(
+            next(
+                (
+                    row
+                    for row in _load_baseline_seed_rows()
+                    if str(row.get("arxiv_id") or "").strip() == arxiv_id
+                ),
+                None,
+            )
+        )
 
     result = await _run_db_blocking_with_retry(
         "fetch_paper_by_arxiv_id",
@@ -766,7 +842,18 @@ async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
         )
     )
     rows = result.data or []
-    return rows[0] if rows else None
+    if rows:
+        return _apply_runtime_paper_override(rows[0])
+    return _apply_runtime_paper_override(
+        next(
+            (
+                row
+                for row in _load_baseline_seed_rows()
+                if str(row.get("arxiv_id") or "").strip() == arxiv_id
+            ),
+            None,
+        )
+    )
 
 
 async def _fetch_paper_by_title(*, title: str, source: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -809,7 +896,13 @@ async def _insert_paper(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def _update_paper(paper_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     admin_client = get_supabase_admin_client()
     if admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
+        current = await _fetch_paper_by_id(paper_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        merged = dict(current)
+        merged.update(payload)
+        _RUNTIME_PAPER_OVERRIDES[paper_id] = merged
+        return merged
 
     result = await _run_db_blocking_with_retry(
         "update_paper",
@@ -993,11 +1086,19 @@ def _normalize_paper_state_from_assets(
     selected_latest_asset = latest_asset or _select_latest_asset_from_map(asset_map)
     translated_asset: Optional[Dict[str, Any]] = None
     if asset_map:
-        translated_asset = asset_map.get("preview_html") or asset_map.get("translated_pdf")
+        preview_asset = asset_map.get("preview_html")
+        if _preview_asset_has_translated_content(preview_asset):
+            translated_asset = preview_asset
+        else:
+            translated_asset = asset_map.get("translated_pdf")
     if (
         translated_asset is None
         and selected_latest_asset
         and selected_latest_asset.get("asset_type") in {"preview_html", "translated_pdf"}
+        and (
+            selected_latest_asset.get("asset_type") != "preview_html"
+            or _preview_asset_has_translated_content(selected_latest_asset)
+        )
     ):
         translated_asset = selected_latest_asset
 
@@ -1007,6 +1108,11 @@ def _normalize_paper_state_from_assets(
             normalized["community_selected_task_id"] = translated_asset.get("task_id")
         if translated_asset.get("id"):
             normalized["community_selected_asset_id"] = translated_asset.get("id")
+    elif str(normalized.get("trans_status") or "") in {"completed", "completed_with_warnings"}:
+        normalized["trans_status"] = "failed"
+
+    if _looks_untranslated_for_zh(normalized.get("abstract_translated")):
+        normalized["abstract_translated"] = None
 
     return normalized
 
@@ -1259,8 +1365,215 @@ async def _ensure_translated_pdf_asset(
     return None
 
 
+async def _fetch_sanitized_arxiv_html(arxiv_id: str) -> Optional[str]:
+    normalized = str(arxiv_id or "").strip()
+    if not normalized:
+        return None
+
+    cached = _source_html_cache.get(normalized)
+    if cached:
+        return cached
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"https://arxiv.org/html/{normalized}",
+                headers={"User-Agent": "LaTeXTrans-Community-Reader/1.0"},
+            )
+            response.raise_for_status()
+    except Exception:
+        return None
+
+    soup = BeautifulSoup(response.text, "lxml")
+    for selector in (
+        "script",
+        "style",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        ".ltx_page_navbar",
+        ".ltx_page_header",
+        ".ltx_page_footer",
+        ".ltx_role_toc",
+        ".ltx_role_footnote",
+        ".ltx_note_mark",
+        ".ltx_dates",
+        ".ltx_classification",
+    ):
+        for node in soup.select(selector):
+            node.decompose()
+
+    article = soup.select_one("article") or soup.select_one("main") or soup.body
+    if article is None:
+        return None
+
+    for child in list(article.children):
+        if isinstance(child, NavigableString):
+            child.extract()
+            continue
+        if not isinstance(child, Tag):
+            continue
+        child_classes = set(child.get("class", []))
+        starts_reading_content = (
+            child.name in {"h1", "h2"}
+            or child.name == "section"
+            or "ltx_abstract" in child_classes
+            or "ltx_authors" in child_classes
+            or "ltx_title" in child_classes
+            or any(cls.startswith("ltx_section") for cls in child_classes)
+        )
+        if starts_reading_content:
+            break
+        child.decompose()
+
+    for text_node in list(article.find_all(string=lambda value: isinstance(value, str) and "\\WarningFilter" in value)):
+        parent = text_node.parent
+        if parent and parent is not article:
+            parent.decompose()
+        else:
+            text_node.extract()
+
+    article_classes = article.get("class", [])
+    article["class"] = [*dict.fromkeys([*article_classes, "latextrans-source-article"])]
+    article["data-reader-origin"] = "arxiv"
+
+    base_html_url = f"https://arxiv.org/html/{normalized}/"
+    for image in article.select("img[src]"):
+        src = str(image.get("src") or "").strip()
+        if src and not src.startswith(("#", "data:", "http://", "https://")):
+            image["src"] = urljoin(base_html_url, src)
+
+    for source in article.select("source[srcset]"):
+        srcset = str(source.get("srcset") or "").strip()
+        if srcset and not srcset.startswith(("#", "data:", "http://", "https://")):
+            source["srcset"] = urljoin(base_html_url, srcset)
+
+    for link in article.select("a[href]"):
+        href = str(link.get("href") or "").strip()
+        if href and not href.startswith(("#", "mailto:", "javascript:", "http://", "https://")):
+            link["href"] = urljoin(base_html_url, href)
+
+    html_content = str(article)
+    _source_html_cache[normalized] = html_content
+    return html_content
+
+
+def _source_reader_resource(
+    *,
+    paper: Dict[str, Any],
+    source_html_content: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    arxiv_id = str(paper.get("arxiv_id") or "").strip()
+    if arxiv_id:
+        if source_html_content:
+            return {
+                "kind": "source_html",
+                "html_content": source_html_content,
+                "url": f"https://arxiv.org/html/{arxiv_id}",
+            }
+        return {
+            "kind": "source_pdf",
+            "html_content": None,
+            "url": f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+        }
+    return None
+
+
+def _translated_pdf_reader_resource(*, paper_id: str, asset: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "kind": "translated_pdf",
+        "html_content": None,
+        "url": f"/api/papers/{paper_id}/download-session",
+        "asset_id": asset.get("id"),
+    }
+
+
+def _build_reader_experience_payload(
+    *,
+    paper: Dict[str, Any],
+    paper_id: str,
+    preview_payload: Optional[Dict[str, Any]],
+    translated_asset: Optional[Dict[str, Any]],
+    source_html_content: Optional[str] = None,
+) -> Dict[str, Any]:
+    source_resource = _source_reader_resource(
+        paper=paper,
+        source_html_content=source_html_content,
+    )
+    translated_resource: Optional[Dict[str, Any]] = None
+    if preview_payload:
+        translated_resource = {
+            "kind": "preview_html",
+            "html_content": preview_payload.get("html_content"),
+            "url": None,
+        }
+    elif translated_asset:
+        translated_resource = _translated_pdf_reader_resource(
+            paper_id=paper_id,
+            asset=translated_asset,
+        )
+
+    available_modes: List[str] = []
+    if source_resource:
+        available_modes.append("source")
+    if translated_resource:
+        available_modes.append("translated")
+    if not available_modes:
+        available_modes.append("source")
+
+    trans_status = str(paper.get("trans_status") or "")
+    if translated_resource:
+        stage_label = "中文版已准备好"
+        failure_type = None
+        can_leave_hint = None
+        preferred_mode = "translated"
+        resolved_reader_state = "translated_ready"
+    elif trans_status in {"queued", "processing"}:
+        stage_label = "正在生成中文版本"
+        failure_type = None
+        can_leave_hint = "你可以先阅读，完成后会自动更新"
+        preferred_mode = "source"
+        resolved_reader_state = "warming" if source_resource else "unavailable"
+    elif source_resource and trans_status in {"failed", "failed_compilation", "structure_invalid"}:
+        stage_label = "英文阅读仍可用"
+        failure_type = "translation_failed"
+        can_leave_hint = None
+        preferred_mode = "source"
+        resolved_reader_state = "source_ready"
+    elif source_resource:
+        stage_label = "已准备英文阅读"
+        failure_type = None
+        can_leave_hint = None
+        preferred_mode = "source"
+        resolved_reader_state = "source_ready"
+    else:
+        stage_label = "暂时无法完成中文生成"
+        failure_type = "translation_failed" if trans_status in TERMINAL_TASK_STATUSES else None
+        can_leave_hint = None
+        preferred_mode = "source"
+        resolved_reader_state = "unavailable"
+
+    return {
+        "reader_state": "ready" if resolved_reader_state in {"source_ready", "translated_ready"} else resolved_reader_state,
+        "reader": {
+            "preferred_mode": preferred_mode,
+            "available_modes": available_modes,
+            "source": source_resource,
+            "translated": translated_resource,
+            "state": resolved_reader_state,
+        },
+        "experience": {
+            "stage_label": stage_label,
+            "can_leave_hint": can_leave_hint,
+            "failure_type": failure_type,
+        },
+    }
+
+
 async def _resolve_preview_html_asset(
     *,
+    paper: Dict[str, Any],
     paper_id: str,
     task_id: str,
     asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -1277,6 +1590,10 @@ async def _resolve_preview_html_asset(
                 output_dir,
                 target_dir=_community_library_root(paper_id) / "preview",
                 source_dirs=source_dirs,
+                paper_metadata={
+                    "title": paper.get("title"),
+                    "authors": paper.get("authors") or [],
+                },
             )
             break
         except FileNotFoundError:
@@ -1419,7 +1736,7 @@ def _paper_payload(
     *,
     source: str,
     title: str,
-    created_by: str,
+    created_by: Optional[str],
     community_status: str,
     authors: Optional[List[str]] = None,
     categories: Optional[List[str]] = None,
@@ -1570,6 +1887,7 @@ async def _sync_task_assets_for_paper(
             task_id=task_id,
         )
         preview_asset = await _resolve_preview_html_asset(
+            paper=paper,
             paper_id=paper_id,
             task_id=task_id,
         )
@@ -1589,11 +1907,26 @@ async def _sync_task_assets_for_paper(
         return {"done": True, "status": "completed", "paper": paper}
 
     if task.get("status") in TERMINAL_TASK_STATUSES:
+        translated_asset = await _resolve_translated_pdf_asset(
+            paper_id=paper_id,
+            task_id=task_id,
+        )
+        preview_asset = await _resolve_preview_html_asset(
+            paper=paper,
+            paper_id=paper_id,
+            task_id=task_id,
+        )
+        selected_asset = preview_asset or translated_asset
         paper = await _update_paper(
             paper_id,
             {
                 "trans_status": "failed",
                 "community_selected_task_id": task_id,
+                **(
+                    {"community_selected_asset_id": selected_asset.get("id")}
+                    if selected_asset and selected_asset.get("id")
+                    else {}
+                ),
                 "updated_at": _utc_now_iso(),
             },
         )
@@ -1803,7 +2136,10 @@ async def submit_arxiv_paper(
 ) -> Dict[str, Any]:
     del source_language, target_language
 
-    context = await resolve_submitter_context(credentials)
+    if credentials is None:
+        context = {"user_id": None, "roles": [], "is_admin": False}
+    else:
+        context = await resolve_submitter_context(credentials)
     admission = await resolve_community_admission(
         submitter_context=context,
         source_type="arxiv",
@@ -1830,9 +2166,9 @@ async def submit_arxiv_paper(
     if existing:
         update_payload: Dict[str, Any] = {
             "community_status": COMMUNITY_STATUS_OFFICIAL,
-            "trans_status": "queued",
-            "trans_latest_task_id": arxiv_response.task_id,
-            "community_selected_task_id": arxiv_response.task_id,
+            "trans_status": "not_started",
+            "trans_latest_task_id": None,
+            "community_selected_task_id": None,
             "official_published_at": _utc_now_iso(),
             "updated_at": _utc_now_iso(),
         }
@@ -1850,8 +2186,9 @@ async def submit_arxiv_paper(
                 authors=metadata.get("authors"),
                 categories=metadata.get("categories"),
                 abstract_raw=metadata.get("abstract_raw"),
-                task_id=arxiv_response.task_id,
+                task_id=None,
                 official_published_at=_utc_now_iso() if context["is_admin"] else None,
+                trans_status="not_started",
             )
         )
         admission_result = admission["admission_result"]
@@ -1887,7 +2224,10 @@ async def start_paper_translation(
     request: translate_route.TranslateRequest,
     credentials: Optional[HTTPAuthorizationCredentials],
 ) -> Dict[str, Any]:
-    context = await resolve_submitter_context(credentials)
+    if credentials is None:
+        context = {"user_id": None, "roles": [], "is_admin": False}
+    else:
+        context = await resolve_submitter_context(credentials)
     paper = await _ensure_public_paper(paper_id)
 
     active_task_id = paper.get("community_selected_task_id")
@@ -1900,7 +2240,13 @@ async def start_paper_translation(
             "processing_url": f"/processing?taskId={active_task_id}",
         }
 
-    asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
+    try:
+        asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
+    except HTTPException as exc:
+        if exc.status_code == 500 and exc.detail == "Supabase admin client unavailable":
+            asset_map = {}
+        else:
+            raise
     source_asset = asset_map.get("source_archive")
     if source_asset and source_asset.get("file_path"):
         resolved_source_path = _resolve_storage_path(source_asset["file_path"])
@@ -1994,6 +2340,7 @@ async def get_paper_preview(*, paper_id: str) -> Dict[str, Any]:
     if not preview_asset:
         for task_id in _candidate_task_ids_for_asset_recovery(paper, asset_map):
             preview_asset = await _resolve_preview_html_asset(
+                paper=paper,
                 paper_id=paper_id,
                 task_id=task_id,
                 asset_map=asset_map,
@@ -2096,8 +2443,11 @@ async def list_community_papers(
             source_mode = "baseline_seed"
 
     if not papers and admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
+        logger.warning(
+            "Supabase admin client unavailable and no baseline seed rows found; returning empty community list"
+        )
 
+    papers = [_apply_runtime_paper_override(paper) or paper for paper in papers]
     papers = [paper for paper in papers if _matches_paper_query(paper, q)]
     papers = _sort_papers(papers, sort)
     if limit is not None and limit > 0:
@@ -2128,7 +2478,11 @@ async def get_community_paper_detail(
         asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
         latest_asset = _select_latest_asset_from_map(asset_map)
     except HTTPException:
-        latest_asset = (await _fetch_latest_assets([paper_id])).get(paper_id)
+        asset_map = None
+        try:
+            latest_asset = (await _fetch_latest_assets([paper_id])).get(paper_id)
+        except HTTPException:
+            latest_asset = None
     if fast_path:
         _schedule_public_detail_repair(
             paper_id=paper_id,
@@ -2145,41 +2499,129 @@ async def get_community_paper_detail(
         paper_id,
         {"liked": False, "favorited": False},
     )
+    resolved_asset_map: Dict[str, Dict[str, Any]] = dict(asset_map or {})
     preview_payload: Optional[Dict[str, Any]] = None
-    reader_state = "unavailable"
-    if asset_map:
-        preview_asset = asset_map.get("preview_html")
-        if preview_asset:
+
+    preview_asset = resolved_asset_map.get("preview_html")
+    if preview_asset:
+        preview_payload = _build_preview_payload(
+            paper_id=paper_id,
+            paper=paper,
+            preview_asset=preview_asset,
+        )
+
+    if not preview_payload:
+        for task_id in _candidate_task_ids_for_asset_recovery(paper, resolved_asset_map):
+            preview_asset = await _resolve_preview_html_asset(
+                paper=paper,
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_map=resolved_asset_map,
+            )
+            if not preview_asset:
+                continue
+            resolved_asset_map["preview_html"] = preview_asset
             preview_payload = _build_preview_payload(
                 paper_id=paper_id,
                 paper=paper,
                 preview_asset=preview_asset,
             )
-        if preview_payload:
-            reader_state = "ready"
-        elif _schedule_preview_recovery(
+            if preview_payload:
+                break
+
+    translated_asset = await _ensure_translated_pdf_asset(
+        paper=paper,
+        asset_map=resolved_asset_map,
+    )
+
+    if not preview_payload and paper.get("trans_status") in {"completed", "completed_with_warnings"}:
+        _schedule_preview_recovery(
             paper_id=paper_id,
             paper=paper,
-            asset_map=asset_map,
-        ) or paper.get("trans_status") in {"queued", "processing"}:
-            reader_state = "warming"
+            asset_map=resolved_asset_map,
+        )
+
+    source_html_content = await _fetch_sanitized_arxiv_html(str(paper.get("arxiv_id") or ""))
+
+    reader_payload = _build_reader_experience_payload(
+        paper=paper,
+        paper_id=paper_id,
+        preview_payload=preview_payload,
+        translated_asset=translated_asset,
+        source_html_content=source_html_content,
+    )
 
     return {
         "paper": _paper_summary(
             paper,
             latest_asset=latest_asset,
-            asset_map=asset_map,
+            asset_map=resolved_asset_map,
             viewer_state=viewer_state,
         ),
         "preview": preview_payload,
-        "reader_state": reader_state,
+        "reader_state": reader_payload["reader_state"],
+        "reader": reader_payload["reader"],
+        "experience": reader_payload["experience"],
+    }
+
+
+async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]:
+    """
+    Import an external paper into the community library, or reuse an existing one.
+
+    This is a minimal bridge for the community agent / homepage agent to perform
+    “静默导入”. It prefers reusing existing papers when possible.
+    """
+    # 如果已有对应 arxiv_id 的 paper，则直接复用
+    existing = await _fetch_paper_by_arxiv_id(arxiv_id)
+    if existing is not None:
+        return {
+            "paper_id": existing["id"],
+            "reused": True,
+            "imported": False,
+            "reader_state": "source_ready",
+        }
+
+    baseline_existing = next(
+        (
+            row
+            for row in _load_baseline_seed_rows()
+            if str(row.get("arxiv_id") or "").strip() == arxiv_id
+        ),
+        None,
+    )
+    if baseline_existing is not None:
+        return {
+            "paper_id": baseline_existing["id"],
+            "reused": True,
+            "imported": False,
+            "reader_state": "source_ready",
+        }
+
+    # 否则走现有提交流程创建一篇新论文。这里调用 submit_arxiv_paper，
+    # 并假定服务角色或匿名用户上下文在上层处理。
+    payload = await submit_arxiv_paper(
+        arxiv_id=arxiv_id,
+        credentials=None,
+        source_language="en",
+        target_language="zh",
+    )
+    paper = payload["paper"]
+    return {
+        "paper_id": paper["id"],
+        "reused": False,
+        "imported": True,
+        "reader_state": "source_ready",
     }
 
 
 async def record_community_paper_view(*, paper_id: str) -> Dict[str, Any]:
     admin_client = get_supabase_admin_client()
     if admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
+        paper = await _fetch_paper_by_id(paper_id)
+        if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
+            raise HTTPException(status_code=404, detail="Paper not found")
+        return {"paper_id": paper_id, "view_count": int(paper.get("view_count") or 0)}
 
     result = await _run_db_blocking_with_retry(
         "increment_paper_view_count",

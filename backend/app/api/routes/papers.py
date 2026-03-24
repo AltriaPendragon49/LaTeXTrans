@@ -93,6 +93,8 @@ class PaperDetailResponse(BaseModel):
     paper: PaperSummary
     preview: Optional["PaperPreviewResponse"] = None
     reader_state: str = "unavailable"
+    reader: Optional[Dict[str, Any]] = None
+    experience: Optional[Dict[str, Any]] = None
 
 
 class PaperViewResponse(BaseModel):
@@ -124,6 +126,18 @@ class PaperDownloadSessionResponse(BaseModel):
 
 
 PaperDetailResponse.model_rebuild()
+
+
+class PaperImportRequest(BaseModel):
+    source: str = "arxiv"
+    arxiv_id: Optional[str] = None
+
+
+class PaperImportResponse(BaseModel):
+    paper_id: str
+    reused: bool
+    imported: bool
+    reader_state: str
 
 
 @router.post("/submit", response_model=PaperSubmitResponse)
@@ -176,6 +190,18 @@ async def submit_paper(
     raise HTTPException(status_code=400, detail="Unsupported content type")
 
 
+@router.post("/import", response_model=PaperImportResponse)
+async def import_paper(request: PaperImportRequest):
+    if not request.arxiv_id:
+        raise HTTPException(status_code=400, detail="arxiv_id is required")
+
+    result = await paper_service.import_or_reuse_paper(
+        source=request.source,
+        arxiv_id=request.arxiv_id,
+    )
+    return PaperImportResponse(**result)
+
+
 @router.get("", response_model=PaperListResponse)
 async def list_papers(
     response: Response,
@@ -224,13 +250,6 @@ async def translate_paper(
     request: TranslateRequest,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ):
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     return await paper_service.start_paper_translation(
         paper_id=paper_id,
         request=request,

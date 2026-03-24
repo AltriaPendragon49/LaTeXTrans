@@ -56,6 +56,36 @@ def test_generate_preview_html_writes_semantic_reader_output(tmp_path: Path):
     assert "$E=mc^2$" in html
 
 
+def test_generate_preview_html_includes_paper_metadata_header(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "1",
+            "content": "\\section{Introduction}\nFirst paragraph.",
+            "trans_content": "\\section{Introduction}\nFirst paragraph.",
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(
+        output_dir,
+        paper_metadata={
+            "title": "Emulating Public Opinion: A Proof-of-Concept",
+            "authors": ["Bastián González-Bustamante", "Nando Verelst"],
+        },
+    )
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "paper-preview__header" in html
+    assert "Emulating Public Opinion: A Proof-of-Concept" in html
+    assert "Bastián González-Bustamante" in html
+    assert "Nando Verelst" in html
+    assert "<h2>Introduction</h2>" in html
+
+
 def test_generate_preview_html_strips_structural_latex_and_renders_figures_readably(tmp_path: Path):
     output_dir = tmp_path / "task-output"
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -51,3 +51,24 @@ def test_record_view_returns_404_for_missing_or_hidden_paper(monkeypatch):
         asyncio.run(paper_service.record_community_paper_view(paper_id="missing"))
 
     assert exc_info.value.status_code == 404
+
+
+def test_record_view_gracefully_degrades_without_admin_client(monkeypatch):
+    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: None)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda paper_id: asyncio.sleep(
+            0,
+            result={
+                "id": paper_id,
+                "visibility": "public",
+                "status": "published",
+                "view_count": 0,
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.record_community_paper_view(paper_id="paper-view"))
+
+    assert result == {"paper_id": "paper-view", "view_count": 0}

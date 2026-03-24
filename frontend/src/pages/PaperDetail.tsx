@@ -1,30 +1,29 @@
-import {
-  ArrowLeft,
-  Clock3,
-  Eye,
-  Heart,
-  Languages,
-  Link2,
-  MessageSquare,
-  ScrollText,
-  Star,
-} from "lucide-react"
-import { Fragment, type ReactNode, useRef, useState } from "react"
+import { ArrowLeft, Clock3, Link2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
-import { PaperActionShell } from "@/components/community/PaperActionShell"
-import { PaperDetailSkeleton } from "@/components/community/PaperDetailSkeleton"
-import { PaperPreviewReader } from "@/components/community/PaperPreviewReader"
-import { PaperStatusBadge } from "@/components/community/PaperStatusBadge"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { createCommunityPaperDownloadSession, translateCommunityPaper } from "@/lib/community-api"
 import { API_BASE_URL } from "@/api-base"
+import { PaperDetailSkeleton } from "@/components/community/PaperDetailSkeleton"
+import { PaperDetailWorkspace } from "@/components/community/PaperDetailWorkspace"
+import { Button } from "@/components/ui/button"
 import { usePaperDetail } from "@/hooks/use-paper-detail"
+import {
+  createCommunityAgentRun,
+  createCommunityPaperDownloadSession,
+  importCommunityPaper,
+  translateCommunityPaper,
+} from "@/lib/community-api"
 import { useStore } from "@/store/useStore"
-import type { PaperAssetSummary } from "@/types/community"
+import type {
+  CommunityAgentCitation,
+  CommunityAgentRun,
+  CommunityPaper,
+  CommunityPaperExperience,
+  CommunityPaperReader,
+  CommunityPaperReaderMode,
+  PaperAssetSummary,
+} from "@/types/community"
 
 function getAssetTypeLabel(assetType: PaperAssetSummary["asset_type"], t: (key: string) => string) {
   switch (assetType) {
@@ -36,6 +35,8 @@ function getAssetTypeLabel(assetType: PaperAssetSummary["asset_type"], t: (key: 
       return t("community.card.assetType.preview_pdf")
     case "preview_html":
       return t("community.card.assetType.preview_html")
+    default:
+      return assetType
   }
 }
 
@@ -59,66 +60,7 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
-const ABSTRACT_URL_PATTERN = /\[<(https?:\/\/[^>\s]+)>\]|(https?:\/\/[^\s<>\])]+)/g
-
-function renderLinkedText(text: string) {
-  const nodes: Array<ReactNode | string> = []
-  let lastIndex = 0
-
-  for (const match of text.matchAll(ABSTRACT_URL_PATTERN)) {
-    const index = match.index ?? 0
-    const fullMatch = match[0]
-    const bracketedUrl = match[1]
-    const bareUrl = match[2]
-    const url = bracketedUrl || bareUrl
-
-    if (!url) {
-      continue
-    }
-
-    if (index > lastIndex) {
-      nodes.push(text.slice(lastIndex, index))
-    }
-
-    const anchor = (
-      <a
-        key={`${url}-${index}`}
-        href={url}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="text-sky-600 underline decoration-sky-400/60 underline-offset-4 hover:text-sky-500 dark:text-sky-300 dark:hover:text-sky-200"
-      >
-        {url}
-      </a>
-    )
-
-    if (bracketedUrl) {
-      nodes.push(
-        <Fragment key={`wrapped-${url}-${index}`}>
-          [
-          {anchor}
-          ]
-        </Fragment>,
-      )
-    } else {
-      nodes.push(anchor)
-    }
-
-    lastIndex = index + fullMatch.length
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex))
-  }
-
-  return nodes
-}
-
-function formatDetailDate(
-  value: string | null | undefined,
-  locale: string,
-  fallback: string,
-) {
+function formatDetailDate(value: string | null | undefined, locale: string, fallback: string) {
   if (!value) {
     return fallback
   }
@@ -139,15 +81,12 @@ function extractActionErrorMessage(error: unknown): string | null {
   if (typeof error === "string") {
     return error
   }
-
   if (error instanceof Error) {
     return error.message
   }
-
   if (!error || typeof error !== "object") {
     return null
   }
-
   if ("response" in error) {
     const response = error.response
     if (
@@ -162,12 +101,49 @@ function extractActionErrorMessage(error: unknown): string | null {
       return response.data.detail
     }
   }
-
   if ("message" in error && typeof error.message === "string") {
     return error.message
   }
-
   return null
+}
+
+const ACTIVE_TRANSLATION_STATUSES = new Set<CommunityPaper["trans_status"]>(["queued", "processing"])
+const FAILED_TRANSLATION_STATUSES = new Set<CommunityPaper["trans_status"]>(["failed"])
+
+function hasSourceReader(reader: CommunityPaperReader | null | undefined) {
+  return reader?.state === "source_ready" || Boolean(reader?.source)
+}
+
+function hasTranslatedReaderResource(reader: CommunityPaperReader | null | undefined) {
+  return reader?.state === "translated_ready" || Boolean(reader?.translated)
+}
+
+function resolveStageKey(
+  paper: Pick<CommunityPaper, "trans_status"> | null | undefined,
+  reader: CommunityPaperReader | null | undefined,
+  experience: CommunityPaperExperience | null | undefined,
+) {
+  if (hasTranslatedReaderResource(reader)) {
+    return "community.detail.stage.translatedReady"
+  }
+
+  if (reader?.state === "warming" || ACTIVE_TRANSLATION_STATUSES.has(paper?.trans_status ?? "not_started")) {
+    return "community.detail.stage.generating"
+  }
+
+  if (
+    hasSourceReader(reader) &&
+    (experience?.failure_type === "translation_failed" ||
+      FAILED_TRANSLATION_STATUSES.has(paper?.trans_status ?? "not_started"))
+  ) {
+    return "community.detail.stage.sourceFallback"
+  }
+
+  if (hasSourceReader(reader)) {
+    return "community.detail.stage.sourceReady"
+  }
+
+  return "community.detail.stage.unavailable"
 }
 
 export default function PaperDetailPage() {
@@ -175,14 +151,74 @@ export default function PaperDetailPage() {
   const navigate = useNavigate()
   const previewRef = useRef<HTMLDivElement>(null)
   const { paperId } = useParams<{ paperId: string }>()
-  const { paper, preview, readerState, loading, error, notFound } = usePaperDetail(paperId)
+  const { paper, preview, readerState, reader, experience, loading, error, notFound, refetch } =
+    usePaperDetail(paperId)
   const { config, loadUserSettings, setTaskId, setArxivId } = useStore()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [statusOverride, setStatusOverride] = useState<string | null>(null)
+  const [canLeaveHint, setCanLeaveHint] = useState<string | null>(null)
+  const [softBanner, setSoftBanner] = useState<string | null>(null)
+  const [readerHighlight, setReaderHighlight] = useState(false)
+  const [agentBusy, setAgentBusy] = useState(false)
+  const [agentError, setAgentError] = useState<string | null>(null)
+  const [agentRun, setAgentRun] = useState<CommunityAgentRun | null>(null)
+  const [selectedMode, setSelectedMode] = useState<CommunityPaperReaderMode>("source")
+  const hasTranslatedReader = Boolean(reader?.translated)
+  const resolvedStageKey = resolveStageKey(paper, reader, experience)
+  const resolvedPreferredMode: CommunityPaperReaderMode =
+    reader?.preferred_mode ??
+    (preview ||
+    paper?.trans_status === "completed" ||
+    paper?.trans_status === "processing" ||
+    paper?.trans_status === "queued" ||
+    paper?.latest_asset?.asset_type === "preview_html"
+      ? "translated"
+      : "source")
+  const availableModes = reader?.available_modes?.length
+    ? reader.available_modes
+    : (hasTranslatedReader ? ["source", "translated"] : ["source"])
+
+  useEffect(() => {
+    if (resolvedStageKey === "community.detail.stage.translatedReady") {
+      setSoftBanner(t("community.detail.softReady"))
+      setReaderHighlight(true)
+      const timer = window.setTimeout(() => {
+        setReaderHighlight(false)
+      }, 1500)
+      return () => window.clearTimeout(timer)
+    }
+    return undefined
+  }, [resolvedStageKey, t])
+
+  useEffect(() => {
+    if (statusOverride === "community.detail.stage.generating") {
+      const intervalId = window.setInterval(() => {
+        void refetch().catch(() => undefined)
+      }, 3000)
+      return () => window.clearInterval(intervalId)
+    }
+    return undefined
+  }, [refetch, statusOverride])
+
+  useEffect(() => {
+    setSelectedMode((currentMode) => {
+      if (availableModes.includes(currentMode)) {
+        return currentMode
+      }
+      return resolvedPreferredMode
+    })
+  }, [availableModes, resolvedPreferredMode])
+
+  useEffect(() => {
+    if (resolvedStageKey === "community.detail.stage.translatedReady") {
+      setSelectedMode("translated")
+    }
+  }, [resolvedStageKey])
 
   if (loading) {
     return (
       <div className="min-h-full bg-[var(--shell-bg)] px-4 py-6 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-[2200px]">
+        <div className="mx-auto w-full max-w-[2520px]">
           <PaperDetailSkeleton />
         </div>
       </div>
@@ -193,10 +229,18 @@ export default function PaperDetailPage() {
     return (
       <div className="min-h-full bg-[var(--shell-bg)] px-4 py-6 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl rounded-[32px] border border-rose-500/20 bg-rose-500/5 px-6 py-14 text-center">
-          <h1 className="text-3xl font-semibold text-rose-950 dark:text-white">{t("community.detail.errorTitle")}</h1>
-          <p className="mt-3 text-sm text-rose-900/80 dark:text-slate-300">{t("community.detail.errorDescription")}</p>
+          <h1 className="text-3xl font-semibold text-rose-950 dark:text-white">
+            {t("community.detail.errorTitle")}
+          </h1>
+          <p className="mt-3 text-sm text-rose-900/80 dark:text-slate-300">
+            {t("community.detail.errorDescription")}
+          </p>
           <p className="mt-4 text-xs text-rose-800/80 dark:text-slate-400">{error}</p>
-          <Button asChild variant="outline" className="mt-6 rounded-2xl border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)]">
+          <Button
+            asChild
+            variant="outline"
+            className="mt-6 rounded-2xl border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)]"
+          >
             <Link to="/">{t("community.detail.backToFeed")}</Link>
           </Button>
         </div>
@@ -208,9 +252,17 @@ export default function PaperDetailPage() {
     return (
       <div className="min-h-full bg-[var(--shell-bg)] px-4 py-6 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl rounded-[32px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] px-6 py-14 text-center">
-          <h1 className="text-3xl font-semibold text-[var(--shell-heading)]">{t("community.detail.notFoundTitle")}</h1>
-          <p className="mt-3 text-sm text-[var(--shell-text-muted)]">{t("community.detail.notFoundDescription")}</p>
-          <Button asChild variant="outline" className="mt-6 rounded-2xl border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)]">
+          <h1 className="text-3xl font-semibold text-[var(--shell-heading)]">
+            {t("community.detail.notFoundTitle")}
+          </h1>
+          <p className="mt-3 text-sm text-[var(--shell-text-muted)]">
+            {t("community.detail.notFoundDescription")}
+          </p>
+          <Button
+            asChild
+            variant="outline"
+            className="mt-6 rounded-2xl border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)]"
+          >
             <Link to="/">{t("community.detail.backToFeed")}</Link>
           </Button>
         </div>
@@ -219,7 +271,6 @@ export default function PaperDetailPage() {
   }
 
   const activePaper = paper
-
   const includedAtLabel = formatDetailDate(
     activePaper.created_at,
     i18n.language,
@@ -231,44 +282,30 @@ export default function PaperDetailPage() {
       : null
   const authorsLabel = formatAuthors(activePaper.authors, t("community.card.authorsUnavailable"))
   const abstractText =
-    activePaper.abstract_translated || activePaper.abstract_raw || t("community.detail.abstractUnavailable")
+    selectedMode === "translated"
+      ? activePaper.abstract_translated || activePaper.abstract_raw || t("community.detail.abstractUnavailable")
+      : activePaper.abstract_raw || activePaper.abstract_translated || t("community.detail.abstractUnavailable")
   const assetLabel = activePaper.latest_asset
     ? `${getAssetTypeLabel(activePaper.latest_asset.asset_type, t)} · ${activePaper.latest_asset.file_name}`
     : t("community.card.assetUnavailable")
-  const canTranslate = ["not_started", "failed"].includes(activePaper.trans_status)
+  const canTranslate = !hasTranslatedReader && ["not_started", "failed"].includes(activePaper.trans_status)
   const canViewProgress = Boolean(
     activePaper.community_selected_task_id && ["queued", "processing"].includes(activePaper.trans_status),
   )
   const canDownload = Boolean(
     activePaper.assets?.translated_pdf ||
+      reader?.translated?.kind === "translated_pdf" ||
       activePaper.latest_asset?.asset_type === "translated_pdf" ||
       activePaper.trans_status === "completed",
   )
+  const stageLabel = t(
+    statusOverride ??
+      resolvedStageKey ??
+      (selectedMode === "source"
+        ? "community.detail.stage.sourceReady"
+        : "community.detail.stage.translatedReady"),
+  )
   const detailMetaItems = [
-    {
-      key: "views",
-      icon: Eye,
-      label: String(activePaper.view_count ?? 0),
-      ariaLabel: t("community.card.views", { count: activePaper.view_count ?? 0 }),
-    },
-    {
-      key: "likes",
-      icon: Heart,
-      label: String(activePaper.like_count ?? 0),
-      ariaLabel: t("community.card.likes", { count: activePaper.like_count ?? 0 }),
-    },
-    {
-      key: "favorites",
-      icon: Star,
-      label: String(activePaper.favorite_count ?? 0),
-      ariaLabel: t("community.card.favorites", { count: activePaper.favorite_count ?? 0 }),
-    },
-    {
-      key: "comments",
-      icon: MessageSquare,
-      label: String(activePaper.comment_count ?? 0),
-      ariaLabel: t("community.card.comments", { count: activePaper.comment_count ?? 0 }),
-    },
     {
       key: "includedAt",
       icon: Clock3,
@@ -292,9 +329,55 @@ export default function PaperDetailPage() {
       })
       setTaskId(response.task_id)
       setArxivId(activePaper.arxiv_id)
-      navigate(response.processing_url)
+      setStatusOverride("community.detail.stage.generating")
+      setCanLeaveHint(t("community.detail.canLeave"))
+      setSoftBanner(null)
     } catch (translateError) {
       setActionError(extractActionErrorMessage(translateError) ?? t("community.actions.translateError"))
+    }
+  }
+
+  async function handleAgentQuickRun(input: string) {
+    if (!paperId) {
+      return
+    }
+
+    try {
+      setAgentBusy(true)
+      setAgentError(null)
+      const run = await createCommunityAgentRun({
+        input,
+        paper_id: paperId,
+        context: {
+          source: "paper_detail",
+          current_mode: selectedMode,
+        },
+      })
+      setAgentRun(run)
+    } catch (runError) {
+      setAgentError(extractActionErrorMessage(runError) ?? t("community.agent.error"))
+    } finally {
+      setAgentBusy(false)
+    }
+  }
+
+  async function handleAgentCitationOpen(citation: CommunityAgentCitation) {
+    if (citation.paper_id) {
+      navigate(`/paper/${citation.paper_id}`)
+      return
+    }
+
+    if (citation.arxiv_id) {
+      const imported = await importCommunityPaper({
+        source: "arxiv",
+        arxiv_id: citation.arxiv_id,
+      })
+      navigate(`/paper/${imported.paper_id}`)
+      return
+    }
+
+    if (citation.url) {
+      window.open(citation.url, "_blank", "noopener,noreferrer")
     }
   }
 
@@ -309,8 +392,16 @@ export default function PaperDetailPage() {
   }
 
   function handlePreview() {
-    const target = previewRef.current ?? document.getElementById("paper-preview-reader")
-    target?.scrollIntoView({ behavior: "smooth", block: "start" })
+    if (availableModes.includes("translated")) {
+      setSelectedMode("translated")
+    }
+    window.setTimeout(() => {
+      const target =
+        previewRef.current ??
+        document.getElementById("paper-preview-reader") ??
+        document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+      target?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 0)
   }
 
   async function handleDownload() {
@@ -336,12 +427,15 @@ export default function PaperDetailPage() {
   }
 
   return (
-    <div className="min-h-full bg-[var(--shell-bg)] px-4 py-6 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-[2560px] space-y-4">
+    <div
+      data-testid="paper-detail-page-shell"
+      className="bg-[var(--shell-bg)] px-4 py-4 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8 xl:h-[100dvh] xl:overflow-hidden"
+    >
+      <div className="mx-auto w-full max-w-[2800px] space-y-3 xl:flex xl:h-full xl:flex-col xl:space-y-0">
         <Button
           asChild
           variant="ghost"
-          className="min-h-11 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 text-[var(--shell-heading)] hover:bg-[var(--shell-pill-hover)]"
+          className="min-h-10 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 text-[var(--shell-heading)] hover:bg-[var(--shell-pill-hover)]"
         >
           <Link to="/">
             <ArrowLeft className="h-4 w-4" />
@@ -349,32 +443,22 @@ export default function PaperDetailPage() {
           </Link>
         </Button>
 
-        <section className="rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-5 shadow-[var(--shell-panel-shadow-strong)] sm:p-7">
-          <div className="flex flex-wrap gap-2">
-            <PaperStatusBadge kind="community" value={activePaper.community_status} />
-            <PaperStatusBadge kind="translation" value={activePaper.trans_status} />
-            {activePaper.arxiv_id ? (
-              <Badge className="rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text)]">
-                {t("community.detail.arxivBadge", { value: activePaper.arxiv_id })}
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="mt-5 space-y-2.5">
-            <h1 className="max-w-5xl text-balance text-[2.2rem] font-semibold tracking-tight text-[var(--shell-heading)] sm:text-[3rem]">
+        <section className="rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[var(--shell-panel-shadow-strong)] sm:p-5 xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+          <div className="space-y-2">
+            <h1 className="max-w-5xl text-balance text-[1.95rem] font-semibold tracking-tight text-[var(--shell-heading)] sm:text-[2.65rem]">
               {activePaper.title}
             </h1>
-            <p className="max-w-3xl text-base text-[var(--shell-text-soft)]">{authorsLabel}</p>
+            <p className="max-w-3xl text-[15px] text-[var(--shell-text-soft)]">{authorsLabel}</p>
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-              {activePaper.categories.length
+                {activePaper.categories.length
                 ? activePaper.categories.join(" · ")
                 : t("community.card.categoriesUnavailable")}
-            </p>
+              </p>
           </div>
 
           <div
             data-testid="paper-detail-header-metadata"
-            className="mt-5 flex flex-wrap items-center gap-2 border-t border-[color:var(--shell-border-strong)] pt-4"
+            className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color:var(--shell-border-strong)] pt-3"
           >
             <div className="rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-text-muted)]">
               {activePaper.source === "arxiv"
@@ -412,96 +496,37 @@ export default function PaperDetailPage() {
             ) : null}
           </div>
 
-          <div className="mt-8 space-y-6">
-            <div
-              data-testid="paper-detail-top-panels"
-              className="grid gap-6 xl:grid-cols-[minmax(0,1.95fr)_minmax(520px,1.15fr)] 2xl:grid-cols-[minmax(0,2.05fr)_minmax(560px,1.2fr)]"
-            >
-              <Card
-                data-testid="paper-detail-reader-panel"
-                className="flex min-h-[720px] flex-col overflow-hidden rounded-[24px] border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] text-[var(--shell-text)] shadow-none xl:h-[calc(100vh-11rem)] xl:min-h-[820px] xl:max-h-[1320px]"
-              >
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <ScrollText className="h-4 w-4 text-[var(--shell-icon)]" />
-                    {t("community.detail.readerTitle")}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex min-h-0 flex-1 flex-col">
-                  <PaperPreviewReader
-                    ref={previewRef}
-                    paperId={activePaper.id}
-                    initialPreview={preview}
-                    readerState={readerState}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="flex min-h-[720px] flex-col overflow-hidden rounded-[24px] border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] text-[var(--shell-text)] shadow-none xl:h-[calc(100vh-11rem)] xl:min-h-[820px] xl:max-h-[1320px]">
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Languages className="h-4 w-4 text-[var(--shell-icon)]" />
-                    {t("community.detail.workspaceTitle")}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex min-h-0 flex-1 flex-col">
-                  <div className="flex min-h-0 flex-1 flex-col justify-between rounded-[20px] border border-dashed border-[color:var(--shell-border-strong)] bg-[var(--shell-bg)]/35 p-5">
-                    <div className="space-y-4 overflow-y-auto">
-                      <p className="text-sm leading-7 text-[var(--shell-text-soft)]">
-                        {t("community.detail.workspaceDescription")}
-                      </p>
-                      <div className="rounded-2xl border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] p-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-                          {t("community.detail.latestAsset")}
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-[var(--shell-heading)]">{assetLabel}</p>
-                      </div>
-                    </div>
-                    <div className="mt-5 rounded-2xl border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-                        {t("community.detail.workspaceNextTitle")}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-[var(--shell-text-soft)]">
-                        {t("community.detail.workspaceNextDescription")}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_360px]">
-              <div className="space-y-6">
-                <Card className="rounded-[24px] border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] text-[var(--shell-text)] shadow-none">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <ScrollText className="h-4 w-4 text-[var(--shell-icon)]" />
-                      {t("community.detail.abstractTitle")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4 text-sm leading-7 text-[var(--shell-text-soft)]">
-                    <p>{renderLinkedText(abstractText)}</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-6">
-                <PaperActionShell
-                  onTranslate={handleTranslate}
-                  onViewProgress={handleViewProgress}
-                  onPreview={handlePreview}
-                  onDownload={handleDownload}
-                  canTranslate={canTranslate}
-                  canViewProgress={canViewProgress}
-                  canDownload={canDownload}
-                />
-
-                {error || actionError ? (
-                  <p className="text-xs text-[var(--shell-text-muted)]">{actionError ?? error}</p>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          <PaperDetailWorkspace
+            paper={activePaper}
+            preview={preview}
+            readerState={readerState}
+            reader={reader}
+            preferredMode={selectedMode}
+            availableModes={availableModes}
+            stageLabel={stageLabel}
+            softBanner={softBanner}
+            canLeaveHint={canLeaveHint ?? experience?.can_leave_hint ?? null}
+            originalSourceUrl={originalSourceUrl}
+            assetLabel={assetLabel}
+            abstractText={abstractText}
+            readerHighlight={readerHighlight}
+            previewRef={previewRef}
+            canTranslate={canTranslate}
+            canViewProgress={canViewProgress}
+            canDownload={canDownload}
+            actionError={actionError ?? error}
+            onTranslate={handleTranslate}
+            onViewProgress={handleViewProgress}
+            onPreview={handlePreview}
+            onDownload={handleDownload}
+            onModeChange={setSelectedMode}
+            agentRun={agentRun}
+            agentBusy={agentBusy}
+            agentError={agentError}
+            onQuickExplain={() => void handleAgentQuickRun(t("community.detail.quickExplain"))}
+            onQuickSummary={() => void handleAgentQuickRun(t("community.detail.quickSummary"))}
+            onCitationOpen={(citation) => void handleAgentCitationOpen(citation)}
+          />
         </section>
       </div>
     </div>

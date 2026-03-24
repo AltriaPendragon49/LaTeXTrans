@@ -28,9 +28,9 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "12.75rem"
-const SIDEBAR_WIDTH_MOBILE = "16rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH = "8.25rem"
+const SIDEBAR_WIDTH_MOBILE = "13rem"
+const SIDEBAR_WIDTH_ICON = "2.75rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
@@ -176,6 +176,7 @@ const Sidebar = React.forwardRef<
       side = "left",
       variant = "sidebar",
       collapsible = "icon",
+      style,
       className,
       children,
       ...props
@@ -227,7 +228,8 @@ const Sidebar = React.forwardRef<
     return (
       <div
         ref={ref}
-        className="group peer hidden text-sidebar-foreground md:block" // group-data relies on this
+        style={style}
+        className="group peer hidden shrink-0 text-sidebar-foreground md:block" // group-data relies on this
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
@@ -246,7 +248,9 @@ const Sidebar = React.forwardRef<
           style={{
             width:
               state === "expanded" && collapsible !== "offcanvas"
-                ? "var(--sidebar-width)"
+                ? variant === "floating" || variant === "inset"
+                  ? "calc(var(--sidebar-width) + var(--sidebar-gap-offset, 0px))"
+                  : "var(--sidebar-width)"
                 : state === "collapsed" && collapsible === "icon"
                   ? "var(--sidebar-width-icon)"
                   : undefined,
