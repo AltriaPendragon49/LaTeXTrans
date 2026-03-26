@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from backend.app.api.routes.translate import TranslateRequest
-from backend.app.services import paper_service
+from backend.app.services import community_content_pool_service, paper_service
 
 router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
@@ -29,6 +29,16 @@ def _decode_user_id(credentials: Optional[HTTPAuthorizationCredentials]) -> Opti
     except Exception:
         return None
     return None
+
+
+def _require_authenticated_credentials(credentials: Optional[HTTPAuthorizationCredentials]) -> None:
+    if credentials is not None:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 class AssetSummary(BaseModel):
@@ -87,6 +97,27 @@ class PaperListResponse(BaseModel):
     items: List[PaperSummary]
     total: int
     source_mode: str = "database"
+
+
+class ContentPoolReadinessResponse(BaseModel):
+    candidate_total: int
+    warmed_total: int
+    translated_ready_total: int
+    failure_total: int
+    running_total: int
+    freshness: Optional[str] = None
+    stage_totals: Dict[str, int]
+    updated_at: str
+
+
+class ContentPoolJobEventResponse(BaseModel):
+    timestamp: str
+    arxiv_id: str
+    stage: str
+    status: str
+    attempt: int
+    payload: Dict[str, Any] = {}
+    error: Optional[str] = None
 
 
 class PaperDetailResponse(BaseModel):
@@ -220,6 +251,24 @@ async def list_papers(
     response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
     response.headers["X-Community-Source-Mode"] = payload.get("source_mode", "database")
     return payload
+
+
+@router.get("/content-pool/readiness", response_model=ContentPoolReadinessResponse)
+async def get_content_pool_readiness(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+):
+    _require_authenticated_credentials(credentials)
+    return community_content_pool_service.get_content_pool_readiness_snapshot()
+
+
+@router.get("/content-pool/jobs", response_model=List[ContentPoolJobEventResponse])
+async def get_content_pool_job_log(
+    arxiv_id: Optional[str] = None,
+    limit: int = Query(default=200, ge=1, le=1000),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+):
+    _require_authenticated_credentials(credentials)
+    return community_content_pool_service.get_content_pool_job_log(arxiv_id=arxiv_id, limit=limit)
 
 
 @router.get("/{paper_id}", response_model=PaperDetailResponse)

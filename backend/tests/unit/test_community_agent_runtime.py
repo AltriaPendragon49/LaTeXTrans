@@ -127,3 +127,67 @@ def test_translation_skill_forwards_submitter_user_id_when_available(
 
     assert calls["submitter_user_id"] == "user-42"
     assert result["task_id"] == "task-2"
+
+
+def test_translation_skill_skips_redundant_start_for_prewarmed_translated_paper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start_calls = {"count": 0}
+
+    async def fake_get_community_paper_detail(
+        *,
+        paper_id: str,
+        viewer_user_id=None,
+        fast_path: bool = False,
+    ):  # type: ignore[no-untyped-def]
+        assert paper_id == "paper-3"
+        assert viewer_user_id is None
+        assert fast_path is True
+        return {
+            "paper": {
+                "id": "paper-3",
+                "community_selected_task_id": "task-prewarmed-3",
+            },
+            "reader": {"state": "translated_ready"},
+            "reader_state": "ready",
+        }
+
+    async def fake_start_paper_translation(
+        *,
+        paper_id,
+        request,
+        credentials=None,
+        submitter_user_id=None,
+    ):  # type: ignore[no-untyped-def]
+        del paper_id, request, credentials, submitter_user_id
+        start_calls["count"] += 1
+        return {
+            "paper_id": "paper-3",
+            "task_id": "task-should-not-run",
+            "status": "queued",
+            "reused_existing_task": False,
+            "processing_url": "/processing?task=task-should-not-run",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.get_community_paper_detail",
+        fake_get_community_paper_detail,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.start_paper_translation",
+        fake_start_paper_translation,
+    )
+
+    skill = StartTranslationKernelSkill()
+    result = asyncio.run(
+        skill.execute(
+            {"paper_id": "paper-3", "source_language": "en", "target_language": "zh"},
+            runtime_state=None,
+        )
+    )
+
+    assert start_calls["count"] == 0
+    assert result["paper_id"] == "paper-3"
+    assert result["task_id"] == "task-prewarmed-3"
+    assert result["status"] == "translated_ready"
+    assert result["reused_existing_task"] is True

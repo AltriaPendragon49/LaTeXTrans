@@ -1475,6 +1475,7 @@ def _source_reader_resource(
     *,
     paper: Dict[str, Any],
     source_html_content: Optional[str] = None,
+    source_anchors: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     arxiv_id = str(paper.get("arxiv_id") or "").strip()
     if arxiv_id:
@@ -1483,11 +1484,13 @@ def _source_reader_resource(
                 "kind": "source_html",
                 "html_content": source_html_content,
                 "url": f"https://arxiv.org/html/{arxiv_id}",
+                "anchors": list(source_anchors or []),
             }
         return {
             "kind": "source_pdf",
             "html_content": None,
             "url": f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+            "anchors": list(source_anchors or []),
         }
     return None
 
@@ -1501,6 +1504,43 @@ def _translated_pdf_reader_resource(*, paper_id: str, asset: Dict[str, Any]) -> 
     }
 
 
+def _extract_reader_anchors_from_html(html_content: Optional[str]) -> List[Dict[str, Any]]:
+    if not html_content:
+        return []
+
+    try:
+        root = BeautifulSoup(html_content, "html.parser")
+    except Exception:
+        return []
+
+    anchors: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _register(anchor_id: Any, kind: str, label: Any = None) -> None:
+        normalized_id = str(anchor_id or "").strip()
+        if not normalized_id or normalized_id in seen:
+            return
+        seen.add(normalized_id)
+        entry: Dict[str, Any] = {"anchor_id": normalized_id, "kind": kind}
+        normalized_label = _normalize_metadata_text(label)
+        if normalized_label:
+            entry["label"] = normalized_label
+        anchors.append(entry)
+
+    for section in root.select("section[data-section-id]"):
+        section_id = section.get("data-section-id")
+        heading = section.find(["h1", "h2", "h3", "h4", "h5", "h6"])
+        _register(section_id, "section", heading.get_text(" ", strip=True) if heading else None)
+
+    for block in root.select("[data-block-id]"):
+        _register(block.get("data-block-id"), "block")
+
+    for heading in root.select("section[id],h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]"):
+        _register(heading.get("id"), "section", heading.get_text(" ", strip=True))
+
+    return anchors[:400]
+
+
 def _build_reader_experience_payload(
     *,
     paper: Dict[str, Any],
@@ -1509,9 +1549,14 @@ def _build_reader_experience_payload(
     translated_asset: Optional[Dict[str, Any]],
     source_html_content: Optional[str] = None,
 ) -> Dict[str, Any]:
+    source_anchors = _extract_reader_anchors_from_html(source_html_content)
+    translated_anchors = _extract_reader_anchors_from_html(
+        str(preview_payload.get("html_content") or "") if preview_payload else None
+    )
     source_resource = _source_reader_resource(
         paper=paper,
         source_html_content=source_html_content,
+        source_anchors=source_anchors,
     )
     translated_resource: Optional[Dict[str, Any]] = None
     if preview_payload:
@@ -1519,6 +1564,7 @@ def _build_reader_experience_payload(
             "kind": "preview_html",
             "html_content": preview_payload.get("html_content"),
             "url": None,
+            "anchors": translated_anchors,
         }
     elif translated_asset:
         translated_resource = _translated_pdf_reader_resource(
@@ -1547,6 +1593,12 @@ def _build_reader_experience_payload(
         can_leave_hint = "你可以先阅读，完成后会自动更新"
         preferred_mode = "source"
         resolved_reader_state = "warming" if source_resource else "unavailable"
+    elif source_resource and trans_status in {"completed", "completed_with_warnings"}:
+        stage_label = "Reader upgrade in progress"
+        failure_type = None
+        can_leave_hint = "Reader content is refreshing in the background."
+        preferred_mode = "source"
+        resolved_reader_state = "warming"
     elif source_resource and trans_status in {"failed", "failed_compilation", "structure_invalid"}:
         stage_label = "英文阅读仍可用"
         failure_type = "translation_failed"
@@ -1573,6 +1625,10 @@ def _build_reader_experience_payload(
             "available_modes": available_modes,
             "source": source_resource,
             "translated": translated_resource,
+            "active_anchor_id": (
+                (translated_anchors[0].get("anchor_id") if translated_anchors else None)
+                or (source_anchors[0].get("anchor_id") if source_anchors else None)
+            ),
             "state": resolved_reader_state,
         },
         "experience": {
@@ -2564,11 +2620,12 @@ async def get_community_paper_detail(
     try:
         asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
         latest_asset = _select_latest_asset_from_map(asset_map)
-    except HTTPException:
+    except Exception as exc:
+        logger.warning("Failed to fetch full asset map for paper %s: %s", paper_id, exc)
         asset_map = None
         try:
             latest_asset = (await _fetch_latest_assets([paper_id])).get(paper_id)
-        except HTTPException:
+        except Exception:
             latest_asset = None
     if fast_path:
         _schedule_public_detail_repair(

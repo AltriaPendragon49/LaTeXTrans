@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "中文译文",
   "community.detail.quickExplain": "用中文解释",
   "community.detail.quickSummary": "一句话总结",
+  "community.detail.selectionContextTitle": "???????",
   "community.detail.softReady": "中文版已准备好，并已为你自动切换。",
   "community.detail.stage.generating": "正在生成中文版",
   "community.detail.stage.sourceFallback": "仍可继续阅读英文版",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "检查外部网络证据",
   "community.conversation.progressStepCompose": "组织有依据的回答",
   "community.conversation.progressStepFinalize": "校验最终回复",
-  "dashboard.toolsDescription": "使用原来的直连任务工作流来加载源文档、上传项目并执行翻译，不再经过社区优先提交流程。"
+  "dashboard.toolsDescription": "使用原来的直连任务工作流来加载源文档、上传项目并执行翻译，不再经过社区优先提交流程。",
+  "community.agent.mode.aria": "????",
+  "community.agent.mode.chat": "??",
+  "community.agent.mode.deepResearch": "????",
+  "community.conversation.deepResearchReportTitle": "??????",
+  "community.conversation.progressStepSynthesizeReport": "????",
+  "community.conversation.progressStepFinalizeReport": "????"
 }

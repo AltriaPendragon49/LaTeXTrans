@@ -10,6 +10,7 @@ class AgentRuntimeState:
     context: Dict[str, Any]
     skill_toggles: Dict[str, Any]
     provider_state: Dict[str, str]
+    run_mode: str = "chat"
     response_language: str = "en"
     history: List[Dict[str, str]] = field(default_factory=list)
     paper_context: Dict[str, Any] | None = None
@@ -22,6 +23,7 @@ class AgentRuntimeState:
     generated_slots: Dict[str, Any] | None = None
     generated_citation_ids: List[str] = field(default_factory=list)
     action: Dict[str, Any] | None = None
+    report: Dict[str, Any] | None = None
     latest_intent: str = "answer"
     repair_count: int = 0
     planner_turn_count: int = 0

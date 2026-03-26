@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "Китайский перевод",
   "community.detail.quickExplain": "Объяснить по-китайски",
   "community.detail.quickSummary": "Краткое резюме в одну строку",
+  "community.detail.selectionContextTitle": "???????? ????????? ? ??????",
   "community.detail.softReady": "Китайская версия готова, и страница уже переключена на неё.",
   "community.detail.stage.generating": "Создаётся китайская версия",
   "community.detail.stage.sourceFallback": "Английская версия по-прежнему доступна",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "Проверить внешние веб-источники",
   "community.conversation.progressStepCompose": "Сформировать обоснованный ответ",
   "community.conversation.progressStepFinalize": "Проверить итоговый ответ",
-  "dashboard.toolsDescription": "Используйте исходный прямой рабочий процесс задач, чтобы загружать источники, отправлять проекты и запускать перевод без community-first сценария."
+  "dashboard.toolsDescription": "Используйте исходный прямой рабочий процесс задач, чтобы загружать источники, отправлять проекты и запускать перевод без community-first сценария.",
+  "community.agent.mode.aria": "Режим агента",
+  "community.agent.mode.chat": "Чат",
+  "community.agent.mode.deepResearch": "Глубокое исследование",
+  "community.conversation.deepResearchReportTitle": "Отчет по глубокому исследованию",
+  "community.conversation.progressStepSynthesizeReport": "Свести отчет",
+  "community.conversation.progressStepFinalizeReport": "Завершить отчет"
 }

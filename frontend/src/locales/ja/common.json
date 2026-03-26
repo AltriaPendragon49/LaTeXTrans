@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "中国語訳",
   "community.detail.quickExplain": "中国語で説明",
   "community.detail.quickSummary": "一行要約",
+  "community.detail.selectionContextTitle": "????????????",
   "community.detail.softReady": "中国語版の準備ができたため、自動的に切り替えました。",
   "community.detail.stage.generating": "中国語版を生成しています",
   "community.detail.stage.sourceFallback": "英語版の閲覧は引き続き利用できます",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "外部ウェブ証拠を確認",
   "community.conversation.progressStepCompose": "根拠ある回答を作成",
   "community.conversation.progressStepFinalize": "最終回答を検証",
-  "dashboard.toolsDescription": "コミュニティ優先の送信フローを使わず、従来の直接タスクフローでソースを読み込み、プロジェクトをアップロードし、翻訳を実行します。"
+  "dashboard.toolsDescription": "コミュニティ優先の送信フローを使わず、従来の直接タスクフローでソースを読み込み、プロジェクトをアップロードし、翻訳を実行します。",
+  "community.agent.mode.aria": "エージェントモード",
+  "community.agent.mode.chat": "チャット",
+  "community.agent.mode.deepResearch": "深掘り調査",
+  "community.conversation.deepResearchReportTitle": "深掘り調査レポート",
+  "community.conversation.progressStepSynthesizeReport": "レポートを統合",
+  "community.conversation.progressStepFinalizeReport": "レポートを完成"
 }

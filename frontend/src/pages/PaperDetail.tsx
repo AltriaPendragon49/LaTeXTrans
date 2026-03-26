@@ -1,7 +1,7 @@
-import { ArrowLeft, Clock3, Link2 } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+﻿import { ArrowLeft, Clock3, Link2 } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 
 import { API_BASE_URL } from "@/api-base"
 import { PaperDetailSkeleton } from "@/components/community/PaperDetailSkeleton"
@@ -9,36 +9,26 @@ import { PaperDetailWorkspace } from "@/components/community/PaperDetailWorkspac
 import { Button } from "@/components/ui/button"
 import { usePaperDetail } from "@/hooks/use-paper-detail"
 import {
-  createCommunityAgentRun,
   createCommunityPaperDownloadSession,
   importCommunityPaper,
+  streamCommunityAgentRun,
   translateCommunityPaper,
 } from "@/lib/community-api"
+import { buildConversationHistory } from "@/lib/community-agent-conversations"
 import { useStore } from "@/store/useStore"
 import type {
   CommunityAgentCitation,
+  CommunityAgentMode,
   CommunityAgentRun,
+  CommunityAgentSkillToggles,
+  CommunityAgentStreamEvent,
+  CommunityAgentToolTrace,
+  CommunityConversationTurn,
   CommunityPaper,
   CommunityPaperExperience,
   CommunityPaperReader,
   CommunityPaperReaderMode,
-  PaperAssetSummary,
 } from "@/types/community"
-
-function getAssetTypeLabel(assetType: PaperAssetSummary["asset_type"], t: (key: string) => string) {
-  switch (assetType) {
-    case "source_archive":
-      return t("community.card.assetType.source_archive")
-    case "translated_pdf":
-      return t("community.card.assetType.translated_pdf")
-    case "preview_pdf":
-      return t("community.card.assetType.preview_pdf")
-    case "preview_html":
-      return t("community.card.assetType.preview_html")
-    default:
-      return assetType
-  }
-}
 
 function formatAuthors(authors: unknown[], fallback: string) {
   if (!authors.length) {
@@ -146,8 +136,256 @@ function resolveStageKey(
   return "community.detail.stage.unavailable"
 }
 
+function findReaderAnchorElement(
+  root: ParentNode | null,
+  anchorId: string,
+): HTMLElement | null {
+  if (!root || !anchorId.trim()) {
+    return null
+  }
+  if (root instanceof HTMLElement && root.id === anchorId) {
+    return root
+  }
+
+  const candidates = root.querySelectorAll<HTMLElement>("[id],[data-section-id],[data-block-id]")
+  for (const candidate of candidates) {
+    if (
+      candidate.id === anchorId ||
+      candidate.dataset.sectionId === anchorId ||
+      candidate.dataset.blockId === anchorId
+    ) {
+      return candidate
+    }
+  }
+  return null
+}
+
+interface ReaderSelectionContext {
+  text: string
+  anchor_id: string | null
+  mode: CommunityPaperReaderMode
+}
+
+const READER_SELECTION_HIGHLIGHT_NAME = "paper-detail-reader-selection"
+const READER_SELECTION_BLOCK_TAGS = new Set([
+  "p",
+  "li",
+  "blockquote",
+  "pre",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "figcaption",
+  "td",
+  "th",
+])
+
+function normalizeSelectionText(value: string) {
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function findSelectionAnchorId(target: Node | null, root: HTMLElement | null): string | null {
+  if (!target || !root) {
+    return null
+  }
+
+  let current: Node | null = target
+  while (current) {
+    if (current instanceof HTMLElement) {
+      const anchorId = current.id || current.dataset.sectionId || current.dataset.blockId
+      if (anchorId) {
+        return anchorId
+      }
+      if (current === root) {
+        return null
+      }
+    }
+    current = current.parentNode
+  }
+  return null
+}
+
+function findSelectionHighlightElement(target: Node | null, root: HTMLElement | null): HTMLElement | null {
+  if (!target || !root) {
+    return null
+  }
+
+  let current: Node | null = target
+  while (current && current !== root) {
+    if (current instanceof HTMLElement) {
+      if (READER_SELECTION_BLOCK_TAGS.has(current.tagName.toLowerCase())) {
+        return current
+      }
+    }
+    current = current.parentNode
+  }
+
+  if (target instanceof HTMLElement) {
+    return target
+  }
+  if (target.parentElement instanceof HTMLElement) {
+    return target.parentElement
+  }
+  return null
+}
+
+function createUserTurn(content: string): CommunityConversationTurn {
+  return {
+    id: `user-${Date.now()}`,
+    role: "user",
+    content,
+    created_at: new Date().toISOString(),
+    status: "completed",
+  }
+}
+
+function createRunningAssistantTurn(mode: CommunityAgentMode): CommunityConversationTurn {
+  const createdAt = new Date().toISOString()
+  return {
+    id: `assistant-${Date.now()}`,
+    role: "assistant",
+    content: "",
+    created_at: createdAt,
+    run: {
+      run_id: `pending-${Date.now()}`,
+      status: "running",
+      intent: "answer",
+      mode,
+      message: "",
+      summary: "",
+      citations: [],
+      tool_trace: [],
+      action: null,
+    },
+    status: "running",
+    error: null,
+  }
+}
+
+function createAssistantTurnFromRun(
+  run: CommunityAgentRun,
+  id: string,
+  createdAt: string,
+): CommunityConversationTurn {
+  const assistantMessage = run.message ?? run.summary ?? ""
+  return {
+    id,
+    role: "assistant",
+    content: assistantMessage,
+    created_at: createdAt,
+    run,
+    status: run.status === "failed" ? "failed" : "completed",
+    error: run.status === "failed" ? assistantMessage || null : null,
+  }
+}
+
+function upsertTrace(
+  currentTrace: CommunityAgentToolTrace[] | undefined,
+  nextTrace: CommunityAgentToolTrace,
+): CommunityAgentToolTrace[] {
+  const existing = currentTrace ?? []
+  return [...existing.filter((trace) => trace.id !== nextTrace.id), nextTrace]
+}
+
+function upsertCitation(
+  currentCitations: CommunityAgentCitation[] | undefined,
+  nextCitation: CommunityAgentCitation,
+): CommunityAgentCitation[] {
+  const existing = currentCitations ?? []
+  return [...existing.filter((citation) => citation.id !== nextCitation.id), nextCitation]
+}
+
+function applyStreamEventToRun(
+  currentRun: CommunityAgentRun,
+  event: CommunityAgentStreamEvent,
+): CommunityAgentRun {
+  const nextRunId = event.run_id ?? currentRun.run_id
+  const data = event.data ?? {}
+
+  switch (event.type) {
+    case "status": {
+      const status = typeof data.status === "string" ? data.status : currentRun.status
+      const intent = typeof data.intent === "string" ? data.intent : currentRun.intent
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        status: status as CommunityAgentRun["status"],
+        intent: intent as CommunityAgentRun["intent"],
+      }
+    }
+    case "assistant_delta": {
+      const delta = typeof data.delta === "string" ? data.delta : ""
+      const nextMessage = `${currentRun.message ?? currentRun.summary ?? ""}${delta}`
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        status: "running",
+        message: nextMessage,
+        summary: nextMessage,
+      }
+    }
+    case "citation": {
+      const citation = data.citation
+      if (!citation || typeof citation !== "object") {
+        return currentRun
+      }
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        citations: upsertCitation(currentRun.citations, citation as CommunityAgentCitation),
+      }
+    }
+    case "tool_start":
+    case "tool_result": {
+      const trace = data.trace
+      if (!trace || typeof trace !== "object") {
+        return currentRun
+      }
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        tool_trace: upsertTrace(currentRun.tool_trace, trace as CommunityAgentToolTrace),
+      }
+    }
+    case "action": {
+      const action = data.action
+      if (!action || typeof action !== "object") {
+        return currentRun
+      }
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        action: action as CommunityAgentRun["action"],
+      }
+    }
+    case "complete": {
+      const snapshot = data.snapshot
+      if (!snapshot || typeof snapshot !== "object") {
+        return currentRun
+      }
+      return snapshot as CommunityAgentRun
+    }
+    case "error": {
+      const message = typeof data.message === "string" ? data.message : currentRun.message ?? currentRun.summary ?? ""
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        status: "failed",
+        message,
+        summary: message,
+      }
+    }
+    default:
+      return currentRun
+  }
+}
+
 export default function PaperDetailPage() {
   const { i18n, t } = useTranslation()
+  const location = useLocation()
   const navigate = useNavigate()
   const previewRef = useRef<HTMLDivElement>(null)
   const { paperId } = useParams<{ paperId: string }>()
@@ -161,8 +399,16 @@ export default function PaperDetailPage() {
   const [readerHighlight, setReaderHighlight] = useState(false)
   const [agentBusy, setAgentBusy] = useState(false)
   const [agentError, setAgentError] = useState<string | null>(null)
-  const [agentRun, setAgentRun] = useState<CommunityAgentRun | null>(null)
+  const [agentTurns, setAgentTurns] = useState<CommunityConversationTurn[]>([])
+  const [agentInput, setAgentInput] = useState("")
+  const [agentMode, setAgentMode] = useState<CommunityAgentMode>("chat")
+  const [externalSearchEnabled, setExternalSearchEnabled] = useState(false)
+  const [readerSelection, setReaderSelection] = useState<ReaderSelectionContext | null>(null)
   const [selectedMode, setSelectedMode] = useState<CommunityPaperReaderMode>("source")
+  const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null)
+  const [pendingAnchorId, setPendingAnchorId] = useState<string | null>(null)
+  const anchorResetTimerRef = useRef<number | null>(null)
+  const highlightedSelectionElementRef = useRef<HTMLElement | null>(null)
   const hasTranslatedReader = Boolean(reader?.translated)
   const resolvedStageKey = resolveStageKey(paper, reader, experience)
   const resolvedPreferredMode: CommunityPaperReaderMode =
@@ -177,6 +423,295 @@ export default function PaperDetailPage() {
   const availableModes: CommunityPaperReaderMode[] = reader?.available_modes?.length
     ? reader.available_modes
     : (hasTranslatedReader ? ["source", "translated"] : ["source"])
+
+  const tryActivateReaderAnchor = useCallback((anchorId: string) => {
+    const normalizedAnchorId = anchorId.trim()
+    if (!normalizedAnchorId) {
+      return false
+    }
+
+    const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+    if (!readerPanel) {
+      return false
+    }
+
+    const target =
+      findReaderAnchorElement(readerPanel, normalizedAnchorId) ??
+      findReaderAnchorElement(previewRef.current, normalizedAnchorId)
+    if (!target) {
+      return false
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" })
+    setActiveAnchorId(normalizedAnchorId)
+    setReaderHighlight(true)
+    if (anchorResetTimerRef.current !== null) {
+      window.clearTimeout(anchorResetTimerRef.current)
+    }
+    anchorResetTimerRef.current = window.setTimeout(() => {
+      setReaderHighlight(false)
+      setActiveAnchorId((current) => (current === normalizedAnchorId ? null : current))
+    }, 2200)
+    return true
+  }, [])
+
+  const clearReaderSelectionVisual = useCallback(() => {
+    if (highlightedSelectionElementRef.current) {
+      highlightedSelectionElementRef.current.removeAttribute("data-reader-selection-active")
+      highlightedSelectionElementRef.current = null
+    }
+
+    const cssHighlights = (
+      window as Window & {
+        CSS?: {
+          highlights?: {
+            delete: (name: string) => void
+            set: (name: string, highlight: unknown) => void
+          }
+        }
+      }
+    ).CSS?.highlights
+
+    cssHighlights?.delete(READER_SELECTION_HIGHLIGHT_NAME)
+  }, [])
+
+  const applyReaderSelectionVisual = useCallback(
+    (range: Range, readerPanel: HTMLElement) => {
+      clearReaderSelectionVisual()
+
+      const cssHighlights = (
+        window as Window & {
+          CSS?: {
+            highlights?: {
+              delete: (name: string) => void
+              set: (name: string, highlight: unknown) => void
+            }
+          }
+        }
+      ).CSS?.highlights
+      const HighlightCtor = (
+        window as Window & { Highlight?: new (...ranges: Range[]) => unknown }
+      ).Highlight
+
+      if (cssHighlights && HighlightCtor) {
+        try {
+          cssHighlights.set(READER_SELECTION_HIGHLIGHT_NAME, new HighlightCtor(range.cloneRange()))
+        } catch {
+          // Ignore invalid range errors and keep attribute fallback below.
+        }
+      }
+
+      const blockElement = findSelectionHighlightElement(range.startContainer, readerPanel)
+      if (blockElement) {
+        blockElement.setAttribute("data-reader-selection-active", "true")
+        highlightedSelectionElementRef.current = blockElement
+      }
+    },
+    [clearReaderSelectionVisual],
+  )
+
+  const captureReaderSelection = useCallback(() => {
+    const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+    if (!readerPanel) {
+      return
+    }
+
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed || !selection.rangeCount) {
+      clearReaderSelectionVisual()
+      setReaderSelection(null)
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    if (!readerPanel.contains(range.commonAncestorContainer)) {
+      clearReaderSelectionVisual()
+      setReaderSelection(null)
+      return
+    }
+
+    const selectedText = normalizeSelectionText(selection.toString())
+    if (!selectedText) {
+      clearReaderSelectionVisual()
+      setReaderSelection(null)
+      return
+    }
+
+    const anchorId = findSelectionAnchorId(range.startContainer, readerPanel)
+    applyReaderSelectionVisual(range, readerPanel)
+    setReaderSelection({
+      text: selectedText,
+      anchor_id: anchorId,
+      mode: selectedMode,
+    })
+  }, [applyReaderSelectionVisual, clearReaderSelectionVisual, selectedMode])
+
+  useEffect(() => {
+    return () => {
+      if (anchorResetTimerRef.current !== null) {
+        window.clearTimeout(anchorResetTimerRef.current)
+      }
+      clearReaderSelectionVisual()
+    }
+  }, [clearReaderSelectionVisual])
+
+  useEffect(() => {
+    const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+    if (!readerPanel) {
+      return
+    }
+
+    const handleMouseUp = () => {
+      captureReaderSelection()
+    }
+    const handleKeyUp = () => {
+      captureReaderSelection()
+    }
+
+    readerPanel.addEventListener("mouseup", handleMouseUp)
+    readerPanel.addEventListener("keyup", handleKeyUp)
+    return () => {
+      readerPanel.removeEventListener("mouseup", handleMouseUp)
+      readerPanel.removeEventListener("keyup", handleKeyUp)
+    }
+  }, [captureReaderSelection, selectedMode, reader, preview])
+
+  useEffect(() => {
+    const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+    if (!readerPanel) {
+      return
+    }
+
+    readerPanel
+      .querySelectorAll<HTMLElement>("[data-reader-anchor-active='true']")
+      .forEach((element) => element.removeAttribute("data-reader-anchor-active"))
+
+    if (!activeAnchorId) {
+      return
+    }
+
+    const target = findReaderAnchorElement(readerPanel, activeAnchorId)
+    if (!target) {
+      return
+    }
+
+    target.setAttribute("data-reader-anchor-active", "true")
+    return () => {
+      target.removeAttribute("data-reader-anchor-active")
+    }
+  }, [activeAnchorId, selectedMode, reader, preview])
+
+  useEffect(() => {
+    if (!readerSelection) {
+      clearReaderSelectionVisual()
+    }
+  }, [clearReaderSelectionVisual, readerSelection])
+
+  useEffect(() => {
+    if (!pendingAnchorId) {
+      return
+    }
+
+    if (tryActivateReaderAnchor(pendingAnchorId)) {
+      setPendingAnchorId(null)
+      return
+    }
+
+    const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+    if (!readerPanel) {
+      return
+    }
+
+    const observer = new MutationObserver(() => {
+      if (tryActivateReaderAnchor(pendingAnchorId)) {
+        setPendingAnchorId(null)
+        observer.disconnect()
+        window.clearTimeout(timeoutId)
+      }
+    })
+
+    observer.observe(readerPanel, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    })
+
+    const timeoutId = window.setTimeout(() => {
+      observer.disconnect()
+    }, 3000)
+
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timeoutId)
+    }
+  }, [pendingAnchorId, selectedMode, reader, preview, tryActivateReaderAnchor])
+
+  useEffect(() => {
+    const currentHash = window.location.hash || location.hash
+    const rawHash = currentHash.startsWith("#") ? currentHash.slice(1) : ""
+    if (!rawHash) {
+      return
+    }
+
+    let decoded = rawHash
+    try {
+      decoded = decodeURIComponent(rawHash)
+    } catch {
+      decoded = rawHash
+    }
+
+    const normalized = decoded.trim()
+    if (normalized) {
+      setPendingAnchorId(normalized)
+    }
+  }, [location.hash, location.key, paperId])
+
+  useEffect(() => {
+    const currentHash = window.location.hash || location.hash
+    const rawHash = currentHash.startsWith("#") ? currentHash.slice(1) : ""
+    if (!rawHash) {
+      return
+    }
+
+    let decoded = rawHash
+    try {
+      decoded = decodeURIComponent(rawHash)
+    } catch {
+      decoded = rawHash
+    }
+
+    const normalized = decoded.trim()
+    if (!normalized || activeAnchorId === normalized) {
+      return
+    }
+
+    if (tryActivateReaderAnchor(normalized)) {
+      setPendingAnchorId(null)
+    }
+  }, [activeAnchorId, location.hash, location.key, paperId, selectedMode, reader, preview, tryActivateReaderAnchor])
+
+  useEffect(() => {
+    setActiveAnchorId(null)
+    const currentHash = window.location.hash || location.hash
+    if (!currentHash) {
+      setPendingAnchorId(null)
+    }
+  }, [location.hash, location.key, paperId])
+
+  useEffect(() => {
+    setAgentTurns([])
+    setAgentInput("")
+    setAgentError(null)
+    setAgentBusy(false)
+    setReaderSelection(null)
+    setExternalSearchEnabled(false)
+    setAgentMode("chat")
+  }, [paperId])
+
+  useEffect(() => {
+    setReaderSelection(null)
+    clearReaderSelectionVisual()
+  }, [clearReaderSelectionVisual, selectedMode])
 
   useEffect(() => {
     if (resolvedStageKey === "community.detail.stage.translatedReady") {
@@ -285,9 +820,6 @@ export default function PaperDetailPage() {
     selectedMode === "translated"
       ? activePaper.abstract_translated || activePaper.abstract_raw || t("community.detail.abstractUnavailable")
       : activePaper.abstract_raw || activePaper.abstract_translated || t("community.detail.abstractUnavailable")
-  const assetLabel = activePaper.latest_asset
-    ? `${getAssetTypeLabel(activePaper.latest_asset.asset_type, t)} · ${activePaper.latest_asset.file_name}`
-    : t("community.card.assetUnavailable")
   const canTranslate = !hasTranslatedReader && ["not_started", "failed"].includes(activePaper.trans_status)
   const canViewProgress = Boolean(
     activePaper.community_selected_task_id && ["queued", "processing"].includes(activePaper.trans_status),
@@ -337,33 +869,150 @@ export default function PaperDetailPage() {
     }
   }
 
-  async function handleAgentQuickRun(input: string) {
-    if (!paperId) {
+  async function runPaperDetailConversationTurn(prompt: string) {
+    if (!paperId || !prompt.trim() || agentBusy) {
       return
     }
 
+    const normalizedPrompt = prompt.trim()
+    const userTurn = createUserTurn(normalizedPrompt)
+    const runningAssistantTurn = createRunningAssistantTurn(agentMode)
+    const history = buildConversationHistory(agentTurns)
+    const skillToggles: CommunityAgentSkillToggles = {
+      external_search: externalSearchEnabled,
+    }
+    const selectionContext = readerSelection
+      ? {
+        text: readerSelection.text,
+        anchor_id: readerSelection.anchor_id,
+        mode: readerSelection.mode,
+      }
+      : null
+
+    setAgentInput("")
+    setAgentBusy(true)
+    setAgentError(null)
+    setAgentTurns((current) => [...current, userTurn, runningAssistantTurn])
+
     try {
-      setAgentBusy(true)
-      setAgentError(null)
-      const run = await createCommunityAgentRun({
-        input,
-        paper_id: paperId,
-        context: {
-          source: "paper_detail",
-          current_mode: selectedMode,
+      const run = await streamCommunityAgentRun(
+        {
+          input: normalizedPrompt,
+          paper_id: paperId,
+          mode: agentMode,
+          skill_toggles: skillToggles,
+          context: {
+            source: "paper_detail",
+            current_mode: selectedMode,
+            history,
+            reader_selection: selectionContext,
+          },
         },
-      })
-      setAgentRun(run)
+        {
+          onEvent: (event) => {
+            const streamEvent = event as CommunityAgentStreamEvent
+            setAgentTurns((current) =>
+              current.map((turn) => {
+                if (turn.id !== runningAssistantTurn.id) {
+                  return turn
+                }
+
+                const currentRun =
+                  turn.run ??
+                  ({
+                    run_id: runningAssistantTurn.run?.run_id ?? `pending-${Date.now()}`,
+                    status: "running",
+                    intent: "answer",
+                    mode: agentMode,
+                    message: turn.content,
+                    summary: turn.content,
+                    citations: [],
+                    tool_trace: [],
+                    action: null,
+                  } as CommunityAgentRun)
+                const nextRun = applyStreamEventToRun(currentRun, streamEvent)
+                const nextContent = nextRun.message ?? nextRun.summary ?? turn.content
+
+                return {
+                  ...turn,
+                  content: nextContent,
+                  run: nextRun,
+                  status:
+                    nextRun.status === "failed"
+                      ? "failed"
+                      : nextRun.status === "completed"
+                        ? "completed"
+                        : "running",
+                  error:
+                    nextRun.status === "failed"
+                      ? (nextRun.message ?? nextRun.summary ?? t("community.agent.error"))
+                      : null,
+                }
+              }),
+            )
+          },
+        },
+      )
+
+      setAgentTurns((current) =>
+        current.map((turn) =>
+          turn.id === runningAssistantTurn.id
+            ? createAssistantTurnFromRun(run, runningAssistantTurn.id, runningAssistantTurn.created_at)
+            : turn,
+        ),
+      )
     } catch (runError) {
-      setAgentError(extractActionErrorMessage(runError) ?? t("community.agent.error"))
+      const message = extractActionErrorMessage(runError) ?? t("community.agent.error")
+      setAgentError(message)
+      setAgentTurns((current) =>
+        current.map((turn) =>
+          turn.id === runningAssistantTurn.id
+            ? {
+              ...turn,
+              status: "failed",
+              error: message,
+              content: message,
+            }
+            : turn,
+        ),
+      )
     } finally {
       setAgentBusy(false)
     }
   }
 
+  async function handleAgentSubmit() {
+    await runPaperDetailConversationTurn(agentInput)
+  }
+
+  async function handleAgentQuickRun(input: string) {
+    await runPaperDetailConversationTurn(input)
+  }
+
   async function handleAgentCitationOpen(citation: CommunityAgentCitation) {
-    if (citation.paper_id) {
-      navigate(`/paper/${citation.paper_id}`)
+    const citationPaperId = citation.paper_id?.trim() ?? ""
+    const citationAnchorId = citation.anchor_id?.trim() ?? ""
+
+    if (citationPaperId && paperId && citationPaperId === paperId && citationAnchorId) {
+      const translatedAnchorIds = new Set((reader?.translated?.anchors ?? []).map((item) => item.anchor_id))
+      const sourceAnchorIds = new Set((reader?.source?.anchors ?? []).map((item) => item.anchor_id))
+
+      if (translatedAnchorIds.has(citationAnchorId) && selectedMode !== "translated" && availableModes.includes("translated")) {
+        setSelectedMode("translated")
+      } else if (sourceAnchorIds.has(citationAnchorId) && selectedMode !== "source" && availableModes.includes("source")) {
+        setSelectedMode("source")
+      }
+
+      setPendingAnchorId(citationAnchorId)
+      return
+    }
+
+    if (citationPaperId) {
+      navigate(
+        citationAnchorId
+          ? `/paper/${citationPaperId}#${encodeURIComponent(citationAnchorId)}`
+          : `/paper/${citationPaperId}`,
+      )
       return
     }
 
@@ -507,7 +1156,6 @@ export default function PaperDetailPage() {
             softBanner={softBanner}
             canLeaveHint={canLeaveHint ?? experience?.can_leave_hint ?? null}
             originalSourceUrl={originalSourceUrl}
-            assetLabel={assetLabel}
             abstractText={abstractText}
             readerHighlight={readerHighlight}
             previewRef={previewRef}
@@ -520,9 +1168,22 @@ export default function PaperDetailPage() {
             onPreview={handlePreview}
             onDownload={handleDownload}
             onModeChange={setSelectedMode}
-            agentRun={agentRun}
+            agentTurns={agentTurns}
+            agentInput={agentInput}
+            agentMode={agentMode}
+            externalSearchEnabled={externalSearchEnabled}
+            readerSelection={readerSelection}
             agentBusy={agentBusy}
             agentError={agentError}
+            onAgentInputChange={setAgentInput}
+            onAgentModeChange={setAgentMode}
+            onExternalSearchChange={setExternalSearchEnabled}
+            onAgentSubmit={() => void handleAgentSubmit()}
+            onSelectionClear={() => {
+              window.getSelection()?.removeAllRanges()
+              setReaderSelection(null)
+              clearReaderSelectionVisual()
+            }}
             onQuickExplain={() => void handleAgentQuickRun(t("community.detail.quickExplain"))}
             onQuickSummary={() => void handleAgentQuickRun(t("community.detail.quickSummary"))}
             onCitationOpen={(citation) => void handleAgentCitationOpen(citation)}

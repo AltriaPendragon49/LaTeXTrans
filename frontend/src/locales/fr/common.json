@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "Version chinoise",
   "community.detail.quickExplain": "Expliquer en chinois",
   "community.detail.quickSummary": "Résumé en une ligne",
+  "community.detail.selectionContextTitle": "Contexte de s?lection du lecteur",
   "community.detail.softReady": "La version chinoise est prête et a déjà été affichée pour vous.",
   "community.detail.stage.generating": "Génération de la version chinoise",
   "community.detail.stage.sourceFallback": "La lecture en anglais reste disponible",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "Vérifier les preuves web externes",
   "community.conversation.progressStepCompose": "Rédiger une réponse étayée",
   "community.conversation.progressStepFinalize": "Valider la réponse finale",
-  "dashboard.toolsDescription": "Utilisez le flux direct d’origine pour charger des sources, téléverser des projets et lancer la traduction sans passer par le dépôt orienté communauté."
+  "dashboard.toolsDescription": "Utilisez le flux direct d’origine pour charger des sources, téléverser des projets et lancer la traduction sans passer par le dépôt orienté communauté.",
+  "community.agent.mode.aria": "Mode agent",
+  "community.agent.mode.chat": "Chat",
+  "community.agent.mode.deepResearch": "Recherche approfondie",
+  "community.conversation.deepResearchReportTitle": "Rapport de recherche approfondie",
+  "community.conversation.progressStepSynthesizeReport": "Synthétiser le rapport",
+  "community.conversation.progressStepFinalizeReport": "Finaliser le rapport"
 }

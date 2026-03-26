@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from postgrest.exceptions import APIError
 from supabase import Client
 
-from backend.app.services import paper_service
 from backend.app.services.community_agent import run_agent
 from backend.app.core.auth import clone_supabase_client_with_same_auth
 from backend.app.utils.async_blocking import run_db_blocking
@@ -27,12 +26,14 @@ class _RunRecord:
     auth_token_hash: str | None
     status: str = "queued"
     intent: str = "answer"
+    mode: str = "chat"
     message: str | None = None
     summary: str | None = None
     tool_trace: List[Dict[str, Any]] = field(default_factory=list)
     citations: List[Dict[str, Any]] = field(default_factory=list)
     provider_state: Dict[str, str] | None = None
     action: Dict[str, Any] | None = None
+    report: Dict[str, Any] | None = None
     events: List[Dict[str, Any]] = field(default_factory=list)
     error: str | None = None
     completed: bool = False
@@ -65,12 +66,14 @@ def _build_snapshot(record: _RunRecord, *, include_urls: bool = False) -> Dict[s
             "run_id": record.run_id,
             "status": record.status,
             "intent": record.intent,
+            "mode": record.mode,
             "message": record.message,
             "summary": record.summary,
             "tool_trace": list(record.tool_trace),
             "citations": list(record.citations),
             "provider_state": dict(record.provider_state or _default_provider_state()),
             "action": dict(record.action) if isinstance(record.action, dict) else record.action,
+            "report": dict(record.report) if isinstance(record.report, dict) else record.report,
             "events": list(record.events),
         }
     if include_urls:
@@ -118,6 +121,7 @@ async def _run_agent_once(
     input_text: str,
     context: Dict[str, Any] | None,
     skill_toggles: Dict[str, Any] | None,
+    run_mode: str,
 ) -> None:
     try:
         _set_status(record, "running", phase="planner")
@@ -125,15 +129,18 @@ async def _run_agent_once(
             input_text=input_text,
             context=context,
             skill_toggles=skill_toggles,
+            run_mode=run_mode,
             event_callback=lambda event: _publish_stream_event(record, event),
         )
     except Exception as exc:
         with record.lock:
             record.status = "failed"
             record.intent = "answer"
+            record.mode = run_mode
             record.message = str(exc)
             record.summary = str(exc)
             record.provider_state = _default_provider_state()
+            record.report = None
             record.error = str(exc)
             record.completed = True
         _publish_stream_event(record, {"type": "error", "data": {"message": str(exc)}})
@@ -143,12 +150,14 @@ async def _run_agent_once(
     with record.lock:
         record.status = str(payload.get("status") or "completed")
         record.intent = str(payload.get("intent") or "answer")
+        record.mode = str(payload.get("mode") or run_mode)
         record.message = payload.get("message") or payload.get("summary")
         record.summary = payload.get("summary") or payload.get("message")
         record.tool_trace = list(payload.get("tool_trace") or [])
         record.citations = list(payload.get("citations") or [])
         record.provider_state = dict(payload.get("provider_state") or _default_provider_state())
         record.action = payload.get("action") if isinstance(payload.get("action"), dict) else payload.get("action")
+        record.report = payload.get("report") if isinstance(payload.get("report"), dict) else None
         record.completed = True
 
     _publish_stream_event(record, {"type": "complete", "data": {"snapshot": _build_snapshot(record)}})
@@ -160,6 +169,7 @@ def _start_background_run(
     input_text: str,
     context: Dict[str, Any] | None,
     skill_toggles: Dict[str, Any] | None,
+    run_mode: str,
 ) -> None:
     def _runner() -> None:
         asyncio.run(
@@ -168,6 +178,7 @@ def _start_background_run(
                 input_text=input_text,
                 context=context,
                 skill_toggles=skill_toggles,
+                run_mode=run_mode,
             )
         )
 
@@ -182,12 +193,14 @@ async def create_agent_run(
     skill_toggles: Dict[str, Any] | None = None,
     *,
     execution_mode: str = "blocking",
+    run_mode: str = "chat",
     access_token: str | None = None,
 ) -> Dict[str, Any]:
     run_id = f"run-{uuid.uuid4().hex[:10]}"
     record = _RunRecord(
         run_id=run_id,
         auth_token_hash=_hash_access_token(access_token),
+        mode=run_mode,
         provider_state={
             "internal_search": "enabled",
             "external_search": "enabled"
@@ -203,10 +216,22 @@ async def create_agent_run(
         with record.lock:
             record.status = "accepted"
         _publish_stream_event(record, {"type": "status", "data": {"status": "accepted", "phase": "accepted"}})
-        _start_background_run(record, input_text=input_text, context=context, skill_toggles=skill_toggles)
+        _start_background_run(
+            record,
+            input_text=input_text,
+            context=context,
+            skill_toggles=skill_toggles,
+            run_mode=run_mode,
+        )
         return _build_snapshot(record, include_urls=True)
 
-    await _run_agent_once(record, input_text=input_text, context=context, skill_toggles=skill_toggles)
+    await _run_agent_once(
+        record,
+        input_text=input_text,
+        context=context,
+        skill_toggles=skill_toggles,
+        run_mode=run_mode,
+    )
     return _build_snapshot(record)
 
 
@@ -218,12 +243,14 @@ async def get_agent_run(run_id: str, *, access_token: str | None = None) -> Dict
             "run_id": run_id,
             "status": "failed",
             "intent": "answer",
+            "mode": "chat",
             "message": None,
             "summary": None,
             "tool_trace": [],
             "citations": [],
             "provider_state": _default_provider_state(),
             "action": None,
+            "report": None,
             "events": [],
         }
     return _build_snapshot(record)

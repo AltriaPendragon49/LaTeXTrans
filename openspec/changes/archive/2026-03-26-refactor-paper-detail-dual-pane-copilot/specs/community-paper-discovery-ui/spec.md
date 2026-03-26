@@ -30,3 +30,8 @@ The paper detail workspace SHALL let the AI copilot reference concrete paper loc
 - **WHEN** translated HTML becomes ready while the user is already reading the paper detail page
 - **THEN** the workspace SHALL surface a lightweight upgrade cue
 - **AND** switching to translated reading SHALL preserve the same dual-pane shell instead of forcing a hard page replacement.
+
+#### Scenario: Highlighted reader text is available to the in-pane copilot thread
+- **WHEN** the user highlights text in the reader pane and asks a question in the paper-detail copilot panel
+- **THEN** the same in-pane copilot thread SHALL submit the highlight as structured context
+- **AND** the response SHALL appear in the continuous paper-detail conversation without falling back to one-shot shortcut mode.

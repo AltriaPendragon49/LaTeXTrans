@@ -39,17 +39,22 @@ Each Feed result SHALL render as a dense paper discovery card that helps the vie
 - **AND** official papers SHALL be visually distinguishable from user fallback papers.
 
 ### Requirement: Paper detail shell contract
-The community paper detail page SHALL keep reading dominant while preserving soft system feedback and a same-level agent workspace.
+The community paper detail page SHALL keep reading dominant while providing a persistent same-screen AI copilot workspace that behaves as a coordinated dual-pane study surface.
 
 #### Scenario: Reader remains the dominant surface
 - **WHEN** the paper detail shell renders
 - **THEN** the reader SHALL occupy the primary visual area
-- **AND** the agent panel SHALL remain same-level but secondary to reading.
+- **AND** the AI copilot pane SHALL remain persistent but secondary to reading.
 
 #### Scenario: Discovery cards focus on reading entry
 - **WHEN** community papers are shown in discovery results or conversation answer cards
 - **THEN** the UI SHALL prioritize paper title, summary, and open-reader actions
 - **AND** status decorations SHALL remain secondary supporting metadata instead of the main emphasis.
+
+#### Scenario: Detail page behaves as a dual-pane reading workspace
+- **WHEN** the user opens a paper detail page
+- **THEN** the page SHALL keep the reader and copilot visible in a coordinated dual-pane layout
+- **AND** the user SHALL not need to leave the paper detail route to continue the same paper-scoped reading conversation.
 
 ### Requirement: Disabled action-slot contract
 The Day 3 detail page SHALL visually reserve the future action positions needed by later changes without exposing active controls yet.
@@ -67,4 +72,22 @@ The discovery UI SHALL remain compatible with a secondary tools hub that preserv
 - **WHEN** the user needs the explicit direct translation workflow
 - **THEN** the UI SHALL provide that workflow through the tools hub
 - **AND** the community homepage SHALL not be forced to carry that explicit workflow as its primary surface.
+
+### Requirement: Dual-pane reader supports anchored copilot references
+The paper detail workspace SHALL let the AI copilot reference concrete paper locations and drive the reader to those locations through anchor-aware interactions.
+
+#### Scenario: User clicks an assistant citation
+- **WHEN** the copilot answer includes a citation or reference tied to the current paper
+- **THEN** clicking that reference SHALL scroll the reader to the corresponding location
+- **AND** the reader SHALL highlight that location without leaving the current paper detail route.
+
+#### Scenario: Reader upgrades softly when translated mode becomes ready
+- **WHEN** translated HTML becomes ready while the user is already reading the paper detail page
+- **THEN** the workspace SHALL surface a lightweight upgrade cue
+- **AND** switching to translated reading SHALL preserve the same dual-pane shell instead of forcing a hard page replacement.
+
+#### Scenario: Highlighted reader text is available to the in-pane copilot thread
+- **WHEN** the user highlights text in the reader pane and asks a question in the paper-detail copilot panel
+- **THEN** the same in-pane copilot thread SHALL submit the highlight as structured context
+- **AND** the response SHALL appear in the continuous paper-detail conversation without falling back to one-shot shortcut mode.
 

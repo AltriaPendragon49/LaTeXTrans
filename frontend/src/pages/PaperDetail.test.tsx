@@ -12,6 +12,7 @@ const translateCommunityPaperMock = vi.fn()
 const createCommunityPaperDownloadSessionMock = vi.fn()
 const getCommunityPaperPreviewMock = vi.fn()
 const createCommunityAgentRunMock = vi.fn()
+const streamCommunityAgentRunMock = vi.fn()
 const importCommunityPaperMock = vi.fn()
 const loadUserSettingsMock = vi.fn()
 const setTaskIdMock = vi.fn()
@@ -30,6 +31,7 @@ vi.mock("@/lib/community-api", () => ({
   translateCommunityPaper: (...args: unknown[]) => translateCommunityPaperMock(...args),
   createCommunityPaperDownloadSession: (...args: unknown[]) => createCommunityPaperDownloadSessionMock(...args),
   createCommunityAgentRun: (...args: unknown[]) => createCommunityAgentRunMock(...args),
+  streamCommunityAgentRun: (...args: unknown[]) => streamCommunityAgentRunMock(...args),
   importCommunityPaper: (...args: unknown[]) => importCommunityPaperMock(...args),
 }))
 
@@ -164,6 +166,17 @@ describe("PaperDetailPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
+    streamCommunityAgentRunMock.mockResolvedValue({
+      run_id: "run-1",
+      status: "completed",
+      intent: "answer",
+      mode: "chat",
+      message: "Streamed paper-detail answer",
+      summary: "Streamed paper-detail answer",
+      citations: [],
+      tool_trace: [],
+      action: null,
+    })
     getCommunityPaperPreviewMock.mockResolvedValue(translatedPreview)
     loadUserSettingsMock.mockResolvedValue(undefined)
     Object.defineProperty(window, "open", {
@@ -409,7 +422,7 @@ describe("PaperDetailPage", () => {
     expect(screen.getByText("Reader workspace")).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-top-panels")).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-top-panels").style.gridTemplateColumns).toContain("fr")
-    expect(screen.getByTestId("paper-detail-reader-panel").className).toContain("min-h-[760px]")
+    expect(screen.getByTestId("paper-detail-reader-panel").className).toContain("h-[calc(140dvh-160px)]")
     expect(screen.getByTestId("paper-detail-resize-handle")).toBeInTheDocument()
     expect(screen.getByTestId("paper-preview-viewport")).toBeInTheDocument()
     expect(screen.queryByText("Community-selected version")).not.toBeInTheDocument()

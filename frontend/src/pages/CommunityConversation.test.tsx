@@ -55,8 +55,9 @@ describe("CommunityConversationPage streaming", () => {
           run_id: "run-stream-1",
           status: "completed",
           intent: "answer",
-          message: "你好，世界",
-          summary: "你好，世界",
+          mode: "chat",
+          message: "Hello world",
+          summary: "Hello world",
           citations: [
             {
               id: "paper-1",
@@ -93,7 +94,7 @@ describe("CommunityConversationPage streaming", () => {
           type: "assistant_delta",
           run_id: "run-stream-1",
           sequence: 2,
-          data: { delta: "你好" },
+          data: { delta: "Hello" },
         })
 
         await new Promise((resolve) => window.setTimeout(resolve, 10))
@@ -126,7 +127,7 @@ describe("CommunityConversationPage streaming", () => {
           type: "assistant_delta",
           run_id: "run-stream-1",
           sequence: 6,
-          data: { delta: "，世界" },
+          data: { delta: " world" },
         })
         onEvent({
           type: "complete",
@@ -155,7 +156,7 @@ describe("CommunityConversationPage streaming", () => {
     await userEvent.type(input, "Explain this paper in Chinese")
     await userEvent.click(screen.getByRole("button", { name: "Run agent" }))
 
-    expect(await screen.findByText("你好，世界")).toBeInTheDocument()
+    expect(await screen.findByText("Hello world")).toBeInTheDocument()
     expect(
       await screen.findByText("Graph Neural Networks for Molecular Property Prediction"),
     ).toBeInTheDocument()
@@ -166,5 +167,148 @@ describe("CommunityConversationPage streaming", () => {
       expect(streamCommunityAgentRunMock).toHaveBeenCalledTimes(1)
     })
     expect(createCommunityAgentRunMock).not.toHaveBeenCalled()
+  })
+
+  it("sends deep research mode and renders report-style output", async () => {
+    streamCommunityAgentRunMock.mockImplementationOnce(
+      async (
+        payload: Record<string, unknown>,
+        { onEvent }: { onEvent: (event: Record<string, unknown>) => void },
+      ) => {
+        const finalRun = {
+          run_id: "run-research-1",
+          status: "completed",
+          intent: "answer",
+          mode: "deep_research",
+          message: "## Executive Summary\nA long-form cited report.",
+          summary: "## Executive Summary\nA long-form cited report.",
+          citations: [
+            {
+              id: "paper-2",
+              title: "Retrieval-Augmented Generation Survey",
+              source: "community",
+              paper_id: "paper-2",
+              snippet: "Survey evidence for report grounding.",
+            },
+          ],
+          tool_trace: [],
+          action: null,
+          report: {
+            format: "markdown",
+            body_markdown: "## Executive Summary\nA long-form cited report.",
+            evidence_count: 16,
+            target_min_evidence: 15,
+            target_max_evidence: 20,
+            partial_coverage: false,
+            coverage_note: "Coverage reached target breadth.",
+          },
+        }
+
+        onEvent({
+          type: "complete",
+          run_id: "run-research-1",
+          sequence: 1,
+          data: {
+            snapshot: finalRun,
+          },
+        })
+
+        expect(payload).toMatchObject({ mode: "deep_research" })
+        return finalRun
+      },
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/agent/conversation-2"]}>
+        <Routes>
+          <Route path="/agent/:conversationId" element={<CommunityConversationPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await userEvent.click(await screen.findByRole("button", { name: "Deep research" }))
+    await userEvent.type(screen.getByLabelText("Ask the paper agent"), "Produce a deep literature review")
+    await userEvent.click(screen.getByRole("button", { name: "Run agent" }))
+
+    expect(await screen.findByText("Deep research report")).toBeInTheDocument()
+    expect(await screen.findByText("Coverage reached target breadth.")).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(streamCommunityAgentRunMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("keeps deep research in progress until a completed snapshot provides the report payload", async () => {
+    streamCommunityAgentRunMock.mockImplementationOnce(
+      async (
+        payload: Record<string, unknown>,
+        { onEvent }: { onEvent: (event: Record<string, unknown>) => void },
+      ) => {
+        const finalRun = {
+          run_id: "run-research-2",
+          status: "completed",
+          intent: "answer",
+          mode: "deep_research",
+          message: "## Executive Summary\nGrounded final report.",
+          summary: "## Executive Summary\nGrounded final report.",
+          citations: [],
+          tool_trace: [],
+          action: null,
+          report: {
+            format: "markdown",
+            body_markdown: "## Executive Summary\nGrounded final report.",
+            evidence_count: 15,
+            target_min_evidence: 15,
+            target_max_evidence: 20,
+            partial_coverage: false,
+            coverage_note: "Coverage reached target breadth.",
+          },
+        }
+
+        onEvent({
+          type: "status",
+          run_id: "run-research-2",
+          sequence: 1,
+          data: { status: "running", mode: "deep_research" },
+        })
+        onEvent({
+          type: "assistant_delta",
+          run_id: "run-research-2",
+          sequence: 2,
+          data: { delta: "Collecting evidence..." },
+        })
+
+        await new Promise((resolve) => window.setTimeout(resolve, 40))
+
+        onEvent({
+          type: "complete",
+          run_id: "run-research-2",
+          sequence: 3,
+          data: {
+            snapshot: finalRun,
+          },
+        })
+
+        expect(payload).toMatchObject({ mode: "deep_research" })
+        return finalRun
+      },
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/agent/conversation-3"]}>
+        <Routes>
+          <Route path="/agent/:conversationId" element={<CommunityConversationPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await userEvent.click(await screen.findByRole("button", { name: "Deep research" }))
+    await userEvent.type(screen.getByLabelText("Ask the paper agent"), "Need a complete deep research brief")
+    await userEvent.click(screen.getByRole("button", { name: "Run agent" }))
+
+    expect(await screen.findByTestId("community-conversation-progress")).toBeInTheDocument()
+    expect(screen.queryByText("Deep research report")).not.toBeInTheDocument()
+    expect(await screen.findByText("Deep research report")).toBeInTheDocument()
+    expect(await screen.findByText("Coverage reached target breadth.")).toBeInTheDocument()
   })
 })

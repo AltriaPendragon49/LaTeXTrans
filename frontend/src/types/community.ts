@@ -55,6 +55,7 @@ export interface CommunityPaperListResponse {
 }
 
 export type CommunityAgentIntent = "search" | "answer" | "translate"
+export type CommunityAgentMode = "chat" | "deep_research"
 
 export interface CommunityAgentSkillToggles {
   external_search: boolean
@@ -67,6 +68,7 @@ export interface CommunityAgentCitation {
   source: string
   arxiv_id?: string | null
   paper_id?: string | null
+  anchor_id?: string | null
   snippet?: string | null
 }
 
@@ -89,6 +91,7 @@ export interface CommunityAgentProviderState {
 export interface CommunityAgentAction {
   type: "navigate_paper" | "open_url"
   paper_id?: string | null
+  anchor_id?: string | null
   task_id?: string | null
   url?: string | null
   auto_started_translation?: boolean | null
@@ -96,16 +99,30 @@ export interface CommunityAgentAction {
   imported?: boolean | null
 }
 
+export interface CommunityAgentReport {
+  format: "markdown"
+  body_markdown: string
+  evidence_count: number
+  target_min_evidence: number
+  target_max_evidence: number
+  context_pack_limit?: number
+  timeout_seconds?: number
+  partial_coverage: boolean
+  coverage_note: string
+}
+
 export interface CommunityAgentAcceptedRun {
   run_id: string
   status: "accepted" | "queued" | "running"
   intent?: CommunityAgentIntent | null
+  mode?: CommunityAgentMode | null
   message?: string | null
   summary?: string | null
   tool_trace?: CommunityAgentToolTrace[]
   citations?: CommunityAgentCitation[]
   provider_state?: CommunityAgentProviderState | null
   action?: CommunityAgentAction | null
+  report?: CommunityAgentReport | null
   stream_url: string
   result_url: string
 }
@@ -114,12 +131,14 @@ export interface CommunityAgentRun {
   run_id: string
   status: "accepted" | "queued" | "running" | "completed" | "failed"
   intent?: CommunityAgentIntent | null
+  mode?: CommunityAgentMode | null
   message?: string | null
   summary?: string | null
   tool_trace?: CommunityAgentToolTrace[]
   citations?: CommunityAgentCitation[]
   provider_state?: CommunityAgentProviderState | null
   action?: CommunityAgentAction | null
+  report?: CommunityAgentReport | null
   stream_url?: string | null
   result_url?: string | null
 }
@@ -175,6 +194,12 @@ export type CommunityPaperFailureType =
   | "translation_failed"
   | "external_search_unavailable"
 
+export interface CommunityPaperReaderAnchor {
+  anchor_id: string
+  kind: "section" | "block" | "anchor" | string
+  label?: string | null
+}
+
 export interface CommunityPaperExperience {
   stage_label: string
   can_leave_hint?: string | null
@@ -185,6 +210,7 @@ export interface CommunityPaperReaderResource {
   kind: "source_html" | "source_pdf" | "external_arxiv_html" | "preview_html" | "translated_pdf"
   html_content?: string | null
   url?: string | null
+  anchors?: CommunityPaperReaderAnchor[]
 }
 
 export interface CommunityPaperReader {
@@ -192,6 +218,7 @@ export interface CommunityPaperReader {
   available_modes: CommunityPaperReaderMode[]
   source?: CommunityPaperReaderResource | null
   translated?: CommunityPaperReaderResource | null
+  active_anchor_id?: string | null
   state: CommunityPaperReaderState
 }
 

@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   Bot,
+  Loader2,
   Download,
   Eye,
   Languages,
@@ -9,26 +10,29 @@ import {
   Sparkles,
   Timer,
 } from "lucide-react"
-import { useEffect, useRef, useState, type RefObject } from "react"
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 
 import { PaperPreviewReader } from "@/components/community/PaperPreviewReader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import type {
   CommunityAgentCitation,
-  CommunityAgentRun,
+  CommunityAgentMode,
   CommunityPaper,
   CommunityPaperPreviewResponse,
   CommunityPaperReader,
   CommunityPaperReaderMode,
+  CommunityConversationTurn,
 } from "@/types/community"
 
 const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio"
 const DEFAULT_SPLIT_RATIO = 0.88
 const MIN_READER_WIDTH = 720
 const MIN_AGENT_WIDTH = 260
+const READER_SELECTION_HIGHLIGHT_NAME = "paper-detail-reader-selection"
 
 function getTraceStatusClass(status: string) {
   switch (status) {
@@ -39,6 +43,19 @@ function getTraceStatusClass(status: string) {
     default:
       return "border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-text-soft)]"
   }
+}
+
+function formatConversationTimestamp(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
 }
 
 function clampSplitRatio(ratio: number, width: number) {
@@ -61,7 +78,6 @@ interface PaperDetailWorkspaceProps {
   softBanner: string | null
   canLeaveHint: string | null
   originalSourceUrl: string | null
-  assetLabel: string
   abstractText: string
   readerHighlight: boolean
   previewRef: RefObject<HTMLDivElement | null>
@@ -74,9 +90,22 @@ interface PaperDetailWorkspaceProps {
   onPreview: () => void
   onDownload: () => void
   onModeChange: (mode: CommunityPaperReaderMode) => void
-  agentRun: CommunityAgentRun | null
+  agentTurns: CommunityConversationTurn[]
+  agentInput: string
+  agentMode: CommunityAgentMode
+  externalSearchEnabled: boolean
+  readerSelection: {
+    text: string
+    anchor_id: string | null
+    mode: CommunityPaperReaderMode
+  } | null
   agentBusy: boolean
   agentError: string | null
+  onAgentInputChange: (value: string) => void
+  onAgentModeChange: (mode: CommunityAgentMode) => void
+  onExternalSearchChange: (value: boolean) => void
+  onAgentSubmit: () => void
+  onSelectionClear: () => void
   onQuickExplain: () => void
   onQuickSummary: () => void
   onCitationOpen: (citation: CommunityAgentCitation) => void
@@ -93,7 +122,6 @@ export function PaperDetailWorkspace({
   softBanner,
   canLeaveHint,
   originalSourceUrl,
-  assetLabel,
   abstractText,
   readerHighlight,
   previewRef,
@@ -106,9 +134,18 @@ export function PaperDetailWorkspace({
   onPreview,
   onDownload,
   onModeChange,
-  agentRun,
+  agentTurns,
+  agentInput,
+  agentMode,
+  externalSearchEnabled,
+  readerSelection,
   agentBusy,
   agentError,
+  onAgentInputChange,
+  onAgentModeChange,
+  onExternalSearchChange,
+  onAgentSubmit,
+  onSelectionClear,
   onQuickExplain,
   onQuickSummary,
   onCitationOpen,
@@ -125,6 +162,7 @@ export function PaperDetailWorkspace({
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 1280,
   )
+  const messageListRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -145,6 +183,26 @@ export function PaperDetailWorkspace({
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [])
+
+  useEffect(() => {
+    const container = messageListRef.current
+    if (!container) {
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (typeof container.scrollTo === "function") {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        })
+        return
+      }
+      container.scrollTop = container.scrollHeight
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [agentBusy, agentTurns])
 
   const sourceAvailable = availableModes.includes("source")
   const translatedAvailable = availableModes.includes("translated")
@@ -232,8 +290,17 @@ export function PaperDetailWorkspace({
 
   const desktopGridColumns = `${splitRatio}fr 12px ${Math.max(1 - splitRatio, 0.18)}fr`
 
+  function handleAgentSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (agentBusy || !agentInput.trim()) {
+      return
+    }
+    onAgentSubmit()
+  }
+
   return (
     <div className="mt-4 space-y-3">
+      <style>{`::highlight(${READER_SELECTION_HIGHLIGHT_NAME}) { background-color: rgba(250, 204, 21, 0.45); }`}</style>
       <div className="rounded-[22px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] px-4 py-3">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2.5">
@@ -344,7 +411,7 @@ export function PaperDetailWorkspace({
         <section
           data-testid="paper-detail-reader-panel"
           className={cn(
-            "flex h-[calc(140dvh-160px)] max-h-[calc(140dvh-160px)] min-w-0 flex-col overflow-hidden rounded-[26px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] shadow-none transition",
+            "flex h-[calc(140dvh-160px)] max-h-[calc(140dvh-160px)] min-w-0 flex-col overflow-hidden rounded-[26px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] shadow-none transition [&_[data-reader-anchor-active='true']]:rounded-md [&_[data-reader-anchor-active='true']]:ring-2 [&_[data-reader-anchor-active='true']]:ring-sky-400/70 [&_[data-reader-anchor-active='true']]:ring-offset-2 [&_[data-reader-anchor-active='true']]:ring-offset-white [&_[data-reader-selection-active='true']]:rounded-sm [&_[data-reader-selection-active='true']]:bg-amber-200/60 [&_[data-reader-selection-active='true']]:shadow-[inset_0_0_0_1px_rgba(245,158,11,0.55)]",
             readerHighlight ? "ring-2 ring-sky-400/60" : "",
           )}
         >
@@ -465,22 +532,125 @@ export function PaperDetailWorkspace({
         <aside
           data-testid="paper-detail-agent-panel"
           className={cn(
-            "flex min-h-[720px] flex-col overflow-hidden rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] shadow-none",
-            isDesktop ? "min-w-[320px]" : "",
+            "flex flex-col overflow-hidden rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] shadow-none",
+            isDesktop
+              ? "min-w-[320px] self-start h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] min-h-[560px]"
+              : "min-h-[560px]",
           )}
         >
           <div className="flex items-center gap-2 border-b border-[color:var(--shell-border)] px-5 py-3 text-sm font-medium text-[var(--shell-heading)]">
             <Languages className="h-4 w-4 text-[var(--shell-icon)]" />
             {t("community.detail.agentWorkspaceTitle")}
           </div>
+          <div ref={messageListRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+            {agentTurns.map((turn) => {
+              const assistantRun = turn.role === "assistant" ? turn.run : null
+              const citations = assistantRun?.citations ?? []
+              const toolTrace = assistantRun?.tool_trace ?? []
+              return (
+                <div
+                  key={turn.id}
+                  className={cn(
+                    "rounded-[20px] border px-4 py-3",
+                    turn.role === "user"
+                      ? "border-[color:var(--shell-accent)] bg-[color:color-mix(in_srgb,var(--shell-accent)_16%,white_84%)]"
+                      : "border-[color:var(--shell-border)] bg-[var(--shell-surface)]",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
+                      {turn.role === "user" ? t("community.conversation.userLabel") : t("community.conversation.agentLabel")}
+                    </p>
+                    <p className="text-[11px] text-[var(--shell-text-muted)]">
+                      {formatConversationTimestamp(turn.created_at)}
+                    </p>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[var(--shell-text-soft)]">
+                    {turn.content}
+                  </p>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
-            <p className="text-sm leading-7 text-[var(--shell-text-soft)]">
-              {agentRun?.message ?? agentRun?.summary ?? t("community.detail.agentWorkspaceDescription")}
-            </p>
+                  {citations.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {citations.map((citation) => (
+                        <button
+                          key={citation.id}
+                          type="button"
+                          onClick={() => void onCitationOpen(citation)}
+                          className="inline-flex items-center gap-2 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-heading)] transition hover:bg-[var(--shell-pill-hover)]"
+                        >
+                          <span className="truncate">{citation.title}</span>
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {toolTrace.length ? (
+                    <div className="mt-3 grid gap-2">
+                      {toolTrace.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={cn(
+                            "flex items-start gap-3 rounded-[16px] border px-3 py-2 text-xs",
+                            getTraceStatusClass(entry.status),
+                          )}
+                        >
+                          {entry.kind === "reasoning" ? (
+                            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <Bot className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-medium">{entry.label}</div>
+                            {entry.detail ? (
+                              <div className="mt-1 text-[11px] text-current/80">{entry.detail}</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+
+            {agentBusy ? (
+              <div className="flex items-center gap-2 rounded-2xl border border-[color:var(--shell-border)] bg-[var(--shell-surface)] px-4 py-3 text-sm text-[var(--shell-text-soft)]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{t("community.conversation.running")}</span>
+              </div>
+            ) : null}
+
+            {agentError ? (
+              <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
+                {agentError}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="border-t border-[color:var(--shell-border)] px-4 py-4">
+            {readerSelection ? (
+              <div className="mb-3 rounded-2xl border border-[color:var(--shell-border)] bg-[var(--shell-surface)] px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--shell-text-muted)]">
+                    {t("community.detail.selectionContextTitle")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onSelectionClear}
+                    className="text-xs text-[var(--shell-text-soft)] underline-offset-2 hover:underline"
+                  >
+                    {t("common.actions.cancel")}
+                  </button>
+                </div>
+                <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-[var(--shell-text-soft)]">
+                  {readerSelection.text}
+                </p>
+              </div>
+            ) : null}
 
             {preferredMode === "source" ? (
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mb-3 flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -502,66 +672,74 @@ export function PaperDetailWorkspace({
               </div>
             ) : null}
 
-            {agentError ? (
-              <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-                {agentError}
-              </div>
-            ) : null}
+            <form onSubmit={handleAgentSubmit} className="space-y-3">
+              <label htmlFor="paper-detail-agent-input" className="sr-only">
+                {t("community.agent.aria")}
+              </label>
+              <textarea
+                id="paper-detail-agent-input"
+                aria-label={t("community.agent.aria")}
+                value={agentInput}
+                onChange={(event) => onAgentInputChange(event.target.value)}
+                placeholder={t("community.agent.placeholder")}
+                rows={3}
+                className="min-h-[96px] w-full resize-none rounded-[20px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] px-3 py-2 text-sm leading-7 text-[var(--shell-heading)] outline-none placeholder:text-[var(--shell-text-muted)]"
+              />
 
-            {agentBusy ? (
-              <div className="mt-4 rounded-2xl border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-4 py-3 text-sm text-[var(--shell-text-soft)]">
-                {t("community.agent.responseTitle")}
-              </div>
-            ) : null}
-
-            {agentRun?.tool_trace?.length ? (
-              <div className="mt-4 grid gap-2">
-                {agentRun.tool_trace.map((entry) => (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-col gap-2">
                   <div
-                    key={entry.id}
-                    className={cn(
-                      "flex items-start gap-3 rounded-[20px] border px-4 py-3 text-sm",
-                      getTraceStatusClass(entry.status),
-                    )}
+                    role="group"
+                    aria-label={t("community.agent.mode.aria")}
+                    className="inline-flex w-fit items-center gap-1 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] p-1"
                   >
-                    {entry.kind === "reasoning" ? (
-                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
-                    ) : (
-                      <Bot className="mt-0.5 h-4 w-4 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-medium">{entry.label}</div>
-                      {entry.detail ? (
-                        <div className="mt-1 text-xs text-current/80">{entry.detail}</div>
-                      ) : null}
-                    </div>
+                    <button
+                      type="button"
+                      aria-pressed={agentMode === "chat"}
+                      onClick={() => onAgentModeChange("chat")}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition",
+                        agentMode === "chat"
+                          ? "bg-[var(--shell-accent)] text-[var(--shell-accent-foreground)]"
+                          : "text-[var(--shell-text-soft)] hover:text-[var(--shell-heading)]",
+                      )}
+                    >
+                      {t("community.agent.mode.chat")}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={agentMode === "deep_research"}
+                      onClick={() => onAgentModeChange("deep_research")}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition",
+                        agentMode === "deep_research"
+                          ? "bg-[var(--shell-accent)] text-[var(--shell-accent-foreground)]"
+                          : "text-[var(--shell-text-soft)] hover:text-[var(--shell-heading)]",
+                      )}
+                    >
+                      {t("community.agent.mode.deepResearch")}
+                    </button>
                   </div>
-                ))}
-              </div>
-            ) : null}
+                  <label className="inline-flex items-center gap-2 text-xs text-[var(--shell-text-soft)]">
+                    <Switch
+                      checked={externalSearchEnabled}
+                      onCheckedChange={onExternalSearchChange}
+                      aria-label={t("community.agent.externalSearch.label")}
+                    />
+                    <span>{t("community.agent.externalSearch.label")}</span>
+                  </label>
+                </div>
 
-            {agentRun?.citations?.length ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {agentRun.citations.map((citation) => (
-                  <button
-                    key={citation.id}
-                    type="button"
-                    onClick={() => void onCitationOpen(citation)}
-                    className="inline-flex items-center gap-2 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-heading)] transition hover:bg-[var(--shell-pill-hover)]"
-                  >
-                    <span className="truncate">{citation.title}</span>
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </button>
-                ))}
+                <Button
+                  type="submit"
+                  disabled={agentBusy || !agentInput.trim()}
+                  className="h-10 rounded-full bg-[var(--shell-accent)] px-4 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
+                >
+                  {t("community.agent.run")}
+                  <ArrowUpRight className="h-4 w-4" />
+                </Button>
               </div>
-            ) : null}
-
-            <div className="mt-4 rounded-2xl border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-                {t("community.detail.latestAsset")}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--shell-heading)]">{assetLabel}</p>
-            </div>
+            </form>
           </div>
         </aside>
       </div>

@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "중국어 번역",
   "community.detail.quickExplain": "중국어로 설명",
   "community.detail.quickSummary": "한 줄 요약",
+  "community.detail.selectionContextTitle": "?? ?? ????",
   "community.detail.softReady": "중국어 버전이 준비되어 자동으로 전환되었습니다.",
   "community.detail.stage.generating": "중국어 버전을 생성하는 중입니다",
   "community.detail.stage.sourceFallback": "영문 읽기 버전은 계속 사용할 수 있습니다",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "외부 웹 근거 확인",
   "community.conversation.progressStepCompose": "근거 있는 답변 작성",
   "community.conversation.progressStepFinalize": "최종 응답 검증",
-  "dashboard.toolsDescription": "커뮤니티 우선 제출 흐름 없이 기존 직접 작업 흐름으로 소스를 불러오고, 프로젝트를 업로드하고, 번역을 실행합니다."
+  "dashboard.toolsDescription": "커뮤니티 우선 제출 흐름 없이 기존 직접 작업 흐름으로 소스를 불러오고, 프로젝트를 업로드하고, 번역을 실행합니다.",
+  "community.agent.mode.aria": "에이전트 모드",
+  "community.agent.mode.chat": "채팅",
+  "community.agent.mode.deepResearch": "심층 조사",
+  "community.conversation.deepResearchReportTitle": "심층 조사 보고서",
+  "community.conversation.progressStepSynthesizeReport": "보고서 종합",
+  "community.conversation.progressStepFinalizeReport": "보고서 마무리"
 }

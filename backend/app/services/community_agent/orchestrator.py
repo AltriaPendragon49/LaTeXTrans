@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
@@ -25,6 +26,12 @@ REASONING_PROVIDER_MODEL_ENV = "COMMUNITY_AGENT_REASONING_MODEL"
 _SEARCH_MARKERS = ("search", "find", "look up", "paper", "papers", "论文", "搜索", "查找", "找一下")
 _TRANSLATE_MARKERS = ("translate", "translation", "翻译", "译成", "中文版", "中文版本")
 _MAX_PLANNER_TURNS = 6
+_DEEP_RESEARCH_MIN_EVIDENCE = 15
+_DEEP_RESEARCH_TARGET_EVIDENCE = 18
+_DEEP_RESEARCH_MAX_EVIDENCE = 20
+_DEEP_RESEARCH_PER_QUERY_LIMIT = 5
+_DEEP_RESEARCH_MAX_QUERY_ROUNDS = 4
+_DEEP_RESEARCH_TIMEOUT_SECONDS = 120.0
 
 EventCallback = Callable[[Dict[str, Any]], Awaitable[None] | None]
 
@@ -46,6 +53,25 @@ def _normalize_history(context: Dict[str, Any]) -> List[Dict[str, str]]:
         content = _normalize_text(entry.get("content"))
         if role in {"user", "assistant"} and content:
             normalized.append({"role": role, "content": content})
+    return normalized
+
+
+def _normalize_reader_selection(context: Dict[str, Any]) -> Dict[str, str] | None:
+    payload = context.get("reader_selection")
+    if not isinstance(payload, dict):
+        return None
+
+    text = _normalize_text(payload.get("text"))
+    if not text:
+        return None
+
+    normalized: Dict[str, str] = {"text": text[:4000]}
+    anchor_id = _normalize_text(payload.get("anchor_id"))
+    mode = _normalize_text(payload.get("mode"))
+    if anchor_id:
+        normalized["anchor_id"] = anchor_id
+    if mode:
+        normalized["mode"] = mode
     return normalized
 
 
@@ -92,17 +118,35 @@ def _dedupe_citations(citations: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
     deduped: List[Dict[str, Any]] = []
     seen: set[str] = set()
     for citation in citations:
-        key = (
-            _normalize_text(citation.get("paper_id"))
-            or _normalize_text(citation.get("arxiv_id"))
-            or _normalize_text(citation.get("url"))
-            or _normalize_text(citation.get("title"))
+        citation_id = _normalize_text(citation.get("id"))
+        paper_id = _normalize_text(citation.get("paper_id"))
+        anchor_id = _normalize_text(citation.get("anchor_id"))
+        key = citation_id or (
+            f"{paper_id}#{anchor_id}" if paper_id and anchor_id else (
+                paper_id
+                or _normalize_text(citation.get("arxiv_id"))
+                or _normalize_text(citation.get("url"))
+                or _normalize_text(citation.get("title"))
+            )
         )
         if not key or key in seen:
             continue
         seen.add(key)
         deduped.append(citation)
     return deduped
+
+
+def _chunk_text(text: str, chunk_size: int = 280) -> List[str]:
+    normalized = str(text or "")
+    if not normalized:
+        return []
+
+    chunks: List[str] = []
+    cursor = 0
+    while cursor < len(normalized):
+        chunks.append(normalized[cursor : cursor + chunk_size])
+        cursor += chunk_size
+    return chunks
 
 
 def _derive_search_query(input_text: str) -> str:
@@ -159,6 +203,7 @@ def _context_citation(paper_context: Dict[str, Any]) -> Dict[str, Any]:
         "source": "community",
         "arxiv_id": paper_context.get("arxiv_id"),
         "paper_id": paper_context.get("paper_id"),
+        "anchor_id": paper_context.get("active_anchor_id"),
         "snippet": paper_context.get("abstract_translated") or paper_context.get("abstract_raw"),
     }
 
@@ -309,6 +354,7 @@ def _build_final_system_prompt(runtime_state: AgentRuntimeState) -> str:
 
 
 def _build_planner_messages(runtime_state: AgentRuntimeState, visible_tools: Dict[str, Any]) -> List[Dict[str, Any]]:
+    reader_selection = _normalize_reader_selection(runtime_state.context)
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": _build_planner_system_prompt(runtime_state, list(visible_tools))},
         {
@@ -317,6 +363,7 @@ def _build_planner_messages(runtime_state: AgentRuntimeState, visible_tools: Dic
                 {
                     "answer_language": runtime_state.response_language,
                     "current_paper_context": runtime_state.paper_context,
+                    "reader_selection": reader_selection,
                     "known_citations": _dedupe_citations(runtime_state.citations)[:6],
                     "skill_toggles": runtime_state.skill_toggles,
                 },
@@ -330,6 +377,7 @@ def _build_planner_messages(runtime_state: AgentRuntimeState, visible_tools: Dic
 
 
 def _build_final_messages(runtime_state: AgentRuntimeState, planner_seed: str | None) -> List[Dict[str, Any]]:
+    reader_selection = _normalize_reader_selection(runtime_state.context)
     return [
         {"role": "system", "content": _build_final_system_prompt(runtime_state)},
         {
@@ -338,6 +386,7 @@ def _build_final_messages(runtime_state: AgentRuntimeState, planner_seed: str | 
                 {
                     "input_text": runtime_state.input_text,
                     "current_paper_context": runtime_state.paper_context,
+                    "reader_selection": reader_selection,
                     "citations": _dedupe_citations(runtime_state.citations),
                     "tool_trace": runtime_state.tool_trace,
                     "executed_tools": runtime_state.executed_tool_results,
@@ -354,7 +403,18 @@ def _build_final_messages(runtime_state: AgentRuntimeState, planner_seed: str | 
 def _build_first_answer_from_context(runtime_state: AgentRuntimeState) -> str | None:
     paper_context = runtime_state.paper_context or {}
     title = _normalize_text(paper_context.get("title"))
+    reader_selection = _normalize_reader_selection(runtime_state.context)
+    selection_snippet = _normalize_text((reader_selection or {}).get("text"))
     snippet = _normalize_text(paper_context.get("abstract_translated") or paper_context.get("abstract_raw"))
+    if not snippet:
+        snippet = selection_snippet
+
+    if selection_snippet and not title:
+        compact_selection = selection_snippet[:360]
+        if is_chinese_language(runtime_state.response_language):
+            return f"你高亮的这段内容主要在讲：{compact_selection}"
+        return f"The highlighted passage mainly says: {compact_selection}"
+
     if not title and not snippet:
         return None
 
@@ -389,18 +449,22 @@ def _fallback_message(runtime_state: AgentRuntimeState) -> str:
 
 
 def _finalize_payload(runtime_state: AgentRuntimeState, message: str) -> Dict[str, Any]:
-    intent = _infer_intent(runtime_state)
+    intent = "answer" if runtime_state.run_mode == "deep_research" else _infer_intent(runtime_state)
     citations = _dedupe_citations(runtime_state.citations)
+    if runtime_state.run_mode == "deep_research":
+        citations = citations[:_DEEP_RESEARCH_MAX_EVIDENCE]
     runtime_state.latest_intent = intent
     return {
         "status": "completed",
         "intent": intent,
+        "mode": runtime_state.run_mode,
         "message": message,
         "summary": message,
         "tool_trace": runtime_state.tool_trace,
         "citations": citations,
         "provider_state": runtime_state.provider_state,
         "action": runtime_state.action,
+        "report": runtime_state.report,
         "events": runtime_state.events,
     }
 
@@ -412,6 +476,7 @@ class CommunityReactAgent:
         input_text: str,
         context: Dict[str, Any] | None = None,
         skill_toggles: Dict[str, Any] | None = None,
+        run_mode: str = "chat",
         event_callback: EventCallback | None = None,
     ) -> None:
         safe_context = dict(context or {})
@@ -429,6 +494,7 @@ class CommunityReactAgent:
                 "reasoning": "enabled",
                 "translation_bridge": "enabled",
             },
+            run_mode=run_mode,
             response_language=detect_response_language(_normalize_text(input_text), history=history, context=safe_context),
             history=history,
         )
@@ -640,6 +706,224 @@ class CommunityReactAgent:
             return planner_seed
         return None
 
+    def _build_deep_research_queries(self) -> List[str]:
+        base_query = _derive_search_query(self.runtime_state.input_text) or self.runtime_state.input_text
+        query_variants = [
+            base_query,
+            f"{base_query} survey",
+            f"{base_query} benchmark",
+            f"{base_query} limitations",
+            f"{base_query} applications",
+        ]
+
+        deduped: List[str] = []
+        for candidate in query_variants:
+            normalized = _normalize_text(candidate)
+            if not normalized:
+                continue
+            lowered = normalized.lower()
+            if lowered in {item.lower() for item in deduped}:
+                continue
+            deduped.append(normalized)
+            if len(deduped) >= _DEEP_RESEARCH_MAX_QUERY_ROUNDS:
+                break
+        return deduped
+
+    def _cap_deep_research_citations(self) -> List[Dict[str, Any]]:
+        capped = _dedupe_citations(self.runtime_state.citations)[:_DEEP_RESEARCH_MAX_EVIDENCE]
+        self.runtime_state.citations = list(capped)
+        self.runtime_state.citations_by_id = {
+            str(citation.get("id")): citation
+            for citation in capped
+            if _normalize_text(citation.get("id"))
+        }
+        return capped
+
+    def _build_deep_research_report(self, *, citations: List[Dict[str, Any]], coverage_note: str) -> str:
+        lines: List[str] = [
+            "# Deep Research Brief",
+            "",
+            "## Executive Summary",
+            (
+                "This report synthesizes cross-paper evidence for the current research question and "
+                "highlights converging findings, tensions, and practical takeaways."
+            ),
+            "",
+            "## Research Question",
+            self.runtime_state.input_text,
+            "",
+            "## Evidence Coverage",
+            (
+                f"- Retrieved evidence items: {len(citations)} "
+                f"(target {_DEEP_RESEARCH_MIN_EVIDENCE}-{_DEEP_RESEARCH_MAX_EVIDENCE})."
+            ),
+            f"- {coverage_note}",
+            (
+                f"- Runtime guardrails: context pack <= {_DEEP_RESEARCH_MAX_EVIDENCE} items, "
+                f"timeout <= {int(_DEEP_RESEARCH_TIMEOUT_SECONDS)}s."
+            ),
+            "",
+            "## Cross-Paper Synthesis",
+        ]
+
+        if citations:
+            for index, citation in enumerate(citations[:8], start=1):
+                title = _normalize_text(citation.get("title")) or f"Evidence item {index}"
+                snippet = _normalize_text(citation.get("snippet")) or "No snippet available."
+                lines.append(f"{index}. **{title}** [{index}]")
+                lines.append(f"   - {snippet}")
+            lines.extend(
+                [
+                    "",
+                    "## Limitations and Confidence",
+                    (
+                        "The synthesis is evidence-bounded: conclusions rely on retrieved citations and "
+                        "do not claim exhaustive coverage beyond this run."
+                    ),
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "- No grounded evidence items were retrieved in this run.",
+                    "",
+                    "## Limitations and Confidence",
+                    "Confidence is low because the evidence pool is empty for this request.",
+                ]
+            )
+
+        lines.append("")
+        lines.append("## References")
+        if citations:
+            for index, citation in enumerate(citations, start=1):
+                title = _normalize_text(citation.get("title")) or f"Evidence item {index}"
+                arxiv_id = _normalize_text(citation.get("arxiv_id"))
+                url = _normalize_text(citation.get("url"))
+                if arxiv_id:
+                    lines.append(f"[{index}] {title}. arXiv:{arxiv_id}.")
+                elif url:
+                    lines.append(f"[{index}] {title}. {url}")
+                else:
+                    lines.append(f"[{index}] {title}.")
+        else:
+            lines.append("[1] No references captured.")
+
+        return "\n".join(lines).strip()
+
+    async def _emit_deep_research_report_stream(self, report_markdown: str) -> None:
+        for chunk in _chunk_text(report_markdown):
+            await self._emit_event("assistant_delta", delta=chunk)
+
+    async def _run_deep_research_mode(self) -> Dict[str, Any]:
+        await self._emit_event("status", status="running", phase="deep_research_retrieval")
+        timeout_hit = False
+
+        try:
+            async with asyncio.timeout(_DEEP_RESEARCH_TIMEOUT_SECONDS):
+                for query in self._build_deep_research_queries():
+                    visible_tools = self.registry.visible_tools(self.runtime_state)
+                    if "community_search_papers" not in visible_tools:
+                        break
+
+                    should_continue, _ = await self._execute_tool_call(
+                        tool_call={
+                            "id": f"deep-research-community-{uuid.uuid4().hex[:8]}",
+                            "function": {
+                                "name": "community_search_papers",
+                                "arguments": json.dumps(
+                                    {
+                                        "query": query,
+                                        "limit": _DEEP_RESEARCH_PER_QUERY_LIMIT,
+                                    }
+                                ),
+                            },
+                        },
+                        visible_tools=visible_tools,
+                    )
+                    if not should_continue:
+                        break
+                    if len(_dedupe_citations(self.runtime_state.citations)) >= _DEEP_RESEARCH_TARGET_EVIDENCE:
+                        break
+
+                if len(_dedupe_citations(self.runtime_state.citations)) < _DEEP_RESEARCH_TARGET_EVIDENCE:
+                    visible_tools = self.registry.visible_tools(self.runtime_state)
+                    if "external_tavily_search" in visible_tools:
+                        should_continue, _ = await self._execute_tool_call(
+                            tool_call={
+                                "id": f"deep-research-external-{uuid.uuid4().hex[:8]}",
+                                "function": {
+                                    "name": "external_tavily_search",
+                                    "arguments": json.dumps(
+                                        {
+                                            "query": _derive_search_query(self.runtime_state.input_text),
+                                            "max_results": _DEEP_RESEARCH_PER_QUERY_LIMIT,
+                                            "search_depth": "advanced",
+                                        }
+                                    ),
+                                },
+                            },
+                            visible_tools=visible_tools,
+                        )
+                        if not should_continue:
+                            self.runtime_state.tool_trace.append(
+                                _make_trace(
+                                    "validation",
+                                    "Deep research runtime",
+                                    "deep_research",
+                                    "fallback",
+                                    "External retrieval failed; returning bounded partial report.",
+                                )
+                            )
+        except TimeoutError:
+            timeout_hit = True
+            self.runtime_state.tool_trace.append(
+                _make_trace(
+                    "validation",
+                    "Deep research timeout",
+                    "deep_research",
+                    "failed",
+                    "Deep research retrieval timed out; returning partial report.",
+                )
+            )
+            await self._emit_event(
+                "error",
+                message="Deep research retrieval timed out; returning partial report.",
+            )
+
+        citations = self._cap_deep_research_citations()
+        partial_coverage = len(citations) < _DEEP_RESEARCH_MIN_EVIDENCE or timeout_hit
+        if partial_coverage:
+            coverage_note = (
+                f"Coverage is partial: collected {len(citations)} items while target is "
+                f"{_DEEP_RESEARCH_MIN_EVIDENCE}-{_DEEP_RESEARCH_MAX_EVIDENCE}."
+            )
+            if timeout_hit:
+                coverage_note += " Retrieval timed out before full breadth was reached."
+        else:
+            coverage_note = (
+                f"Coverage reached target breadth with {len(citations)} grounded evidence items."
+            )
+
+        await self._emit_event("status", status="running", phase="deep_research_synthesis")
+        report_markdown = self._build_deep_research_report(
+            citations=citations,
+            coverage_note=coverage_note,
+        )
+        self.runtime_state.report = {
+            "format": "markdown",
+            "body_markdown": report_markdown,
+            "evidence_count": len(citations),
+            "target_min_evidence": _DEEP_RESEARCH_MIN_EVIDENCE,
+            "target_max_evidence": _DEEP_RESEARCH_MAX_EVIDENCE,
+            "context_pack_limit": _DEEP_RESEARCH_MAX_EVIDENCE,
+            "timeout_seconds": int(_DEEP_RESEARCH_TIMEOUT_SECONDS),
+            "partial_coverage": partial_coverage,
+            "coverage_note": coverage_note,
+        }
+
+        await self._emit_deep_research_report_stream(report_markdown)
+        return _finalize_payload(self.runtime_state, report_markdown)
+
     async def _run_fallback(self) -> Dict[str, Any]:
         visible_tools = self.registry.visible_tools(self.runtime_state)
         arxiv_id = _extract_arxiv_id(self.runtime_state.input_text)
@@ -722,6 +1006,8 @@ class CommunityReactAgent:
 
     async def run(self) -> Dict[str, Any]:
         await self._bootstrap_paper_context()
+        if self.runtime_state.run_mode == "deep_research":
+            return await self._run_deep_research_mode()
 
         try:
             planner_messages, planner_seed = await self._run_planner_phase()
@@ -742,11 +1028,13 @@ async def run_agent(
     input_text: str,
     context: Dict[str, Any] | None = None,
     skill_toggles: Dict[str, Any] | None = None,
+    run_mode: str = "chat",
     event_callback: EventCallback | None = None,
 ) -> Dict[str, Any]:
     return await CommunityReactAgent(
         input_text=input_text,
         context=context,
         skill_toggles=skill_toggles,
+        run_mode=run_mode,
         event_callback=event_callback,
     ).run()

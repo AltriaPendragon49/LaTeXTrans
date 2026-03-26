@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "Versión en chino",
   "community.detail.quickExplain": "Explicar en chino",
   "community.detail.quickSummary": "Resumen en una línea",
+  "community.detail.selectionContextTitle": "Contexto de selecci?n del lector",
   "community.detail.softReady": "La versión en chino ya está lista y se ha activado automáticamente para ti.",
   "community.detail.stage.generating": "Generando la versión en chino",
   "community.detail.stage.sourceFallback": "La lectura en inglés sigue disponible",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "Revisar evidencia web externa",
   "community.conversation.progressStepCompose": "Redactar una respuesta fundamentada",
   "community.conversation.progressStepFinalize": "Validar la respuesta final",
-  "dashboard.toolsDescription": "Usa el flujo original de tareas directas para cargar fuentes, subir proyectos y ejecutar la traducción sin pasar por el envío centrado en la comunidad."
+  "dashboard.toolsDescription": "Usa el flujo original de tareas directas para cargar fuentes, subir proyectos y ejecutar la traducción sin pasar por el envío centrado en la comunidad.",
+  "community.agent.mode.aria": "Modo del agente",
+  "community.agent.mode.chat": "Chat",
+  "community.agent.mode.deepResearch": "Investigación profunda",
+  "community.conversation.deepResearchReportTitle": "Informe de investigación profunda",
+  "community.conversation.progressStepSynthesizeReport": "Sintetizar informe",
+  "community.conversation.progressStepFinalizeReport": "Finalizar informe"
 }

@@ -502,6 +502,7 @@
   "community.detail.mode.translated": "Chinesische Übersetzung",
   "community.detail.quickExplain": "Auf Chinesisch erklären",
   "community.detail.quickSummary": "Einzeilige Zusammenfassung",
+  "community.detail.selectionContextTitle": "Kontext aus Reader-Auswahl",
   "community.detail.softReady": "Die chinesische Version ist bereit und wurde bereits für dich eingeblendet.",
   "community.detail.stage.generating": "Die chinesische Version wird erstellt",
   "community.detail.stage.sourceFallback": "Die englische Leseansicht bleibt verfügbar",
@@ -544,5 +545,11 @@
   "community.conversation.progressStepSearchExternal": "Externe Webhinweise prüfen",
   "community.conversation.progressStepCompose": "Fundierte Antwort formulieren",
   "community.conversation.progressStepFinalize": "Endgültige Antwort validieren",
-  "dashboard.toolsDescription": "Verwenden Sie den ursprünglichen direkten Aufgabenablauf, um Quellen zu laden, Projekte hochzuladen und Übersetzungen auszuführen – ohne den community-orientierten Einsendeablauf."
+  "dashboard.toolsDescription": "Verwenden Sie den ursprünglichen direkten Aufgabenablauf, um Quellen zu laden, Projekte hochzuladen und Übersetzungen auszuführen – ohne den community-orientierten Einsendeablauf.",
+  "community.agent.mode.aria": "Agent-Modus",
+  "community.agent.mode.chat": "Chat",
+  "community.agent.mode.deepResearch": "Tiefenrecherche",
+  "community.conversation.deepResearchReportTitle": "Tiefenrecherche-Bericht",
+  "community.conversation.progressStepSynthesizeReport": "Bericht zusammenf?hren",
+  "community.conversation.progressStepFinalizeReport": "Bericht finalisieren"
 }

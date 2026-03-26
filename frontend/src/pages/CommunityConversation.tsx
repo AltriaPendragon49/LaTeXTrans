@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils"
 import type {
   CommunityAgentCitation,
+  CommunityAgentMode,
   CommunityAgentRun,
   CommunityAgentSkillToggles,
   CommunityAgentStreamEvent,
@@ -61,7 +62,7 @@ function createAssistantTurnFromRun(
   }
 }
 
-function createRunningAssistantTurn(): CommunityConversationTurn {
+function createRunningAssistantTurn(mode: CommunityAgentMode): CommunityConversationTurn {
   const createdAt = new Date().toISOString()
   return {
     id: `assistant-${Date.now()}`,
@@ -72,6 +73,7 @@ function createRunningAssistantTurn(): CommunityConversationTurn {
       run_id: `pending-${Date.now()}`,
       status: "running",
       intent: "answer",
+      mode,
       message: "",
       summary: "",
       citations: [],
@@ -212,6 +214,12 @@ function getIntentBadgeKey(run: CommunityAgentRun | null | undefined) {
   }
 }
 
+function getModeBadgeKey(mode: CommunityAgentMode | null | undefined) {
+  return mode === "deep_research"
+    ? "community.agent.mode.deepResearch"
+    : "community.agent.mode.chat"
+}
+
 function getTraceStatusClass(status: string) {
   switch (status) {
     case "completed":
@@ -241,7 +249,23 @@ function formatConversationTimestamp(value: string) {
 function buildRunningProgressSteps(
   t: (key: string) => string,
   externalSearchEnabled: boolean,
+  mode: CommunityAgentMode,
 ) {
+  if (mode === "deep_research") {
+    const deepResearchSteps = [
+      t("community.conversation.progressStepAnalyze"),
+      t("community.conversation.progressStepSearchLocal"),
+    ]
+    if (externalSearchEnabled) {
+      deepResearchSteps.push(t("community.conversation.progressStepSearchExternal"))
+    }
+    deepResearchSteps.push(
+      t("community.conversation.progressStepSynthesizeReport"),
+      t("community.conversation.progressStepFinalizeReport"),
+    )
+    return deepResearchSteps
+  }
+
   const steps = [
     t("community.conversation.progressStepAnalyze"),
     t("community.conversation.progressStepSearchLocal"),
@@ -272,6 +296,7 @@ export default function CommunityConversationPage() {
   const [conversationsHydrated, setConversationsHydrated] = useState(false)
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [input, setInput] = useState("")
+  const [agentMode, setAgentMode] = useState<CommunityAgentMode>("chat")
   const [externalSearchEnabled, setExternalSearchEnabled] = useState(
     Boolean(locationState?.seedSkillToggles?.external_search),
   )
@@ -283,8 +308,8 @@ export default function CommunityConversationPage() {
   const suppressedBootstrapConversationIdRef = useRef<string | null>(null)
 
   const runningProgressSteps = useMemo(
-    () => buildRunningProgressSteps(t, externalSearchEnabled),
-    [externalSearchEnabled, t],
+    () => buildRunningProgressSteps(t, externalSearchEnabled, agentMode),
+    [agentMode, externalSearchEnabled, t],
   )
 
   useEffect(() => {
@@ -439,15 +464,17 @@ export default function CommunityConversationPage() {
     record: CommunityConversationRecord,
     latestUserInput: string,
     skillTogglesOverride?: CommunityAgentSkillToggles,
+    modeOverride?: CommunityAgentMode,
   ) {
     setAgentBusy(true)
     setAgentError(null)
+    const runMode = modeOverride ?? agentMode
 
     const historySource =
       record.turns.at(-1)?.role === "user" ? record.turns.slice(0, -1) : record.turns
 
     try {
-      const runningAssistantTurn = createRunningAssistantTurn()
+      const runningAssistantTurn = createRunningAssistantTurn(runMode)
       const runningRecord: CommunityConversationRecord = {
         ...record,
         title: record.title || deriveConversationTitle(latestUserInput),
@@ -461,6 +488,7 @@ export default function CommunityConversationPage() {
         skill_toggles: skillTogglesOverride ?? {
           external_search: externalSearchEnabled,
         },
+        mode: runMode,
         context: {
           source: "conversation",
           history: buildConversationHistory(historySource),
@@ -473,6 +501,7 @@ export default function CommunityConversationPage() {
               run_id: runningAssistantTurn.run?.run_id ?? `pending-${Date.now()}`,
               status: "running",
               intent: "answer",
+              mode: runMode,
               message: turn.content,
               summary: turn.content,
               citations: [],
@@ -534,8 +563,9 @@ export default function CommunityConversationPage() {
       locationState?.seedSkillToggles ?? {
         external_search: externalSearchEnabled,
       },
+      agentMode,
     )
-  }, [agentBusy, currentConversation, externalSearchEnabled, isAuthenticated, locationState?.seedSkillToggles])
+  }, [agentBusy, agentMode, currentConversation, externalSearchEnabled, isAuthenticated, locationState?.seedSkillToggles])
 
   async function handleCitationOpen(citation: CommunityAgentCitation) {
     if (citation.paper_id) {
@@ -581,7 +611,7 @@ export default function CommunityConversationPage() {
     mergeConversationRecord(updatedRecord)
     await upsertCommunityAgentConversation(updatedRecord)
     setInput("")
-    await runConversationTurn(updatedRecord, normalized)
+    await runConversationTurn(updatedRecord, normalized, undefined, agentMode)
   }
 
   function handleNewChat() {
@@ -749,6 +779,9 @@ export default function CommunityConversationPage() {
                   {lastAssistantTurn?.run ? t(getIntentBadgeKey(lastAssistantTurn.run)) : t("community.agent.intent.answer")}
                 </Badge>
                 <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
+                  {t(getModeBadgeKey(lastAssistantTurn?.run?.mode ?? agentMode))}
+                </Badge>
+                <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
                   {t("community.conversation.historyBadge")}
                 </Badge>
               </div>
@@ -815,6 +848,8 @@ export default function CommunityConversationPage() {
                 const assistantRun = turn.role === "assistant" ? turn.run : null
                 const primaryCitation = assistantRun?.citations?.[0] ?? null
                 const secondaryCitations = assistantRun?.citations?.slice(1) ?? []
+                const deepResearchReport = assistantRun?.mode === "deep_research" ? assistantRun.report : null
+                const renderedContent = deepResearchReport?.body_markdown ?? turn.content
 
                 return (
                   <div key={turn.id} className={cn("flex", turn.role === "user" ? "justify-end" : "justify-start")}>
@@ -895,6 +930,20 @@ export default function CommunityConversationPage() {
                         </div>
                       ) : null}
 
+                      {deepResearchReport ? (
+                        <div
+                          data-testid="community-deep-research-report"
+                          className="mt-4 rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] px-5 py-4"
+                        >
+                          <p className="text-sm font-semibold text-[var(--shell-heading)]">
+                            {t("community.conversation.deepResearchReportTitle")}
+                          </p>
+                          <p className="mt-1 text-sm text-[var(--shell-text-soft)]">
+                            {deepResearchReport.coverage_note}
+                          </p>
+                        </div>
+                      ) : null}
+
                       <div
                         className={cn(
                           "mt-3 whitespace-pre-wrap rounded-[24px] border px-5 py-4 text-sm leading-7 sm:text-[15px]",
@@ -903,7 +952,7 @@ export default function CommunityConversationPage() {
                             : "border-transparent text-[var(--shell-accent-foreground)]",
                         )}
                       >
-                        {turn.content}
+                        {renderedContent}
                       </div>
 
                       {assistantRun ? (
@@ -993,6 +1042,39 @@ export default function CommunityConversationPage() {
                 />
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--shell-border)] pt-3">
                   <div className="flex flex-col gap-3">
+                    <div
+                      role="group"
+                      aria-label={t("community.agent.mode.aria")}
+                      className="inline-flex w-fit items-center gap-1 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] p-1"
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={agentMode === "chat"}
+                        onClick={() => setAgentMode("chat")}
+                        className={cn(
+                          "rounded-full px-3 py-1 text-xs font-medium transition",
+                          agentMode === "chat"
+                            ? "bg-[var(--shell-accent)] text-[var(--shell-accent-foreground)]"
+                            : "text-[var(--shell-text-soft)] hover:text-[var(--shell-heading)]",
+                        )}
+                      >
+                        {t("community.agent.mode.chat")}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={agentMode === "deep_research"}
+                        onClick={() => setAgentMode("deep_research")}
+                        className={cn(
+                          "rounded-full px-3 py-1 text-xs font-medium transition",
+                          agentMode === "deep_research"
+                            ? "bg-[var(--shell-accent)] text-[var(--shell-accent-foreground)]"
+                            : "text-[var(--shell-text-soft)] hover:text-[var(--shell-heading)]",
+                        )}
+                      >
+                        {t("community.agent.mode.deepResearch")}
+                      </button>
+                    </div>
+
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
                         {t("community.agent.intent.search")}

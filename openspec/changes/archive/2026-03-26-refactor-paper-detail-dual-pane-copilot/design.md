@@ -37,6 +37,17 @@
   - The reader selection, active anchor, copilot metadata, and translation readiness state belong in a shared page-level store.
   - This avoids brittle prop-threading and enables scroll/highlight interactions to stay synchronized.
 
+- Decision: Treat reader highlight selections as first-class copilot context.
+  - The paper-detail workspace captures user-highlighted reader text, resolves nearby anchor metadata when available, and keeps this selection visible in the copilot composer area.
+  - The reader pane keeps a persistent visible highlight for the selected passage even after focus moves to the copilot input, until the user clears or replaces the selection.
+  - Copilot run payloads include structured `reader_selection` context (`text`, `anchor_id`, `mode`) alongside paper scope and conversation history.
+  - The runtime can then answer prompts like “这一段讲了什么？” against the selected passage while preserving normal paper-aware behaviors.
+
+- Decision: Prioritize copilot composer discoverability over decorative empty-state content.
+  - The right pane uses an independent bounded viewport height so tall reader content does not push the composer off-screen.
+  - The default agent pane removes oversized static description/asset filler blocks and keeps space focused on actual turns plus the composer controls.
+  - This ensures users always see where to ask questions, matching the expected “real chat assistant” behavior.
+
 ## Risks / Trade-offs
 - Stable anchor generation requires a consistent reader segmentation strategy from backend to frontend.
 - The dual-pane layout can become cramped on smaller screens if the responsive rules are not explicit.

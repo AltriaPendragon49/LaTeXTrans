@@ -32,3 +32,8 @@ The system SHALL expose enough structured logging or metrics to verify that the 
 - **WHEN** operators inspect the content pool
 - **THEN** the system SHALL expose readiness signals such as candidate counts, translated-ready counts, freshness, and failure counts
 - **AND** those signals SHALL distinguish between discovery, prewarm, and promotion stages.
+
+#### Scenario: Unauthenticated caller requests operator readiness endpoints
+- **WHEN** an unauthenticated caller requests content-pool readiness or job-log signals
+- **THEN** the system SHALL reject that request with an authentication-required response
+- **AND** operator readiness payloads SHALL only be returned in an authenticated operator context.

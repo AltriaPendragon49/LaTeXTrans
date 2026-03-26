@@ -9,6 +9,10 @@
 - Refactor the paper detail page into a persistent dual-pane layout with a reading-dominant main pane and a paper-scoped AI copilot pane.
 - Define anchorable citation and action metadata so assistant references can scroll and highlight the corresponding reader location.
 - Define soft reader-mode upgrades so a paper can switch from source-first reading to translated HTML without disorienting page replacement.
+- Upgrade the paper-detail copilot pane from shortcut-only interactions to a true multi-turn streaming conversation flow aligned with the homepage conversation experience.
+- Feed reader highlight selections into copilot run context so follow-up questions can ground on the selected passage without leaving the detail workspace.
+- Keep highlighted reader passages visibly marked after focus moves to the copilot composer so users can see exactly which passage is active context.
+- Keep the paper-detail copilot composer always visible in the right pane viewport, and remove low-value static filler blocks that compete with the actual chat surface.
 - Keep the paper detail route and same-paper conversation continuity intact while improving spatial coordination and interaction quality.
 
 ## Impact

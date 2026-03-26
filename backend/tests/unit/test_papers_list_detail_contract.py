@@ -444,3 +444,50 @@ def test_detail_hydrates_missing_arxiv_metadata(monkeypatch):
     assert result["paper"]["authors"] == ["Alice", "Bob"]
     assert result["paper"]["categories"] == ["cs.CV"]
     assert result["paper"]["abstract_raw"] == "Recovered abstract"
+
+
+def test_reader_payload_exposes_anchor_metadata_for_source_and_translated_html():
+    payload = paper_service._build_reader_experience_payload(
+        paper={
+            "id": "paper-anchor",
+            "source": "arxiv",
+            "arxiv_id": "2501.00001",
+            "trans_status": "completed",
+        },
+        paper_id="paper-anchor",
+        preview_payload={
+            "paper_id": "paper-anchor",
+            "task_id": "task-anchor",
+            "asset": {
+                "id": "asset-anchor",
+                "task_id": "task-anchor",
+                "asset_type": "preview_html",
+                "file_name": "preview.html",
+                "mime_type": "text/html",
+                "created_at": "2026-03-18T04:00:00+00:00",
+            },
+            "html_content": (
+                "<article>"
+                "<section id=\"section-intro\" data-section-id=\"section-intro\">"
+                "<h2>Introduction</h2>"
+                "<div id=\"section-intro-block-0\" data-block-id=\"section-intro-block-0\">Body</div>"
+                "</section>"
+                "</article>"
+            ),
+            "generated_at": "2026-03-18T04:00:00+00:00",
+        },
+        translated_asset=None,
+        source_html_content="<article><h2 id=\"source-overview\">Overview</h2></article>",
+    )
+
+    source = payload["reader"]["source"]
+    translated = payload["reader"]["translated"]
+    assert source is not None
+    assert translated is not None
+
+    source_anchors = source.get("anchors") or []
+    translated_anchors = translated.get("anchors") or []
+
+    assert any(item.get("anchor_id") == "source-overview" for item in source_anchors)
+    assert any(item.get("anchor_id") == "section-intro" for item in translated_anchors)
+    assert any(item.get("anchor_id") == "section-intro-block-0" for item in translated_anchors)

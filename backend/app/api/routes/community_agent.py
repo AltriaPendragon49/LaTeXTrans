@@ -25,6 +25,7 @@ class CommunityAgentRunRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
     skill_toggles: Optional[CommunityAgentSkillToggles] = None
     execution_mode: Literal["blocking", "async"] = "blocking"
+    mode: Literal["chat", "deep_research"] = "chat"
 
 
 class CommunityConversationTurnPayload(BaseModel):
@@ -54,12 +55,14 @@ class CommunityAgentRunResponse(BaseModel):
     run_id: str
     status: str
     intent: Optional[str] = None
+    mode: Literal["chat", "deep_research"] = "chat"
     message: Optional[str] = None
     summary: Optional[str] = None
     tool_trace: List[Dict[str, Any]] = Field(default_factory=list)
     citations: List[Dict[str, Any]] = Field(default_factory=list)
     provider_state: Optional[Dict[str, str]] = None
     action: Optional[Dict[str, Any]] = None
+    report: Optional[Dict[str, Any]] = None
     stream_url: Optional[str] = None
     result_url: Optional[str] = None
 
@@ -87,6 +90,7 @@ async def create_agent_run(
         context=context,
         skill_toggles=request.skill_toggles.model_dump() if request.skill_toggles else None,
         execution_mode=request.execution_mode,
+        run_mode=request.mode,
         access_token=getattr(supabase, "_access_token", None),
     )
     if request.execution_mode == "async":

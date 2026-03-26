@@ -195,3 +195,29 @@ The community agent SHALL treat backend-restart interruption as a deterministic 
 - **THEN** the system SHALL mark the interrupted task as `failed` during startup/admin reconciliation
 - **AND** the paper SHALL not remain indefinitely stuck at queued/processing after restart.
 
+### Requirement: Community agent prefers prewarmed translated evidence when available
+The community agent SHALL prefer prewarmed translated evidence from the community content pool before starting new on-demand translation work for the same paper.
+
+#### Scenario: Internal search finds a prewarmed translated paper
+- **WHEN** the agent retrieves a relevant community paper whose translated evidence is already available
+- **THEN** it SHALL ground the answer on that prewarmed translated evidence first
+- **AND** it SHALL avoid starting redundant translation work for the same paper in that turn.
+
+#### Scenario: Content pool miss falls back to on-demand import and translation
+- **WHEN** the agent cannot find suitable prewarmed translated evidence for the requested paper
+- **THEN** it SHALL continue to use the existing on-demand import and translation fallback behavior
+- **AND** the absence of a content-pool hit SHALL not block the conversation.
+
+### Requirement: Community agent supports an explicit deep research mode
+The community agent SHALL support an explicit deep research mode that expands retrieval breadth and produces a long-form cited synthesis without changing the default fast chat behavior.
+
+#### Scenario: User chooses deep research mode
+- **WHEN** the user explicitly starts a deep research run
+- **THEN** the agent SHALL use a research-oriented retrieval and synthesis path
+- **AND** the default chat mode SHALL remain available for normal paper questions.
+
+#### Scenario: Deep research run prefers grounded multi-paper synthesis
+- **WHEN** the agent completes a deep research run
+- **THEN** the result SHALL synthesize multiple papers with citations
+- **AND** it SHALL not degrade into a short single-paper chat answer unless the evidence set itself was too narrow.
+

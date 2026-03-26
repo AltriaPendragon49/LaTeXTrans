@@ -424,3 +424,37 @@ The backend SHALL treat queued/pending/processing translation tasks as interrupt
 - **THEN** startup reconciliation SHALL mark the task `failed`, set restart-interruption diagnostics, and clean corresponding local artifacts
 - **AND** related `papers` rows that still point to the interrupted task SHALL be updated away from active states.
 
+### Requirement: Community agent API supports deep research execution mode
+The community agent API SHALL support a deep research execution mode that returns async progress and a final long-form cited report.
+
+#### Scenario: Client starts a deep research run
+- **WHEN** the client requests a community agent run in deep research mode
+- **THEN** the API SHALL acknowledge that mode explicitly
+- **AND** it SHALL expose progress and final result retrieval compatible with long-running execution.
+
+#### Scenario: Deep research result returns report-oriented payloads
+- **WHEN** a deep research run completes
+- **THEN** the final run payload SHALL include the long-form report body and citations
+- **AND** the client SHALL not need to reconstruct the report from scattered event fragments alone.
+
+### Requirement: Paper detail and agent payloads expose stable reader anchors
+The API SHALL expose enough metadata for the frontend to map copilot citations and actions onto stable paper-reader locations.
+
+#### Scenario: Paper detail response includes anchor-ready reader metadata
+- **WHEN** the client requests a paper detail payload for a readable paper
+- **THEN** the response SHALL include stable reader anchor identifiers for readable sections or segments
+- **AND** those identifiers SHALL remain usable by the UI for scroll-and-highlight interactions.
+
+#### Scenario: Assistant citation references a current-paper anchor
+- **WHEN** the community agent cites or points into the current paper
+- **THEN** the run metadata SHALL be allowed to include the current `paper_id` and a stable `anchor_id`
+- **AND** the frontend SHALL not need to infer that mapping from raw assistant text alone.
+
+### Requirement: Agent run context supports highlighted reader selection metadata
+The API SHALL accept and propagate structured highlighted-reader selection context for paper-detail copilot runs.
+
+#### Scenario: Paper-detail run includes highlighted selection payload
+- **WHEN** the paper-detail client submits an agent run with `context.reader_selection`
+- **THEN** the API contract SHALL accept `reader_selection.text`, optional `reader_selection.anchor_id`, and optional `reader_selection.mode`
+- **AND** the runtime SHALL retain that context for planner/final answer grounding without requiring user-visible prompt rewriting.
+
