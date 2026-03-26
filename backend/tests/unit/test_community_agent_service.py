@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import json
 
 import pytest
 from postgrest.exceptions import APIError
@@ -21,6 +23,58 @@ def _tool_call(name: str, arguments: str, *, call_id: str = "call-1") -> dict[st
             }
         ],
     }
+
+
+def _jwt_for(user_id: str) -> str:
+    payload = base64.urlsafe_b64encode(json.dumps({"sub": user_id}).encode("utf-8")).decode("utf-8").rstrip("=")
+    return f"header.{payload}.sig"
+
+
+def test_create_agent_run_injects_user_id_from_access_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed_context: dict[str, object] = {}
+
+    async def fake_run_agent(*, input_text, context, skill_toggles, event_callback):  # type: ignore[no-untyped-def]
+        del input_text, skill_toggles, event_callback
+        observed_context.update(context or {})
+        return {
+            "status": "completed",
+            "intent": "answer",
+            "message": "ok",
+            "summary": "ok",
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": {"internal_search": "enabled"},
+            "action": None,
+            "events": [],
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.run_agent",
+        fake_run_agent,
+    )
+
+    result = asyncio.run(
+        community_agent_service.create_agent_run(
+            "hello",
+            {"source": "conversation"},
+            {"external_search": False},
+            access_token=_jwt_for("user-123"),
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert observed_context["user_id"] == "user-123"
+
+
+def test_get_agent_run_strict_raises_when_missing() -> None:
+    with pytest.raises(community_agent_service.RunNotFoundError):
+        asyncio.run(
+            community_agent_service.get_agent_run(
+                "run-missing-strict-test",
+                access_token="header.payload.signature",
+                strict=True,
+            )
+        )
 
 
 def test_conversational_agent_accepts_direct_assistant_reply(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,6 +170,279 @@ def test_conversational_agent_executes_tool_calls_and_returns_grounded_reply(
         trace["provider"] == "community_search_papers" and trace["status"] == "completed"
         for trace in result["tool_trace"]
     )
+    assert not any(trace["provider"] == "start_translation_kernel" for trace in result["tool_trace"])
+
+
+def test_exact_paper_title_lookup_bridges_to_translation_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter(
+        [
+            _tool_call(
+                "community_search_papers",
+                '{"query":"Attention Is All You Need","limit":3}',
+            ),
+            {
+                "role": "assistant",
+                "content": "I found the paper and can summarize it while translation starts.",
+            },
+        ]
+    )
+
+    async def fake_call_chat_completion(*, messages, tools):  # type: ignore[no-untyped-def]
+        assert messages
+        assert any(tool["function"]["name"] == "community_search_papers" for tool in tools)
+        return next(responses)
+
+    async def fake_search_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        del arguments, runtime_state
+        return {
+            "query_executed": "Attention Is All You Need",
+            "results": [
+                {
+                    "id": "paper-1706",
+                    "title": "Attention Is All You Need",
+                    "url": "/paper/paper-1706",
+                    "source": "community",
+                    "arxiv_id": "1706.03762",
+                    "paper_id": "paper-1706",
+                    "snippet": "Transformer architecture paper.",
+                }
+            ],
+            "count": 1,
+        }
+
+    async def fake_read_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-1706"
+        del runtime_state
+        return {
+            "paper_id": "paper-1706",
+            "title": "Attention Is All You Need",
+            "arxiv_id": "1706.03762",
+            "translated_ready": False,
+            "abstract_raw": "The paper introduces the Transformer architecture.",
+            "abstract_translated": None,
+        }
+
+    async def fake_translate_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-1706"
+        del runtime_state
+        return {
+            "paper_id": "paper-1706",
+            "task_id": "task-bridge-1706",
+            "status": "queued",
+            "reused_existing_task": False,
+            "processing_url": "/processing?taskId=task-bridge-1706",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.orchestrator._call_chat_completion",
+        fake_call_chat_completion,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.community_search.CommunitySearchPapersSkill.execute",
+        fake_search_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.read_paper_context.ReadPaperContextSkill.execute",
+        fake_read_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.start_translation_kernel.StartTranslationKernelSkill.execute",
+        fake_translate_execute,
+    )
+
+    result = asyncio.run(
+        community_agent_service.create_agent_run(
+            "Attention Is All You Need",
+            {"source": "conversation", "history": []},
+            {"external_search": False},
+        )
+    )
+
+    assert result["action"]["paper_id"] == "paper-1706"
+    assert result["action"]["task_id"] == "task-bridge-1706"
+    assert any(trace["provider"] == "read_paper_context" for trace in result["tool_trace"])
+    assert any(trace["provider"] == "start_translation_kernel" for trace in result["tool_trace"])
+
+
+def test_title_only_query_without_community_hit_resolves_and_starts_translation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter(
+        [
+            {
+                "role": "assistant",
+                "content": "I cannot find this paper in community yet.",
+            }
+        ]
+    )
+
+    async def fake_call_chat_completion(*, messages, tools):  # type: ignore[no-untyped-def]
+        assert messages
+        assert tools
+        return next(responses)
+
+    async def fake_resolve_arxiv_id_from_title(query: str) -> str | None:
+        assert query == "Attention Is All You Need"
+        return "1706.03762"
+
+    async def fake_import_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["arxiv_id"] == "1706.03762"
+        return {"paper_id": "paper-1706", "imported": True, "reused": False}
+
+    async def fake_read_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-1706"
+        return {
+            "paper_id": "paper-1706",
+            "title": "Attention Is All You Need",
+            "arxiv_id": "1706.03762",
+            "translated_ready": False,
+            "abstract_raw": "The paper introduces the Transformer architecture.",
+            "abstract_translated": None,
+        }
+
+    async def fake_translate_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-1706"
+        return {
+            "paper_id": "paper-1706",
+            "task_id": "task-title-1706",
+            "status": "queued",
+            "reused_existing_task": False,
+            "processing_url": "/processing?taskId=task-title-1706",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.orchestrator._call_chat_completion",
+        fake_call_chat_completion,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.orchestrator._resolve_arxiv_id_from_title",
+        fake_resolve_arxiv_id_from_title,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.import_arxiv_paper.ImportArxivPaperSkill.execute",
+        fake_import_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.read_paper_context.ReadPaperContextSkill.execute",
+        fake_read_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.start_translation_kernel.StartTranslationKernelSkill.execute",
+        fake_translate_execute,
+    )
+
+    result = asyncio.run(
+        community_agent_service.create_agent_run(
+            "Attention Is All You Need",
+            {"source": "conversation", "history": []},
+            {"external_search": False},
+        )
+    )
+
+    assert result["action"]["paper_id"] == "paper-1706"
+    assert result["action"]["task_id"] == "task-title-1706"
+    assert any(trace["provider"] == "resolve_arxiv_by_title" and trace["status"] == "completed" for trace in result["tool_trace"])
+    assert any(trace["provider"] == "import_arxiv_paper" for trace in result["tool_trace"])
+    assert any(trace["provider"] == "start_translation_kernel" for trace in result["tool_trace"])
+
+
+def test_title_only_query_after_empty_search_still_resolves_and_starts_translation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    title = "LaTeXTrans: Structured LaTeX Translation with Multi-Agent Coordination"
+    responses = iter(
+        [
+            _tool_call(
+                "community_search_papers",
+                json.dumps({"query": title, "limit": 1}),
+                call_id="call-search",
+            ),
+            {
+                "role": "assistant",
+                "content": "No exact match was found in the community.",
+            },
+        ]
+    )
+
+    async def fake_call_chat_completion(*, messages, tools):  # type: ignore[no-untyped-def]
+        assert messages
+        assert tools
+        return next(responses)
+
+    async def fake_search_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["query"] == title
+        del runtime_state
+        return {"query_executed": title, "results": [], "count": 0}
+
+    async def fake_resolve_arxiv_id_from_title(query: str) -> str | None:
+        assert query == title
+        return "2508.18791"
+
+    async def fake_import_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["arxiv_id"] == "2508.18791"
+        return {"paper_id": "paper-2508", "imported": True, "reused": False}
+
+    async def fake_read_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-2508"
+        return {
+            "paper_id": "paper-2508",
+            "title": title,
+            "arxiv_id": "2508.18791",
+            "translated_ready": False,
+            "abstract_raw": "A structured LaTeX translation framework.",
+            "abstract_translated": None,
+        }
+
+    async def fake_translate_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-2508"
+        return {
+            "paper_id": "paper-2508",
+            "task_id": "task-title-fallback-2508",
+            "status": "queued",
+            "reused_existing_task": False,
+            "processing_url": "/processing?taskId=task-title-fallback-2508",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.orchestrator._call_chat_completion",
+        fake_call_chat_completion,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.community_search.CommunitySearchPapersSkill.execute",
+        fake_search_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.orchestrator._resolve_arxiv_id_from_title",
+        fake_resolve_arxiv_id_from_title,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.import_arxiv_paper.ImportArxivPaperSkill.execute",
+        fake_import_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.read_paper_context.ReadPaperContextSkill.execute",
+        fake_read_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.start_translation_kernel.StartTranslationKernelSkill.execute",
+        fake_translate_execute,
+    )
+
+    result = asyncio.run(
+        community_agent_service.create_agent_run(
+            title,
+            {"source": "conversation", "history": []},
+            {"external_search": False},
+        )
+    )
+
+    assert result["action"]["paper_id"] == "paper-2508"
+    assert result["action"]["task_id"] == "task-title-fallback-2508"
+    assert any(trace["provider"] == "resolve_arxiv_by_title" and trace["status"] == "completed" for trace in result["tool_trace"])
+    assert any(trace["provider"] == "import_arxiv_paper" for trace in result["tool_trace"])
+    assert any(trace["provider"] == "start_translation_kernel" for trace in result["tool_trace"])
 
 
 def test_hidden_tool_call_falls_back_safely_when_external_search_disabled(
@@ -222,6 +549,93 @@ def test_cjk_adjacent_arxiv_prompt_uses_import_fallback_path(
         trace["provider"] == "import_arxiv_paper" and trace["status"] == "completed"
         for trace in result["tool_trace"]
     )
+
+
+def test_nonexistent_community_paper_can_be_imported_and_auto_translation_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter(
+        [
+            _tool_call("import_arxiv_paper", '{"arxiv_id":"1706.03762"}', call_id="call-import"),
+            _tool_call("read_paper_context", '{"paper_id":"paper-1706"}', call_id="call-read"),
+            _tool_call(
+                "start_translation_kernel",
+                '{"paper_id":"paper-1706","source_language":"en","target_language":"zh"}',
+                call_id="call-translate",
+            ),
+            {
+                "role": "assistant",
+                "content": (
+                    "《Attention Is All You Need》提出了 Transformer，并且我已经在后台启动默认翻译流程，"
+                    "你可以现在先开始阅读。"
+                ),
+            },
+        ]
+    )
+
+    async def fake_call_chat_completion(*, messages, tools):  # type: ignore[no-untyped-def]
+        assert messages
+        tool_names = {tool["function"]["name"] for tool in tools}
+        assert "import_arxiv_paper" in tool_names
+        return next(responses)
+
+    async def fake_import_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["arxiv_id"] == "1706.03762"
+        return {"paper_id": "paper-1706", "imported": True, "reused": False}
+
+    async def fake_read_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-1706"
+        return {
+            "paper_id": "paper-1706",
+            "title": "Attention Is All You Need",
+            "arxiv_id": "1706.03762",
+            "translated_ready": False,
+            "abstract_raw": "The paper introduces the Transformer architecture.",
+            "abstract_translated": None,
+        }
+
+    async def fake_translate_execute(self, arguments, runtime_state):  # type: ignore[no-untyped-def]
+        assert arguments["paper_id"] == "paper-1706"
+        return {
+            "paper_id": "paper-1706",
+            "task_id": "task-1706",
+            "status": "queued",
+            "reused_existing_task": False,
+            "processing_url": "/processing?taskId=task-1706",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.orchestrator._call_chat_completion",
+        fake_call_chat_completion,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.import_arxiv_paper.ImportArxivPaperSkill.execute",
+        fake_import_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.read_paper_context.ReadPaperContextSkill.execute",
+        fake_read_execute,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent.skills.start_translation_kernel.StartTranslationKernelSkill.execute",
+        fake_translate_execute,
+    )
+
+    result = asyncio.run(
+        community_agent_service.create_agent_run(
+            "请导入 arXiv 1706.03762，并启动默认翻译流程。",
+            {"source": "conversation", "history": []},
+            {"external_search": False},
+        )
+    )
+
+    assert result["intent"] == "translate"
+    assert "Attention Is All You Need" in result["message"]
+    assert result["action"]["paper_id"] == "paper-1706"
+    assert result["action"]["task_id"] == "task-1706"
+    assert result["action"]["auto_started_translation"] is True
+    assert any(trace["provider"] == "import_arxiv_paper" for trace in result["tool_trace"])
+    assert any(trace["provider"] == "start_translation_kernel" for trace in result["tool_trace"])
 
 
 def test_upsert_conversation_recovers_from_duplicate_insert_race(

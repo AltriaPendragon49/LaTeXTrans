@@ -466,8 +466,10 @@ describe("PaperDetailPage reader-first", () => {
       </MemoryRouter>,
     )
 
-    expect((await screen.findByTestId("paper-detail-page-shell")).className).toContain("overflow-hidden")
-    expect(screen.getByTestId("paper-detail-reader-panel").className).toContain("overflow-hidden")
+    // 页面外壳不再锁定高度，允许整体滚动（移除了 overflow-hidden）
+    expect((await screen.findByTestId("paper-detail-page-shell")).className).toContain("min-h-full")
+    expect((await screen.findByTestId("paper-detail-page-shell")).className).not.toContain("overflow-hidden")
+    // 阅读区面板内部仍有独立的滚动容器
     expect(screen.getByTestId("paper-source-reader").className).toContain("overflow-y-auto")
   })
 

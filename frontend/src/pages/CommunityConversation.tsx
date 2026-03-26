@@ -15,10 +15,10 @@ import {
   deriveConversationTitle,
 } from "@/lib/community-agent-conversations"
 import {
-  createCommunityAgentRun,
   deleteCommunityAgentConversation,
   importCommunityPaper,
   listCommunityAgentConversations,
+  streamCommunityAgentRun,
   upsertCommunityAgentConversation,
 } from "@/lib/community-api"
 import { cn } from "@/lib/utils"
@@ -26,6 +26,8 @@ import type {
   CommunityAgentCitation,
   CommunityAgentRun,
   CommunityAgentSkillToggles,
+  CommunityAgentStreamEvent,
+  CommunityAgentToolTrace,
   CommunityConversationRecord,
   CommunityConversationTurn,
 } from "@/types/community"
@@ -42,16 +44,149 @@ function createConversationId() {
   return `conversation-${Date.now()}`
 }
 
-function createAssistantTurn(run: CommunityAgentRun): CommunityConversationTurn {
+function createAssistantTurnFromRun(
+  run: CommunityAgentRun,
+  id: string = `assistant-${Date.now()}`,
+  createdAt: string = new Date().toISOString(),
+): CommunityConversationTurn {
   const assistantMessage = run.message ?? run.summary ?? ""
   return {
-    id: `assistant-${Date.now()}`,
+    id,
     role: "assistant",
     content: assistantMessage,
-    created_at: new Date().toISOString(),
+    created_at: createdAt,
     run,
     status: run.status === "failed" ? "failed" : "completed",
     error: run.status === "failed" ? assistantMessage || null : null,
+  }
+}
+
+function createRunningAssistantTurn(): CommunityConversationTurn {
+  const createdAt = new Date().toISOString()
+  return {
+    id: `assistant-${Date.now()}`,
+    role: "assistant",
+    content: "",
+    created_at: createdAt,
+    run: {
+      run_id: `pending-${Date.now()}`,
+      status: "running",
+      intent: "answer",
+      message: "",
+      summary: "",
+      citations: [],
+      tool_trace: [],
+      action: null,
+    },
+    status: "running",
+    error: null,
+  }
+}
+
+function upsertTrace(
+  currentTrace: CommunityAgentToolTrace[] | undefined,
+  nextTrace: CommunityAgentToolTrace,
+): CommunityAgentToolTrace[] {
+  const existing = currentTrace ?? []
+  return [
+    ...existing.filter((trace) => trace.id !== nextTrace.id),
+    nextTrace,
+  ]
+}
+
+function upsertCitation(
+  currentCitations: CommunityAgentCitation[] | undefined,
+  nextCitation: CommunityAgentCitation,
+): CommunityAgentCitation[] {
+  const existing = currentCitations ?? []
+  return [
+    ...existing.filter((citation) => citation.id !== nextCitation.id),
+    nextCitation,
+  ]
+}
+
+function applyStreamEventToRun(
+  currentRun: CommunityAgentRun,
+  event: CommunityAgentStreamEvent,
+): CommunityAgentRun {
+  const nextRunId = event.run_id ?? currentRun.run_id
+  const data = event.data ?? {}
+
+  switch (event.type) {
+    case "status": {
+      const status = typeof data.status === "string" ? data.status : currentRun.status
+      const intent = typeof data.intent === "string" ? data.intent : currentRun.intent
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        status: status as CommunityAgentRun["status"],
+        intent: intent as CommunityAgentRun["intent"],
+      }
+    }
+    case "assistant_delta": {
+      const delta = typeof data.delta === "string" ? data.delta : ""
+      const nextMessage = `${currentRun.message ?? currentRun.summary ?? ""}${delta}`
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        status: "running",
+        message: nextMessage,
+        summary: nextMessage,
+      }
+    }
+    case "citation": {
+      const citation = data.citation
+      if (!citation || typeof citation !== "object") {
+        return currentRun
+      }
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        citations: upsertCitation(currentRun.citations, citation as CommunityAgentCitation),
+      }
+    }
+    case "tool_start":
+    case "tool_result": {
+      const trace = data.trace
+      if (!trace || typeof trace !== "object") {
+        return currentRun
+      }
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        tool_trace: upsertTrace(currentRun.tool_trace, trace as CommunityAgentToolTrace),
+      }
+    }
+    case "action": {
+      const action = data.action
+      if (!action || typeof action !== "object") {
+        return currentRun
+      }
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        action: action as CommunityAgentRun["action"],
+      }
+    }
+    case "complete": {
+      const snapshot = data.snapshot
+      if (!snapshot || typeof snapshot !== "object") {
+        return currentRun
+      }
+      return snapshot as CommunityAgentRun
+    }
+    case "error": {
+      const message = typeof data.message === "string" ? data.message : currentRun.message ?? currentRun.summary ?? ""
+      return {
+        ...currentRun,
+        run_id: nextRunId,
+        status: "failed",
+        message,
+        summary: message,
+      }
+    }
+    default:
+      return currentRun
   }
 }
 
@@ -247,6 +382,25 @@ export default function CommunityConversationPage() {
     )
   }
 
+  function updateConversationTurn(
+    targetConversationId: string,
+    targetTurnId: string,
+    updater: (turn: CommunityConversationTurn) => CommunityConversationTurn,
+  ) {
+    setConversations((current) =>
+      current.map((entry) => {
+        if (entry.id !== targetConversationId) {
+          return entry
+        }
+        return {
+          ...entry,
+          updated_at: new Date().toISOString(),
+          turns: entry.turns.map((turn) => (turn.id === targetTurnId ? updater(turn) : turn)),
+        }
+      }),
+    )
+  }
+
   useEffect(() => {
     if (!agentBusy) {
       setRunningStageIndex(0)
@@ -293,7 +447,16 @@ export default function CommunityConversationPage() {
       record.turns.at(-1)?.role === "user" ? record.turns.slice(0, -1) : record.turns
 
     try {
-      const run = await createCommunityAgentRun({
+      const runningAssistantTurn = createRunningAssistantTurn()
+      const runningRecord: CommunityConversationRecord = {
+        ...record,
+        title: record.title || deriveConversationTitle(latestUserInput),
+        updated_at: new Date().toISOString(),
+        turns: [...record.turns, runningAssistantTurn],
+      }
+      mergeConversationRecord(runningRecord)
+
+      const run = await streamCommunityAgentRun({
         input: latestUserInput,
         skill_toggles: skillTogglesOverride ?? {
           external_search: externalSearchEnabled,
@@ -303,13 +466,40 @@ export default function CommunityConversationPage() {
           history: buildConversationHistory(historySource),
           conversation_id: record.id,
         },
+      }, {
+        onEvent: (event) => {
+          updateConversationTurn(record.id, runningAssistantTurn.id, (turn) => {
+            const currentRun = turn.run ?? {
+              run_id: runningAssistantTurn.run?.run_id ?? `pending-${Date.now()}`,
+              status: "running",
+              intent: "answer",
+              message: turn.content,
+              summary: turn.content,
+              citations: [],
+              tool_trace: [],
+              action: null,
+            }
+            const nextRun = applyStreamEventToRun(currentRun, event)
+            const nextContent = nextRun.message ?? nextRun.summary ?? turn.content
+            return {
+              ...turn,
+              content: nextContent ?? "",
+              run: nextRun,
+              status: nextRun.status === "failed" ? "failed" : nextRun.status === "completed" ? "completed" : "running",
+              error: nextRun.status === "failed" ? (nextRun.message ?? nextRun.summary ?? t("community.agent.error")) : null,
+            }
+          })
+        },
       })
 
       const updatedRecord: CommunityConversationRecord = {
-        ...record,
-        title: record.title || deriveConversationTitle(latestUserInput),
+        ...runningRecord,
         updated_at: new Date().toISOString(),
-        turns: [...record.turns, createAssistantTurn(run)],
+        turns: runningRecord.turns.map((turn) =>
+          turn.id === runningAssistantTurn.id
+            ? createAssistantTurnFromRun(run, runningAssistantTurn.id, runningAssistantTurn.created_at)
+            : turn,
+        ),
       }
       mergeConversationRecord(updatedRecord)
       const persisted = await upsertCommunityAgentConversation(updatedRecord)

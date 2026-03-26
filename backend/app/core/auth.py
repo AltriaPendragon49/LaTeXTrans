@@ -4,7 +4,6 @@ Authentication Module - 纯 RLS 模式
 核心原则：
 - 后端不验证 token
 - 后端不解析 user
-- 后端不调用 auth.get_user()
 - 所有权限完全交给 RLS
 - 这是 Supabase 官方最终推荐形态
 
@@ -12,9 +11,10 @@ Authentication Module - 纯 RLS 模式
 """
 
 import logging
-from typing import Optional
+import secrets
+from typing import Any, Optional
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
 
@@ -105,3 +105,98 @@ async def get_supabase_client_from_request(
         return None
     
     return create_supabase_client_with_token(token)
+
+
+def _extract_admin_roles(metadata: Any) -> set[str]:
+    if not isinstance(metadata, dict):
+        return set()
+
+    candidates: list[str] = []
+    role = metadata.get("role")
+    if isinstance(role, str):
+        candidates.append(role)
+
+    roles = metadata.get("roles")
+    if isinstance(roles, (list, tuple, set)):
+        candidates.extend(str(item) for item in roles if item is not None)
+    elif isinstance(roles, str):
+        candidates.extend(part.strip() for part in roles.split(","))
+
+    return {candidate.strip().lower() for candidate in candidates if candidate and candidate.strip()}
+
+
+async def require_admin_request(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict[str, Any]:
+    """
+    Guard administrative endpoints.
+
+    Allows either:
+    - the exact backend service-role key as a bearer token; or
+    - a verified Supabase user token carrying an admin role in app/user metadata.
+    """
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials.strip()
+    settings = get_settings()
+
+    if settings.supabase_service_role_key and secrets.compare_digest(
+        token,
+        settings.supabase_service_role_key,
+    ):
+        return {"auth_type": "service_role"}
+
+    if token.count(".") != 2:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    client = create_supabase_client_with_token(token)
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        response = client.auth.get_user(token)
+    except Exception as exc:
+        logging.debug("[Auth] Admin user lookup failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    user = getattr(response, "user", None)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    admin_roles = (
+        _extract_admin_roles(getattr(user, "app_metadata", None))
+        | _extract_admin_roles(getattr(user, "user_metadata", None))
+    )
+    if admin_roles.isdisjoint({"admin", "service_role", "supabase_admin"}):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    return {
+        "auth_type": "supabase_user",
+        "user_id": getattr(user, "id", None),
+        "email": getattr(user, "email", None),
+        "roles": sorted(admin_roles),
+    }

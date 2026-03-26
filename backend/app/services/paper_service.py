@@ -745,6 +745,18 @@ async def resolve_submitter_context(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return await resolve_submitter_context_by_user_id(str(user_id))
+
+
+async def resolve_submitter_context_by_user_id(user_id: str) -> Dict[str, Any]:
+    normalized_user_id = str(user_id or "").strip()
+    if not normalized_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         raise HTTPException(
@@ -757,7 +769,7 @@ async def resolve_submitter_context(
         lambda: (
             admin_client.table("user_roles")
             .select("role")
-            .eq("user_id", user_id)
+            .eq("user_id", normalized_user_id)
             .execute()
         )
     )
@@ -769,7 +781,7 @@ async def resolve_submitter_context(
         }
     )
     return {
-        "user_id": user_id,
+        "user_id": normalized_user_id,
         "roles": roles,
         "is_admin": any(role in {"admin", "moderator"} for role in roles),
     }
@@ -2033,6 +2045,78 @@ async def _watch_task_and_sync_asset(
         await asyncio.sleep(2)
 
 
+async def mark_paper_translation_failed_by_task(task_id: str) -> int:
+    admin_client = get_supabase_admin_client()
+    if admin_client is None:
+        return 0
+
+    normalized_task_id = str(task_id or "").strip()
+    if not normalized_task_id:
+        return 0
+
+    result = await _run_db_blocking_with_retry(
+        "mark_paper_translation_failed_by_task.select",
+        lambda: (
+            admin_client.table("papers")
+            .select("id")
+            .eq("community_selected_task_id", normalized_task_id)
+            .in_("trans_status", ["queued", "processing"])
+            .execute()
+        ),
+    )
+    rows = result.data or []
+    paper_ids = [str(row.get("id") or "").strip() for row in rows if row.get("id")]
+    if not paper_ids:
+        return 0
+
+    await _run_db_blocking_with_retry(
+        "mark_paper_translation_failed_by_task.update",
+        lambda: (
+            admin_client.table("papers")
+            .update({"trans_status": "failed", "updated_at": _utc_now_iso()})
+            .in_("id", paper_ids)
+            .execute()
+        ),
+    )
+    return len(paper_ids)
+
+
+async def resume_inflight_paper_translation_watchers() -> Dict[str, Any]:
+    """
+    Recreate in-memory paper watchers for tasks still marked queued/processing.
+    """
+    admin_client = get_supabase_admin_client()
+    if admin_client is None:
+        return {"resumed_watchers": 0}
+
+    result = await _run_db_blocking_with_retry(
+        "resume_inflight_paper_translation_watchers",
+        lambda: (
+            admin_client.table("papers")
+            .select("id, community_selected_task_id, trans_status, community_status")
+            .in_("trans_status", ["queued", "processing"])
+            .execute()
+        ),
+    )
+    rows = result.data or []
+    resumed_watchers = 0
+    for row in rows:
+        paper_id = str(row.get("id") or "").strip()
+        task_id = str(row.get("community_selected_task_id") or "").strip()
+        if not paper_id or not task_id:
+            continue
+        asyncio.create_task(
+            _watch_task_and_sync_asset(
+                paper_id=paper_id,
+                task_id=task_id,
+                promote_to_official=row.get("community_status") == COMMUNITY_STATUS_OFFICIAL,
+            )
+        )
+        resumed_watchers += 1
+
+    return {"resumed_watchers": resumed_watchers}
+
+
 def _paper_summary(
     paper: Dict[str, Any],
     *,
@@ -2223,8 +2307,11 @@ async def start_paper_translation(
     paper_id: str,
     request: translate_route.TranslateRequest,
     credentials: Optional[HTTPAuthorizationCredentials],
+    submitter_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    if credentials is None:
+    if submitter_user_id:
+        context = await resolve_submitter_context_by_user_id(submitter_user_id)
+    elif credentials is None:
         context = {"user_id": None, "roles": [], "is_admin": False}
     else:
         context = await resolve_submitter_context(credentials)

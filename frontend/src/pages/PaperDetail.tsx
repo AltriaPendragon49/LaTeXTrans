@@ -174,7 +174,7 @@ export default function PaperDetailPage() {
     paper?.latest_asset?.asset_type === "preview_html"
       ? "translated"
       : "source")
-  const availableModes = reader?.available_modes?.length
+  const availableModes: CommunityPaperReaderMode[] = reader?.available_modes?.length
     ? reader.available_modes
     : (hasTranslatedReader ? ["source", "translated"] : ["source"])
 
@@ -429,9 +429,9 @@ export default function PaperDetailPage() {
   return (
     <div
       data-testid="paper-detail-page-shell"
-      className="bg-[var(--shell-bg)] px-4 py-4 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8 xl:h-[100dvh] xl:overflow-hidden"
+      className="min-h-full bg-[var(--shell-bg)] px-4 py-4 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8"
     >
-      <div className="mx-auto w-full max-w-[2800px] space-y-3 xl:flex xl:h-full xl:flex-col xl:space-y-0">
+      <div className="mx-auto w-full max-w-[2800px] space-y-3">
         <Button
           asChild
           variant="ghost"
@@ -443,7 +443,7 @@ export default function PaperDetailPage() {
           </Link>
         </Button>
 
-        <section className="rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[var(--shell-panel-shadow-strong)] sm:p-5 xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+        <section className="rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[var(--shell-panel-shadow-strong)] sm:p-5">
           <div className="space-y-2">
             <h1 className="max-w-5xl text-balance text-[1.95rem] font-semibold tracking-tight text-[var(--shell-heading)] sm:text-[2.65rem]">
               {activePaper.title}

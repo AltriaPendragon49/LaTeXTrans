@@ -20,10 +20,12 @@ def test_agent_run_route_passes_skill_toggles_to_service_and_returns_message(
 ) -> None:
     captured: Dict[str, Any] = {}
 
-    async def fake_create_run(*, input_text, context, skill_toggles):  # type: ignore[no-untyped-def]
+    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, access_token):  # type: ignore[no-untyped-def]
         captured["input_text"] = input_text
         captured["context"] = context
         captured["skill_toggles"] = skill_toggles
+        captured["execution_mode"] = execution_mode
+        captured["access_token"] = access_token
         return {
             "run_id": "run-1",
             "status": "completed",
@@ -73,10 +75,12 @@ def test_agent_run_route_passes_skill_toggles_to_service_and_returns_message(
 def test_agent_run_route_accepts_omitted_skill_toggles(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: Dict[str, Any] = {}
 
-    async def fake_create_run(*, input_text, context, skill_toggles):  # type: ignore[no-untyped-def]
+    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, access_token):  # type: ignore[no-untyped-def]
         captured["input_text"] = input_text
         captured["context"] = context
         captured["skill_toggles"] = skill_toggles
+        captured["execution_mode"] = execution_mode
+        captured["access_token"] = access_token
         return {
             "run_id": "run-2",
             "status": "completed",
@@ -109,6 +113,69 @@ def test_agent_run_route_accepts_omitted_skill_toggles(monkeypatch: pytest.Monke
     assert captured["skill_toggles"] is None
 
 
+def test_agent_run_route_supports_async_mode_and_returns_stream_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: Dict[str, Any] = {}
+
+    class FakeSupabaseClient:
+        _access_token = "header.payload.signature"
+
+    async def fake_create_run(
+        *,
+        input_text,
+        context,
+        skill_toggles,
+        execution_mode,
+        access_token,
+    ):  # type: ignore[no-untyped-def]
+        captured["input_text"] = input_text
+        captured["context"] = context
+        captured["skill_toggles"] = skill_toggles
+        captured["execution_mode"] = execution_mode
+        captured["access_token"] = access_token
+        return {
+            "run_id": "run-async-1",
+            "status": "accepted",
+            "intent": "answer",
+            "message": None,
+            "summary": None,
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": None,
+            "action": None,
+            "stream_url": "/api/community-agent/runs/run-async-1/events",
+            "result_url": "/api/community-agent/runs/run-async-1",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.create_agent_run",
+        fake_create_run,
+    )
+    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: FakeSupabaseClient()
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.post(
+                "/api/community-agent/runs",
+                json={
+                    "input": "Explain this paper",
+                    "context": {"source": "conversation"},
+                    "execution_mode": "async",
+                },
+            )
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+    assert response.json()["stream_url"].endswith("/api/community-agent/runs/run-async-1/events")
+    assert response.json()["result_url"].endswith("/api/community-agent/runs/run-async-1")
+    assert captured["execution_mode"] == "async"
+    assert captured["access_token"] == "header.payload.signature"
+
+
 def test_agent_run_route_requires_authentication() -> None:
     async def _call():
         async with _make_client() as client:
@@ -116,6 +183,15 @@ def test_agent_run_route_requires_authentication() -> None:
                 "/api/community-agent/runs",
                 json={"input": "Explain this paper", "context": {"source": "conversation"}},
             )
+
+    response = asyncio.run(_call())
+    assert response.status_code == 401
+
+
+def test_agent_stream_route_requires_authentication() -> None:
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/community-agent/runs/run-1/events")
 
     response = asyncio.run(_call())
     assert response.status_code == 401

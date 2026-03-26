@@ -67,3 +67,4 @@ arxiv-trans/
 
 backend_data_backup.tar.gz
 deployment_data/
+tmp/

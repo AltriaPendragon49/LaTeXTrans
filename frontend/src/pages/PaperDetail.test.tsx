@@ -17,7 +17,7 @@ const loadUserSettingsMock = vi.fn()
 const setTaskIdMock = vi.fn()
 const setArxivIdMock = vi.fn()
 const navigateMock = vi.fn()
-const katexRenderToStringMock = vi.fn((value: string) => `<span class="katex">${value}</span>`)
+const katexRenderToStringMock = vi.fn((value: string, _options?: unknown) => `<span class="katex">${value}</span>`)
 const scrollIntoViewMock = vi.fn()
 const openMock = vi.fn()
 

@@ -156,7 +156,7 @@ export function PaperDetailWorkspace({
   const translatedResource = preferredMode === "translated" ? reader?.translated ?? null : null
   const translatedHtmlContent =
     preferredMode === "translated"
-      ? (preview?.html_content ?? reader?.translated?.html_content ?? null)
+      ? (reader?.translated?.html_content ?? preview?.html_content ?? null)
       : null
   const translatedPreviewAvailable =
     preferredMode === "translated" &&
@@ -166,25 +166,25 @@ export function PaperDetailWorkspace({
   const translatedPreviewPayload: CommunityPaperPreviewResponse | null =
     preview ??
     (preferredMode === "translated" &&
-    reader?.translated?.kind === "preview_html" &&
-    reader.translated.html_content
+      reader?.translated?.kind === "preview_html" &&
+      reader.translated.html_content
       ? {
-          paper_id: paper.id,
-          task_id: paper.community_selected_task_id ?? null,
-          asset:
-            paper.latest_asset?.asset_type === "preview_html"
-              ? paper.latest_asset
-              : {
-                  id: paper.community_selected_asset_id ?? "preview-html",
-                  task_id: paper.community_selected_task_id,
-                  asset_type: "preview_html",
-                  file_name: "preview.html",
-                  mime_type: "text/html",
-                  created_at: null,
-                },
-          html_content: reader.translated.html_content,
-          generated_at: paper.latest_asset?.created_at ?? null,
-        }
+        paper_id: paper.id,
+        task_id: paper.community_selected_task_id ?? null,
+        asset:
+          paper.latest_asset?.asset_type === "preview_html"
+            ? paper.latest_asset
+            : {
+              id: paper.community_selected_asset_id ?? "preview-html",
+              task_id: paper.community_selected_task_id,
+              asset_type: "preview_html",
+              file_name: "preview.html",
+              mime_type: "text/html",
+              created_at: null,
+            },
+        html_content: reader.translated.html_content,
+        generated_at: paper.latest_asset?.created_at ?? null,
+      }
       : null)
   const translatedPdfFallback =
     preferredMode === "translated" && translatedResource?.kind === "translated_pdf"
@@ -203,7 +203,7 @@ export function PaperDetailWorkspace({
   const sourceExternalLink =
     preferredMode === "source"
       ? reader?.source?.url ??
-        (paper.arxiv_id ? `https://arxiv.org/abs/${paper.arxiv_id}` : originalSourceUrl)
+      (paper.arxiv_id ? `https://arxiv.org/abs/${paper.arxiv_id}` : originalSourceUrl)
       : null
 
   function handleResizeStart(event: React.PointerEvent<HTMLDivElement>) {
@@ -233,7 +233,7 @@ export function PaperDetailWorkspace({
   const desktopGridColumns = `${splitRatio}fr 12px ${Math.max(1 - splitRatio, 0.18)}fr`
 
   return (
-    <div className="mt-4 space-y-3 xl:flex xl:min-h-0 xl:flex-1 xl:flex-col xl:space-y-3">
+    <div className="mt-4 space-y-3">
       <div className="rounded-[22px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] px-4 py-3">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2.5">
@@ -338,13 +338,13 @@ export function PaperDetailWorkspace({
       <div
         ref={containerRef}
         data-testid="paper-detail-top-panels"
-        className={cn("grid gap-3 xl:min-h-0 xl:flex-1", isDesktop ? "min-h-[calc(100vh-11.75rem)] gap-0 xl:min-h-0" : "")}
+        className={cn("grid gap-3", isDesktop ? "gap-0" : "")}
         style={isDesktop ? { gridTemplateColumns: desktopGridColumns } : undefined}
       >
         <section
           data-testid="paper-detail-reader-panel"
           className={cn(
-            "flex min-h-[760px] min-w-0 flex-col overflow-hidden rounded-[26px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] shadow-none transition",
+            "flex h-[calc(140dvh-160px)] max-h-[calc(140dvh-160px)] min-w-0 flex-col overflow-hidden rounded-[26px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] shadow-none transition",
             readerHighlight ? "ring-2 ring-sky-400/60" : "",
           )}
         >

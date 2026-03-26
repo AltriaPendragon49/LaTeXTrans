@@ -51,6 +51,21 @@ def _mentions_time_constraint(text: str) -> bool:
     return any(marker in normalized for marker in _TIME_RANGE_HINTS)
 
 
+def _looks_like_paper_title_query(text: str) -> bool:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return False
+    if any(pattern in normalized.lower() for pattern in _FILLER_PATTERNS):
+        return False
+    if ":" in normalized:
+        return True
+    latin_words = re.findall(r"[A-Za-z][A-Za-z0-9\-]*", normalized)
+    if len(latin_words) < 5:
+        return False
+    title_case_hits = sum(1 for word in latin_words if word[:1].isupper())
+    return title_case_hits >= max(3, len(latin_words) // 2)
+
+
 def validate_search_query(
     *,
     raw_input: str,
@@ -68,7 +83,8 @@ def validate_search_query(
     if normalized_query == normalized_input:
         if any(pattern in normalized_query for pattern in _FILLER_PATTERNS):
             raise ValidationError("search query copied the raw conversational utterance")
-        if len(re.findall(r"\w+|[\u4e00-\u9fff]", normalized_query)) >= 8:
+        token_count = len(re.findall(r"\w+|[\u4e00-\u9fff]", normalized_query))
+        if token_count >= 8 and not _looks_like_paper_title_query(normalized_query):
             raise ValidationError("search query is too close to the raw utterance")
 
     if not require_constraint_capture:

@@ -15,7 +15,11 @@ import json
 import shutil
 from pathlib import Path
 
-from backend.app.services.task_manager import get_task_manager, get_task_queue
+from backend.app.services.task_manager import (
+    get_task_manager,
+    get_task_queue,
+)
+from backend.app.services import task_manager as task_manager_module
 from backend.app.services.agents.coordinator_agent import CoordinatorAgent
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services.config_capture import capture_task_config
@@ -37,6 +41,13 @@ CLI_PARITY_PROMPT_RESERVE_TOKENS = 4096
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
+
+
+if hasattr(task_manager_module, "is_runtime_shutting_down"):
+    is_runtime_shutting_down = task_manager_module.is_runtime_shutting_down
+else:
+    def is_runtime_shutting_down() -> bool:
+        return False
 
 
 def _schedule_community_publish_watch(task_id: str, user_id: Optional[str]) -> None:
@@ -372,11 +383,11 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
         
         def _shared_call():
             return client.table("translation_tasks").select(
-                "output_path"
+                "task_id, output_path"
             ).eq(
                 "config_hash", config_hash
-            ).eq(
-                "status", "completed"
+            ).in_(
+                "status", ["completed", "completed_with_warnings"]
             ).neq(
                 "task_id", task_id
             ).limit(1).execute()
@@ -386,11 +397,11 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
             if not c:
                 return None
             return c.table("translation_tasks").select(
-                "output_path"
+                "task_id, output_path"
             ).eq(
                 "config_hash", config_hash
-            ).eq(
-                "status", "completed"
+            ).in_(
+                "status", ["completed", "completed_with_warnings"]
             ).neq(
                 "task_id", task_id
             ).limit(1).execute()
@@ -399,14 +410,33 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
         if result is None:
             return None
         
-        if result.data and result.data[0].get("output_path"):
-            output_path = Path(result.data[0]["output_path"])
-            if output_path.exists():
-                logger.info(f"Found reusable output: {output_path}")
-                return str(output_path)
-            else:
-                logger.warning(f"Reusable output path exists in DB but not on filesystem: {output_path}")
-        
+        if result.data:
+            record = result.data[0] or {}
+            reusable_task_id = str(record.get("task_id") or "").strip()
+            output_path_value = str(record.get("output_path") or "").strip()
+
+            candidate_paths = []
+            if output_path_value:
+                candidate_paths.append(Path(output_path_value))
+            if reusable_task_id:
+                candidate_paths.append(settings.outputs_dir / reusable_task_id)
+
+            checked_paths = []
+            for candidate_path in candidate_paths:
+                normalized_candidate = str(candidate_path)
+                if normalized_candidate in checked_paths:
+                    continue
+                checked_paths.append(normalized_candidate)
+                if candidate_path.exists():
+                    logger.info(f"Found reusable output: {candidate_path}")
+                    return str(candidate_path)
+
+            if checked_paths:
+                logger.warning(
+                    "Reusable output referenced in DB but no local candidate exists: %s",
+                    checked_paths,
+                )
+
         return None
         
     except Exception as e:
@@ -741,6 +771,16 @@ async def run_translation(
                 replay_bundle_ref=replay_bundle_ref,
                 user_id=user_id,
             )
+            try:
+                from backend.app.services import paper_service
+
+                await paper_service.mark_paper_translation_failed_by_task(task_id)
+            except Exception:
+                logger.warning(
+                    "Failed to sync paper status to failed for structure-invalid task %s",
+                    task_id,
+                    exc_info=True,
+                )
             logger.warning(f"Translation aborted by structure guard: {task_id}")
             return
 
@@ -761,6 +801,16 @@ async def run_translation(
                 replay_bundle_ref=replay_bundle_ref,
                 user_id=user_id
             )
+            try:
+                from backend.app.services import paper_service
+
+                await paper_service.mark_paper_translation_failed_by_task(task_id)
+            except Exception:
+                logger.warning(
+                    "Failed to sync paper status to failed for compilation-failed task %s",
+                    task_id,
+                    exc_info=True,
+                )
             logger.warning(f"Translation finished with compilation failure: {task_id}")
             return
 
@@ -788,6 +838,39 @@ async def run_translation(
             )
             logger.info(f"Translation completed: {task_id}")
     
+    except asyncio.CancelledError:
+        is_user_cancelled = task_manager.is_cancelled(task_id)
+        if is_user_cancelled:
+            logger.info("Translation task %s cancelled by user request", task_id)
+            raise
+
+        if not is_runtime_shutting_down():
+            logger.warning(
+                "Translation task %s cancelled unexpectedly during runtime; will rely on queue retry.",
+                task_id,
+            )
+            raise
+
+        logger.warning(
+            "Translation task %s cancelled by runtime/shutdown; marking failed state",
+            task_id,
+        )
+        task_manager.update_task(
+            task_id=task_id,
+            status=TaskStatus.FAILED.value,
+            message="Task interrupted by backend restart",
+            error="Task interrupted by backend restart",
+            detail_code="task_interrupted_restart",
+            progress=100,
+            user_id=user_id,
+        )
+        try:
+            from backend.app.services import paper_service
+
+            await paper_service.mark_paper_translation_failed_by_task(task_id)
+        except Exception:
+            logger.warning("Failed to sync paper status to failed for interrupted task %s", task_id, exc_info=True)
+        raise
     except Exception as e:
         logger.error(f"Translation error for task {task_id}: {e}", exc_info=True)
         task_manager.update_task(
@@ -797,6 +880,12 @@ async def run_translation(
             message=f"Translation error: {str(e)}",
             user_id=user_id
         )
+        try:
+            from backend.app.services import paper_service
+
+            await paper_service.mark_paper_translation_failed_by_task(task_id)
+        except Exception:
+            logger.warning("Failed to sync paper status to failed for errored task %s", task_id, exc_info=True)
 
 
 @router.post("/translate/{task_id}", response_model=TranslateResponse)

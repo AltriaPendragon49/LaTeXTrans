@@ -96,29 +96,50 @@ export interface CommunityAgentAction {
   imported?: boolean | null
 }
 
-export interface CommunityAgentRun {
+export interface CommunityAgentAcceptedRun {
   run_id: string
-  status: "queued" | "running" | "completed" | "failed"
-  intent: CommunityAgentIntent
+  status: "accepted" | "queued" | "running"
+  intent?: CommunityAgentIntent | null
   message?: string | null
   summary?: string | null
   tool_trace?: CommunityAgentToolTrace[]
   citations?: CommunityAgentCitation[]
   provider_state?: CommunityAgentProviderState | null
   action?: CommunityAgentAction | null
+  stream_url: string
+  result_url: string
 }
 
-export interface CommunityAgentEvent {
-  type:
-    | "intent_detected"
-    | "thinking"
-    | "tool_start"
-    | "tool_result"
-    | "status"
-    | "citation"
-    | "navigation"
-    | "final"
-    | "error"
+export interface CommunityAgentRun {
+  run_id: string
+  status: "accepted" | "queued" | "running" | "completed" | "failed"
+  intent?: CommunityAgentIntent | null
+  message?: string | null
+  summary?: string | null
+  tool_trace?: CommunityAgentToolTrace[]
+  citations?: CommunityAgentCitation[]
+  provider_state?: CommunityAgentProviderState | null
+  action?: CommunityAgentAction | null
+  stream_url?: string | null
+  result_url?: string | null
+}
+
+export type CommunityAgentStreamEventType =
+  | "status"
+  | "assistant_delta"
+  | "tool_start"
+  | "tool_result"
+  | "citation"
+  | "action"
+  | "complete"
+  | "error"
+  | "heartbeat"
+
+export interface CommunityAgentStreamEvent {
+  type: CommunityAgentStreamEventType
+  run_id?: string
+  sequence?: number
+  timestamp?: string
   data: Record<string, unknown>
 }
 

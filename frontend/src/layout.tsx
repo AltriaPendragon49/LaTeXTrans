@@ -1,4 +1,4 @@
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
@@ -37,13 +37,12 @@ export default function Layout() {
 
     return (
         <div className="min-h-screen bg-[var(--shell-bg)] text-[var(--shell-text)] transition-colors">
-            <SidebarProvider defaultOpen={true}>
+            <SidebarProvider defaultOpen={false}>
                 <AppSidebar />
                 <main className="relative flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-transparent">
                     <div className="sticky top-0 z-20 px-3 pb-2 pt-3 sm:px-4">
                         <div className="mx-auto flex max-w-[1560px] flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[color:var(--shell-border)]/90 bg-[color:color-mix(in_srgb,var(--shell-surface)_96%,transparent)] px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.035)] backdrop-blur-md">
                             <div className="flex min-w-0 items-center gap-3">
-                                <SidebarTrigger className="h-8.5 w-8.5 rounded-xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]" />
                                 <div className="min-w-0">
                                     {subtitle ? (
                                         <div className="flex items-center gap-2">

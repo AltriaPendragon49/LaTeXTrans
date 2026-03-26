@@ -134,7 +134,7 @@ export default function CommunityFeedPage() {
             </div>
           </div>
 
-          {error ? <PaperFeedErrorState message={error} onRetry={refetch} /> : null}
+          {error ? <PaperFeedErrorState onRetry={refetch} /> : null}
 
           {!error && loading ? (
             <div data-testid="community-feed-loading" className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">

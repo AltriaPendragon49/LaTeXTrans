@@ -535,6 +535,8 @@
   "community.conversation.openPaperDescriptionTranslating": "The paper has been linked and the default Chinese translation flow has already started. You can open the reader now and keep reading while it updates.",
   "community.conversation.openPaperAction": "Open reader",
   "community.conversation.running": "The paper agent is thinking across the current conversation context.",
+  "community.conversation.thinking": "Thinking",
+  "community.conversation.thinkingComplete": "Thinking finished",
   "community.conversation.progressTitle": "Paper agent is working",
   "community.conversation.progressDescription": "Stay on this page. The workspace will jump to the newest progress and answer automatically.",
   "community.conversation.progressStepAnalyze": "Understand request",

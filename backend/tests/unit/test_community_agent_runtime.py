@@ -44,6 +44,13 @@ def test_query_extraction_quality_rejects_raw_utterance_search_query() -> None:
         )
 
 
+def test_query_extraction_allows_title_like_raw_query() -> None:
+    validate_search_query(
+        raw_input="DA-Flow: Degradation-Aware Optical Flow Estimation with Diffusion Models",
+        query="DA-Flow: Degradation-Aware Optical Flow Estimation with Diffusion Models",
+    )
+
+
 def test_translation_skill_wraps_full_kernel_only(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: dict[str, object] = {}
 
@@ -78,3 +85,45 @@ def test_translation_skill_wraps_full_kernel_only(monkeypatch: pytest.MonkeyPatc
         "target_language": "zh",
     }
     assert result["task_id"] == "task-1"
+
+
+def test_translation_skill_forwards_submitter_user_id_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, object] = {}
+
+    async def fake_start_paper_translation(
+        *,
+        paper_id,
+        request,
+        credentials=None,
+        submitter_user_id=None,
+    ):  # type: ignore[no-untyped-def]
+        calls["paper_id"] = paper_id
+        calls["source_language"] = request.source_language
+        calls["target_language"] = request.target_language
+        calls["submitter_user_id"] = submitter_user_id
+        return {
+            "paper_id": paper_id,
+            "task_id": "task-2",
+            "status": "queued",
+            "reused_existing_task": False,
+            "processing_url": "/processing?task=task-2",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.start_paper_translation",
+        fake_start_paper_translation,
+    )
+
+    skill = StartTranslationKernelSkill()
+    runtime_state = type("RuntimeState", (), {"context": {"user_id": "user-42"}})()
+    result = asyncio.run(
+        skill.execute(
+            {"paper_id": "paper-2", "source_language": "en", "target_language": "zh"},
+            runtime_state=runtime_state,
+        )
+    )
+
+    assert calls["submitter_user_id"] == "user-42"
+    assert result["task_id"] == "task-2"

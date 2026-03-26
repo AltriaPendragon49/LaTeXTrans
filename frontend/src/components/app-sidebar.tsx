@@ -11,6 +11,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 
 const items = [
@@ -57,6 +58,9 @@ export function AppSidebar() {
             </p>
           </div>
         </NavLink>
+        <div className="mt-1 flex justify-center group-data-[collapsible=icon]:justify-center">
+          <SidebarTrigger className="h-8 w-8 rounded-xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]" />
+        </div>
       </SidebarHeader>
 
       <SidebarContent className="px-2.5 pt-1">

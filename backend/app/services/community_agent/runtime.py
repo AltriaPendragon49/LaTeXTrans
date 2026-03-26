@@ -18,6 +18,7 @@ class AgentRuntimeState:
     tool_trace: List[Dict[str, Any]] = field(default_factory=list)
     events: List[Dict[str, Any]] = field(default_factory=list)
     executed_skill_results: List[Dict[str, Any]] = field(default_factory=list)
+    executed_tool_results: List[Dict[str, Any]] = field(default_factory=list)
     generated_slots: Dict[str, Any] | None = None
     generated_citation_ids: List[str] = field(default_factory=list)
     action: Dict[str, Any] | None = None
@@ -25,10 +26,13 @@ class AgentRuntimeState:
     repair_count: int = 0
     planner_turn_count: int = 0
 
-    def add_citations(self, citations: List[Dict[str, Any]]) -> None:
+    def add_citations(self, citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        added: List[Dict[str, Any]] = []
         for citation in citations:
             citation_id = str(citation.get("id") or "").strip()
             if not citation_id or citation_id in self.citations_by_id:
                 continue
             self.citations.append(citation)
             self.citations_by_id[citation_id] = citation
+            added.append(citation)
+        return added
