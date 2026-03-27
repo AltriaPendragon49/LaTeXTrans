@@ -1,116 +1,85 @@
-import type { CSSProperties } from "react"
-import { BookOpenText, Orbit, PenSquare } from "lucide-react"
-import { NavLink, useLocation } from "react-router-dom"
+import { Compass, MessageSquare, PenSquare, Plus, User, Settings } from "lucide-react"
+import { NavLink, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-
-const items = [
-  {
-    titleKey: "community.nav.community",
-    url: "/",
-    icon: BookOpenText,
-  },
-]
+import { useAuth } from "@/contexts/AuthContext"
 
 export function AppSidebar() {
-  const location = useLocation()
   const { t } = useTranslation()
+  const { user, isAuthenticated, isSupabaseAvailable } = useAuth()
+  const navigate = useNavigate()
 
   return (
-    <Sidebar
-      variant="floating"
-      collapsible="icon"
-      style={
-        {
-          "--sidebar-width": "13.5rem",
-          "--sidebar-width-icon": "3.75rem",
-          "--sidebar-gap-offset": "0.75rem",
-        } as CSSProperties
-      }
-      className="m-3 rounded-[28px] border border-[color:var(--shell-border)]/60 bg-[color:color-mix(in_srgb,var(--shell-surface)_94%,transparent)] text-[var(--shell-heading)] shadow-[0_22px_52px_rgba(15,23,42,0.045)] backdrop-blur-md"
-    >
-      <SidebarHeader className="px-2.5 pb-2 pt-2.5">
-        <NavLink
-          to="/"
-          aria-label="LaTeXTrans Community"
-          title="LaTeXTrans Community"
-          className="flex items-center gap-3 rounded-[18px] px-2.5 py-2 transition hover:bg-[var(--shell-pill)]"
-        >
-          <div className="flex h-9.5 w-9.5 items-center justify-center rounded-[18px] border border-[color:var(--shell-border)]/60 bg-[var(--shell-pill)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-            <Orbit className="h-4.5 w-4.5 text-[var(--shell-icon)]" />
-          </div>
-          <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-            <p className="truncate text-sm font-semibold tracking-tight text-[var(--shell-heading)]">
-              LaTeXTrans
-            </p>
-            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-              {t("community.conversation.title")}
-            </p>
-          </div>
-        </NavLink>
-        <div className="mt-1 flex justify-center group-data-[collapsible=icon]:justify-center">
-          <SidebarTrigger className="h-8 w-8 rounded-xl border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-heading)] transition-colors hover:bg-[var(--shell-pill-hover)]" />
+    <nav className="fixed left-0 top-0 h-full flex flex-col justify-between py-8 px-4 z-50 backdrop-blur-xl bg-surface dark:bg-slate-900 w-20 hover:w-64 transition-all duration-300 ease-in-out border-none group shadow-[0_20px_40px_rgba(27,28,28,0.06)]">
+      <div className="flex flex-col gap-8 items-center group-hover:items-start group-hover:px-4">
+        <div className="text-lg font-bold text-primary tracking-tighter mb-4 flex items-center justify-center">
+          <span className="group-hover:hidden">LT</span>
+          <span className="hidden group-hover:block whitespace-nowrap">LaTexTrans</span>
         </div>
-      </SidebarHeader>
+        
+        <div className="flex flex-col gap-4 w-full">
+          <NavLink 
+            to="/" 
+            className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
+          >
+            <Compass className="w-6 h-6 shrink-0" />
+            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.nav.community", "Explore")}</span>
+          </NavLink>
 
-      <SidebarContent className="px-2.5 pt-1">
-        <div className="px-2 pb-2 text-[10px] uppercase tracking-[0.2em] text-[var(--shell-text-muted)] group-data-[collapsible=icon]:hidden">
-          Workspace
-        </div>
-        <SidebarMenu className="items-stretch">
-          {items.map((item) => (
-            <SidebarMenuItem key={item.titleKey}>
-              <SidebarMenuButton
-                asChild
-                isActive={item.url === "/" ? location.pathname === "/" : location.pathname.startsWith(item.url)}
-                className="h-11 rounded-[17px] px-3 text-[var(--shell-text-soft)] transition hover:bg-[var(--shell-pill)] hover:text-[var(--shell-heading)] data-[active=true]:bg-[var(--shell-pill-hover)] data-[active=true]:text-[var(--shell-heading)] data-[active=true]:shadow-[inset_0_0_0_1px_var(--shell-border)]"
-              >
-                <NavLink to={item.url} aria-label={t(item.titleKey)} title={t(item.titleKey)} className="flex items-center gap-3">
-                  <item.icon />
-                  <span className="group-data-[collapsible=icon]:hidden">{t(item.titleKey)}</span>
-                </NavLink>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-      </SidebarContent>
+          <NavLink 
+            to="/agent" 
+            className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
+          >
+            <MessageSquare className="w-6 h-6 shrink-0" />
+            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.conversation.title", "Conversation")}</span>
+          </NavLink>
 
-      <SidebarFooter className="px-2.5 pb-2.5 pt-2">
-        <div className="border-t border-[color:var(--shell-border)]/70 pt-2">
-          <div className="px-2 pb-2 text-[10px] uppercase tracking-[0.2em] text-[var(--shell-text-muted)] group-data-[collapsible=icon]:hidden">
-            Tools
-          </div>
-          <SidebarMenu className="items-stretch">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={location.pathname.startsWith("/tools")}
-                className="h-11 rounded-[17px] px-3 text-[var(--shell-text-soft)] transition hover:bg-[var(--shell-pill)] hover:text-[var(--shell-heading)] data-[active=true]:bg-[var(--shell-pill-hover)] data-[active=true]:text-[var(--shell-heading)]"
-              >
-                <NavLink
-                  to="/tools?panel=translate"
-                  aria-label={t("community.nav.paperTools")}
-                  title={t("community.nav.paperTools")}
-                  className="flex items-center gap-3"
-                >
-                  <PenSquare />
-                  <span className="group-data-[collapsible=icon]:hidden">{t("community.nav.paperTools")}</span>
-                </NavLink>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <NavLink 
+            to="/tools" 
+            className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
+          >
+            <PenSquare className="w-6 h-6 shrink-0" />
+            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.nav.paperTools", "Tools")}</span>
+          </NavLink>
         </div>
-      </SidebarFooter>
-    </Sidebar>
+
+        <div className="mt-8 w-full">
+          <button className="bg-primary text-on-primary rounded-full p-3 group-hover:px-6 w-full flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-md">
+            <Plus className="w-6 h-6 shrink-0" />
+            <span className="hidden group-hover:block font-medium whitespace-nowrap">New Project</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 items-center group-hover:items-start group-hover:px-4">
+        {isSupabaseAvailable && !isAuthenticated ? (
+          <button onClick={() => navigate('/login')} className="flex items-center gap-4 text-tertiary hover:bg-surface-container-low rounded-full px-4 py-3 transition-colors w-full justify-center group-hover:justify-start">
+            <User className="w-6 h-6 shrink-0" />
+            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("common.actions.signIn", "Sign In")}</span>
+          </button>
+        ) : (
+          <button onClick={() => navigate('/profile')} className="flex items-center gap-4 text-tertiary hover:bg-surface-container-low rounded-full px-4 py-3 transition-colors w-full justify-center group-hover:justify-start">
+            <User className="w-6 h-6 shrink-0" />
+            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">Profile</span>
+          </button>
+        )}
+        
+        <button onClick={() => navigate('/settings')} className="flex items-center gap-4 text-tertiary hover:bg-surface-container-low rounded-full px-4 py-3 transition-colors w-full justify-center group-hover:justify-start">
+          <Settings className="w-6 h-6 shrink-0" />
+          <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">Settings</span>
+        </button>
+
+        {isAuthenticated && user && (
+          <div className="mt-4 flex items-center gap-3 group-hover:bg-surface-container-low group-hover:rounded-full group-hover:p-2 group-hover:w-full transition-all">
+            <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0 uppercase font-bold text-xs border border-primary/30">
+              {user.email?.charAt(0)}
+            </div>
+            <div className="hidden group-hover:flex flex-col min-w-0">
+              <span className="text-xs font-bold text-on-surface truncate pr-2">{user.email?.split('@')[0]}</span>
+              <span className="text-[10px] text-tertiary truncate pr-2">Pro Plan</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </nav>
   )
 }

@@ -8,7 +8,12 @@ import SettingsPage from "@/pages/Settings"
 
 function GlossaryPanel() {
   const { t } = useTranslation()
-  return <div className="rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-6">{t("glossary.glossary_management")}</div>
+  return (
+    <div className="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant/10 shadow-sm">
+      <h3 className="text-lg font-bold text-on-surface mb-6">{t("glossary.glossary_management")}</h3>
+      <p className="text-sm text-tertiary">Management interface coming soon.</p>
+    </div>
+  )
 }
 
 type ToolPanel = "translate" | "history" | "settings" | "glossary"
@@ -29,31 +34,44 @@ export default function ToolsHubPage() {
   )
 
   return (
-    <div className="min-h-full space-y-4 bg-[var(--shell-bg)] px-4 py-6 text-[var(--shell-text)] sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <div className="rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4">
-          <div className="flex flex-wrap gap-2">
-            {panels.map((entry) => (
-              <Link
-                key={entry.key}
-                to={`/tools?panel=${entry.key}`}
-                className={`rounded-full px-4 py-2 text-sm ${panel === entry.key ? "bg-slate-500/14 text-[var(--shell-heading)] shadow-[inset_0_0_0_1px_var(--shell-border)]" : "border border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-text-soft)]"}`}
-              >
-                {entry.label}
-              </Link>
-            ))}
-          </div>
+    <div className="min-h-full bg-background transition-colors">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        <header className="mb-8 lg:mb-10">
+          <h1 className="mb-2 text-3xl font-bold tracking-tighter text-on-surface lg:text-4xl">
+            {t("navbar.tools")}
+          </h1>
+          <p className="max-w-xl text-sm text-tertiary lg:text-base">
+            Direct access to the LaTexTrans ecosystem for high-fidelity document translation.
+          </p>
+        </header>
+
+        <div className="mb-8 inline-flex max-w-full items-center overflow-x-auto rounded-full border border-outline-variant/30 bg-surface-container-low p-1.5 shadow-sm lg:mb-10">
+          {panels.map((entry) => (
+            <Link
+              key={entry.key}
+              to={`/tools?panel=${entry.key}`}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-semibold transition-all sm:px-6 lg:px-8 lg:py-2.5 lg:text-base rounded-full ${
+                panel === entry.key
+                  ? "bg-primary text-on-primary shadow-md"
+                  : "text-tertiary hover:bg-surface-container-high hover:text-on-surface"
+              }`}
+            >
+              {entry.label}
+            </Link>
+          ))}
         </div>
 
-        {panel === "history" ? (
-          <HistoryPage />
-        ) : panel === "settings" ? (
-          <SettingsPage />
-        ) : panel === "glossary" ? (
-          <GlossaryPanel />
-        ) : (
-          <Dashboard />
-        )}
+        <div>
+          {panel === "history" ? (
+            <HistoryPage />
+          ) : panel === "settings" ? (
+            <SettingsPage />
+          ) : panel === "glossary" ? (
+            <GlossaryPanel />
+          ) : (
+            <Dashboard />
+          )}
+        </div>
       </div>
     </div>
   )

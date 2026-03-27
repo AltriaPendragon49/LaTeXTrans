@@ -31,6 +31,17 @@ function withSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>
 }
 
+function createConversationId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `conversation-${Date.now()}`
+}
+
+function AgentRedirect() {
+  return <Navigate to={`/agent/${createConversationId()}`} replace />
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -40,6 +51,7 @@ function App() {
             <Route path="/login" element={withSuspense(<Login />)} />
             <Route path="/" element={withSuspense(<Layout />)}>
               <Route index element={withSuspense(<CommunityFeedPage />)} />
+              <Route path="agent" element={<AgentRedirect />} />
               <Route path="agent/:conversationId" element={withSuspense(<CommunityConversationPage />)} />
               <Route path="tools" element={withSuspense(<ToolsHubPage />)} />
               <Route path="translate" element={<Navigate to="/tools?panel=translate" replace />} />

@@ -1,5 +1,5 @@
-import { ArrowUpRight, Bot } from "lucide-react"
-import { useMemo, useState, type FormEvent } from "react"
+import { Search, Paperclip, ChevronDown, Plus, Sparkles, ArrowUp } from "lucide-react"
+import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 
@@ -7,9 +7,6 @@ import { PaperCard } from "@/components/community/PaperCard"
 import { PaperCardSkeleton } from "@/components/community/PaperCardSkeleton"
 import { PaperFeedEmptyState } from "@/components/community/PaperFeedEmptyState"
 import { PaperFeedErrorState } from "@/components/community/PaperFeedErrorState"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { useCommunityPapers } from "@/hooks/use-community-papers"
 
 function createConversationId() {
@@ -23,138 +20,129 @@ export default function CommunityFeedPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [agentInput, setAgentInput] = useState("")
-  const [externalSearchEnabled, setExternalSearchEnabled] = useState(false)
-  const { items, loading, error, refetch } = useCommunityPapers("latest", "")
+  const [activeTab, setActiveTab] = useState<"latest" | "hot">("latest")
+  
+  const { items, loading, error, refetch } = useCommunityPapers(activeTab, "")
 
-  const capabilityChips = useMemo(
-    () => [
-      t("community.agent.intent.search"),
-      t("community.agent.intent.answer"),
-      t("community.agent.intent.translate"),
-    ],
-    [t],
-  )
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const normalized = agentInput.trim()
-    if (!normalized) {
-      return
-    }
+    if (!normalized) return
 
     navigate(`/agent/${createConversationId()}`, {
       state: {
         seedInput: normalized,
         seedSkillToggles: {
-          external_search: externalSearchEnabled,
+          external_search: false,
         },
       },
     })
   }
 
   return (
-    <div className="min-h-full bg-[var(--shell-bg)] px-4 py-4 text-[var(--shell-text)] sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-6">
-        <section className="overflow-hidden rounded-[32px] border border-[color:var(--shell-border)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-surface)_98%,white_2%),color-mix(in_srgb,var(--shell-surface)_94%,transparent))] shadow-[var(--shell-panel-shadow)]">
-          <div className="px-5 py-6 sm:px-6 lg:px-8 lg:py-7">
-            <div className="mx-auto max-w-[1120px] space-y-5 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.22em] text-[var(--shell-text-muted)]">
-                <Bot className="h-3.5 w-3.5 text-[var(--shell-icon)]" />
-                {t("community.agent.entryLabel")}
-              </div>
+    <div className="flex-1 w-full bg-surface text-on-surface">
+      {/* TOP NAVIGATION / AGENT INPUT AREA */}
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-surface/80 px-8 md:px-12 pt-8 pb-4 border-b border-outline-variant/10">
+        <div className="max-w-5xl mx-auto flex flex-col gap-8">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">{t("community.feed.launchTitle", "Community Feed")}</h1>
+            <button onClick={handleSubmit} className="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-2 rounded-full font-bold shadow-lg hover:scale-95 transition-transform duration-150 flex items-center gap-2 text-sm border-none">
+              <Plus className="w-5 h-5 shrink-0" />
+              New Project
+            </button>
+          </div>
 
-              <div className="mx-auto max-w-[920px] space-y-3">
-                <h1 className="text-balance text-[2.45rem] font-semibold tracking-[-0.05em] text-[var(--shell-heading)] sm:text-[3.55rem]">
-                  {t("community.feed.launchTitle")}
-                </h1>
-                <p className="mx-auto max-w-[760px] text-sm leading-7 text-[var(--shell-text-soft)] sm:text-base">
-                  {t("community.feed.launchDescription")}
-                </p>
-              </div>
-
-              <form
-                onSubmit={handleSubmit}
-                className="mx-auto max-w-[1060px] space-y-3 rounded-[30px] border border-[color:var(--shell-border)] bg-[color:color-mix(in_srgb,var(--shell-surface)_96%,transparent)] p-4 text-left shadow-[0_18px_56px_rgba(15,23,42,0.08)] sm:p-5"
-              >
-                <label htmlFor="community-agent-input" className="sr-only">
-                  {t("community.agent.aria")}
-                </label>
-                <textarea
-                  id="community-agent-input"
-                  aria-label={t("community.agent.aria")}
-                  value={agentInput}
-                  onChange={(event) => setAgentInput(event.target.value)}
-                  placeholder={t("community.agent.placeholder")}
-                  rows={3}
-                  className="min-h-[104px] w-full resize-none border-0 bg-transparent px-1 text-[1.08rem] leading-8 text-[var(--shell-heading)] outline-none placeholder:text-[var(--shell-text-muted)]"
-                />
-                <div className="flex flex-col gap-3 border-t border-[color:var(--shell-border)] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-wrap gap-2">
-                      {capabilityChips.map((chip) => (
-                        <Badge
-                          key={chip}
-                          variant="outline"
-                          className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-[var(--shell-text-soft)]"
-                        >
-                          {chip}
-                        </Badge>
-                      ))}
-                    </div>
-                    <label className="inline-flex items-center gap-3 text-sm text-[var(--shell-text-soft)]">
-                      <Switch
-                        checked={externalSearchEnabled}
-                        onCheckedChange={setExternalSearchEnabled}
-                        aria-label={t("community.agent.externalSearch.label")}
-                      />
-                      <span>{t("community.agent.externalSearch.label")}</span>
-                    </label>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="h-11 rounded-full bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
-                  >
-                    {t("community.agent.run")}
-                    <ArrowUpRight className="h-4 w-4" />
-                  </Button>
+          {/* Agent Input (Prominent & Centered) */}
+          <div className="max-w-3xl mx-auto w-full">
+            <form onSubmit={handleSubmit} className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-4 shadow-xl focus-within:border-primary/50 transition-all">
+              <textarea 
+                value={agentInput}
+                onChange={(e) => setAgentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (agentInput.trim() !== '') handleSubmit(e as unknown as FormEvent);
+                  }
+                }}
+                className="w-full bg-transparent border-none outline-none focus:ring-0 text-on-surface placeholder:text-tertiary resize-none h-20 text-base" 
+                placeholder={t("community.agent.placeholder", "Ask or search anything...")}
+              />
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-outline-variant/10">
+                <div className="flex gap-2">
+                  <button type="button" className="p-2 text-tertiary hover:text-primary transition-colors">
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  <button type="submit" className="flex items-center gap-2 px-3 py-1 bg-surface-container-high hover:bg-surface-container-highest text-xs font-bold rounded-lg border border-outline-variant/20 transition-colors uppercase tracking-wider text-on-surface">
+                    <Search className="w-4 h-4" /> Search
+                  </button>
+                  <button type="button" className="flex items-center gap-2 px-3 py-1 bg-surface-container-high hover:bg-surface-container-highest text-xs font-bold rounded-lg border border-outline-variant/20 transition-colors uppercase tracking-wider text-on-surface">
+                    <Sparkles className="w-4 h-4" /> Balanced <ChevronDown className="w-4 h-4" />
+                  </button>
                 </div>
-              </form>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--shell-heading)]">
-                {t("community.feed.recentTitle")}
-              </h2>
-              <p className="text-sm text-[var(--shell-text-soft)]">{t("community.feed.recentDescription")}</p>
-            </div>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <span className="text-[10px] font-bold text-tertiary uppercase tracking-widest hidden sm:block">Enter to search</span>
+                  <button type="submit" className="w-9 h-9 bg-primary text-on-primary rounded-lg flex items-center justify-center hover:bg-primary/90 transition-colors shadow-md border-none">
+                    <ArrowUp className="w-5 h-5 font-bold" />
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
 
-          {error ? <PaperFeedErrorState onRetry={refetch} /> : null}
+          {/* Sorting Tabs */}
+          <div className="flex gap-8 items-center mt-4">
+            <button 
+              onClick={() => setActiveTab("hot")}
+              className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-[0.2em] transition-colors ${activeTab === 'hot' ? 'border-primary text-primary' : 'border-transparent text-tertiary hover:text-on-surface'}`}
+            >
+              Hot
+            </button>
+            <button 
+              onClick={() => setActiveTab("latest")}
+              className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-[0.2em] transition-colors ${activeTab === 'latest' ? 'border-primary text-primary' : 'border-transparent text-tertiary hover:text-on-surface'}`}
+            >
+              Latest
+            </button>
+            <button className="pb-3 border-b-2 border-transparent text-tertiary hover:text-on-surface transition-colors font-bold text-xs uppercase tracking-[0.2em] ml-auto">
+              Filters
+            </button>
+          </div>
+        </div>
+      </header>
 
-          {!error && loading ? (
-            <div data-testid="community-feed-loading" className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <PaperCardSkeleton key={index} />
-              ))}
+      {/* FEED LIST */}
+      <section className="max-w-5xl mx-auto px-8 md:px-12 py-8 relative">
+        {error ? <PaperFeedErrorState onRetry={refetch} /> : null}
+
+        {!error && loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-48">
+                <PaperCardSkeleton />
+              </div>
+            ))}
+            <div className="md:col-span-2 flex justify-center py-8">
+              <div className="flex items-center gap-3 text-tertiary">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]"></div>
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] ml-2">Exploring more papers</span>
+              </div>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {!error && !loading && !items.length ? <PaperFeedEmptyState /> : null}
+        {!error && !loading && !items.length ? <PaperFeedEmptyState /> : null}
 
-          {!error && !loading && items.length ? (
-            <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-              {items.slice(0, 6).map((paper) => (
-                <PaperCard key={paper.id} paper={paper} />
-              ))}
-            </div>
-          ) : null}
-        </section>
-      </div>
+        {!error && !loading && items.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {items.map((paper) => (
+              <PaperCard key={paper.id} paper={paper} />
+            ))}
+          </div>
+        ) : null}
+      </section>
     </div>
   )
 }

@@ -1,10 +1,3 @@
-/**
- * Settings Page
- * 
- * User settings management for translation preferences.
- * Requires authentication - shows prompt for guests.
- */
-
 import { useState, useEffect, useCallback } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -12,11 +5,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, Settings, LogIn, Save, CheckCircle2 } from 'lucide-react'
+import { Loader2, LogIn, Save, CheckCircle2, Globe, Sparkles, SlidersHorizontal, Key, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { FormattingPanel } from '@/components/FormattingPanel'
 import type { FormattingConfig } from '@/types/config'
@@ -181,7 +173,7 @@ export default function SettingsPage() {
     // Loading state
     if (authLoading) {
         return (
-            <div className="container mx-auto max-w-2xl p-6 flex flex-col items-center justify-center min-h-[60vh]">
+            <div className="flex flex-col items-center justify-center min-h-[40vh]">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         )
@@ -190,183 +182,210 @@ export default function SettingsPage() {
     // Not authenticated
     if (!isAuthenticated) {
         return (
-            <div className="container mx-auto max-w-2xl p-6 space-y-6 animate-in fade-in duration-500">
-                <div className="space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                        <Settings className="h-8 w-8" />
-                        {t('settings.title')}
-                    </h1>
+            <div className="space-y-6 animate-in fade-in duration-500 max-w-2xl mx-auto py-12">
+                <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-sm p-10 text-center space-y-4">
+                    <div className="mx-auto p-4 rounded-full bg-surface-container-low w-fit mb-6">
+                        <LogIn className="h-8 w-8 text-tertiary" />
+                    </div>
+                    <div className="space-y-2">
+                        <p className="text-xl font-bold text-on-surface">{t('settings.sign_in_to_save_settings')}</p>
+                        <p className="text-sm text-tertiary max-w-md mx-auto">
+                            {t('settings.after_signing_in_you_can_save_default_translation_settings_and_reuse_them_next_time')}
+                        </p>
+                    </div>
+                    <Button onClick={() => navigate('/login')} className="mt-8 rounded-full px-8 py-2.5">
+                        <LogIn className="mr-2 h-4 w-4" />
+                        {t('common.go_to_sign_in')}
+                    </Button>
                 </div>
-
-                <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                    <CardContent className="pt-6 space-y-4">
-                        <div className="text-center py-8 space-y-4">
-                            <div className="mx-auto p-4 rounded-full bg-muted/50 w-fit">
-                                <LogIn className="h-8 w-8 text-muted-foreground" />
-                            </div>
-                            <div className="space-y-2">
-                                <p className="text-lg font-medium">{t('settings.sign_in_to_save_settings')}</p>
-                                <p className="text-muted-foreground">
-                                    {t('settings.after_signing_in_you_can_save_default_translation_settings_and_reuse_them_next_time')}
-                                </p>
-                            </div>
-                            <Button onClick={() => navigate('/login')} className="mt-4">
-                                <LogIn className="mr-2 h-4 w-4" />
-                                {t('common.go_to_sign_in')}
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
             </div>
         )
     }
 
     return (
-        <div className="container mx-auto max-w-2xl p-6 space-y-6 animate-in fade-in duration-500">
-            <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                    <Settings className="h-8 w-8" />
-                    {t('settings.title')}
-                </h1>
-                <p className="text-muted-foreground">
+        <div className="space-y-6 animate-in fade-in duration-500 max-w-3xl mx-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-outline-variant/10">
+                <p className="text-sm font-medium text-tertiary">
                     {t('settings.configure_default_translation_options_that_apply_when_you_create_a_new_translation')}
                 </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {t('settings.tip_after_saving_return_to_the_home_page_or_refresh_to_apply_changes')}
-                </p>
+                <Button 
+                    type="submit" 
+                    form="settings-form" 
+                    disabled={saving} 
+                    className="rounded-full shadow-sm"
+                    size="sm"
+                >
+                    {saving ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            {t('settings.actions.saving')}
+                        </>
+                    ) : (
+                        <>
+                            <Save className="mr-2 h-4 w-4" />
+                            {t('settings.actions.save')}
+                        </>
+                    )}
+                </Button>
             </div>
 
             {error && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="rounded-xl">
                     <AlertDescription>{error}</AlertDescription>
                 </Alert>
             )}
 
             {loading ? (
-                <div className="flex justify-center py-8">
+                <div className="flex justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
             ) : (
-                <form onSubmit={handleSave} className="space-y-6">
+                <form id="settings-form" onSubmit={handleSave} className="space-y-6 pb-20">
                     {/* Language Settings */}
-                    <Card className="border-border/50 bg-card/80">
-                        <CardHeader>
-                            <CardTitle className="text-lg">{t('common.sections.languageSettings')}</CardTitle>
-                            <CardDescription>{t('settings.set_the_default_source_and_target_languages')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="source_language">{t('common.labels.sourceLanguage')}</Label>
-                                    <Select
-                                        value={settings.default_source_language}
-                                        onValueChange={(v) => setSettings(s => ({ ...s, default_source_language: v }))}
-                                    >
-                                        <SelectTrigger id="source_language">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {languages.map((language) => (
-                                                <SelectItem key={`source-${language.code}`} value={language.code}>
-                                                    {language.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="target_language">{t('common.labels.targetLanguage')}</Label>
-                                    <Select
-                                        value={settings.default_target_language}
-                                        onValueChange={(v) => setSettings(s => ({ ...s, default_target_language: v }))}
-                                    >
-                                        <SelectTrigger id="target_language">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {languages.map((language) => (
-                                                <SelectItem key={`target-${language.code}`} value={language.code}>
-                                                    {language.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                    <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-outline-variant/5 flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                                <Globe className="h-5 w-5" />
                             </div>
-                        </CardContent>
-                    </Card>
+                            <div>
+                                <h3 className="text-base font-bold text-on-surface">{t('common.sections.languageSettings')}</h3>
+                                <p className="text-xs text-tertiary">{t('settings.set_the_default_source_and_target_languages')}</p>
+                            </div>
+                        </div>
+                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                                <Label htmlFor="source_language" className="text-xs font-bold uppercase tracking-widest text-tertiary">
+                                    {t('common.labels.sourceLanguage')}
+                                </Label>
+                                <Select
+                                    value={settings.default_source_language}
+                                    onValueChange={(v) => setSettings(s => ({ ...s, default_source_language: v }))}
+                                >
+                                    <SelectTrigger id="source_language" className="rounded-xl border-outline-variant/20 bg-surface focus:ring-primary/20">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        {languages.map((language) => (
+                                            <SelectItem key={`source-${language.code}`} value={language.code} className="rounded-lg">
+                                                {language.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-3">
+                                <Label htmlFor="target_language" className="text-xs font-bold uppercase tracking-widest text-tertiary">
+                                    {t('common.labels.targetLanguage')}
+                                </Label>
+                                <Select
+                                    value={settings.default_target_language}
+                                    onValueChange={(v) => setSettings(s => ({ ...s, default_target_language: v }))}
+                                >
+                                    <SelectTrigger id="target_language" className="rounded-xl border-outline-variant/20 bg-surface focus:ring-primary/20">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        {languages.map((language) => (
+                                            <SelectItem key={`target-${language.code}`} value={language.code} className="rounded-lg">
+                                                {language.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Translation Settings */}
-                    <Card className="border-border/50 bg-card/80">
-                        <CardHeader>
-                            <CardTitle className="text-lg">{t('settings.translation_settings')}</CardTitle>
-                            <CardDescription>{t('settings.configure_translation_mode_and_compile_options')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="translation_mode">{t('common.labels.translationMode')}</Label>
-                                <Select
-                                    value={settings.translation_mode}
-                                    onValueChange={(v) => setSettings(s => ({ ...s, translation_mode: v }))}
-                                >
-                                    <SelectTrigger id="translation_mode">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="full">{t('task.translationMode.full')}</SelectItem>
-                                        <SelectItem value="quick_scan">{t('task.translationMode.quickScan')}</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                    <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-outline-variant/5 flex items-center gap-3">
+                            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-600 dark:text-blue-400">
+                                <Sparkles className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-on-surface">{t('settings.translation_settings')}</h3>
+                                <p className="text-xs text-tertiary">{t('settings.configure_translation_mode_and_compile_options')}</p>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <Label htmlFor="translation_mode" className="text-xs font-bold uppercase tracking-widest text-tertiary">
+                                        {t('common.labels.translationMode')}
+                                    </Label>
+                                    <Select
+                                        value={settings.translation_mode}
+                                        onValueChange={(v) => setSettings(s => ({ ...s, translation_mode: v }))}
+                                    >
+                                        <SelectTrigger id="translation_mode" className="rounded-xl border-outline-variant/20 bg-surface focus:ring-primary/20">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl">
+                                            <SelectItem value="full" className="rounded-lg">{t('task.translationMode.full')}</SelectItem>
+                                            <SelectItem value="quick_scan" className="rounded-lg">{t('task.translationMode.quickScan')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label htmlFor="compile_strategy" className="text-xs font-bold uppercase tracking-widest text-tertiary">
+                                        {t('common.labels.compileStrategy')}
+                                    </Label>
+                                    <Select
+                                        value={settings.compile_strategy}
+                                        onValueChange={(v) => setSettings(s => ({ ...s, compile_strategy: v }))}
+                                    >
+                                        <SelectTrigger id="compile_strategy" className="rounded-xl border-outline-variant/20 bg-surface focus:ring-primary/20">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl">
+                                            <SelectItem value="auto" className="rounded-lg">{t('task.compileStrategy.auto')}</SelectItem>
+                                            <SelectItem value="pdflatex" className="rounded-lg">PDFLaTeX</SelectItem>
+                                            <SelectItem value="xelatex" className="rounded-lg">XeLaTeX</SelectItem>
+                                            <SelectItem value="lualatex" className="rounded-lg">LuaLaTeX</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="compile_strategy">{t('common.labels.compileStrategy')}</Label>
-                                <Select
-                                    value={settings.compile_strategy}
-                                    onValueChange={(v) => setSettings(s => ({ ...s, compile_strategy: v }))}
-                                >
-                                    <SelectTrigger id="compile_strategy">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="auto">{t('task.compileStrategy.auto')}</SelectItem>
-                                        <SelectItem value="pdflatex">PDFLaTeX</SelectItem>
-                                        <SelectItem value="xelatex">XeLaTeX</SelectItem>
-                                        <SelectItem value="lualatex">LuaLaTeX</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="translation_model">{t('common.labels.translationModel')}</Label>
+                            <div className="space-y-3 pt-2 border-t border-outline-variant/10">
+                                <Label htmlFor="translation_model" className="text-xs font-bold uppercase tracking-widest text-tertiary">
+                                    {t('common.labels.translationModel')}
+                                </Label>
                                 <Input
                                     id="translation_model"
                                     placeholder={t('settings.leave_blank_to_use_the_system_default')}
                                     value={settings.translation_model || ''}
                                     onChange={(e) => setSettings(s => ({ ...s, translation_model: e.target.value || null }))}
                                     disabled={settings.use_author_api}
+                                    className="rounded-xl border-outline-variant/20 bg-surface focus-visible:ring-primary/20"
                                 />
                                 {settings.use_author_api && (
-                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                    <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
                                         {t('settings.when_the_author_api_is_enabled_the_model_is_locked_and_does_not_need_configuration')}
                                     </p>
                                 )}
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
                     {/* Advanced Settings */}
-                    <Card className="border-border/50 bg-card/80">
-                        <CardHeader>
-                            <CardTitle className="text-lg">{t('settings.advancedSettings')}</CardTitle>
-                            <CardDescription>{t('settings.configure_glossary_and_api_options')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
+                    <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-outline-variant/5 flex items-center gap-3">
+                            <div className="p-2 bg-purple-500/10 rounded-lg text-purple-600 dark:text-purple-400">
+                                <SlidersHorizontal className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-on-surface">{t('settings.advancedSettings')}</h3>
+                                <p className="text-xs text-tertiary">{t('settings.configure_glossary_and_api_options')}</p>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-6">
                             {/* Generate Glossary */}
                             <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label htmlFor="generate_glossary">{t('common.generate_glossary')}</Label>
-                                    <p className="text-xs text-muted-foreground">
+                                <div className="space-y-1">
+                                    <Label htmlFor="generate_glossary" className="text-sm font-bold text-on-surface">{t('common.generate_glossary')}</Label>
+                                    <p className="text-xs text-tertiary">
                                         {t('settings.generate_a_terminology_table_csv_during_translation')}
                                     </p>
                                 </div>
@@ -377,11 +396,13 @@ export default function SettingsPage() {
                                 />
                             </div>
 
+                            <div className="h-px bg-outline-variant/10 w-full" />
+
                             {/* Use Author API */}
                             <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label htmlFor="use_author_api">{t('settings.use_default_author_api')}</Label>
-                                    <p className="text-xs text-muted-foreground">
+                                <div className="space-y-1">
+                                    <Label htmlFor="use_author_api" className="text-sm font-bold text-on-surface">{t('settings.use_default_author_api')}</Label>
+                                    <p className="text-xs text-tertiary">
                                         {t('settings.turning_this_off_requires_a_custom_api_endpoint_and_key')}
                                     </p>
                                 </div>
@@ -391,16 +412,21 @@ export default function SettingsPage() {
                                     onCheckedChange={(checked) => setSettings(s => ({ ...s, use_author_api: checked }))}
                                 />
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
                     {/* Formatting Defaults */}
-                    <Card className="border-border/50 bg-card/80">
-                        <CardHeader>
-                            <CardTitle className="text-lg">{t('settings.formatting_defaults')}</CardTitle>
-                            <CardDescription>{t('settings.set_the_default_output_formatting_for_translated_documents_manual_translation_time_settings_override_these_values')}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
+                    <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-outline-variant/5 flex items-center gap-3">
+                            <div className="p-2 bg-green-500/10 rounded-lg text-green-600 dark:text-green-400">
+                                <Wrench className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-on-surface">{t('settings.formatting_defaults')}</h3>
+                                <p className="text-xs text-tertiary">{t('settings.set_the_default_output_formatting_for_translated_documents_manual_translation_time_settings_override_these_values')}</p>
+                            </div>
+                        </div>
+                        <div className="bg-surface-container-low/30">
                             <FormattingPanel
                                 value={settings.default_formatting ?? {}}
                                 onChange={(patch) =>
@@ -411,33 +437,41 @@ export default function SettingsPage() {
                                 }
                                 targetLanguage={settings.default_target_language}
                             />
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
                     {/* API Settings */}
                     {!settings.use_author_api && (
-                        <Card className="border-border/50 bg-card/80 animate-in fade-in">
-                            <CardHeader>
-                                <CardTitle className="text-lg">{t('settings.custom_api')}</CardTitle>
-                                <CardDescription>{t('settings.use_your_own_api_endpoint_and_key')}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="custom_base_url">{t('settings.api_endpoint')}</Label>
+                        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl shadow-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                            <div className="px-6 py-4 border-b border-outline-variant/5 flex items-center gap-3 bg-red-500/5">
+                                <div className="p-2 bg-red-500/10 rounded-lg text-red-600 dark:text-red-400">
+                                    <Key className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-red-700 dark:text-red-400">{t('settings.custom_api')}</h3>
+                                    <p className="text-xs text-red-600/70 dark:text-red-400/70">{t('settings.use_your_own_api_endpoint_and_key')}</p>
+                                </div>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div className="space-y-3">
+                                    <Label htmlFor="custom_base_url" className="text-xs font-bold uppercase tracking-widest text-tertiary">
+                                        {t('settings.api_endpoint')}
+                                    </Label>
                                     <Input
                                         id="custom_base_url"
                                         placeholder="https://api.openai.com/v1"
                                         value={settings.custom_base_url || ''}
                                         onChange={(e) => setSettings(s => ({ ...s, custom_base_url: e.target.value || null }))}
+                                        className="rounded-xl border-outline-variant/20 bg-surface focus-visible:ring-primary/20"
                                     />
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="custom_api_key">
+                                <div className="space-y-3">
+                                    <Label htmlFor="custom_api_key" className="text-xs font-bold uppercase tracking-widest text-tertiary flex items-center">
                                         API Key
                                         {settings.has_custom_api_key && (
-                                            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                                                <CheckCircle2 className="inline h-3 w-3 mr-1" />
+                                            <span className="ml-2 px-2 py-0.5 rounded flex items-center text-[10px] font-bold bg-green-500/10 text-green-600 dark:text-green-400">
+                                                <CheckCircle2 className="h-3 w-3 mr-1" />
                                                 {t('settings.set')}
                                             </span>
                                         )}
@@ -448,31 +482,15 @@ export default function SettingsPage() {
                                         placeholder={settings.has_custom_api_key ? t('settings.enter_a_new_key_to_update') : 'sk-...'}
                                         value={customApiKey}
                                         onChange={(e) => setCustomApiKey(e.target.value)}
+                                        className="rounded-xl border-outline-variant/20 bg-surface focus-visible:ring-primary/20"
                                     />
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-[11px] font-medium text-tertiary">
                                         {t('settings.the_api_key_is_stored_encrypted_and_is_never_returned_to_the_client')}
                                     </p>
                                 </div>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     )}
-
-                    {/* Save Button */}
-                    <div className="flex justify-end pt-4">
-                        <Button type="submit" disabled={saving} className="min-w-[120px]">
-                            {saving ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    {t('settings.actions.saving')}
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="mr-2 h-4 w-4" />
-                                    {t('settings.actions.save')}
-                                </>
-                            )}
-                        </Button>
-                    </div>
                 </form>
             )}
         </div>

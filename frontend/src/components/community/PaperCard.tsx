@@ -79,68 +79,66 @@ export function PaperCard({ paper }: PaperCardProps) {
   const publishedAt = paper.official_published_at ?? paper.created_at
 
   return (
-    <Card className="group overflow-hidden rounded-[26px] border border-[color:var(--shell-border)] bg-[color:color-mix(in_srgb,var(--shell-surface)_96%,transparent)] text-[var(--shell-text)] shadow-[var(--shell-panel-shadow)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shell-panel-shadow-strong)]">
-      <div className="p-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <PaperStatusBadge kind="translation" value={paper.trans_status} />
-          <div className="rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-            {paper.source === "arxiv" ? t("community.detail.sourceArxiv") : t("community.detail.sourceUpload")}
+    <Link
+      to={`/paper/${paper.id}`}
+      onMouseEnter={prefetchDetailNavigation}
+      onFocus={prefetchDetailNavigation}
+      onPointerDown={prefetchDetailNavigation}
+      className="bg-surface-container-lowest rounded-xl p-5 border border-outline-variant/10 shadow-sm hover:shadow-md hover:border-primary/20 transition-all flex flex-col gap-3 group cursor-pointer text-left block"
+    >
+      <div className="flex items-center justify-between">
+        <PaperStatusBadge kind="translation" value={paper.trans_status} />
+        <span className="text-tertiary text-[10px] font-medium">
+          {publishedAt ? new Date(publishedAt).toLocaleDateString() : t("community.card.dateUnknown")}
+        </span>
+      </div>
+
+      <div>
+        <h3 className="text-lg font-bold leading-tight group-hover:text-primary transition-colors text-on-surface">
+          {paper.title}
+        </h3>
+        <p className="text-tertiary text-xs mt-1">{authorsLabel}</p>
+      </div>
+
+      <p className="text-on-surface-variant text-xs line-clamp-2 leading-relaxed">
+        {abstractPreview}
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        {paper.categories.slice(0, 3).map((cat) => (
+          <span key={cat} className="text-[9px] font-bold text-tertiary bg-surface-container px-2 py-0.5 rounded uppercase">
+            #{cat.toLowerCase()}
+          </span>
+        ))}
+        {paper.categories.length === 0 && (
+           <span className="text-[9px] font-bold text-tertiary bg-surface-container px-2 py-0.5 rounded uppercase">
+             #uncategorized
+           </span>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between pt-3 mt-auto border-t border-outline-variant/5">
+        <div className="flex gap-4">
+          <div className="flex items-center gap-1.5 text-tertiary group-hover:text-on-surface transition-colors">
+            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 0" }}>favorite</span>
+            <span className="text-[11px] font-bold">0</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-tertiary group-hover:text-on-surface transition-colors">
+            <span className="material-symbols-outlined text-base">chat_bubble</span>
+            <span className="text-[11px] font-bold">0</span>
           </div>
         </div>
-
-        <div className="mt-5 space-y-4">
-          <Link
-            to={`/paper/${paper.id}`}
-            onMouseEnter={prefetchDetailNavigation}
-            onFocus={prefetchDetailNavigation}
-            onPointerDown={prefetchDetailNavigation}
-            className="block space-y-3"
-          >
-            <h2 className="text-balance text-[1.18rem] font-semibold leading-8 tracking-[-0.03em] text-[var(--shell-heading)] transition group-hover:text-white">
-              {paper.title}
-            </h2>
-
-            <div className="text-sm text-[var(--shell-text-soft)]">{authorsLabel}</div>
-
-            <div className="flex flex-wrap gap-2 text-xs text-[var(--shell-text-muted)]">
-              <span className="rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] px-3 py-1">
-                {categoriesLabel}
-              </span>
-            </div>
-
-            <p className="line-clamp-4 text-[14px] leading-7 text-[var(--shell-text-soft)]">{abstractPreview}</p>
-          </Link>
-
-          <div className="grid gap-2 rounded-[20px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-muted)] px-4 py-3 text-sm text-[var(--shell-text-soft)]">
-            <div>
-              {publishedAt
-                ? t("community.card.publishedAt", {
-                    value: new Date(publishedAt).toLocaleDateString(),
-                  })
-                : t("community.card.dateUnknown")}
-            </div>
-            <div>{assetLabel}</div>
-            <div>
-              {paper.arxiv_id ? t("community.card.arxivId", { value: paper.arxiv_id }) : t("community.card.uploadSource")}
-            </div>
-          </div>
-
-          <Button
-            asChild
-            className="h-11 rounded-full bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
-          >
-            <Link
-              to={`/paper/${paper.id}`}
-              onMouseEnter={prefetchDetailNavigation}
-              onFocus={prefetchDetailNavigation}
-              onPointerDown={prefetchDetailNavigation}
-            >
-              {t("community.card.viewDetail")}
-              <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </Link>
-          </Button>
+        <div className="flex -space-x-2">
+           <div className="w-6 h-6 rounded-full border-2 border-surface-container-lowest bg-surface-container-highest flex items-center justify-center overflow-hidden" title={paper.source === "arxiv" ? "Source: arXiv" : "Source: Upload"}>
+             <span className="text-[8px] font-bold text-tertiary">{paper.source.charAt(0).toUpperCase()}</span>
+           </div>
+           {paper.latest_asset && (
+             <div className="w-6 h-6 rounded-full border-2 border-surface-container-lowest bg-primary text-[8px] flex items-center justify-center font-bold text-on-primary" title={assetLabel}>
+               <span className="material-symbols-outlined text-[10px]">description</span>
+             </div>
+           )}
         </div>
       </div>
-    </Card>
+    </Link>
   )
 }

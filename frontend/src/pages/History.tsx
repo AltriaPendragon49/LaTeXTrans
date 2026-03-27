@@ -1,19 +1,11 @@
-/**
- * History Page
- * 
- * Displays user's translation history with pagination.
- * Requires authentication - shows prompt for guests.
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useStore } from '@/store/useStore'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Loader2, History, Clock, FileText, ArrowRight, LogIn, RefreshCw, ChevronDown, Settings2, Languages, Wrench, Sparkles, CheckCircle2, XCircle, Trash2 } from 'lucide-react'
+import { Loader2, History, Clock, FileText, ArrowRight, LogIn, RefreshCw, ChevronDown, Settings2, Languages, Wrench, Sparkles, CheckCircle2, XCircle, Trash2, Download, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     AlertDialog,
@@ -41,14 +33,12 @@ interface TaskHistoryItem {
     progress: number
     created_at: string
     completed_at?: string
-    // Config snapshot
     source_language: string
     target_language: string
     compile_strategy: string
     translation_model?: string
     generate_glossary: boolean
     use_author_api: boolean
-    // Typography formatting snapshot
     formatting?: Record<string, unknown> | null
 }
 
@@ -60,20 +50,16 @@ interface HistoryResponse {
     has_more: boolean
 }
 
-// Status badge styling
-// fix-task-status-sync Task 3: Map all terminal failure states to the red "Failed" badge.
-// structure_invalid and failed_compilation must NOT fall through to the yellow "pending" default.
 const statusStyles: Record<string, string> = {
     pending: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
     processing: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-    completed: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
-    completed_with_warnings: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
+    completed: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+    completed_with_warnings: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
     failed: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
     failed_compilation: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
     structure_invalid: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
 }
 
-// Terminal failure statuses — clicking these should navigate to preview/details, not processing.
 const TERMINAL_FAIL_STATUSES = new Set(['failed', 'failed_compilation', 'structure_invalid'])
 
 export default function HistoryPage() {
@@ -90,11 +76,9 @@ export default function HistoryPage() {
     const [total, setTotal] = useState(0)
     const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
 
-    // Delete states
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [taskToDelete, setTaskToDelete] = useState<string | null>(null)
 
-    // Batch selection state
     const [selectionMode, setSelectionMode] = useState(false)
     const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
     const retryTimeoutRef = useRef<number | null>(null)
@@ -110,7 +94,7 @@ export default function HistoryPage() {
     }, [])
 
     const toggleExpand = (taskId: string, e: React.MouseEvent) => {
-        e.stopPropagation() // 防止触发卡片点击
+        e.stopPropagation()
         setExpandedTasks(prev => {
             const newSet = new Set(prev)
             if (newSet.has(taskId)) {
@@ -122,7 +106,6 @@ export default function HistoryPage() {
         })
     }
 
-    // Fetch history
     const fetchHistory = useCallback(async (pageNum: number, append: boolean = false, attempt: number = 0) => {
         clearScheduledRetry()
         setLoading(true)
@@ -187,14 +170,12 @@ export default function HistoryPage() {
         }
     }, [clearScheduledRetry, session?.access_token, t])
 
-    // Load more handler
     const loadMore = () => {
         if (!loading && hasMore) {
             fetchHistory(page + 1, true)
         }
     }
 
-    // Initial load when authenticated
     useEffect(() => {
         if (isAuthenticated) {
             fetchHistory(1)
@@ -202,7 +183,6 @@ export default function HistoryPage() {
         return clearScheduledRetry
     }, [clearScheduledRetry, fetchHistory, isAuthenticated])
 
-    // Delete handlers
     const handleDeleteClick = (taskId: string, e: React.MouseEvent) => {
         e.stopPropagation()
         setTaskToDelete(taskId)
@@ -213,8 +193,6 @@ export default function HistoryPage() {
         if (!taskToDelete) return
 
         const deletingId = taskToDelete
-
-        // Close dialog immediately, show loading toast
         setDeleteDialogOpen(false)
         setTaskToDelete(null)
 
@@ -222,8 +200,6 @@ export default function HistoryPage() {
 
         try {
             await deleteTask(deletingId)
-
-            // Only remove from list after API success
             setTasks(prev => prev.filter(t => t.task_id !== deletingId))
             setTotal(prev => prev - 1)
             setSelectedTasks(prev => {
@@ -231,22 +207,18 @@ export default function HistoryPage() {
                 newSet.delete(deletingId)
                 return newSet
             })
-
             toast.success(t('history.task_deleted'), { id: toastId })
         } catch (error) {
-            console.error('[History] Failed to delete task', error)
             toast.error(t('history.delete_failed_please_try_again'), { id: toastId })
         }
     }
 
-    // Batch delete handler
     const handleBatchDelete = async () => {
         if (selectedTasks.size === 0) return
 
         const deletingIds = Array.from(selectedTasks)
         const count = deletingIds.length
 
-        // Exit selection mode, show loading toast
         setSelectedTasks(new Set())
         setSelectionMode(false)
 
@@ -259,7 +231,6 @@ export default function HistoryPage() {
                 result.results.filter(r => r.success).map(r => r.task_id)
             )
 
-            // Only remove successfully deleted tasks
             if (successCount > 0) {
                 setTasks(prev => prev.filter(t => !successIds.has(t.task_id)))
                 setTotal(prev => prev - successCount)
@@ -273,12 +244,10 @@ export default function HistoryPage() {
                 toast.error(t('history.delete_failed_0_please_try_again', { count }), { id: toastId })
             }
         } catch (error) {
-            console.error('[History] Failed to delete tasks', error)
             toast.error(t('history.batch_delete_failed_please_try_again'), { id: toastId })
         }
     }
 
-    // Selection handlers
     const toggleSelection = (taskId: string) => {
         setSelectedTasks(prev => {
             const newSet = new Set(prev)
@@ -299,102 +268,77 @@ export default function HistoryPage() {
         }
     }
 
-    // Loading state
-    if (authLoading) {
-        return (
-            <div className="container mx-auto max-w-4xl p-6 flex flex-col items-center justify-center min-h-[60vh]">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        )
-    }
-
-    // Not authenticated
-    if (!isAuthenticated) {
-        return (
-            <div className="container mx-auto max-w-4xl p-6 space-y-6 animate-in fade-in duration-500">
-                <div className="space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                        <History className="h-8 w-8" />
-                        {t('history.history')}
-                    </h1>
-                </div>
-
-                <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                    <CardContent className="pt-6 space-y-4">
-                        <div className="text-center py-8 space-y-4">
-                            <div className="mx-auto p-4 rounded-full bg-muted/50 w-fit">
-                                <LogIn className="h-8 w-8 text-muted-foreground" />
-                            </div>
-                            <div className="space-y-2">
-                                <p className="text-lg font-medium">{t('history.sign_in_to_view_translation_history')}</p>
-                                <p className="text-muted-foreground">
-                                    {t('history.sign_in_to_view_and_manage_all_translation_task_records')}
-                                </p>
-                            </div>
-                            <Button onClick={() => navigate('/login')} className="mt-4">
-                                <LogIn className="mr-2 h-4 w-4" />
-                                {t('common.go_to_sign_in')}
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        )
-    }
-
-    // Format date
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr)
         const locale = i18n.resolvedLanguage === 'zh' ? 'zh-CN' : i18n.resolvedLanguage
         return date.toLocaleString(locale, {
             year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
+            month: 'short',
+            day: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
         })
     }
 
-    // Handle task click - navigate based on status
     const handleTaskClick = (task: TaskHistoryItem) => {
-        // Set taskId in store so preview/processing pages can access it
         setTaskId(task.task_id)
         if (task.arxiv_id) {
             setArxivId(task.arxiv_id)
         }
 
-        // Navigate based on task status
         if (task.status === 'completed' || task.status === 'completed_with_warnings') {
             navigate('/preview')
         } else if (TERMINAL_FAIL_STATUSES.has(task.status)) {
-            // fix-task-status-sync Task 3: Terminal failures stay in history; navigate to
-            // processing page so user can see the failure details/reason.
             navigate(`/processing?taskId=${task.task_id}`)
         } else {
-            // 直接将 taskId 放入 URL 参数，避免依赖 store 异步更新
             navigate(`/processing?taskId=${task.task_id}`)
         }
     }
 
-    return (
-        <div className="container mx-auto max-w-4xl p-6 space-y-6 animate-in fade-in duration-500">
-            <div className="flex items-center justify-between">
-                <div className="space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                        <History className="h-8 w-8" />
-                        {t('history.history')}
-                    </h1>
-                    <p className="text-muted-foreground">
-                        {t('history.total_translation_tasks', { count: total })}
-                    </p>
+    if (authLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[40vh]">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
+
+    if (!isAuthenticated) {
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500 max-w-2xl mx-auto py-12">
+                <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-sm p-10 text-center space-y-4">
+                    <div className="mx-auto p-4 rounded-full bg-surface-container-low w-fit mb-6">
+                        <LogIn className="h-8 w-8 text-tertiary" />
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="text-xl font-bold text-on-surface">{t('history.sign_in_to_view_translation_history')}</h2>
+                        <p className="text-sm text-tertiary max-w-md mx-auto">
+                            {t('history.sign_in_to_view_and_manage_all_translation_task_records')}
+                        </p>
+                    </div>
+                    <Button onClick={() => navigate('/login')} className="mt-8 rounded-full px-8 py-2.5">
+                        <LogIn className="mr-2 h-4 w-4" />
+                        {t('common.go_to_sign_in')}
+                    </Button>
                 </div>
-                <div className="flex items-center gap-2">
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <p className="text-sm font-bold text-tertiary">
+                    {t('history.total_translation_tasks', { count: total })}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
                     {selectionMode ? (
                         <>
                             <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={selectAll}
+                                className="rounded-full shadow-sm"
                             >
                                 {selectedTasks.size === tasks.length ? t('history.clear_selection') : t('history.select_all')}
                             </Button>
@@ -403,7 +347,7 @@ export default function HistoryPage() {
                                 size="sm"
                                 onClick={handleBatchDelete}
                                 disabled={selectedTasks.size === 0}
-                                className="min-w-[90px]"
+                                className="min-w-[90px] rounded-full shadow-sm"
                             >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 {t('history.delete_selected', { count: selectedTasks.size })}
@@ -415,6 +359,7 @@ export default function HistoryPage() {
                                     setSelectionMode(false)
                                     setSelectedTasks(new Set())
                                 }}
+                                className="rounded-full"
                             >
                                 {t('common.actions.cancel')}
                             </Button>
@@ -426,6 +371,7 @@ export default function HistoryPage() {
                                 size="sm"
                                 onClick={() => setSelectionMode(true)}
                                 disabled={tasks.length === 0}
+                                className="rounded-full shadow-sm"
                             >
                                 {t('history.select')}
                             </Button>
@@ -434,6 +380,7 @@ export default function HistoryPage() {
                                 size="sm"
                                 onClick={() => fetchHistory(1)}
                                 disabled={loading}
+                                className="rounded-full shadow-sm"
                             >
                                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                                 {t('history.refresh')}
@@ -444,205 +391,208 @@ export default function HistoryPage() {
             </div>
 
             {error && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="rounded-xl">
                     <AlertDescription>{error}</AlertDescription>
                 </Alert>
             )}
 
-            {/* Task list */}
-            <div className="space-y-3">
-                {tasks.length === 0 && !loading ? (
-                    <Card className="border-border/50 bg-card/80">
-                        <CardContent className="pt-6">
-                            <div className="text-center py-8 text-muted-foreground">
-                                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                <p>{t('history.no_translation_history_yet')}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    tasks.map((task) => (
-                        <Collapsible
-                            key={task.task_id}
-                            open={expandedTasks.has(task.task_id)}
-                            onOpenChange={() => { }}
-                        >
-                            <Card className="border-border/50 bg-card/80 hover:bg-card/90 transition-colors group">
-                                <CardContent className="p-4 space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <div
-                                            className="flex items-center gap-4 flex-1 cursor-pointer"
-                                            onClick={() => !selectionMode && handleTaskClick(task)}
-                                        >
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden shadow-sm">
+                <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-surface-container-low border-b border-outline-variant/10 text-[10px] font-bold uppercase tracking-widest text-tertiary">
+                    <div className="col-span-1" />
+                    <div className="col-span-4">Document</div>
+                    <div className="col-span-3">Timestamp & Mode</div>
+                    <div className="col-span-2">Status</div>
+                    <div className="col-span-2 text-right">Actions</div>
+                </div>
+
+                <div className="divide-y divide-outline-variant/5">
+                    {tasks.length === 0 && !loading ? (
+                        <div className="text-center py-12 text-tertiary">
+                            <FileText className="h-10 w-10 mx-auto mb-4 opacity-50 text-outline" />
+                            <p className="text-sm font-medium">{t('history.no_translation_history_yet')}</p>
+                        </div>
+                    ) : (
+                        tasks.map((task) => (
+                            <Collapsible
+                                key={task.task_id}
+                                open={expandedTasks.has(task.task_id)}
+                                onOpenChange={() => { }}
+                                className="group hover:bg-surface-container-low/50 transition-colors"
+                            >
+                                <div className="p-4 sm:px-6 sm:py-5">
+                                    <div className="flex flex-col md:grid md:grid-cols-12 gap-4 items-start md:items-center">
+                                        <div className="md:col-span-1 pt-1 md:pt-0">
                                             {selectionMode ? (
                                                 <Checkbox
                                                     checked={selectedTasks.has(task.task_id)}
                                                     onCheckedChange={() => toggleSelection(task.task_id)}
-                                                    className="ml-2"
                                                     aria-label={t('history.select_task', { task: task.arxiv_id || task.task_id.slice(0, 8) })}
                                                 />
                                             ) : (
-                                                <div className="p-2 rounded-lg bg-muted">
-                                                    <FileText className="h-5 w-5 text-muted-foreground" />
-                                                </div>
+                                                <FileText className="h-5 w-5 text-primary opacity-80" />
                                             )}
-                                            <div className="space-y-1">
-                                                <p className="font-medium font-mono">
+                                        </div>
+
+                                        <div 
+                                            className="md:col-span-4 self-stretch flex items-center cursor-pointer min-w-0" 
+                                            onClick={() => !selectionMode && handleTaskClick(task)}
+                                        >
+                                            <div className="min-w-0">
+                                                <div className="font-bold text-on-surface text-sm truncate">
                                                     {task.arxiv_id || task.task_id.slice(0, 8)}
-                                                </p>
-                                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                                                    <span className="flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" />
-                                                        {formatDate(task.created_at)}
-                                                    </span>
-                                                    <span className="capitalize">
-                                                        {getTranslationModeLabel(t, task.translation_mode)}
-                                                    </span>
+                                                </div>
+                                                <div className="text-[10px] text-tertiary truncate">
+                                                    {task.source_type === 'upload' ? 'Local Project' : `ArXiv`}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2">
-                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusStyles[task.status] || statusStyles.failed}`}>
-                                                {getTaskStatusLabel(t, task.status)}
+                                        <div className="md:col-span-3 text-sm text-on-surface-variant flex flex-col md:block">
+                                            <span className="md:block">{formatDate(task.created_at)}</span>
+                                            <span className="text-[11px] text-tertiary md:mt-0.5">
+                                                {getTranslationModeLabel(t, task.translation_mode)}
                                             </span>
+                                        </div>
 
+                                        <div className="md:col-span-2">
+                                            <div className={`inline-flex px-2.5 py-1 rounded text-[10px] font-bold border ${statusStyles[task.status] || statusStyles.failed}`}>
+                                                {getTaskStatusLabel(t, task.status)}
+                                            </div>
+                                        </div>
+
+                                        <div className="md:col-span-2 flex items-center justify-end gap-1 w-full md:w-auto">
                                             {!selectionMode && (
                                                 <>
-                                                    {/* Delete button */}
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="h-11 w-11 p-0 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                                                        className="h-8 w-8 p-0 text-tertiary hover:bg-primary/10 hover:text-primary transition-all rounded-lg"
+                                                        onClick={(e) => { e.stopPropagation(); handleTaskClick(task); }}
+                                                        title="View"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-tertiary hover:bg-error/10 hover:text-error transition-all rounded-lg"
                                                         onClick={(e) => handleDeleteClick(task.task_id, e)}
-                                                        aria-label={t('history.delete_task')}
+                                                        title={t('history.delete_task')}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
-
-                                                    {/* 展开配置详情按钮 */}
                                                     <CollapsibleTrigger asChild>
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
-                                                            className="h-11 w-11 p-0 hover:bg-muted"
+                                                            className="h-8 w-8 p-0 text-tertiary hover:bg-surface-container-high transition-all rounded-lg"
                                                             onClick={(e) => toggleExpand(task.task_id, e)}
-                                                            aria-label={t('history.expand_configuration_details')}
+                                                            title={t('history.expand_configuration_details')}
                                                         >
                                                             <Settings2 className="h-4 w-4" />
-                                                            <ChevronDown
-                                                                className={`h-4 w-4 ml-0.5 transition-transform duration-200 ${expandedTasks.has(task.task_id) ? 'rotate-180' : ''
-                                                                    }`}
-                                                            />
                                                         </Button>
                                                     </CollapsibleTrigger>
-
-                                                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 </>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* 可折叠的配置详情区域 */}
-                                    <CollapsibleContent className="animate-in slide-in-from-top-2 fade-in duration-200">
-                                            <div className="pt-3 border-t border-border/50 space-y-3">
-                                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                                                    <Settings2 className="h-4 w-4" />
-                                                    <span className="font-medium">{t('history.translation_configuration')}</span>
+                                    <CollapsibleContent className="animate-in slide-in-from-top-2 fade-in duration-200 mt-4 md:mt-2">
+                                        <div className="pt-4 border-t border-outline-variant/10 md:ml-12 lg:ml-[11.1%] space-y-3">
+                                            <div className="flex items-center gap-2 text-xs font-bold text-tertiary mb-3 uppercase tracking-widest">
+                                                <Settings2 className="h-3 w-3" />
+                                                {t('history.translation_configuration')}
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm pb-2">
+                                                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant/5">
+                                                    <Languages className="h-4 w-4 text-primary" />
+                                                    <span className="text-tertiary text-xs font-bold">{t('history.language')}</span>
+                                                    <span className="font-medium text-on-surface-variant ml-auto">{task.source_language} → {task.target_language}</span>
                                                 </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                                                {/* 语言设置 */}
-                                                <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
-                                                    <Languages className="h-4 w-4 text-blue-500" />
-                                                    <span className="text-muted-foreground">{t('history.language')}</span>
-                                                    <span className="font-medium">{task.source_language} → {task.target_language}</span>
+                                                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant/5">
+                                                    <Wrench className="h-4 w-4 text-primary" />
+                                                    <span className="text-tertiary text-xs font-bold">{t('history.compile_strategy')}</span>
+                                                    <span className="font-medium capitalize text-on-surface-variant ml-auto">{getCompileStrategyLabel(t, task.compile_strategy)}</span>
                                                 </div>
 
-                                                {/* 编译策略 */}
-                                                <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
-                                                    <Wrench className="h-4 w-4 text-orange-500" />
-                                                    <span className="text-muted-foreground">{t('history.compile_strategy')}</span>
-                                                    <span className="font-medium capitalize">{getCompileStrategyLabel(t, task.compile_strategy)}</span>
-                                                </div>
-
-                                                {/* 翻译模型 */}
                                                 {task.translation_model && (
-                                                    <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30 md:col-span-2">
-                                                        <Sparkles className="h-4 w-4 text-purple-500" />
-                                                        <span className="text-muted-foreground">{t('history.translation_model')}</span>
-                                                        <span className="font-mono text-xs">{task.translation_model}</span>
+                                                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant/5 md:col-span-2">
+                                                        <Sparkles className="h-4 w-4 text-primary" />
+                                                        <span className="text-tertiary text-xs font-bold">{t('history.translation_model')}</span>
+                                                        <span className="font-mono text-xs text-on-surface-variant ml-auto">{task.translation_model}</span>
                                                     </div>
                                                 )}
 
-                                                {/* 高级选项 */}
-                                                <div className="md:col-span-2 flex flex-wrap gap-2">
-                                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30">
+                                                <div className="md:col-span-2 flex flex-wrap gap-2 mt-1">
+                                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container border border-outline-variant/10">
                                                         {task.generate_glossary ? (
-                                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
                                                         ) : (
-                                                            <XCircle className="h-3.5 w-3.5 text-gray-400" />
+                                                            <XCircle className="h-3.5 w-3.5 text-tertiary" />
                                                         )}
-                                                        <span className="text-xs">{t('common.generate_glossary')}</span>
+                                                        <span className="text-[11px] font-bold text-on-surface-variant">{t('common.generate_glossary')}</span>
                                                     </div>
 
-                                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30">
+                                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container border border-outline-variant/10">
                                                         {task.use_author_api ? (
-                                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
                                                         ) : (
-                                                            <XCircle className="h-3.5 w-3.5 text-gray-400" />
+                                                            <XCircle className="h-3.5 w-3.5 text-tertiary" />
                                                         )}
-                                                        <span className="text-xs">{t('history.use_author_api')}</span>
+                                                        <span className="text-[11px] font-bold text-on-surface-variant">{t('history.use_author_api')}</span>
                                                     </div>
                                                 </div>
 
-                                                {/* 排版配置快照 */}
                                                 {task.formatting && Object.keys(task.formatting).length > 0 && (
-                                                    <div className="md:col-span-2 space-y-2">
-                                                        <div className="text-xs text-muted-foreground font-medium">{t('history.formatting_settings')}</div>
-                                                        <div className="flex flex-wrap gap-1.5">
+                                                    <div className="md:col-span-2 mt-3 p-4 bg-surface-container-lowest border border-outline-variant/10 rounded-xl">
+                                                        <div className="text-[10px] font-bold uppercase tracking-widest text-tertiary mb-3">
+                                                            {t('history.formatting_settings')}
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
                                                             {task.formatting.line_spacing != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.line_spacing', { value: String(task.formatting.line_spacing) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.font_size != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.font_size_pt', { value: String(task.formatting.font_size) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.column_mode != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {getFormattingValueLabel(t, 'column_mode', String(task.formatting.column_mode))}
                                                                 </span>
                                                             )}
                                                             {task.formatting.margin != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.margins', { value: getFormattingValueLabel(t, 'margin', String(task.formatting.margin)) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.cjk_font != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.font', { value: getFormattingValueLabel(t, 'cjk_font', String(task.formatting.cjk_font)) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.paragraph_indent === true && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('formatting.firstLineIndent')}
                                                                 </span>
                                                             )}
                                                             {task.formatting.localize_captions === true && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.localize_figures_tables')}
                                                                 </span>
                                                             )}
                                                             {task.formatting.bib_style != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.bibliography', { value: String(task.formatting.bib_style) })}
                                                                 </span>
                                                             )}
                                                             {task.formatting.cite_style != null && (
-                                                                <span className="px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                                                <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary/10 text-primary border border-primary/20">
                                                                     {t('history.citation', { value: getFormattingValueLabel(t, 'cite_style', String(task.formatting.cite_style)) })}
                                                                 </span>
                                                             )}
@@ -652,20 +602,20 @@ export default function HistoryPage() {
                                             </div>
                                         </div>
                                     </CollapsibleContent>
-                                </CardContent>
-                            </Card>
-                        </Collapsible>
-                    ))
-                )}
+                                </div>
+                            </Collapsible>
+                        ))
+                    )}
+                </div>
             </div>
 
-            {/* Load more button */}
             {hasMore && (
-                <div className="flex justify-center pt-4">
+                <div className="flex justify-center pt-2">
                     <Button
                         variant="outline"
                         onClick={loadMore}
                         disabled={loading}
+                        className="rounded-full shadow-sm"
                     >
                         {loading ? (
                             <>
@@ -679,20 +629,19 @@ export default function HistoryPage() {
                 </div>
             )}
 
-            {/* Delete confirmation dialog */}
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                <AlertDialogContent>
+                <AlertDialogContent className="rounded-2xl">
                     <AlertDialogHeader>
                         <AlertDialogTitle>{t('history.dialog.confirmDeleteTitle')}</AlertDialogTitle>
-                        <AlertDialogDescription>
+                        <AlertDialogDescription className="text-sm">
                             {t('history.this_action_deletes_all_data_for_this_task_source_files_translated_results_glossary_and_cannot_be_undone_continue')}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>{t('common.actions.cancel')}</AlertDialogCancel>
+                    <AlertDialogFooter className="gap-2 sm:gap-0 mt-4">
+                        <AlertDialogCancel className="rounded-full">{t('common.actions.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={confirmDelete}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            className="bg-error text-on-error hover:bg-error/90 rounded-full"
                         >
                             {t('common.actions.confirmDelete')}
                         </AlertDialogAction>

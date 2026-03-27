@@ -1,4 +1,4 @@
-﻿import { ArrowLeft, Clock3, Link2 } from "lucide-react"
+import { ArrowLeft, Clock3, Link2, Download, Languages, Timer } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
@@ -1078,72 +1078,101 @@ export default function PaperDetailPage() {
   return (
     <div
       data-testid="paper-detail-page-shell"
-      className="min-h-full bg-[var(--shell-bg)] px-4 py-4 text-[var(--shell-text)] transition-colors sm:px-6 lg:px-8"
+      className="flex-1 flex flex-col min-w-0 bg-surface-container-lowest h-full overflow-hidden"
     >
-      <div className="mx-auto w-full max-w-[2800px] space-y-3">
-        <Button
-          asChild
-          variant="ghost"
-          className="min-h-10 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-4 text-[var(--shell-heading)] hover:bg-[var(--shell-pill-hover)]"
-        >
-          <Link to="/">
-            <ArrowLeft className="h-4 w-4" />
-            {t("community.detail.backToFeed")}
-          </Link>
-        </Button>
-
-        <section className="rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[var(--shell-panel-shadow-strong)] sm:p-5">
-          <div className="space-y-2">
-            <h1 className="max-w-5xl text-balance text-[1.95rem] font-semibold tracking-tight text-[var(--shell-heading)] sm:text-[2.65rem]">
-              {activePaper.title}
-            </h1>
-            <p className="max-w-3xl text-[15px] text-[var(--shell-text-soft)]">{authorsLabel}</p>
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-                {activePaper.categories.length
-                ? activePaper.categories.join(" · ")
-                : t("community.card.categoriesUnavailable")}
-              </p>
-          </div>
-
-          <div
-            data-testid="paper-detail-header-metadata"
-            className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color:var(--shell-border-strong)] pt-3"
+      <header className="h-14 shrink-0 flex items-center justify-between px-6 border-b border-outline-variant/30 bg-surface-container-lowest z-10 relative">
+        <div className="flex items-center gap-4 min-w-0 flex-1">
+          <Link
+            to="/"
+            className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest rounded-full transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label={t("community.detail.backToFeed")}
           >
-            <div className="rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-text-muted)]">
-              {activePaper.source === "arxiv"
-                ? t("community.detail.sourceArxiv")
-                : t("community.detail.sourceUpload")}
-            </div>
-            {activePaper.arxiv_id ? (
-              <div className="rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-text-muted)]">
-                {t("community.detail.arxivBadge", { value: activePaper.arxiv_id })}
-              </div>
-            ) : null}
-            {detailMetaItems.map(({ key, icon: Icon, label, ariaLabel }) => (
-              <div
-                key={key}
-                aria-label={ariaLabel}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-text-muted)]"
-              >
-                <Icon className="h-3.5 w-3.5 text-[var(--shell-text-muted)]" />
-                <span className="tabular-nums text-[var(--shell-text-soft)]">{label}</span>
-              </div>
-            ))}
-            {originalSourceUrl ? (
-              <a
-                href={originalSourceUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[color:var(--shell-border-strong)] bg-[var(--shell-pill)] px-3 py-2 text-xs text-[var(--shell-text-soft)] transition-colors hover:text-[var(--shell-heading)]"
-              >
-                <Link2 className="h-3.5 w-3.5 text-[var(--shell-text-muted)]" />
-                <span className="font-medium text-[var(--shell-text-muted)]">
-                  {t("community.detail.originalSource")}
-                </span>
-                <span className="break-all text-[var(--shell-text-soft)]">{originalSourceUrl}</span>
-              </a>
-            ) : null}
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="text-base font-medium text-on-surface truncate max-w-2xl" title={activePaper.title}>
+            {activePaper.title}
+          </h1>
+          <span className="text-sm text-on-surface-variant truncate max-w-md hidden lg:inline border-l border-outline-variant/30 pl-4" title={authorsLabel}>
+            {authorsLabel}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 ml-4">
+          <div className="hidden sm:flex bg-surface-container-low rounded-lg p-1 border border-outline-variant/30">
+            <button
+              type="button"
+              disabled={!availableModes.includes("source")}
+              onClick={() => setSelectedMode("source")}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all border ${
+                selectedMode === "source"
+                  ? "bg-surface-container-highest text-on-surface shadow-sm border-outline-variant/30"
+                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              }`}
+            >
+              {t("community.detail.mode.source")}
+            </button>
+            <button
+              type="button"
+              disabled={!availableModes.includes("translated")}
+              onClick={() => setSelectedMode("translated")}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all border ${
+                selectedMode === "translated"
+                  ? "bg-surface-container-highest text-on-surface shadow-sm border-outline-variant/30"
+                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              }`}
+            >
+              {t("community.detail.mode.translated")}
+            </button>
           </div>
+
+          <div className="hidden sm:block w-px h-6 bg-outline-variant/30" />
+          
+          <div className="hidden md:flex items-center gap-2 text-xs text-on-surface-variant px-2">
+             <span className={`flex h-2 w-2 rounded-full ${actionError ? 'bg-error' : (hasTranslatedReader ? 'bg-primary' : 'bg-primary/50 animate-pulse')}`} />
+             {actionError ? "Error" : stageLabel}
+          </div>
+
+          {canTranslate && !canViewProgress && (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={handleTranslate}
+              className="flex items-center gap-2 px-3 py-1.5"
+            >
+              <Languages className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("community.actions.translate")}</span>
+            </Button>
+          )}
+
+          {canViewProgress && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleViewProgress}
+              className="flex items-center gap-2 px-3 py-1.5"
+            >
+              <Timer className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("community.actions.viewProgress")}</span>
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!canDownload}
+            onClick={handleDownload}
+            className="flex items-center gap-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest rounded-lg px-3 py-1.5 transition-colors font-medium border border-transparent shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">{t("community.actions.download")}</span>
+          </Button>
+        </div>
+      </header>
+      
+      <div className="flex-1 flex overflow-hidden relative">
 
           <PaperDetailWorkspace
             paper={activePaper}
@@ -1188,7 +1217,6 @@ export default function PaperDetailPage() {
             onQuickSummary={() => void handleAgentQuickRun(t("community.detail.quickSummary"))}
             onCitationOpen={(citation) => void handleAgentCitationOpen(citation)}
           />
-        </section>
       </div>
     </div>
   )
