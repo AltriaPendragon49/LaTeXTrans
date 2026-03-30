@@ -32,6 +32,7 @@ export default function Dashboard() {
     startTranslation,
     loadUserSettings,
   } = useStore()
+  const canStartSingleTranslation = Boolean(taskId && status === "ready")
 
   const [activeTab, setActiveTab] = useState("arxiv")
   const [isConfigOpen, setIsConfigOpen] = useState(false)
@@ -255,7 +256,7 @@ export default function Dashboard() {
               <Button
                 size="lg"
                 onClick={handleStart}
-                disabled={!taskId || status === "downloading" || status === "starting_translation"}
+                disabled={!canStartSingleTranslation}
                 className="px-10 py-6 bg-primary text-on-primary rounded-full font-bold flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-[0_10px_20px_rgba(239,68,68,0.2)] md:w-auto w-full text-base disabled:scale-100 disabled:shadow-none disabled:opacity-50"
               >
                 {t("dashboard.start_translation")}

@@ -15,6 +15,7 @@ const Login = lazy(() => import("./pages/Login"))
 const ProfilePage = lazy(() => import("./pages/Profile"))
 const PaperDetailPage = lazy(() => import("./pages/PaperDetail"))
 const ToolsHubPage = lazy(() => import("./pages/ToolsHub"))
+const SettingsPage = lazy(() => import("./pages/Settings"))
 
 function RouteLoading() {
   const { t } = useTranslation()
@@ -60,7 +61,7 @@ function App() {
               <Route path="preview" element={withSuspense(<ComparisonsPage />)} />
               <Route path="history" element={<Navigate to="/tools?panel=history" replace />} />
               <Route path="glossary" element={<Navigate to="/tools?panel=glossary" replace />} />
-              <Route path="settings" element={<Navigate to="/tools?panel=settings" replace />} />
+              <Route path="settings" element={withSuspense(<SettingsPage />)} />
               <Route path="profile" element={withSuspense(<ProfilePage />)} />
             </Route>
           </Routes>

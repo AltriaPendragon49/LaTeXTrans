@@ -191,7 +191,7 @@ describe("PaperDetailPage reader-first", () => {
     expect(panelQueries.queryByText("Preview HTML · preview.html")).not.toBeInTheDocument()
   })
 
-  it("starts translation without jumping to the processing page", async () => {
+  it("starts translation and routes to the processing page", async () => {
     translateCommunityPaperMock.mockResolvedValue({
       paper_id: "paper-1",
       task_id: "task-new",
@@ -214,9 +214,7 @@ describe("PaperDetailPage reader-first", () => {
       expect(translateCommunityPaperMock).toHaveBeenCalled()
     })
 
-    expect(navigateMock).not.toHaveBeenCalledWith("/processing?taskId=task-new")
-    expect(await screen.findByText("Generating the Chinese version")).toBeInTheDocument()
-    expect(screen.getByText("You can keep reading. This page updates automatically when the Chinese version is ready.")).toBeInTheDocument()
+    expect(navigateMock).toHaveBeenCalledWith("/processing?taskId=task-new")
   })
 
   it("runs a paper-aware agent shortcut inside the side panel", async () => {

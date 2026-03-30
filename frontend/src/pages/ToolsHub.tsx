@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 
 import Dashboard from "@/pages/Dashboard"
 import HistoryPage from "@/pages/History"
-import SettingsPage from "@/pages/Settings"
+import TranslationSettings from "@/pages/TranslationSettings"
 
 function GlossaryPanel() {
   const { t } = useTranslation()
@@ -65,7 +65,7 @@ export default function ToolsHubPage() {
           {panel === "history" ? (
             <HistoryPage />
           ) : panel === "settings" ? (
-            <SettingsPage />
+            <TranslationSettings />
           ) : panel === "glossary" ? (
             <GlossaryPanel />
           ) : (

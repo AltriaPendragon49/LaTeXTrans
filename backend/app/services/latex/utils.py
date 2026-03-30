@@ -2365,6 +2365,26 @@ def _parse_total_size_from_headers(response: requests.Response, existing_size: i
     return None
 
 
+def _response_points_to_pdf(response: requests.Response) -> bool:
+    content_type = (response.headers.get("Content-Type") or "").lower()
+    if "application/pdf" in content_type:
+        return True
+    content_disposition = (response.headers.get("Content-Disposition") or "").lower()
+    return ".pdf" in content_disposition
+
+
+def _peek_file_signature(file_path: str, size: int = 8) -> bytes:
+    try:
+        with open(file_path, "rb") as source_file:
+            return source_file.read(size)
+    except OSError:
+        return b""
+
+
+def _looks_like_pdf_payload(signature: bytes) -> bool:
+    return signature.startswith(b"%PDF-")
+
+
 def _extract_downloaded_tex_archive(
     arxiv_id: str,
     archive_path: str,
@@ -2390,6 +2410,11 @@ def _extract_downloaded_tex_archive(
     except tarfile.ReadError as tar_read_error:
         # Some arXiv e-print responses are a plain gzipped TeX source instead of tar.
         logger.warning(f"[ARXIV][EXTRACT_FALLBACK] Tar read failed for {archive_path}: {tar_read_error}")
+        signature = _peek_file_signature(archive_path)
+        if _looks_like_pdf_payload(signature):
+            raise ArxivNoSourceAvailableError(
+                f"arXiv paper {arxiv_id} does not expose TeX source (e-print returned PDF payload)"
+            ) from tar_read_error
         try:
             import gzip
 
@@ -2486,6 +2511,16 @@ def download_arxiv_source_archive(
 
                     response.raise_for_status()
 
+                    if _response_points_to_pdf(response):
+                        no_source_count += 1
+                        logger.warning(
+                            f"[ARXIV][NO_SOURCE] {arxiv_id} returned PDF payload from {source_url} "
+                            "(no TeX source published)"
+                        )
+                        if os.path.exists(archive_path):
+                            os.remove(archive_path)
+                        break
+
                     supports_resume = (status_code == 206)
                     if existing_size > 0 and not supports_resume:
                         logger.warning(
@@ -2515,6 +2550,16 @@ def download_arxiv_source_archive(
                         )
                     if final_size <= 0:
                         raise ArxivNetworkFailureError(f"Downloaded empty archive for {arxiv_id}")
+
+                    signature = _peek_file_signature(archive_path)
+                    if _looks_like_pdf_payload(signature):
+                        no_source_count += 1
+                        logger.warning(
+                            f"[ARXIV][NO_SOURCE] {arxiv_id} archive bytes indicate PDF payload from {source_url} "
+                            "(no TeX source published)"
+                        )
+                        os.remove(archive_path)
+                        break
 
                     logger.info(
                         f"[ARXIV][DOWNLOAD_OK] {arxiv_id} from {source_url} "

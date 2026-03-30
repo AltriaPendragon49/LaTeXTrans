@@ -510,7 +510,7 @@
   "theme.mode.light": "Day",
   "theme.toggle.switchToLight": "Switch to day mode",
   "theme.toggle.switchToDark": "Switch to dark mode",
-  "community.feed.launchTitle": "Ask the paper agent, then move into a focused reader workspace.",
+  "community.feed.launchTitle": "今天想学点什么论文？",
   "community.feed.launchDescription": "Use one input for paper search, explanation, or translation requests. The next step opens a dedicated conversation page with citations, history, and direct reader actions.",
   "community.feed.panel.searchTitle": "Search papers",
   "community.feed.panel.searchDescription": "Search the community first, then extend to arXiv and configured external providers without extra mode switching.",

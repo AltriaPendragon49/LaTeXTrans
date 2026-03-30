@@ -30,11 +30,11 @@ The system SHALL provide a first-read contract that makes paper detail and readi
 - **AND** the non-reader metadata SHALL still render without pretending that full reading is immediately ready.
 
 ### Requirement: Public HTML reading prioritizes a paper-like reading surface
-The public reading experience SHALL prefer a sanitized local reader presentation for English arXiv HTML before falling back to PDF or external source links.
+The public reading experience SHALL prefer a sanitized local reader presentation for English arXiv HTML before falling back to PDF or external source links. This layout will be governed directly by the Stitch Maximized Reader design paradigm.
 
 #### Scenario: arXiv HTML is available
 - **WHEN** the paper has an arXiv HTML source
-- **THEN** the system SHALL prefer rendering sanitized article content inside the local reader shell
+- **THEN** the system SHALL prefer rendering sanitized article content inside the local reader shell shaped by the Maximized Reader constraints
 - **AND** it SHALL remove or demote non-reader chrome that does not help the community reading experience.
 
 #### Scenario: English HTML is unavailable

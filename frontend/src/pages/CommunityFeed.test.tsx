@@ -41,7 +41,6 @@ describe("CommunityFeedPage", () => {
 
     expect(useCommunityPapersMock).toHaveBeenCalledWith("latest", "")
     expect(screen.getByRole("heading", { name: i18n.t("community.feed.launchTitle") })).toBeInTheDocument()
-    expect(screen.getByText(i18n.t("community.feed.recentTitle"))).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.agent.intent.search"))).toBeInTheDocument()
   })
 
@@ -60,7 +59,7 @@ describe("CommunityFeedPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByTestId("community-feed-loading")).toBeInTheDocument()
+    expect(screen.getByText("Exploring more papers")).toBeInTheDocument()
   })
 
   it("opens a seeded agent conversation with the selected prompt and tool toggles", async () => {
@@ -84,7 +83,7 @@ describe("CommunityFeedPage", () => {
     )
 
     await user.type(screen.getByRole("textbox", { name: i18n.t("community.agent.aria") }), "Explain this paper")
-    await user.click(screen.getByRole("switch", { name: i18n.t("community.agent.externalSearch.label") }))
+    await user.click(screen.getByRole("button", { name: i18n.t("community.agent.externalSearch.label") }))
     await user.click(screen.getByRole("button", { name: i18n.t("community.agent.run") }))
 
     expect(JSON.parse(screen.getByTestId("conversation-state").textContent ?? "{}")).toMatchObject({

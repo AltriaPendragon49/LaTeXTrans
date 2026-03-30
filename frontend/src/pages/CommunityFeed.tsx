@@ -1,4 +1,4 @@
-import { Search, Paperclip, ChevronDown, Plus, Sparkles, ArrowUp } from "lucide-react"
+import { Search, Paperclip, ChevronDown, Sparkles, ArrowUp } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
@@ -20,11 +20,12 @@ export default function CommunityFeedPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [agentInput, setAgentInput] = useState("")
+  const [externalSearchEnabled, setExternalSearchEnabled] = useState(false)
   const [activeTab, setActiveTab] = useState<"latest" | "hot">("latest")
   
   const { items, loading, error, refetch } = useCommunityPapers(activeTab, "")
 
-  function handleSubmit(event: FormEvent) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const normalized = agentInput.trim()
     if (!normalized) return
@@ -33,7 +34,7 @@ export default function CommunityFeedPage() {
       state: {
         seedInput: normalized,
         seedSkillToggles: {
-          external_search: false,
+          external_search: externalSearchEnabled,
         },
       },
     })
@@ -42,26 +43,24 @@ export default function CommunityFeedPage() {
   return (
     <div className="flex-1 w-full bg-surface text-on-surface">
       {/* TOP NAVIGATION / AGENT INPUT AREA */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl bg-surface/80 px-8 md:px-12 pt-8 pb-4 border-b border-outline-variant/10">
+      <header className="px-8 md:px-12 pt-8 pb-4 border-b border-outline-variant/10">
         <div className="max-w-5xl mx-auto flex flex-col gap-8">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">{t("community.feed.launchTitle", "Community Feed")}</h1>
-            <button onClick={handleSubmit} className="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-2 rounded-full font-bold shadow-lg hover:scale-95 transition-transform duration-150 flex items-center gap-2 text-sm border-none">
-              <Plus className="w-5 h-5 shrink-0" />
-              New Project
-            </button>
+
           </div>
 
           {/* Agent Input (Prominent & Centered) */}
           <div className="max-w-3xl mx-auto w-full">
             <form onSubmit={handleSubmit} className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-4 shadow-xl focus-within:border-primary/50 transition-all">
               <textarea 
+                aria-label={t("community.agent.aria")}
                 value={agentInput}
                 onChange={(e) => setAgentInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    if (agentInput.trim() !== '') handleSubmit(e as unknown as FormEvent);
+                    if (agentInput.trim() !== '') handleSubmit(e as unknown as FormEvent<HTMLFormElement>);
                   }
                 }}
                 className="w-full bg-transparent border-none outline-none focus:ring-0 text-on-surface placeholder:text-tertiary resize-none h-20 text-base" 
@@ -72,8 +71,18 @@ export default function CommunityFeedPage() {
                   <button type="button" className="p-2 text-tertiary hover:text-primary transition-colors">
                     <Paperclip className="w-5 h-5" />
                   </button>
-                  <button type="submit" className="flex items-center gap-2 px-3 py-1 bg-surface-container-high hover:bg-surface-container-highest text-xs font-bold rounded-lg border border-outline-variant/20 transition-colors uppercase tracking-wider text-on-surface">
-                    <Search className="w-4 h-4" /> Search
+                  <button
+                    type="button"
+                    aria-pressed={externalSearchEnabled}
+                    aria-label={t("community.agent.externalSearch.label")}
+                    onClick={() => setExternalSearchEnabled((current) => !current)}
+                    className={`flex items-center gap-2 px-3 py-1 text-xs font-bold rounded-lg border transition-colors uppercase tracking-wider ${
+                      externalSearchEnabled
+                        ? "bg-primary text-on-primary border-primary shadow-sm"
+                        : "bg-surface-container-high hover:bg-surface-container-highest border-outline-variant/20 text-on-surface"
+                    }`}
+                  >
+                    <Search className="w-4 h-4" /> {t("community.agent.intent.search", "Search")}
                   </button>
                   <button type="button" className="flex items-center gap-2 px-3 py-1 bg-surface-container-high hover:bg-surface-container-highest text-xs font-bold rounded-lg border border-outline-variant/20 transition-colors uppercase tracking-wider text-on-surface">
                     <Sparkles className="w-4 h-4" /> Balanced <ChevronDown className="w-4 h-4" />
@@ -82,7 +91,7 @@ export default function CommunityFeedPage() {
                 
                 <div className="flex flex-col sm:flex-row items-center gap-4">
                   <span className="text-[10px] font-bold text-tertiary uppercase tracking-widest hidden sm:block">Enter to search</span>
-                  <button type="submit" className="w-9 h-9 bg-primary text-on-primary rounded-lg flex items-center justify-center hover:bg-primary/90 transition-colors shadow-md border-none">
+                  <button type="submit" aria-label={t("community.agent.run")} className="w-9 h-9 bg-primary text-on-primary rounded-lg flex items-center justify-center hover:bg-primary/90 transition-colors shadow-md border-none">
                     <ArrowUp className="w-5 h-5 font-bold" />
                   </button>
                 </div>

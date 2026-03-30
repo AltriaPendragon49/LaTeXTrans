@@ -510,7 +510,7 @@
   "community.detail.stage.translatedReady": "中国語版の閲覧が準備できました",
   "community.detail.stage.unavailable": "中国語版の生成は一時的に利用できません",
   "community.nav.paperTools": "論文ツール",
-  "community.feed.launchTitle": "まず論文エージェントに尋ねてから、集中できるリサーチ作業スペースへ移動します。",
+  "community.feed.launchTitle": "今天想学点什么论文？",
   "community.feed.launchDescription": "論文検索、論文の解説、翻訳依頼を 1 つの入力欄から始められます。次のステップでは、記憶・引用・論文アクションを備えた専用の会話ページが開きます。",
   "community.feed.panel.searchTitle": "論文を検索",
   "community.feed.panel.searchDescription": "まずコミュニティ内を検索し、その後モード切り替えなしで arXiv と設定済みの外部プロバイダーまで広げます。",

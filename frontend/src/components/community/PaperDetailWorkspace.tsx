@@ -28,8 +28,8 @@ import type {
   CommunityConversationTurn,
 } from "@/types/community"
 
-const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio"
-const DEFAULT_SPLIT_RATIO = 0.88
+const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v2"
+const DEFAULT_SPLIT_RATIO = 0.65
 const MIN_READER_WIDTH = 720
 const MIN_AGENT_WIDTH = 260
 const READER_SELECTION_HIGHLIGHT_NAME = "paper-detail-reader-selection"
@@ -160,8 +160,9 @@ export function PaperDetailWorkspace({
     return Number.isFinite(stored) ? stored : DEFAULT_SPLIT_RATIO
   })
   const [isDesktop, setIsDesktop] = useState(() =>
-    typeof window === "undefined" ? true : window.innerWidth >= 1280,
+    typeof window === "undefined" ? true : window.innerWidth >= 1024,
   )
+  const [activeTab, setActiveTab] = useState<"Assistant" | "My Notes" | "Comments" | "Similar">("Assistant")
   const messageListRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -176,7 +177,7 @@ export function PaperDetailWorkspace({
     }
 
     const handleResize = () => {
-      setIsDesktop(window.innerWidth >= 1280)
+      setIsDesktop(window.innerWidth >= 1024)
     }
 
     handleResize()
@@ -304,18 +305,18 @@ export function PaperDetailWorkspace({
       <div
         ref={containerRef}
         data-testid="paper-detail-top-panels"
-        className={cn("flex-1 w-full h-full relative", isDesktop ? "grid" : "flex flex-col overflow-y-auto")}
+        className={cn("flex-1 min-h-0 min-w-0 w-full h-full relative", isDesktop ? "grid" : "flex flex-col overflow-y-auto")}
         style={isDesktop ? { gridTemplateColumns: desktopGridColumns } : undefined}
       >
         <section
           data-testid="paper-detail-reader-panel"
           className={cn(
-            "flex h-full min-w-0 flex-col overflow-hidden bg-surface-container-lowest transition-all [&_[data-reader-anchor-active='true']]:rounded-md [&_[data-reader-anchor-active='true']]:ring-2 [&_[data-reader-anchor-active='true']]:ring-primary/70 [&_[data-reader-anchor-active='true']]:ring-offset-2 [&_[data-reader-anchor-active='true']]:ring-offset-surface-container-lowest [&_[data-reader-selection-active='true']]:rounded-sm [&_[data-reader-selection-active='true']]:bg-primary-fixed/40 [&_[data-reader-selection-active='true']]:shadow-[inset_0_0_0_1px_var(--color-primary-fixed-dim)]",
+            "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-container-lowest transition-all [&_[data-reader-anchor-active='true']]:rounded-md [&_[data-reader-anchor-active='true']]:ring-2 [&_[data-reader-anchor-active='true']]:ring-primary/70 [&_[data-reader-anchor-active='true']]:ring-offset-2 [&_[data-reader-anchor-active='true']]:ring-offset-surface-container-lowest [&_[data-reader-selection-active='true']]:rounded-sm [&_[data-reader-selection-active='true']]:bg-primary-fixed/40 [&_[data-reader-selection-active='true']]:shadow-[inset_0_0_0_1px_var(--color-primary-fixed-dim)]",
             readerHighlight ? "ring-2 ring-primary/60" : "",
             isDesktop ? "border-r border-outline-variant/30" : "border-b border-outline-variant/30 min-h-[50vh]"
           )}
         >
-          <div className="h-10 shrink-0 hidden lg:flex items-center justify-between px-4 border-b border-outline-variant/30 bg-surface-container-low hidden lg:flex">
+          <div className="h-10 shrink-0 hidden lg:flex items-center justify-between px-4 border-b border-outline-variant/30 bg-surface-container-low">
             <div className="flex items-center gap-2 text-sm text-on-surface-variant font-medium">
               <ScrollText className="w-4 h-4 text-primary" />
               {preferredMode === "source" ? "LaTeX Document Reader" : "Translated Document Reader"}
@@ -432,23 +433,39 @@ export function PaperDetailWorkspace({
         <aside
           data-testid="paper-detail-agent-panel"
           className={cn(
-            "flex flex-col bg-surface-container-low relative shrink-0",
+            "flex min-h-0 min-w-0 flex-col overflow-hidden bg-surface-container-low relative shrink-0",
             isDesktop ? "h-full" : "min-h-[500px]"
           )}
         >
-          <div className="p-4 border-b border-outline-variant/30 flex items-center justify-between bg-surface-container-lowest shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-primary" />
-              </div>
-              <span className="font-medium text-on-surface">Curator AI Agent</span>
-            </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-medium tracking-wider uppercase bg-surface-container text-on-surface-variant">
-              Alpha
-            </span>
+          <div className="flex bg-surface-container-lowest border-b border-outline-variant/30 shrink-0 px-2 pt-2 gap-1 overflow-x-auto">
+            {(["Assistant", "My Notes", "Comments", "Similar"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "px-4 py-2.5 text-sm font-medium border-b-2 transition-colors relative -bottom-[1px] whitespace-nowrap outline-none",
+                  activeTab === tab
+                    ? "border-primary text-primary"
+                    : "border-transparent text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50"
+                )}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
 
-          <div ref={messageListRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+          {activeTab !== "Assistant" ? (
+             <div className="flex-1 flex flex-col items-center justify-center p-8 text-on-surface-variant/50 gap-4">
+                <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center">
+                  <Bot className="w-6 h-6 opacity-30" />
+                </div>
+                <p className="text-sm font-medium">Coming Soon</p>
+             </div>
+          ) : (
+            <>
+
+          <div ref={messageListRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
             {agentTurns.length === 0 ? (
                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-on-surface-variant/70 space-y-4">
                   <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center mb-2">
@@ -625,6 +642,8 @@ export function PaperDetailWorkspace({
               <span className="hidden sm:inline opacity-70">Shift + Return to break line</span>
             </div>
           </div>
+          </>
+        )}
         </aside>
       </div>
     </>

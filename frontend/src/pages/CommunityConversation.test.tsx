@@ -154,19 +154,142 @@ describe("CommunityConversationPage streaming", () => {
 
     const input = await screen.findByLabelText("Ask the paper agent")
     await userEvent.type(input, "Explain this paper in Chinese")
-    await userEvent.click(screen.getByRole("button", { name: "Run agent" }))
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
 
     expect(await screen.findByText("Hello world")).toBeInTheDocument()
     expect(
       await screen.findByText("Graph Neural Networks for Molecular Property Prediction"),
     ).toBeInTheDocument()
-    expect(await screen.findByText("Community paper search")).toBeInTheDocument()
+    expect(screen.queryByText("Community paper search")).not.toBeInTheDocument()
     expect(await screen.findByRole("button", { name: "Open reader" })).toBeInTheDocument()
 
     await waitFor(() => {
       expect(streamCommunityAgentRunMock).toHaveBeenCalledTimes(1)
     })
     expect(createCommunityAgentRunMock).not.toHaveBeenCalled()
+  })
+
+  it("sends only conversation-scoped paper_id instead of leaking ids from other conversations", async () => {
+    listCommunityAgentConversationsMock.mockResolvedValueOnce([
+      {
+        id: "other-conversation",
+        title: "Other",
+        created_at: "2026-03-28T00:00:00.000Z",
+        updated_at: "2026-03-28T00:01:00.000Z",
+        turns: [
+          {
+            id: "assistant-other",
+            role: "assistant",
+            content: "Other context",
+            created_at: "2026-03-28T00:00:30.000Z",
+            status: "completed",
+            run: {
+              run_id: "run-other",
+              status: "completed",
+              intent: "answer",
+              mode: "chat",
+              message: "Other context",
+              summary: "Other context",
+              citations: [
+                {
+                  id: "citation-other",
+                  title: "Other paper",
+                  source: "community",
+                  paper_id: "paper-other",
+                },
+              ],
+              tool_trace: [],
+              action: {
+                type: "navigate_paper",
+                paper_id: "paper-other",
+              },
+            },
+            error: null,
+          },
+        ],
+      },
+      {
+        id: "conversation-scoped",
+        title: "Scoped",
+        created_at: "2026-03-28T00:00:00.000Z",
+        updated_at: "2026-03-28T00:02:00.000Z",
+        turns: [
+          {
+            id: "assistant-scoped",
+            role: "assistant",
+            content: "Scoped context",
+            created_at: "2026-03-28T00:01:30.000Z",
+            status: "completed",
+            run: {
+              run_id: "run-scoped",
+              status: "completed",
+              intent: "answer",
+              mode: "chat",
+              message: "Scoped context",
+              summary: "Scoped context",
+              citations: [
+                {
+                  id: "citation-scoped",
+                  title: "Scoped paper",
+                  source: "community",
+                  paper_id: "paper-current",
+                },
+              ],
+              tool_trace: [],
+              action: {
+                type: "navigate_paper",
+                paper_id: "paper-current",
+              },
+            },
+            error: null,
+          },
+        ],
+      },
+    ])
+
+    streamCommunityAgentRunMock.mockImplementationOnce(
+      async (
+        payload: Record<string, unknown>,
+        { onEvent }: { onEvent: (event: Record<string, unknown>) => void },
+      ) => {
+        expect(payload.paper_id).toBe("paper-current")
+        expect(payload.paper_id).not.toBe("paper-other")
+
+        const finalRun = {
+          run_id: "run-scoped-1",
+          status: "completed",
+          intent: "answer",
+          mode: "chat",
+          message: "Scoped reply",
+          summary: "Scoped reply",
+          citations: [],
+          tool_trace: [],
+          action: null,
+        }
+        onEvent({
+          type: "complete",
+          run_id: "run-scoped-1",
+          sequence: 1,
+          data: { snapshot: finalRun },
+        })
+        return finalRun
+      },
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/agent/conversation-scoped"]}>
+        <Routes>
+          <Route path="/agent/:conversationId" element={<CommunityConversationPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await userEvent.type(await screen.findByLabelText("Ask the paper agent"), "Continue with translation")
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() => {
+      expect(streamCommunityAgentRunMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("sends deep research mode and renders report-style output", async () => {
@@ -228,7 +351,7 @@ describe("CommunityConversationPage streaming", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Deep research" }))
     await userEvent.type(screen.getByLabelText("Ask the paper agent"), "Produce a deep literature review")
-    await userEvent.click(screen.getByRole("button", { name: "Run agent" }))
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
 
     expect(await screen.findByText("Deep research report")).toBeInTheDocument()
     expect(await screen.findByText("Coverage reached target breadth.")).toBeInTheDocument()
@@ -304,9 +427,11 @@ describe("CommunityConversationPage streaming", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Deep research" }))
     await userEvent.type(screen.getByLabelText("Ask the paper agent"), "Need a complete deep research brief")
-    await userEvent.click(screen.getByRole("button", { name: "Run agent" }))
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
 
-    expect(await screen.findByTestId("community-conversation-progress")).toBeInTheDocument()
+    expect(
+      await screen.findByText("The paper agent is thinking across the current conversation context."),
+    ).toBeInTheDocument()
     expect(screen.queryByText("Deep research report")).not.toBeInTheDocument()
     expect(await screen.findByText("Deep research report")).toBeInTheDocument()
     expect(await screen.findByText("Coverage reached target breadth.")).toBeInTheDocument()

@@ -4,14 +4,13 @@
 定义 LaTeXTrans 前端 Web UI 规范，包括 Dashboard、翻译配置、进度监控、PDF 预览等界面。
 ## Requirements
 ### Requirement: Responsive Web Dashboard
-The system MUST provide a responsive web-based translation workspace while allowing the product homepage to become a community browse surface.
+The system MUST provide a responsive web-based translation workspace while allowing the product homepage to become a community browse surface. The translation functionalities will be visually orchestrated by the Stitch Tools Hub - Functional Core definitions.
 
 #### Scenario: User navigates to the translation workspace
-Given the backend server is running
-When the user accesses `/translate`
-Then the Dashboard page should be displayed
-And a prominent input field for ArXiv ID should be visible
-And shared sidebar navigation should remain available
+- **WHEN** the user accesses `/translate`
+- **THEN** the Dashboard tools page should be displayed following the Functional Core spacing and layout schema
+- **AND** a prominent input field for ArXiv ID should be visible
+- **AND** shared sidebar navigation should remain available.
 
 ### Requirement: Translation Configuration
 The system MUST allow users to configure translation parameters via the UI.
@@ -484,4 +483,22 @@ The web UI SHALL let users run a real multi-turn paper-scoped conversation insid
 - **WHEN** the paper detail workspace renders with tall reader content or long articles
 - **THEN** the right-pane copilot composer (input plus run controls) SHALL remain visibly discoverable without requiring users to hunt through unrelated static filler content
 - **AND** the default empty state SHALL prioritize direct chat entry over large decorative description or asset cards.
+
+### Requirement: Conversation agent requests use conversation-scoped paper context only
+The conversation UI SHALL derive `paper_id` context only from the active conversation thread and SHALL NOT leak paper identifiers from other saved conversations.
+
+#### Scenario: Active conversation carries a known paper thread
+- **WHEN** the active conversation already contains assistant metadata (action/citation) with a valid `paper_id`
+- **THEN** the next run request SHALL include that `paper_id`
+- **AND** the request SHALL keep using the current conversation id/history as the scope boundary.
+
+#### Scenario: Other conversation records have different paper ids
+- **WHEN** the user has multiple saved conversations and inactive conversations contain different `paper_id` values
+- **THEN** the next run request for the active conversation SHALL ignore those inactive conversation paper ids
+- **AND** only the active conversation context may influence the outgoing `paper_id`.
+
+#### Scenario: Active conversation has no paper context yet
+- **WHEN** the active conversation has no assistant action/citation carrying `paper_id`
+- **THEN** the UI SHALL omit `paper_id` from the outgoing run request
+- **AND** backend runtime bridging logic may resolve paper context independently.
 

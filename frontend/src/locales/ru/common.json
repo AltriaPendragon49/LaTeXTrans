@@ -510,7 +510,7 @@
   "community.detail.stage.translatedReady": "Китайская версия для чтения готова",
   "community.detail.stage.unavailable": "Создание китайской версии временно недоступно",
   "community.nav.paperTools": "Инструменты для статьи",
-  "community.feed.launchTitle": "Сначала спросите агента по статьям, а затем перейдите в сосредоточенное исследовательское пространство.",
+  "community.feed.launchTitle": "今天想学点什么论文？",
   "community.feed.launchDescription": "Используйте одно поле ввода для поиска статей, их объяснения или запросов на перевод. На следующем шаге откроется отдельная страница диалога с памятью, цитатами и действиями по статье.",
   "community.feed.panel.searchTitle": "Поиск статей",
   "community.feed.panel.searchDescription": "Сначала ищите в сообществе, а затем без переключения режимов расширяйте поиск на arXiv и настроенные внешние источники.",

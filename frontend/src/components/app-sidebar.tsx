@@ -1,4 +1,4 @@
-import { Compass, MessageSquare, PenSquare, Plus, User, Settings } from "lucide-react"
+import { Compass, MessageSquare, PenSquare, User, Settings } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
@@ -42,24 +42,14 @@ export function AppSidebar() {
           </NavLink>
         </div>
 
-        <div className="mt-8 w-full">
-          <button className="bg-primary text-on-primary rounded-full p-3 group-hover:px-6 w-full flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-md">
-            <Plus className="w-6 h-6 shrink-0" />
-            <span className="hidden group-hover:block font-medium whitespace-nowrap">New Project</span>
-          </button>
-        </div>
+
       </div>
 
       <div className="flex flex-col gap-4 items-center group-hover:items-start group-hover:px-4">
-        {isSupabaseAvailable && !isAuthenticated ? (
+        {isSupabaseAvailable && !isAuthenticated && (
           <button onClick={() => navigate('/login')} className="flex items-center gap-4 text-tertiary hover:bg-surface-container-low rounded-full px-4 py-3 transition-colors w-full justify-center group-hover:justify-start">
             <User className="w-6 h-6 shrink-0" />
             <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("common.actions.signIn", "Sign In")}</span>
-          </button>
-        ) : (
-          <button onClick={() => navigate('/profile')} className="flex items-center gap-4 text-tertiary hover:bg-surface-container-low rounded-full px-4 py-3 transition-colors w-full justify-center group-hover:justify-start">
-            <User className="w-6 h-6 shrink-0" />
-            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">Profile</span>
           </button>
         )}
         
@@ -69,7 +59,7 @@ export function AppSidebar() {
         </button>
 
         {isAuthenticated && user && (
-          <div className="mt-4 flex items-center gap-3 group-hover:bg-surface-container-low group-hover:rounded-full group-hover:p-2 group-hover:w-full transition-all">
+          <button onClick={() => navigate('/profile')} className="mt-4 flex items-center gap-3 hover:bg-surface-container-low rounded-full group-hover:p-2 w-full justify-center group-hover:justify-start transition-all border-none text-left">
             <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0 uppercase font-bold text-xs border border-primary/30">
               {user.email?.charAt(0)}
             </div>
@@ -77,7 +67,7 @@ export function AppSidebar() {
               <span className="text-xs font-bold text-on-surface truncate pr-2">{user.email?.split('@')[0]}</span>
               <span className="text-[10px] text-tertiary truncate pr-2">Pro Plan</span>
             </div>
-          </div>
+          </button>
         )}
       </div>
     </nav>

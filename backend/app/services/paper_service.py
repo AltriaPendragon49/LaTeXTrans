@@ -1924,6 +1924,9 @@ async def _sync_task_assets_for_paper(
     task = task_manager.get_task(task_id)
     if not task:
         return {"done": False, "status": None}
+    paper = await _fetch_paper_by_id(paper_id)
+    if not paper:
+        return {"done": True, "status": "paper_missing"}
 
     source_asset_id: Optional[str] = None
     if task.get("source_available") and task.get("source_path"):

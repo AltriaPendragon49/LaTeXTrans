@@ -42,10 +42,9 @@ describe("CommunityFeedPage agent-first", () => {
     )
 
     expect(screen.getByRole("textbox", { name: "Ask the paper agent" })).toBeInTheDocument()
-    expect(screen.getByText("Agent-first entry")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Ask the paper agent, then move into a focused reader workspace." })).toBeInTheDocument()
     expect(screen.getByText("Paper search")).toBeInTheDocument()
-    expect(screen.getByText("Translation request")).toBeInTheDocument()
-    expect(screen.getByRole("switch", { name: "Enable external search" })).toHaveAttribute("aria-checked", "false")
+    expect(screen.getByRole("button", { name: "Enable external search" })).toHaveAttribute("aria-pressed", "false")
     expect(
       screen.queryByText(
         "Officially published translations lead the community surface. User fallback papers only hold a community slot while official coverage is still missing.",
@@ -66,7 +65,7 @@ describe("CommunityFeedPage agent-first", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Ask the paper agent" }), {
       target: { value: "What is V-JEPA 2.1 about?" },
     })
-    fireEvent.click(screen.getByRole("switch", { name: "Enable external search" }))
+    fireEvent.click(screen.getByRole("button", { name: "Enable external search" }))
     fireEvent.click(screen.getByRole("button", { name: "Run agent" }))
 
     expect(navigateMock).toHaveBeenCalledTimes(1)

@@ -1,4 +1,4 @@
-import { ArrowUpRight, Bot, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react"
+import { ArrowUpRight, Bot, Loader2, MessageSquarePlus, Sparkles, Trash2, User } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
@@ -202,6 +202,28 @@ function createUserTurn(content: string): CommunityConversationTurn {
   }
 }
 
+function getConversationScopedPaperId(record: CommunityConversationRecord): string | undefined {
+  for (let index = record.turns.length - 1; index >= 0; index -= 1) {
+    const turn = record.turns[index]
+    if (turn.role !== "assistant" || !turn.run) {
+      continue
+    }
+
+    const actionPaperId = turn.run.action?.paper_id
+    if (typeof actionPaperId === "string" && actionPaperId.trim()) {
+      return actionPaperId.trim()
+    }
+
+    const citationPaperId = turn.run.citations?.find(
+      (citation) => typeof citation.paper_id === "string" && citation.paper_id.trim(),
+    )?.paper_id
+    if (typeof citationPaperId === "string" && citationPaperId.trim()) {
+      return citationPaperId.trim()
+    }
+  }
+  return undefined
+}
+
 function getIntentBadgeKey(run: CommunityAgentRun | null | undefined) {
   switch (run?.intent) {
     case "search":
@@ -218,19 +240,6 @@ function getModeBadgeKey(mode: CommunityAgentMode | null | undefined) {
   return mode === "deep_research"
     ? "community.agent.mode.deepResearch"
     : "community.agent.mode.chat"
-}
-
-function getTraceStatusClass(status: string) {
-  switch (status) {
-    case "completed":
-      return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
-    case "fallback":
-      return "border-amber-500/20 bg-amber-500/10 text-amber-100"
-    case "failed":
-      return "border-rose-500/20 bg-rose-500/10 text-rose-100"
-    default:
-      return "border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-text-soft)]"
-  }
 }
 
 function formatConversationTimestamp(value: string) {
@@ -469,6 +478,7 @@ export default function CommunityConversationPage() {
     setAgentBusy(true)
     setAgentError(null)
     const runMode = modeOverride ?? agentMode
+    const scopedPaperId = getConversationScopedPaperId(record)
 
     const historySource =
       record.turns.at(-1)?.role === "user" ? record.turns.slice(0, -1) : record.turns
@@ -485,6 +495,7 @@ export default function CommunityConversationPage() {
 
       const run = await streamCommunityAgentRun({
         input: latestUserInput,
+        ...(scopedPaperId ? { paper_id: scopedPaperId } : {}),
         skill_toggles: skillTogglesOverride ?? {
           external_search: externalSearchEnabled,
         },
@@ -756,88 +767,30 @@ export default function CommunityConversationPage() {
           </div>
         </aside>
 
-        <section className="overflow-hidden rounded-[32px] border border-[color:var(--shell-border)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-surface)_98%,white_2%),color-mix(in_srgb,var(--shell-surface)_94%,transparent))] shadow-[var(--shell-panel-shadow)]">
-          <div className="border-b border-[color:var(--shell-border)] px-4 py-4 sm:px-6">
-            <div className="mx-auto flex w-full max-w-[1180px] items-start justify-between gap-4">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-                  <Sparkles className="h-3.5 w-3.5 text-[var(--shell-icon)]" />
-                  {t("community.conversation.title")}
-                </div>
-                <div>
-                  <h1 className="text-balance text-[2rem] font-semibold tracking-[-0.04em] text-[var(--shell-heading)] sm:text-[2.4rem]">
-                    {currentConversation?.title || t("community.agent.newChat")}
-                  </h1>
-                  <p className="mt-2 max-w-3xl text-sm leading-7 text-[var(--shell-text-soft)]">
-                    {t("community.conversation.subtitle")}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
-                  {lastAssistantTurn?.run ? t(getIntentBadgeKey(lastAssistantTurn.run)) : t("community.agent.intent.answer")}
-                </Badge>
-                <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
-                  {t(getModeBadgeKey(lastAssistantTurn?.run?.mode ?? agentMode))}
-                </Badge>
-                <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
-                  {t("community.conversation.historyBadge")}
-                </Badge>
+        <section className="relative flex-col flex overflow-hidden rounded-[32px] border border-outline-variant/20 bg-surface shadow-sm max-h-[calc(100vh-6.8rem)]">
+          <header className="flex-none flex items-center justify-between px-6 py-4 bg-surface/80 backdrop-blur-xl z-20 border-b border-outline-variant/10">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="flex flex-col min-w-0 pr-4">
+                <h1 className="text-on-surface text-lg font-bold leading-tight tracking-[-0.01em] truncate">
+                  {currentConversation?.title || t("community.agent.newChat")}
+                </h1>
+                <p className="text-tertiary text-sm font-medium truncate">
+                  {t("community.conversation.title")} · {t("community.conversation.historyBadge")}
+                </p>
               </div>
             </div>
-          </div>
+            <div className="hidden sm:flex flex-wrap items-center justify-end gap-3 shrink-0">
+              <Badge variant="outline" className="rounded-full border-outline-variant/30 bg-surface-container-low px-3 py-1 text-on-surface-variant font-medium shrink-0">
+                {lastAssistantTurn?.run ? t(getIntentBadgeKey(lastAssistantTurn.run)) : t("community.agent.intent.answer")}
+              </Badge>
+              <Badge variant="outline" className="rounded-full border-outline-variant/30 bg-surface-container-low px-3 py-1 text-on-surface-variant font-medium shrink-0">
+                {t(getModeBadgeKey(lastAssistantTurn?.run?.mode ?? agentMode))}
+              </Badge>
+            </div>
+          </header>
 
-          <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-            <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5">
-              {agentBusy ? (
-                <div
-                  data-testid="community-conversation-progress"
-                  className="sticky top-0 z-10 rounded-[28px] border border-[color:var(--shell-border-strong)] bg-[color:color-mix(in_srgb,var(--shell-surface)_94%,white_6%)] px-5 py-4 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--shell-heading)]">
-                        <Loader2 className="h-4 w-4 animate-spin text-[var(--shell-accent)]" />
-                        <span>{t("community.conversation.progressTitle")}</span>
-                      </div>
-                      <p className="text-sm text-[var(--shell-text-soft)]">
-                        {t("community.conversation.progressDescription")}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--shell-text-soft)]"
-                    >
-                      {runningProgressSteps[runningStageIndex]}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {runningProgressSteps.map((step, index) => {
-                      const isCompleted = index < runningStageIndex
-                      const isActive = index === runningStageIndex
-                      return (
-                        <Badge
-                          key={step}
-                          variant="outline"
-                          className={cn(
-                            "rounded-full border px-3 py-1 text-[11px] tracking-[0.14em]",
-                            isActive
-                              ? "border-[color:var(--shell-accent)] bg-[color:color-mix(in_srgb,var(--shell-accent)_18%,white_82%)] text-[var(--shell-heading)]"
-                              : isCompleted
-                                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                                : "border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-text-muted)]",
-                          )}
-                        >
-                          {step}
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
+          <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 md:px-8 lg:px-24 py-6 pb-48">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
               {!currentConversation?.turns.length ? (
                 <Card className="rounded-[28px] border border-dashed border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-8">
                   <p className="text-base leading-8 text-[var(--shell-text-soft)]">{t("community.conversation.emptyState")}</p>
@@ -852,20 +805,30 @@ export default function CommunityConversationPage() {
                 const renderedContent = deepResearchReport?.body_markdown ?? turn.content
 
                 return (
-                  <div key={turn.id} className={cn("flex", turn.role === "user" ? "justify-end" : "justify-start")}>
+                  <div key={turn.id} className={cn("flex items-end gap-4 w-full", turn.role === "user" ? "justify-end" : "justify-start")}>
+                    {turn.role === "assistant" && (
+                      <div className="size-10 rounded-full bg-surface-container-highest items-center justify-center shrink-0 shadow-sm border border-outline-variant/20 mt-6 hidden sm:flex">
+                        <Bot className="w-5 h-5 text-primary" />
+                      </div>
+                    )}
                     <div
                       className={cn(
-                        "w-full sm:px-0",
-                        turn.role === "user"
-                          ? "max-w-[760px] rounded-[28px] border border-transparent bg-[var(--shell-accent)] px-5 py-4 text-[var(--shell-accent-foreground)] shadow-sm sm:px-6"
-                          : "max-w-[1120px] text-[var(--shell-text)]",
+                        "flex flex-col gap-1.5 w-full",
+                        turn.role === "user" ? "max-w-[85%] md:max-w-[70%] items-end" : "max-w-[85%] md:max-w-[70%]"
                       )}
                     >
-                      <div className={cn("flex items-center justify-between gap-4", turn.role === "assistant" ? "px-1" : "")}>
-                        <p className="text-xs uppercase tracking-[0.18em] text-current/70">
-                          {turn.role === "user" ? t("community.conversation.userLabel") : t("community.conversation.agentLabel")}
-                        </p>
-                        <p className="text-xs text-current/60">{formatConversationTimestamp(turn.created_at)}</p>
+                      <div className={cn("flex items-center gap-2", turn.role === "user" ? "pr-2" : "pl-2")}>
+                        {turn.role === "user" ? (
+                          <>
+                            <span className="text-tertiary text-xs">{formatConversationTimestamp(turn.created_at)}</span>
+                            <span className="text-on-surface font-semibold text-sm">{t("community.conversation.userLabel", "You")}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-on-surface font-semibold text-sm">{t("community.conversation.agentLabel", "Paper Agent")}</span>
+                            <span className="text-tertiary text-xs">{formatConversationTimestamp(turn.created_at)}</span>
+                          </>
+                        )}
                       </div>
 
                       {turn.role === "assistant" && primaryCitation ? (
@@ -946,61 +909,47 @@ export default function CommunityConversationPage() {
 
                       <div
                         className={cn(
-                          "mt-3 whitespace-pre-wrap rounded-[24px] border px-5 py-4 text-sm leading-7 sm:text-[15px]",
+                          "whitespace-pre-wrap text-[15px] leading-relaxed w-full",
                           turn.role === "assistant"
-                            ? "border-[color:var(--shell-border)] bg-[var(--shell-surface)] text-[var(--shell-text-soft)]"
-                            : "border-transparent text-[var(--shell-accent-foreground)]",
+                            ? "bg-surface-container-lowest text-on-surface p-5 rounded-xl rounded-bl-none shadow-[0_4px_20px_rgba(27,28,28,0.03)] border border-outline-variant/15"
+                            : "bg-gradient-to-br from-primary to-primary-container text-on-primary p-5 rounded-xl rounded-br-none shadow-[0_8px_24px_rgba(182,23,34,0.15)]"
                         )}
                       >
                         {renderedContent}
                       </div>
 
-                      {assistantRun ? (
+                      {assistantRun?.action?.type === "navigate_paper" && assistantRun.action.paper_id ? (
                         <div className="mt-5 space-y-4">
-                          {assistantRun.action?.type === "navigate_paper" && assistantRun.action.paper_id ? (
-                            <div className="rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="space-y-1">
-                                  <p className="text-sm font-semibold text-[var(--shell-heading)]">
-                                    {t("community.conversation.openPaperTitle")}
-                                  </p>
-                                  <p className="text-sm text-[var(--shell-text-soft)]">
-                                    {assistantRun.action.auto_started_translation
-                                      ? t("community.conversation.openPaperDescriptionTranslating")
-                                      : t("community.conversation.openPaperDescription")}
-                                  </p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  onClick={() => navigate(`/paper/${assistantRun.action?.paper_id}`)}
-                                  className="h-11 rounded-full bg-[var(--shell-accent)] px-4 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
-                                >
-                                  {t("community.conversation.openPaperAction")}
-                                  <ArrowUpRight className="h-4 w-4" />
-                                </Button>
+                          <div className="rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <p className="text-sm font-semibold text-[var(--shell-heading)]">
+                                  {t("community.conversation.openPaperTitle")}
+                                </p>
+                                <p className="text-sm text-[var(--shell-text-soft)]">
+                                  {assistantRun.action.auto_started_translation
+                                    ? t("community.conversation.openPaperDescriptionTranslating")
+                                    : t("community.conversation.openPaperDescription")}
+                                </p>
                               </div>
+                              <Button
+                                type="button"
+                                onClick={() => navigate(`/paper/${assistantRun.action?.paper_id}`)}
+                                className="h-11 rounded-full bg-[var(--shell-accent)] px-4 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
+                              >
+                                {t("community.conversation.openPaperAction")}
+                                <ArrowUpRight className="h-4 w-4" />
+                              </Button>
                             </div>
-                          ) : null}
-
-                          {assistantRun.tool_trace?.length ? (
-                            <div className="flex flex-wrap gap-2">
-                              {assistantRun.tool_trace.map((trace) => (
-                                <Badge
-                                  key={trace.id}
-                                  variant="outline"
-                                  className={cn(
-                                    "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em]",
-                                    getTraceStatusClass(trace.status),
-                                  )}
-                                >
-                                  {trace.label}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : null}
+                          </div>
                         </div>
                       ) : null}
                     </div>
+                    {turn.role === "user" && (
+                      <div className="size-10 rounded-full bg-surface-container-highest items-center justify-center shrink-0 shadow-sm border border-outline-variant/20 mt-6 hidden sm:flex">
+                        <User className="w-5 h-5 text-tertiary" />
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1025,88 +974,76 @@ export default function CommunityConversationPage() {
             </div>
           </div>
 
-          <div className="border-t border-[color:var(--shell-border)] px-4 py-4 sm:px-6">
-            <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-[1180px] flex-col gap-3">
-              <label htmlFor="conversation-agent-input" className="sr-only">
-                {t("community.agent.aria")}
-              </label>
-              <div className="rounded-[28px] border border-[color:var(--shell-border)] bg-[var(--shell-surface)] p-3 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
-                <textarea
-                  id="conversation-agent-input"
-                  aria-label={t("community.agent.aria")}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  placeholder={t("community.agent.placeholder")}
-                  rows={3}
-                  className="min-h-[104px] w-full resize-none border-0 bg-transparent px-2 py-1 text-base leading-7 text-[var(--shell-heading)] outline-none placeholder:text-[var(--shell-text-muted)]"
-                />
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--shell-border)] pt-3">
-                  <div className="flex flex-col gap-3">
-                    <div
-                      role="group"
-                      aria-label={t("community.agent.mode.aria")}
-                      className="inline-flex w-fit items-center gap-1 rounded-full border border-[color:var(--shell-border)] bg-[var(--shell-pill)] p-1"
-                    >
-                      <button
-                        type="button"
-                        aria-pressed={agentMode === "chat"}
-                        onClick={() => setAgentMode("chat")}
-                        className={cn(
-                          "rounded-full px-3 py-1 text-xs font-medium transition",
-                          agentMode === "chat"
-                            ? "bg-[var(--shell-accent)] text-[var(--shell-accent-foreground)]"
-                            : "text-[var(--shell-text-soft)] hover:text-[var(--shell-heading)]",
-                        )}
-                      >
-                        {t("community.agent.mode.chat")}
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={agentMode === "deep_research"}
-                        onClick={() => setAgentMode("deep_research")}
-                        className={cn(
-                          "rounded-full px-3 py-1 text-xs font-medium transition",
-                          agentMode === "deep_research"
-                            ? "bg-[var(--shell-accent)] text-[var(--shell-accent-foreground)]"
-                            : "text-[var(--shell-text-soft)] hover:text-[var(--shell-heading)]",
-                        )}
-                      >
-                        {t("community.agent.mode.deepResearch")}
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
-                        {t("community.agent.intent.search")}
-                      </Badge>
-                      <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
-                        {t("community.agent.intent.answer")}
-                      </Badge>
-                      <Badge variant="outline" className="rounded-full border-[color:var(--shell-border)] bg-[var(--shell-pill)] px-3 py-1">
-                        {t("community.agent.intent.translate")}
-                      </Badge>
-                    </div>
-                    <label className="inline-flex items-center gap-3 text-sm text-[var(--shell-text-soft)]">
-                      <Switch
-                        checked={externalSearchEnabled}
-                        onCheckedChange={setExternalSearchEnabled}
-                        aria-label={t("community.agent.externalSearch.label")}
-                      />
-                      <span>{t("community.agent.externalSearch.label")}</span>
-                    </label>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={agentBusy}
-                    className="h-11 rounded-full bg-[var(--shell-accent)] px-5 text-[var(--shell-accent-foreground)] hover:bg-[var(--shell-accent-hover)]"
-                  >
-                    {t("community.agent.run")}
-                    <ArrowUpRight className="h-4 w-4" />
-                  </Button>
-                </div>
+          <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-surface via-surface to-transparent pt-10 pb-6 px-4 md:px-8 z-20 pointer-events-none">
+            <div className="max-w-4xl mx-auto flex flex-col gap-3 pointer-events-auto">
+              <div className="flex flex-wrap items-center gap-2 self-start sm:ml-4 bg-surface-container-low p-1.5 rounded-full border border-outline-variant/15 shadow-[0_2px_8px_rgba(27,28,28,0.02)]">
+                <button
+                  type="button"
+                  onClick={() => setAgentMode("chat")}
+                  className={cn(
+                    "relative px-4 py-1.5 rounded-full transition-all duration-200 text-xs font-bold uppercase tracking-wider",
+                    agentMode === "chat" ? "bg-surface-container-lowest shadow-sm text-primary" : "text-tertiary hover:text-on-surface"
+                  )}
+                >
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <MessageSquarePlus className="w-4 h-4" /> {t("community.agent.mode.chat")}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgentMode("deep_research")}
+                  className={cn(
+                    "relative px-4 py-1.5 rounded-full transition-all duration-200 text-xs font-bold uppercase tracking-wider",
+                    agentMode === "deep_research" ? "bg-surface-container-lowest shadow-sm text-primary" : "text-tertiary hover:text-on-surface"
+                  )}
+                >
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4" /> {t("community.agent.mode.deepResearch")}
+                  </span>
+                </button>
+                
+                <label className="relative flex items-center gap-2 px-4 py-1.5 rounded-full transition-all duration-200 sm:border-l border-outline-variant/30 sm:ml-1 pl-4 cursor-pointer">
+                  <Switch
+                    checked={externalSearchEnabled}
+                    onCheckedChange={setExternalSearchEnabled}
+                    aria-label={t("community.agent.externalSearch.label")}
+                    className="data-[state=checked]:bg-primary"
+                  />
+                  <span className="text-xs font-bold uppercase tracking-wider text-tertiary">{t("community.agent.externalSearch.label")}</span>
+                </label>
               </div>
-            </form>
+
+              <form onSubmit={handleSubmit} className="relative flex items-end gap-2 bg-surface-container-lowest rounded-xl p-2 shadow-[0_8px_30px_rgba(27,28,28,0.06)] border border-outline-variant/20 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/10 transition-all">
+                <div className="flex-1 max-h-32 overflow-y-auto min-h-[44px]">
+                  <textarea
+                    id="conversation-agent-input"
+                    aria-label={t("community.agent.aria")}
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    placeholder={t("community.agent.placeholder")}
+                    rows={1}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (!agentBusy && input.trim()) {
+                          handleSubmit(e as unknown as FormEvent<HTMLFormElement>);
+                        }
+                      }
+                    }}
+                    className="w-full bg-transparent border-none focus:ring-0 resize-none text-on-surface placeholder:text-tertiary text-[15px] py-2.5 px-3 leading-relaxed outline-none"
+                    style={{ fieldSizing: "content" } as any}
+                  />
+                </div>
+                <div className="flex items-center gap-1 pr-1 pb-1 shrink-0">
+                  <button type="submit" disabled={agentBusy} aria-label="Send message" className="flex items-center justify-center size-10 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-full shadow-[0_4px_12px_rgba(182,23,34,0.2)] hover:shadow-[0_6px_16px_rgba(182,23,34,0.3)] transition-all focus:outline-none ml-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {agentBusy ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUpRight className="w-5 h-5 font-bold" />}
+                  </button>
+                </div>
+              </form>
+              <div className="text-center">
+                <p className="text-[10px] text-tertiary uppercase tracking-widest font-semibold">{t("community.agent.markdownSupported", "Supports Markdown")}</p>
+              </div>
+            </div>
           </div>
         </section>
       </div>

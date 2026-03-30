@@ -510,7 +510,7 @@
   "community.detail.stage.translatedReady": "La lectura en chino está lista",
   "community.detail.stage.unavailable": "La generación en chino no está disponible temporalmente",
   "community.nav.paperTools": "Herramientas del artículo",
-  "community.feed.launchTitle": "Pregunta primero al agente de artículos y luego entra en un espacio de investigación enfocado.",
+  "community.feed.launchTitle": "今天想学点什么论文？",
   "community.feed.launchDescription": "Usa una sola entrada para buscar artículos, pedir explicaciones o iniciar traducciones. El siguiente paso abre una página de conversación dedicada con memoria, citas y acciones sobre el artículo.",
   "community.feed.panel.searchTitle": "Buscar artículos",
   "community.feed.panel.searchDescription": "Busca primero en la comunidad y luego amplía a arXiv y a los proveedores externos configurados sin cambiar de modo.",

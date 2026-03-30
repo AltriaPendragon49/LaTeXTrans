@@ -510,7 +510,7 @@
   "community.detail.stage.translatedReady": "중문 읽기 버전이 준비되었습니다",
   "community.detail.stage.unavailable": "중국어 버전 생성은 일시적으로 사용할 수 없습니다",
   "community.nav.paperTools": "논문 도구",
-  "community.feed.launchTitle": "먼저 논문 에이전트에게 묻고, 이어서 집중형 연구 작업 공간으로 이동하세요.",
+  "community.feed.launchTitle": "今天想学点什么论文？",
   "community.feed.launchDescription": "논문 검색, 논문 설명, 번역 요청을 하나의 입력창에서 시작할 수 있습니다. 다음 단계에서는 메모리, 인용, 논문 작업을 갖춘 전용 대화 페이지가 열립니다.",
   "community.feed.panel.searchTitle": "논문 검색",
   "community.feed.panel.searchDescription": "먼저 커뮤니티를 검색한 뒤, 추가 모드 전환 없이 arXiv와 구성된 외부 제공처까지 확장합니다.",

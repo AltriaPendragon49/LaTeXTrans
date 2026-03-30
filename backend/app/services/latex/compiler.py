@@ -27,7 +27,12 @@ LATEX_RUNTIME_MODE_ENV = "LATEX_RUNTIME_MODE"
 LATEX_RUNTIME_MODE_HOST = "host"
 LATEX_RUNTIME_MODE_DOCKER = "docker"
 LATEX_DOCKER_IMAGE_ENV = "LATEX_DOCKER_IMAGE"
-LATEX_DOCKER_IMAGE_DEFAULT = "latextrans-runtime:texlive2025"
+LATEX_DOCKER_IMAGE_DEFAULT = "latextrans-backend:latest"
+LATEX_DOCKER_IMAGE_CANDIDATES = (
+    "latextrans-backend:latest",
+    "latextrans-backend",
+)
+LATEX_DOCKER_IMAGE_DEPRECATED_REPO = "latextrans-runtime"
 _MANUAL_BBL_INPUT_RE = re.compile(r"\\(?:input|include)\{([^{}]+?\.bbl)\}")
 _BIBLIOGRAPHY_DRIVER_RE = re.compile(r"\\(?:bibliography|addbibresource)\b|\\printbibliography\b")
 
@@ -114,15 +119,52 @@ def _get_latex_executor() -> LatexExecutor:
         return HostLatexExecutor()
     if runtime_mode == LATEX_RUNTIME_MODE_DOCKER:
         if _is_running_in_container():
+            if _is_host_latex_available():
+                logger.warning(
+                    "%s=docker is invalid inside container runtime; falling back to host TeX tools.",
+                    LATEX_RUNTIME_MODE_ENV,
+                )
+                return HostLatexExecutor()
             raise RuntimeError(
                 f"{LATEX_RUNTIME_MODE_ENV}=docker is invalid inside container runtime. "
                 f"Set {LATEX_RUNTIME_MODE_ENV}=host when backend runs in container."
             )
         if not _is_docker_available():
+            if _is_host_latex_available():
+                logger.warning(
+                    "%s=docker but docker daemon is unavailable; falling back to host TeX tools.",
+                    LATEX_RUNTIME_MODE_ENV,
+                )
+                return HostLatexExecutor()
             raise RuntimeError(
                 f"{LATEX_RUNTIME_MODE_ENV}=docker but docker daemon is unavailable."
             )
-        image = os.getenv(LATEX_DOCKER_IMAGE_ENV, LATEX_DOCKER_IMAGE_DEFAULT).strip()
+        configured_image = os.getenv(LATEX_DOCKER_IMAGE_ENV, LATEX_DOCKER_IMAGE_DEFAULT).strip()
+        if _is_deprecated_latex_image(configured_image):
+            logger.warning(
+                "Deprecated docker image '%s' detected in %s; forcing '%s'.",
+                configured_image,
+                LATEX_DOCKER_IMAGE_ENV,
+                LATEX_DOCKER_IMAGE_DEFAULT,
+            )
+            configured_image = LATEX_DOCKER_IMAGE_DEFAULT
+        image = _resolve_available_docker_image(configured_image)
+        if not image:
+            if _is_host_latex_available():
+                logger.warning(
+                    "Docker image '%s' is unavailable (including known aliases); falling back to host TeX tools.",
+                    configured_image,
+                )
+                return HostLatexExecutor()
+            raise RuntimeError(
+                f"Docker image '{configured_image}' is unavailable and host TeX tools are not installed."
+            )
+        if image != configured_image:
+            logger.warning(
+                "Docker image '%s' not found; using '%s' instead.",
+                configured_image,
+                image,
+            )
         return DockerLatexExecutor(image=image or LATEX_DOCKER_IMAGE_DEFAULT)
     raise RuntimeError(
         f"Unknown {LATEX_RUNTIME_MODE_ENV}={runtime_mode!r}. "
@@ -243,6 +285,56 @@ def _is_docker_available() -> bool:
         return probe.returncode == 0
     except Exception:
         return False
+
+
+def _is_docker_image_available(image: str) -> bool:
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        return False
+    try:
+        probe = subprocess.run(
+            [docker_path, "image", "inspect", image],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        return probe.returncode == 0
+    except Exception:
+        return False
+
+
+def _is_deprecated_latex_image(image: str) -> bool:
+    normalized = (image or "").strip().lower()
+    if not normalized:
+        return False
+
+    # Accept registry-prefixed image names and tagged/digested variants.
+    # e.g. ghcr.io/org/<deprecated-repo>:<tag>, <deprecated-repo>@sha256:...
+    image_leaf = normalized.rsplit("/", 1)[-1].split("@", 1)[0]
+    image_repo = image_leaf.split(":", 1)[0]
+    return image_repo == LATEX_DOCKER_IMAGE_DEPRECATED_REPO
+
+
+def _resolve_available_docker_image(preferred_image: str) -> Optional[str]:
+    preferred = (preferred_image or "").strip()
+    candidates: List[str] = []
+    if preferred:
+        candidates.append(preferred)
+    candidates.extend(img for img in LATEX_DOCKER_IMAGE_CANDIDATES if img and img != preferred)
+
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _is_docker_image_available(candidate):
+            return candidate
+    return None
+
+
+def _is_host_latex_available() -> bool:
+    return bool(shutil.which("latexmk"))
 
 
 def _kill_process_tree(pid: int) -> None:

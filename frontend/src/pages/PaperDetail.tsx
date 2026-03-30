@@ -864,6 +864,8 @@ export default function PaperDetailPage() {
       setStatusOverride("community.detail.stage.generating")
       setCanLeaveHint(t("community.detail.canLeave"))
       setSoftBanner(null)
+      const processingRoute = response.processing_url?.trim() || `/processing?taskId=${response.task_id}`
+      navigate(processingRoute)
     } catch (translateError) {
       setActionError(extractActionErrorMessage(translateError) ?? t("community.actions.translateError"))
     }
@@ -1078,7 +1080,7 @@ export default function PaperDetailPage() {
   return (
     <div
       data-testid="paper-detail-page-shell"
-      className="flex-1 flex flex-col min-w-0 bg-surface-container-lowest h-full overflow-hidden"
+      className="flex-1 flex min-h-0 flex-col min-w-0 bg-surface-container-lowest h-full overflow-hidden"
     >
       <header className="h-14 shrink-0 flex items-center justify-between px-6 border-b border-outline-variant/30 bg-surface-container-lowest z-10 relative">
         <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -1172,7 +1174,7 @@ export default function PaperDetailPage() {
         </div>
       </header>
       
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden relative">
 
           <PaperDetailWorkspace
             paper={activePaper}

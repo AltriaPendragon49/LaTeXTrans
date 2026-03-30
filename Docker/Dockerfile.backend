@@ -1,4 +1,4 @@
-FROM latextrans-runtime:texlive2025
+FROM latextrans-backend:latest
 
 # ------------------------------------------------------------
 # Runtime Mode

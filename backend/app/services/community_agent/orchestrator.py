@@ -6,6 +6,7 @@ import json
 import os
 import re
 import uuid
+import xml.etree.ElementTree as ET
 from typing import Any, Awaitable, Callable, Dict, Iterable, List
 
 import httpx
@@ -32,6 +33,10 @@ _DEEP_RESEARCH_MAX_EVIDENCE = 20
 _DEEP_RESEARCH_PER_QUERY_LIMIT = 5
 _DEEP_RESEARCH_MAX_QUERY_ROUNDS = 4
 _DEEP_RESEARCH_TIMEOUT_SECONDS = 120.0
+_REASONING_MAX_RETRIES = 2
+_REASONING_RETRY_BASE_SECONDS = 0.8
+_REASONING_RETRY_MAX_SECONDS = 4.0
+_RETRYABLE_REASONING_STATUS_CODES = {403, 408, 409, 425, 429, 500, 502, 503, 504}
 
 EventCallback = Callable[[Dict[str, Any]], Awaitable[None] | None]
 
@@ -82,6 +87,146 @@ def _extract_arxiv_id(input_text: str) -> str | None:
         return url_match.group(1)
     id_match = re.search(r"(?<![0-9A-Za-z_])(\d{4}\.\d{4,5})(?:v\d+)?(?![0-9A-Za-z_])", text)
     return id_match.group(1) if id_match else None
+
+
+def _normalized_title_tokens(value: str) -> List[str]:
+    normalized = re.sub(r"[^0-9a-z\u4e00-\u9fff]+", " ", value.lower())
+    return [token for token in normalized.split() if token]
+
+
+def _title_similarity_score(query: str, candidate_title: str) -> float:
+    query_tokens = _normalized_title_tokens(query)
+    candidate_tokens = _normalized_title_tokens(candidate_title)
+    if not query_tokens or not candidate_tokens:
+        return 0.0
+
+    query_text = " ".join(query_tokens)
+    candidate_text = " ".join(candidate_tokens)
+    if query_text == candidate_text:
+        return 1.0
+    if query_text in candidate_text or candidate_text in query_text:
+        return 0.9
+
+    overlap = len(set(query_tokens) & set(candidate_tokens))
+    return overlap / max(len(set(query_tokens)), 1)
+
+
+def _looks_like_standalone_title_query(input_text: str) -> bool:
+    text = _normalize_text(input_text)
+    if not text or len(text) > 220:
+        return False
+    if _extract_arxiv_id(text):
+        return True
+    lowered = text.lower()
+    imperative_markers = (
+        "start translation",
+        "translate this",
+        "translate it",
+        "启动翻译",
+        "开始翻译",
+        "帮我翻译",
+    )
+    if any(marker in lowered for marker in imperative_markers):
+        return False
+    if re.search(r"[?？!！]", text):
+        return False
+    conversational_markers = (
+        "please",
+        "what is",
+        "what's",
+        "how",
+        "why",
+        "tell me",
+        "explain",
+        "summarize",
+        "总结",
+        "解释",
+        "请",
+        "启动",
+    )
+    if any(marker in lowered for marker in conversational_markers):
+        return False
+
+    latin_words = re.findall(r"[A-Za-z][A-Za-z0-9\-]*", text)
+    cjk_chars = re.findall(r"[\u4e00-\u9fff]", text)
+    return len(latin_words) >= 3 or len(cjk_chars) >= 6
+
+
+def _pick_candidate_citation_for_query(
+    citations: Iterable[Dict[str, Any]],
+    *,
+    input_text: str,
+) -> Dict[str, Any] | None:
+    normalized_query = " ".join(_normalized_title_tokens(_derive_search_query(input_text)))
+    best: Dict[str, Any] | None = None
+    best_score = 0.0
+
+    for citation in citations:
+        if not isinstance(citation, dict):
+            continue
+        paper_id = _normalize_text(citation.get("paper_id"))
+        arxiv_id = _normalize_text(citation.get("arxiv_id"))
+        title = _normalize_text(citation.get("title"))
+        if not (paper_id or arxiv_id):
+            continue
+
+        score = 0.1
+        if paper_id:
+            score += 0.1
+        if title and normalized_query:
+            score += _title_similarity_score(normalized_query, title)
+        if score > best_score:
+            best = citation
+            best_score = score
+    return best
+
+
+async def _resolve_arxiv_id_from_title(query: str) -> str | None:
+    normalized_query = _normalize_text(query).strip("\"'")
+    if not normalized_query:
+        return None
+
+    search_queries = [f'ti:"{normalized_query}"', f'all:"{normalized_query}"']
+    namespace = {"atom": "http://www.w3.org/2005/Atom"}
+    best_id: str | None = None
+    best_score = 0.0
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for search_query in search_queries:
+            try:
+                response = await client.get(
+                    "https://export.arxiv.org/api/query",
+                    params={
+                        "search_query": search_query,
+                        "start": 0,
+                        "max_results": 5,
+                    },
+                    headers={"User-Agent": "LaTeXTrans/CommunityAgentTitleBridge"},
+                )
+                response.raise_for_status()
+            except Exception:
+                continue
+
+            try:
+                root = ET.fromstring(response.text)
+            except ET.ParseError:
+                continue
+
+            for entry in root.findall("atom:entry", namespace):
+                entry_id = _normalize_text(entry.findtext("atom:id", default="", namespaces=namespace))
+                title = _normalize_text(entry.findtext("atom:title", default="", namespaces=namespace))
+                arxiv_id = _extract_arxiv_id(entry_id or "")
+                if not arxiv_id or not title:
+                    continue
+                score = _title_similarity_score(normalized_query, title)
+                if score > best_score:
+                    best_score = score
+                    best_id = arxiv_id
+
+            if best_id and best_score >= 0.55:
+                return best_id
+
+    return best_id if best_score >= 0.35 else None
 
 
 def _resolve_chat_completions_url(raw_url: str | None) -> str | None:
@@ -195,6 +340,14 @@ def _parse_tool_arguments(raw_arguments: Any) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _is_retryable_reasoning_status(status_code: int) -> bool:
+    return status_code in _RETRYABLE_REASONING_STATUS_CODES
+
+
+def _reasoning_retry_delay(attempt: int) -> float:
+    return min(_REASONING_RETRY_BASE_SECONDS * (2**attempt), _REASONING_RETRY_MAX_SECONDS)
+
+
 def _context_citation(paper_context: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": paper_context.get("paper_id") or f"context-{uuid.uuid4().hex[:8]}",
@@ -221,23 +374,50 @@ async def _call_chat_completion(*, messages: List[Dict[str, Any]], tools: List[D
         return None
 
     async with httpx.AsyncClient(timeout=max(float(settings.llm_timeout), 10.0)) as client:
-        response = await client.post(
-            provider_url,
-            json={
-                "model": provider_model,
-                "messages": messages,
-                "tools": tools,
-                "tool_choice": "auto",
-                "temperature": 0.2,
-                "stream": False,
-            },
-            headers={
-                "Authorization": f"Bearer {provider_key}",
-                "Content-Type": "application/json",
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+        max_attempts = _REASONING_MAX_RETRIES + 1
+        data: Dict[str, Any] | None = None
+        for attempt in range(max_attempts):
+            try:
+                response = await client.post(
+                    provider_url,
+                    json={
+                        "model": provider_model,
+                        "messages": messages,
+                        "tools": tools,
+                        "tool_choice": "auto",
+                        "temperature": 0.2,
+                        "stream": False,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {provider_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(_reasoning_retry_delay(attempt))
+                    continue
+                raise RuntimeError(
+                    f"Reasoning provider request failed after {max_attempts} attempts due to network error: {exc}"
+                ) from exc
+
+            if response.status_code >= 400:
+                body_preview = _normalize_text(response.text)[:600]
+                if _is_retryable_reasoning_status(response.status_code) and attempt < max_attempts - 1:
+                    await asyncio.sleep(_reasoning_retry_delay(attempt))
+                    continue
+                raise RuntimeError(
+                    f"Reasoning provider request failed with HTTP {response.status_code} after {attempt + 1} attempt(s). "
+                    f"Response: {body_preview or '<empty>'}"
+                )
+
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise RuntimeError("Reasoning provider returned a non-JSON response") from exc
+            break
+        if data is None:
+            return None
 
     choices = data.get("choices") if isinstance(data, dict) else None
     if not isinstance(choices, list) or not choices:
@@ -262,50 +442,73 @@ async def _stream_chat_completion(*, messages: List[Dict[str, Any]]):
         yield  # pragma: no cover
 
     async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream(
-            "POST",
-            provider_url,
-            json={
-                "model": provider_model,
-                "messages": messages,
-                "temperature": 0.2,
-                "stream": True,
-            },
-            headers={
-                "Authorization": f"Bearer {provider_key}",
-                "Content-Type": "application/json",
-            },
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line or not line.startswith("data:"):
-                    continue
-                payload = line[len("data:") :].strip()
-                if not payload or payload == "[DONE]":
-                    continue
-                try:
-                    chunk = json.loads(payload)
-                except json.JSONDecodeError:
-                    continue
-
-                choices = chunk.get("choices") if isinstance(chunk, dict) else None
-                if not isinstance(choices, list) or not choices:
-                    continue
-                delta = choices[0].get("delta") if isinstance(choices[0], dict) else None
-                if not isinstance(delta, dict):
-                    continue
-
-                content = delta.get("content")
-                if isinstance(content, str) and content:
-                    yield content
-                    continue
-
-                if isinstance(content, list):
-                    for item in content:
-                        if not isinstance(item, dict):
+        max_attempts = _REASONING_MAX_RETRIES + 1
+        for attempt in range(max_attempts):
+            emitted_delta = False
+            try:
+                async with client.stream(
+                    "POST",
+                    provider_url,
+                    json={
+                        "model": provider_model,
+                        "messages": messages,
+                        "temperature": 0.2,
+                        "stream": True,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {provider_key}",
+                        "Content-Type": "application/json",
+                    },
+                ) as response:
+                    if response.status_code >= 400:
+                        body_text = await response.aread()
+                        body_preview = _normalize_text(body_text.decode("utf-8", errors="replace"))[:600]
+                        if _is_retryable_reasoning_status(response.status_code) and attempt < max_attempts - 1:
+                            await asyncio.sleep(_reasoning_retry_delay(attempt))
                             continue
-                        if item.get("type") == "text" and isinstance(item.get("text"), str):
-                            yield item["text"]
+                        raise RuntimeError(
+                            f"Reasoning provider stream request failed with HTTP {response.status_code} "
+                            f"after {attempt + 1} attempt(s). Response: {body_preview or '<empty>'}"
+                        )
+
+                    async for line in response.aiter_lines():
+                        if not line or not line.startswith("data:"):
+                            continue
+                        payload = line[len("data:") :].strip()
+                        if not payload or payload == "[DONE]":
+                            continue
+                        try:
+                            chunk = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+
+                        choices = chunk.get("choices") if isinstance(chunk, dict) else None
+                        if not isinstance(choices, list) or not choices:
+                            continue
+                        delta = choices[0].get("delta") if isinstance(choices[0], dict) else None
+                        if not isinstance(delta, dict):
+                            continue
+
+                        content = delta.get("content")
+                        if isinstance(content, str) and content:
+                            emitted_delta = True
+                            yield content
+                            continue
+
+                        if isinstance(content, list):
+                            for item in content:
+                                if not isinstance(item, dict):
+                                    continue
+                                if item.get("type") == "text" and isinstance(item.get("text"), str):
+                                    emitted_delta = True
+                                    yield item["text"]
+                return
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if emitted_delta or attempt >= max_attempts - 1:
+                    raise RuntimeError(
+                        f"Reasoning provider stream failed after {attempt + 1} attempt(s) due to network error: {exc}"
+                    ) from exc
+                await asyncio.sleep(_reasoning_retry_delay(attempt))
 
 
 def _infer_intent(runtime_state: AgentRuntimeState) -> str:
@@ -680,6 +883,184 @@ class CommunityReactAgent:
 
         return None, None
 
+    async def _bridge_context_from_citations(self) -> bool:
+        if self.runtime_state.paper_context:
+            return True
+
+        candidate = _pick_candidate_citation_for_query(
+            self.runtime_state.citations,
+            input_text=self.runtime_state.input_text,
+        )
+        if not candidate:
+            return False
+
+        visible_tools = self.registry.visible_tools(self.runtime_state)
+        candidate_paper_id = _normalize_text(candidate.get("paper_id"))
+        candidate_arxiv_id = _normalize_text(candidate.get("arxiv_id"))
+
+        if candidate_paper_id:
+            self.runtime_state.context["paper_id"] = candidate_paper_id
+            visible_tools = self.registry.visible_tools(self.runtime_state)
+        if candidate_paper_id and "read_paper_context" in visible_tools:
+            await self._execute_tool_call(
+                tool_call={
+                    "id": "bridge-read-context",
+                    "function": {
+                        "name": "read_paper_context",
+                        "arguments": json.dumps({"paper_id": candidate_paper_id}),
+                    },
+                },
+                visible_tools=visible_tools,
+            )
+            return bool(self.runtime_state.paper_context)
+
+        if candidate_arxiv_id and "import_arxiv_paper" in visible_tools:
+            should_continue, result = await self._execute_tool_call(
+                tool_call={
+                    "id": "bridge-import-by-citation",
+                    "function": {
+                        "name": "import_arxiv_paper",
+                        "arguments": json.dumps({"arxiv_id": candidate_arxiv_id}),
+                    },
+                },
+                visible_tools=visible_tools,
+            )
+            if should_continue and result.get("paper_id"):
+                visible_tools = self.registry.visible_tools(self.runtime_state)
+                if "read_paper_context" in visible_tools:
+                    await self._execute_tool_call(
+                        tool_call={
+                            "id": "bridge-read-after-citation-import",
+                            "function": {
+                                "name": "read_paper_context",
+                                "arguments": json.dumps({"paper_id": result.get("paper_id")}),
+                            },
+                        },
+                        visible_tools=visible_tools,
+                    )
+        return bool(self.runtime_state.paper_context)
+
+    async def _bridge_context_from_title_resolution(self) -> bool:
+        if self.runtime_state.paper_context:
+            return True
+        if not _looks_like_standalone_title_query(self.runtime_state.input_text):
+            return False
+
+        query = _derive_search_query(self.runtime_state.input_text)
+        resolved_arxiv_id = await _resolve_arxiv_id_from_title(query)
+        if resolved_arxiv_id:
+            self.runtime_state.tool_trace.append(
+                _make_trace(
+                    "import",
+                    "Resolve arXiv by title",
+                    "resolve_arxiv_by_title",
+                    "completed",
+                    resolved_arxiv_id,
+                )
+            )
+        else:
+            self.runtime_state.tool_trace.append(
+                _make_trace(
+                    "import",
+                    "Resolve arXiv by title",
+                    "resolve_arxiv_by_title",
+                    "failed",
+                    "No confident arXiv match from title query",
+                )
+            )
+            return False
+
+        visible_tools = self.registry.visible_tools(self.runtime_state)
+        if "import_arxiv_paper" not in visible_tools:
+            return False
+
+        should_continue, result = await self._execute_tool_call(
+            tool_call={
+                "id": "bridge-import-by-title",
+                "function": {
+                    "name": "import_arxiv_paper",
+                    "arguments": json.dumps({"arxiv_id": resolved_arxiv_id}),
+                },
+            },
+            visible_tools=visible_tools,
+        )
+        if not should_continue:
+            return False
+
+        paper_id = _normalize_text(result.get("paper_id"))
+        if not paper_id:
+            return False
+        visible_tools = self.registry.visible_tools(self.runtime_state)
+        if "read_paper_context" not in visible_tools:
+            return False
+        await self._execute_tool_call(
+            tool_call={
+                "id": "bridge-read-after-title-import",
+                "function": {
+                    "name": "read_paper_context",
+                    "arguments": json.dumps({"paper_id": paper_id}),
+                },
+            },
+            visible_tools=visible_tools,
+        )
+        return bool(self.runtime_state.paper_context)
+
+    def _should_auto_start_translation(self) -> bool:
+        paper_context = self.runtime_state.paper_context or {}
+        if not paper_context.get("paper_id"):
+            return False
+        if paper_context.get("translated_ready"):
+            return False
+
+        input_text = self.runtime_state.input_text
+        if _has_any_marker(input_text, _TRANSLATE_MARKERS):
+            return True
+        if _looks_like_standalone_title_query(input_text):
+            return True
+        if is_chinese_language(self.runtime_state.response_language):
+            return True
+        return False
+
+    async def _bridge_context_and_translation(self) -> None:
+        if not self.runtime_state.paper_context:
+            await self._bridge_context_from_citations()
+        if not self.runtime_state.paper_context:
+            await self._bridge_context_from_title_resolution()
+
+        if not self._should_auto_start_translation():
+            return
+
+        already_started = any(
+            (entry.get("tool_name") or entry.get("skill_name")) == "start_translation_kernel"
+            for entry in self.runtime_state.executed_tool_results
+        )
+        if already_started:
+            return
+
+        visible_tools = self.registry.visible_tools(self.runtime_state)
+        if "start_translation_kernel" not in visible_tools:
+            return
+        paper_id = _normalize_text((self.runtime_state.paper_context or {}).get("paper_id"))
+        if not paper_id:
+            return
+
+        await self._execute_tool_call(
+            tool_call={
+                "id": "bridge-translate",
+                "function": {
+                    "name": "start_translation_kernel",
+                    "arguments": json.dumps(
+                        {
+                            "paper_id": paper_id,
+                            "source_language": "en",
+                            "target_language": "zh",
+                        }
+                    ),
+                },
+            },
+            visible_tools=visible_tools,
+        )
+
     async def _run_final_stream_phase(self, planner_seed: str | None) -> str | None:
         final_messages = _build_final_messages(self.runtime_state, planner_seed)
         await self._emit_event("status", status="running", phase="final_stream")
@@ -951,34 +1332,6 @@ class CommunityReactAgent:
                     )
 
         visible_tools = self.registry.visible_tools(self.runtime_state)
-        needs_translation = (
-            self.runtime_state.paper_context
-            and (
-                _has_any_marker(self.runtime_state.input_text, _TRANSLATE_MARKERS)
-                or (is_chinese_language(self.runtime_state.response_language) and not self.runtime_state.paper_context.get("translated_ready"))
-            )
-            and not self.runtime_state.paper_context.get("translated_ready")
-            and "start_translation_kernel" in visible_tools
-        )
-        if needs_translation and self.runtime_state.paper_context and self.runtime_state.paper_context.get("paper_id"):
-            await self._execute_tool_call(
-                tool_call={
-                    "id": "fallback-translate",
-                    "function": {
-                        "name": "start_translation_kernel",
-                        "arguments": json.dumps(
-                            {
-                                "paper_id": self.runtime_state.paper_context["paper_id"],
-                                "source_language": "en",
-                                "target_language": "zh",
-                            }
-                        ),
-                    },
-                },
-                visible_tools=visible_tools,
-            )
-
-        visible_tools = self.registry.visible_tools(self.runtime_state)
         if not self.runtime_state.paper_context and not self.runtime_state.citations and "community_search_papers" in visible_tools:
             await self._execute_tool_call(
                 tool_call={
@@ -990,6 +1343,8 @@ class CommunityReactAgent:
                 },
                 visible_tools=visible_tools,
             )
+
+        await self._bridge_context_and_translation()
 
         self.runtime_state.tool_trace.append(
             _make_trace(
@@ -1012,6 +1367,7 @@ class CommunityReactAgent:
         try:
             planner_messages, planner_seed = await self._run_planner_phase()
             if planner_messages is not None:
+                await self._bridge_context_and_translation()
                 final_message = await self._run_final_stream_phase(planner_seed)
                 if final_message:
                     return _finalize_payload(self.runtime_state, final_message)
