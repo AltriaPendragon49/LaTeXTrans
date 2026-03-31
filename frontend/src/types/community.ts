@@ -182,7 +182,7 @@ export interface CommunityConversationRecord {
   turns: CommunityConversationTurn[]
 }
 
-export type CommunityPaperReaderMode = "source" | "translated"
+export type CommunityPaperReaderMode = "source" | "translated" | "translated_html" | "translated_pdf"
 export type CommunityPaperReaderState =
   | "source_ready"
   | "translated_ready"
@@ -220,6 +220,35 @@ export interface CommunityPaperReader {
   translated?: CommunityPaperReaderResource | null
   active_anchor_id?: string | null
   state: CommunityPaperReaderState
+}
+
+export interface ReaderSelectionContext {
+  text: string
+  anchor_id: string | null
+  mode: CommunityPaperReaderMode
+  position?: { x: number, y: number }
+  range?: Range
+  color?: string
+  note?: string
+}
+
+export interface PaperAnnotation {
+  id: string
+  text: string
+  range: Range
+  anchor_id: string | null
+  mode: CommunityPaperReaderMode
+  color: string
+  note: string
+}
+
+export interface PaperAnnotationOverlayRect {
+  id: string
+  color: string
+  top: number
+  left: number
+  width: number
+  height: number
 }
 
 export interface CommunityPaperDetailResponse {

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "inverse-on-surface": "#f0f0fb",
+              "on-primary": "#ffffff",
+              "tertiary-fixed-dim": "#ffb59c",
+              "on-error-container": "#93000a",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f3f2fe",
+              "on-secondary-container": "#3d4c83",
+              "surface-bright": "#faf8ff",
+              "on-primary-fixed": "#001551",
+              "on-tertiary-fixed-variant": "#832700",
+              "surface": "#faf8ff",
+              "on-surface": "#1a1b23",
+              "on-tertiary-fixed": "#390c00",
+              "error": "#ba1a1a",
+              "primary": "#0037b0",
+              "error-container": "#ffdad6",
+              "on-tertiary": "#ffffff",
+              "surface-variant": "#e2e1ed",
+              "on-secondary-fixed-variant": "#35437b",
+              "on-surface-variant": "#434655",
+              "on-background": "#1a1b23",
+              "inverse-surface": "#2e3039",
+              "on-primary-container": "#cad3ff",
+              "outline-variant": "#c4c5d7",
+              "on-secondary": "#ffffff",
+              "secondary": "#4d5b94",
+              "on-secondary-fixed": "#03164d",
+              "surface-container-high": "#e8e7f3",
+              "secondary-fixed-dim": "#b7c4ff",
+              "surface-container-highest": "#e2e1ed",
+              "surface-dim": "#d9d9e5",
+              "surface-container-lowest": "#ffffff",
+              "outline": "#747686",
+              "on-tertiary-container": "#ffc9b7",
+              "primary-fixed": "#dce1ff",
+              "primary-container": "#1d4ed8",
+              "surface-container": "#ededf9",
+              "on-primary-fixed-variant": "#0039b5",
+              "secondary-fixed": "#dce1ff",
+              "surface-tint": "#2151da",
+              "tertiary-fixed": "#ffdbcf",
+              "background": "#faf8ff",
+              "secondary-container": "#b0befe",
+              "inverse-primary": "#b7c4ff",
+              "tertiary-container": "#a73400",
+              "tertiary": "#7f2500",
+              "primary-fixed-dim": "#b7c4ff"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        .glass-nav {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .message-bubble-user {
+            border-bottom-right-radius: 4px;
+        }
+        .message-bubble-ai {
+            border-bottom-left-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased overflow-hidden h-screen flex">
+<!-- SideNavBar (Shared Component - Collapsed State for Task Focus) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col py-8 px-4 bg-slate-50 dark:bg-slate-900 h-screen w-20 border-r-0 rounded-r-[32px] z-50 transition-all duration-300">
+<div class="flex flex-col items-center gap-8 h-full">
+<div class="text-xl font-bold text-slate-900 dark:text-slate-50">
+<span class="material-symbols-outlined text-primary text-3xl">account_balance</span>
+</div>
+<nav class="flex flex-col gap-4 flex-1">
+<button class="w-12 h-12 flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors duration-200 rounded-[24px]">
+<span class="material-symbols-outlined" data-icon="explore">explore</span>
+</button>
+<!-- Active Tab: Conversation -->
+<button class="w-12 h-12 flex items-center justify-center bg-blue-600 text-white rounded-[24px] shadow-lg shadow-blue-500/20 active:scale-95 duration-150 ease-in-out">
+<span class="material-symbols-outlined" data-icon="chat">chat</span>
+</button>
+<button class="w-12 h-12 flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors duration-200 rounded-[24px]">
+<span class="material-symbols-outlined" data-icon="construction">construction</span>
+</button>
+</nav>
+<div class="flex flex-col gap-4 mt-auto">
+<button class="w-12 h-12 flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors duration-200 rounded-[24px]">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container">
+<img class="w-full h-full object-cover" data-alt="portrait of a focused scholar wearing glasses in a professional studio setting with soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUjq_arnLBw5vHckqYewTEb0o6fIL7Zf54NV_UM8B8Tym95UV-R0gbRN8HnDR5OCMZBh_bGcV5N01qXrmxIBY9GnvXRh0ePbedslHTR4ltQkIAzjuZmBmDN7PqfksjmIhPskjNG9RcqC62Sj_bxPFWlYVFYvOJKMoY6yCAqlV-qukphXFp0ScP5Xapr0Bry2r7jvdiUta4OvIeAZDvA1FFAhbtzhd0rCmQfJ1V_yz1GHIc3Fer-FVBJYpbUFOkFGDVEbLDNfMTg44E"/>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col ml-20 h-screen relative">
+<!-- TopNavBar (Shared Component) -->
+<header class="flex justify-between items-center w-full px-8 h-16 sticky top-0 z-40 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl font-['Inter'] font-medium">
+<div class="flex items-center gap-4">
+<span class="text-lg font-black tracking-tighter text-blue-700 dark:text-blue-500">Lumina Archive</span>
+<span class="w-px h-6 bg-outline-variant/30"></span>
+<span class="text-sm font-label tracking-widest text-on-surface-variant uppercase">Quantum Mechanics III</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex bg-surface-container-low px-4 py-2 rounded-full items-center gap-3 w-64">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-full" placeholder="Search archive..." type="text"/>
+</div>
+<div class="flex gap-4">
+<button class="text-slate-500 hover:text-blue-600 transition-all"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<button class="text-slate-500 hover:text-blue-600 transition-all"><span class="material-symbols-outlined" data-icon="help_outline">help_outline</span></button>
+</div>
+</div>
+</header>
+<!-- Chat Content Area -->
+<section class="flex-1 overflow-y-auto px-6 py-12 scroll-smooth">
+<div class="max-w-4xl mx-auto space-y-12">
+<!-- Date Indicator -->
+<div class="flex justify-center">
+<span class="px-4 py-1 bg-surface-container rounded-full text-[10px] font-bold tracking-widest text-on-surface-variant uppercase">Today • Oct 24</span>
+</div>
+<!-- User Message -->
+<div class="flex flex-col items-end space-y-2">
+<div class="message-bubble-user max-w-[80%] bg-primary text-on-primary px-6 py-4 rounded-xl shadow-lg shadow-primary/10">
+<p class="body-lg leading-relaxed">Can you explain the mathematical derivation of the Schrödinger equation for a particle in a 1D box? I'm particularly interested in how the boundary conditions $x=0$ and $x=L$ affect the energy quantization.</p>
+</div>
+<span class="text-[10px] text-on-surface-variant font-medium mr-2">10:42 AM</span>
+</div>
+<!-- AI Response -->
+<div class="flex flex-col items-start space-y-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary text-sm" data-weight="fill">auto_awesome</span>
+</div>
+<span class="text-xs font-bold tracking-tight text-primary">Lumina Assistant</span>
+</div>
+<div class="message-bubble-ai max-w-[90%] bg-surface-container-lowest border border-outline-variant/10 px-8 py-8 rounded-xl shadow-xl shadow-on-surface/5 space-y-6">
+<p class="body-lg text-on-surface leading-relaxed">To derive the energy levels, we start with the time-independent Schrödinger equation:</p>
+<!-- LaTeX Math Block -->
+<div class="bg-surface-container-low p-6 rounded-lg text-center overflow-x-auto">
+<div class="text-xl text-primary font-serif">
+                                $-\frac{\hbar^2}{2m} \frac{d^2\psi(x)}{dx^2} = E\psi(x)$
+                            </div>
+</div>
+<p class="body-lg text-on-surface leading-relaxed">For a particle in a 1D box with infinite potential walls at $x=0$ and $x=L$, the wavefunction $\psi(x)$ must vanish at these boundaries. This leads to the quantization of the wave vector $k$:</p>
+<div class="bg-surface-container-low p-6 rounded-lg text-center overflow-x-auto">
+<div class="text-xl text-primary font-serif">
+                                $k = \frac{n\pi}{L}, \quad n = 1, 2, 3, \dots$
+                            </div>
+</div>
+<p class="body-lg text-on-surface leading-relaxed">Substituting this back into the energy expression gives the quantized energy levels:</p>
+<div class="bg-surface-container-low p-6 rounded-lg text-center overflow-x-auto">
+<div class="text-2xl text-primary font-serif">
+                                $E_n = \frac{n^2 h^2}{8mL^2}$
+                            </div>
+</div>
+<!-- Citations Section -->
+<div class="pt-6 border-t border-outline-variant/20">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-xs text-on-surface-variant">menu_book</span>
+<span class="text-[10px] font-bold tracking-widest text-on-surface-variant uppercase">Research Citations</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+<div class="p-3 bg-surface-container-high rounded-lg flex items-start gap-3 hover:bg-surface-container-highest transition-colors cursor-pointer group">
+<div class="text-primary mt-1"><span class="material-symbols-outlined text-lg">description</span></div>
+<div>
+<p class="text-xs font-bold text-on-surface group-hover:text-primary transition-colors">Griffiths, D. J. (2018)</p>
+<p class="text-[10px] text-on-surface-variant italic">Introduction to Quantum Mechanics, 3rd Ed.</p>
+</div>
+</div>
+<div class="p-3 bg-surface-container-high rounded-lg flex items-start gap-3 hover:bg-surface-container-highest transition-colors cursor-pointer group">
+<div class="text-primary mt-1"><span class="material-symbols-outlined text-lg">description</span></div>
+<div>
+<p class="text-xs font-bold text-on-surface group-hover:text-primary transition-colors">Shankar, R. (1994)</p>
+<p class="text-[10px] text-on-surface-variant italic">Principles of Quantum Mechanics, pp. 151-160.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex gap-4 ml-11">
+<button class="flex items-center gap-1 text-[10px] font-bold text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">thumb_up</span> Helpful
+                        </button>
+<button class="flex items-center gap-1 text-[10px] font-bold text-on-surface-variant hover:text-error transition-colors">
+<span class="material-symbols-outlined text-sm">thumb_down</span>
+</button>
+<button class="flex items-center gap-1 text-[10px] font-bold text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">content_copy</span> Copy
+                        </button>
+</div>
+</div>
+<!-- User Message Follow-up -->
+<div class="flex flex-col items-end space-y-2">
+<div class="message-bubble-user max-w-[80%] bg-primary text-on-primary px-6 py-4 rounded-xl shadow-lg shadow-primary/10">
+<p class="body-lg leading-relaxed">Could you show me a visualization of the first three probability density functions $|\psi_n(x)|^2$?</p>
+</div>
+<span class="text-[10px] text-on-surface-variant font-medium mr-2">10:45 AM</span>
+</div>
+</div>
+</section>
+<!-- Focused Input Area -->
+<footer class="p-6 bg-white/70 backdrop-blur-xl border-t-0">
+<div class="max-w-4xl mx-auto relative group">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl blur opacity-25 group-focus-within:opacity-100 transition duration-1000 group-focus-within:duration-200"></div>
+<div class="relative bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-2 flex items-end gap-2 shadow-2xl shadow-primary/5">
+<button class="p-3 text-on-surface-variant hover:text-primary transition-colors rounded-xl hover:bg-surface-container">
+<span class="material-symbols-outlined" data-icon="add_circle">add_circle</span>
+</button>
+<textarea class="flex-1 bg-transparent border-none focus:ring-0 py-3 text-on-surface resize-none scrollbar-hide min-h-[48px]" placeholder="Ask about equations, citations, or concepts..." rows="1"></textarea>
+<div class="flex gap-1">
+<button class="p-3 text-on-surface-variant hover:text-primary transition-colors rounded-xl hover:bg-surface-container">
+<span class="material-symbols-outlined" data-icon="mic">mic</span>
+</button>
+<button class="p-3 bg-primary text-on-primary rounded-xl shadow-lg shadow-primary/30 hover:scale-105 active:scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</div>
+</div>
+<div class="mt-3 flex justify-center gap-6">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+<span class="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase">Research mode active</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-xs text-on-surface-variant">functions</span>
+<span class="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase">LaTeX rendering ON</span>
+</div>
+</div>
+</div>
+</footer>
+<!-- Contextual Quick Actions (Floating) -->
+<div class="fixed right-8 top-1/2 -translate-y-1/2 flex flex-col gap-4">
+<button class="w-12 h-12 bg-surface-container-lowest border border-outline-variant/20 rounded-full flex items-center justify-center text-primary shadow-xl hover:bg-primary hover:text-white transition-all group">
+<span class="material-symbols-outlined" data-icon="bookmark">bookmark</span>
+<span class="absolute right-14 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Save Thread</span>
+</button>
+<button class="w-12 h-12 bg-surface-container-lowest border border-outline-variant/20 rounded-full flex items-center justify-center text-primary shadow-xl hover:bg-primary hover:text-white transition-all group">
+<span class="material-symbols-outlined" data-icon="share">share</span>
+<span class="absolute right-14 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Export PDF</span>
+</button>
+<button class="w-12 h-12 bg-surface-container-lowest border border-outline-variant/20 rounded-full flex items-center justify-center text-primary shadow-xl hover:bg-primary hover:text-white transition-all group">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="absolute right-14 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">History</span>
+</button>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,18 @@
+## 1. Implementation
+- [x] 1.1 Update CSS custom properties in `frontend/src/index.css` for light mode (replace red with Lumina Blue colors).
+- [x] 1.2 Update CSS custom properties in `frontend/src/index.css` for `.dark` mode with corresponding Lumina Blue dark variants.
+- [x] 1.3 Verify frontend renders with new blue theme across key pages (Dashboard, Paper Detail).
+- [x] 1.4 Refactor Paper Detail left pane layout (`paper_detail_refined_header_hierarchy`), extracting metadata out of the text flow into a sticky header.
+- [x] 1.5 Implement text highlighting capability in the paper reading area (yellow background).
+- [x] 1.6 Add right-click context menu on selected text with "对这些内容提问", hooking to Agent panel context.
+- [x] 1.7 Add default hint suggestions in the Agent panel's empty state ("不知道如何提问...").
+- [x] 1.8 Refactor homepage document cards (`community_feed_document_focus_final`), displaying interactive, hover-magnified original and translated PDF thumbnails side-by-side.
+- [x] 1.9 Fix Paper Detail translated view to embed PDF iframes when HTML preview is unavailable.
+- [ ] 1.10 Refactor CommunityFeed layout to completely conform to `code.html` (search section, sort tabs).
+- [x] 1.11 Refactor PaperCard layout to match `code.html` side-by-side design.
+- [x] 1.12 Update PaperCard PDF previews with resilient skeleton fallbacks, and ensure hover magnification scales *only* the specific PDF being hovered.
+- [x] 1.13 Optimize source preview route to prefer local cached community-paper source PDFs before remote arXiv fetch.
+- [x] 1.14 Add Range-aware source PDF proxy behavior so pdf.js can request partial content (`206`) for progressive loading.
+- [x] 1.15 Fix PaperCard first-page preview fitting so original and translated thumbnails display full first-page content without clipping.
+- [x] 1.16 Fix Material Symbols font import in `frontend/index.html` to ensure icons render correctly in the community feed.
+- [x] 1.17 Update abstract translation toggle button text to "切换语言(switch)" in `PaperCard.tsx`.

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lumina Archive - Paper Detail</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "inverse-on-surface": "#f0f0fb",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb59c",
+                        "on-error-container": "#93000a",
+                        "on-error": "#ffffff",
+                        "surface-container-low": "#f3f2fe",
+                        "on-secondary-container": "#3d4c83",
+                        "surface-bright": "#faf8ff",
+                        "on-primary-fixed": "#001551",
+                        "on-tertiary-fixed-variant": "#832700",
+                        "surface": "#faf8ff",
+                        "on-surface": "#1a1b23",
+                        "on-tertiary-fixed": "#390c00",
+                        "error": "#ba1a1a",
+                        "primary": "#1d4ed8",
+                        "error-container": "#ffdad6",
+                        "on-tertiary": "#ffffff",
+                        "surface-variant": "#e2e1ed",
+                        "on-secondary-fixed-variant": "#35437b",
+                        "on-surface-variant": "#434655",
+                        "on-background": "#1a1b23",
+                        "inverse-surface": "#2e3039",
+                        "on-primary-container": "#cad3ff",
+                        "outline-variant": "#c4c5d7",
+                        "on-secondary": "#ffffff",
+                        "secondary": "#4d5b94",
+                        "on-secondary-fixed": "#03164d",
+                        "surface-container-high": "#e8e7f3",
+                        "secondary-fixed-dim": "#b7c4ff",
+                        "surface-container-highest": "#e2e1ed",
+                        "surface-dim": "#d9d9e5",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#747686",
+                        "on-tertiary-container": "#ffc9b7",
+                        "primary-fixed": "#dce1ff",
+                        "primary-container": "#1d4ed8",
+                        "surface-container": "#ededf9",
+                        "on-primary-fixed-variant": "#0039b5",
+                        "secondary-fixed": "#dce1ff",
+                        "surface-tint": "#2151da",
+                        "tertiary-fixed": "#ffdbcf",
+                        "background": "#faf8ff",
+                        "secondary-container": "#b0befe",
+                        "inverse-primary": "#b7c4ff",
+                        "tertiary-container": "#a73400",
+                        "tertiary": "#7f2500",
+                        "primary-fixed-dim": "#b7c4ff"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: #faf8ff; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .agent-collapsed #agent-sidebar { width: 0; min-width: 0; opacity: 0; pointer-events: none; border-left: none; }
+        .agent-collapsed #main-reader { flex-grow: 1; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased overflow-hidden">
+<!-- Compact Sticky Top Header - Restructured -->
+<nav class="w-full bg-white border-b border-outline-variant/20 z-50 px-6 py-2 shadow-sm">
+<div class="flex items-start justify-between gap-4">
+<!-- Back and Title Column -->
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-container-high p-1 rounded-full transition-colors shrink-0">arrow_back</span>
+<h1 class="text-lg md:text-xl font-bold truncate text-on-surface">Decoherence-free subspaces for quantum information processing: A comprehensive analysis</h1>
+</div>
+<!-- Row 2: Metadata and Metrics -->
+<div class="flex items-center gap-6 text-[11px] font-medium text-on-surface-variant ml-9">
+<div class="flex items-center gap-4 border-r border-outline-variant/30 pr-6">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">person</span> Dr. Elena Vance, Dr. Aris Thorne</span>
+<span class="text-on-surface-variant/60">Published Oct 24, 2023</span>
+<span class="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[9px] font-bold">PEER REVIEWED</span>
+</div>
+</div><div class="flex items-center gap-6 text-[11px] font-medium text-on-surface-variant ml-9 mt-2">
+<div class="flex items-center gap-4">
+<button class="flex items-center gap-1 hover:text-primary transition-colors"><span class="material-symbols-outlined text-base">favorite</span> 124</button>
+<button class="flex items-center gap-1 hover:text-primary transition-colors"><span class="material-symbols-outlined text-base">bookmark</span> Save</button>
+<div class="flex items-center gap-1"><span class="material-symbols-outlined text-base">visibility</span> 2.4k</div>
+</div>
+</div>
+</div>
+<!-- Action Area -->
+<div class="flex items-center gap-3 shrink-0 pt-1">
+<span class="text-xs font-black tracking-tighter text-blue-700 mr-4">Lumina Archive</span>
+<div class="h-8 w-8 rounded-full bg-primary-container flex items-center justify-center text-white text-[10px] font-bold">JD</div>
+<button class="p-1.5 rounded-md hover:bg-surface-container-high text-on-surface-variant transition-colors" id="toggle-agent" title="Toggle Research Agent">
+<span class="material-symbols-outlined">dock_to_right</span>
+</button>
+</div>
+</div>
+</nav>
+<!-- Main Content Area: Dual Pane Layout -->
+<main class="flex h-[calc(100vh-4.25rem)] overflow-hidden transition-all duration-300">
+<!-- Left Pane: PDF Reader (Independent Scroll) -->
+<section class="flex-1 overflow-y-auto no-scrollbar bg-slate-100 p-8 transition-all duration-300" id="main-reader">
+<div class="max-w-4xl mx-auto">
+<div class="bg-white rounded-md shadow-sm border border-outline-variant/10 overflow-hidden min-h-[1500px]">
+<!-- Reader Control Bar -->
+<div class="flex justify-between items-center px-6 py-3 border-b border-outline-variant/10 bg-white">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer text-xl">zoom_in</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer text-xl">zoom_out</span>
+<span class="text-[10px] font-bold text-on-surface-variant tracking-wider">PAGE 1 OF 18</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+<span class="material-symbols-outlined text-sm">download</span> DOWNLOAD PDF
+                        </button>
+<button class="flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded bg-primary text-white hover:opacity-90 transition-all">
+<span class="material-symbols-outlined text-sm">share</span> CITE
+                        </button>
+</div>
+</div>
+<!-- Visual Representation of Page Content -->
+<div class="p-16 space-y-12">
+<div class="space-y-4">
+<h2 class="text-2xl font-bold text-on-surface">Abstract</h2>
+<p class="text-on-surface-variant leading-relaxed text-lg">
+                            We analyze the fundamental mechanisms of decoherence-free subspaces (DFS) in the context of open quantum systems. By utilizing symmetry-adapted basis sets, we demonstrate how specific noise patterns can be mitigated without the need for active error correction. Our findings suggest a 40% improvement in gate fidelity for superconducting qubits when utilizing these geometric constraints.
+                        </p>
+</div>
+<div class="grid grid-cols-2 gap-8">
+<div class="aspect-[4/5] bg-slate-50 border border-slate-100 rounded-lg overflow-hidden relative group">
+<img alt="Scientific Graph" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCwmNGU97OZwf1ZeGJJfoImmxv7KyNtk-yR5F8NdFPnfIa8bhCWQDJOWNMbJ-0k2LSd_SDcxl98iPaEQMjkS7AnRMcyISpJzJ3BlUgJXEliOGkm9SsWOKOR5mRYTI2nG7T6B8JkuPB9-CLt-lTCl4OZ3OPJr3_1JBbtcOyEZILedXFMg9OA1njCp5ZffKQQ45GeQJTW2LfOpcVIeytV4MlmOcPh3xucVTcfSbKWQOXkzaRtIzKakl4rHAFkFdeDzDgonxJp699EG-Ee"/>
+<div class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md p-3 rounded shadow-sm text-[10px] font-medium text-slate-600 border border-slate-200">
+                                Fig 1: Decay rates vs. Subspace dimension under collective dephasing.
+                            </div>
+</div>
+<div class="aspect-[4/5] bg-slate-50 border border-slate-100 rounded-lg overflow-hidden relative group">
+<img alt="Quantum Hardware" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBP1hyBGO1Fv1EFcjkaD1aZ_6-IlbdowgyD61mz5dqkWg-_wPoLT0dEl9waBqiQUOVWofGRnVlVSCQL8fzxtG_6egXFJzqZK3nJFLbwnRv-4GY4hxuna1Bso0EVVEREoLlfr-BHieHvsoOagcCbJmpfsi053QP0upcrblcIQBAeiUA2ovu6OZgaaMuMzEO6xMWLpisXHUhcMpm4DyZSVblGfM33Om7LIvsM21BAlrK4dLbiEPMvHvCgcM90jbrykzkILZpB2fZCfz5W"/>
+<div class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md p-3 rounded shadow-sm text-[10px] font-medium text-slate-600 border border-slate-200">
+                                Fig 2: Physical implementation of the DFS on a 12-qubit register.
+                            </div>
+</div>
+</div>
+<div class="space-y-6 pt-4 border-t border-slate-100">
+<h2 class="text-2xl font-bold text-on-surface">1. Introduction</h2>
+<p class="text-on-surface-variant leading-relaxed">
+                            The quest for fault-tolerant quantum computation remains one of the most significant challenges in modern physics. Decoherence, the loss of quantum information due to interaction with an external environment, is the primary obstacle. In this paper, we focus on passive error-prevention methods...
+                        </p>
+<p class="text-on-surface-variant leading-relaxed">
+                            Traditionally, researchers have relied on active error correction codes (QECC) which require significant qubit overhead. However, the discovery of decoherence-free subspaces (DFS) provided a revolutionary alternative. By identifying states that are invariant under certain noise processes, information can be protected without the constant need for syndrome measurement and recovery operations.
+                        </p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Pane: Collapsible Agent Sidebar (Independent Scroll) -->
+<aside class="w-96 shrink-0 flex flex-col bg-white border-l border-outline-variant/20 transition-all duration-300" id="agent-sidebar">
+<!-- Sidebar Header -->
+<div class="p-6 border-b border-outline-variant/20 flex items-center justify-between bg-slate-50/50">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-primary rounded-lg text-white">
+<span class="material-symbols-outlined text-lg">auto_awesome</span>
+</div>
+<div>
+<h3 class="text-xs font-bold text-on-surface">Research Agent</h3>
+<p class="text-[9px] font-semibold text-blue-600 uppercase tracking-widest">ACTIVE SESSION</p>
+</div>
+</div>
+</div>
+<!-- Chat Area -->
+<div class="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+<!-- Quick Actions -->
+<div class="flex flex-wrap gap-2">
+<button class="px-3 py-1 bg-white border border-outline-variant/30 rounded-full text-[10px] font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-all">Summarize</button>
+<button class="px-3 py-1 bg-white border border-outline-variant/30 rounded-full text-[10px] font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-all">Key Findings</button>
+<button class="px-3 py-1 bg-white border border-outline-variant/30 rounded-full text-[10px] font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-all">Methodology</button>
+</div>
+<!-- Chat History -->
+<div class="space-y-6">
+<!-- Agent -->
+<div class="space-y-2">
+<div class="flex items-center gap-2">
+<span class="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Lumina AI</span>
+</div>
+<div class="bg-slate-100 p-4 rounded-2xl rounded-tl-none text-sm text-on-surface leading-relaxed border border-slate-200/50">
+                        Hello! I've analyzed this paper. Would you like me to highlight the core mathematical proofs regarding the collective dephasing model mentioned on page 4?
+                    </div>
+</div>
+<!-- User -->
+<div class="space-y-2 flex flex-col items-end">
+<span class="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">You</span>
+<div class="bg-primary text-white p-4 rounded-2xl rounded-tr-none text-sm leading-relaxed shadow-sm max-w-[90%]">
+                        Yes, and please explain the practical implications for 12-qubit registers shown in Figure 2.
+                    </div>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined animate-pulse text-sm">more_horiz</span>
+<span class="text-[10px] italic">Analyzing diagrams...</span>
+</div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-6 bg-white border-t border-outline-variant/20">
+<div class="relative">
+<textarea class="w-full bg-slate-50 border border-outline-variant/30 rounded-xl p-4 text-sm focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none pr-12" placeholder="Ask about the research..." rows="2"></textarea>
+<button class="absolute right-3 bottom-3 p-2 bg-primary text-white rounded-lg hover:opacity-90 transition-all shadow-sm">
+<span class="material-symbols-outlined text-base">send</span>
+</button>
+</div>
+<div class="mt-3 flex items-center justify-between text-[9px] text-on-surface-variant font-medium">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-xs">info</span> Powered by Lumina v2.4</span>
+<span class="hover:text-primary cursor-pointer">View Sources</span>
+</div>
+</div>
+</aside>
+</main>
+<!-- Side Navigation Bar (Minimized/Anchor Style) - Collapsed by default -->
+<div class="fixed left-0 top-0 h-full flex flex-col py-6 px-3 w-16 bg-white border-r border-outline-variant/10 z-50 rounded-r-lg group hover:w-60 transition-all duration-300 shadow-xl shadow-black/5">
+<div class="mb-8 px-2 flex items-center gap-4 overflow-hidden">
+<span class="material-symbols-outlined text-blue-700 text-2xl font-bold shrink-0">book_2</span>
+<span class="text-lg font-bold text-slate-900 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Lumina Archive</span>
+</div>
+<div class="flex flex-col gap-2 flex-1">
+<div class="flex items-center gap-4 p-3 bg-primary text-white rounded-lg shadow-sm cursor-pointer overflow-hidden">
+<span class="material-symbols-outlined shrink-0">explore</span>
+<span class="font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Explore</span>
+</div>
+<div class="flex items-center gap-4 p-3 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all cursor-pointer overflow-hidden">
+<span class="material-symbols-outlined shrink-0">chat</span>
+<span class="font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Conversations</span>
+</div>
+<div class="flex items-center gap-4 p-3 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all cursor-pointer overflow-hidden">
+<span class="material-symbols-outlined shrink-0">history</span>
+<span class="font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Library</span>
+</div>
+</div>
+<div class="mt-auto flex flex-col gap-2">
+<div class="flex items-center gap-4 p-3 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all cursor-pointer overflow-hidden">
+<span class="material-symbols-outlined shrink-0">settings</span>
+<span class="font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Settings</span>
+</div>
+</div>
+</div>
+<script>
+    const toggleBtn = document.getElementById('toggle-agent');
+    const mainBody = document.body;
+    
+    toggleBtn.addEventListener('click', () => {
+        mainBody.classList.toggle('agent-collapsed');
+    });
+</script>
+</body></html>

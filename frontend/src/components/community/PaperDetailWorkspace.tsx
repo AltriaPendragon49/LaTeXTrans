@@ -1,22 +1,18 @@
-import {
+﻿import {
   ArrowUpRight,
   Bot,
   Loader2,
   Download,
-  Eye,
-  Languages,
   Link2,
   ScrollText,
   Sparkles,
-  Timer,
 } from "lucide-react"
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 
+import { API_BASE_URL } from "@/api-base"
 import { PaperPreviewReader } from "@/components/community/PaperPreviewReader"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import type {
   CommunityAgentCitation,
@@ -26,6 +22,9 @@ import type {
   CommunityPaperReader,
   CommunityPaperReaderMode,
   CommunityConversationTurn,
+  ReaderSelectionContext,
+  PaperAnnotation,
+  PaperAnnotationOverlayRect,
 } from "@/types/community"
 
 const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v2"
@@ -33,17 +32,6 @@ const DEFAULT_SPLIT_RATIO = 0.65
 const MIN_READER_WIDTH = 720
 const MIN_AGENT_WIDTH = 260
 const READER_SELECTION_HIGHLIGHT_NAME = "paper-detail-reader-selection"
-
-function getTraceStatusClass(status: string) {
-  switch (status) {
-    case "completed":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-    case "fallback":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-100"
-    default:
-      return "border-[color:var(--shell-border)] bg-[var(--shell-pill)] text-[var(--shell-text-soft)]"
-  }
-}
 
 function formatConversationTimestamp(value: string) {
   const date = new Date(value)
@@ -65,6 +53,27 @@ function clampSplitRatio(ratio: number, width: number) {
   const minRatio = MIN_READER_WIDTH / width
   const maxRatio = 1 - MIN_AGENT_WIDTH / width
   return Math.min(Math.max(ratio, minRatio), maxRatio)
+}
+
+function getHighlightOverlayColor(color: string) {
+  switch (color) {
+    case "red":
+      return "rgba(255, 82, 82, 0.3)"
+    case "orange":
+      return "rgba(255, 171, 64, 0.3)"
+    case "green":
+      return "rgba(105, 240, 174, 0.3)"
+    case "blue":
+      return "rgba(68, 138, 255, 0.3)"
+    case "purple":
+      return "rgba(179, 136, 255, 0.3)"
+    case "fuchsia":
+      return "rgba(255, 64, 129, 0.3)"
+    case "cyan":
+      return "rgba(24, 255, 255, 0.3)"
+    default:
+      return "rgba(255, 215, 64, 0.3)"
+  }
 }
 
 interface PaperDetailWorkspaceProps {
@@ -94,11 +103,14 @@ interface PaperDetailWorkspaceProps {
   agentInput: string
   agentMode: CommunityAgentMode
   externalSearchEnabled: boolean
-  readerSelection: {
-    text: string
-    anchor_id: string | null
-    mode: CommunityPaperReaderMode
-  } | null
+  readerSelection: ReaderSelectionContext | null
+  onReaderSelectionChange: (selection: ReaderSelectionContext | null) => void
+  onSaveAnnotation: (annotation: PaperAnnotation) => void
+  onRemoveHighlightForSelection: (selection: ReaderSelectionContext) => void
+  annotations: PaperAnnotation[]
+  annotationOverlayRects: PaperAnnotationOverlayRect[]
+  onFocusAnnotation: (annotation: PaperAnnotation) => void
+  agentContext: ReaderSelectionContext | null
   agentBusy: boolean
   agentError: string | null
   onAgentInputChange: (value: string) => void
@@ -106,6 +118,7 @@ interface PaperDetailWorkspaceProps {
   onExternalSearchChange: (value: boolean) => void
   onAgentSubmit: () => void
   onSelectionClear: () => void
+  onAskAI?: (selection: ReaderSelectionContext) => void
   onQuickExplain: () => void
   onQuickSummary: () => void
   onCitationOpen: (citation: CommunityAgentCitation) => void
@@ -117,28 +130,24 @@ export function PaperDetailWorkspace({
   readerState,
   reader,
   preferredMode,
-  availableModes,
   stageLabel,
-  softBanner,
-  canLeaveHint,
   originalSourceUrl,
   abstractText,
   readerHighlight,
   previewRef,
-  canTranslate,
-  canViewProgress,
-  canDownload,
-  actionError,
-  onTranslate,
-  onViewProgress,
-  onPreview,
   onDownload,
-  onModeChange,
   agentTurns,
   agentInput,
   agentMode,
   externalSearchEnabled,
   readerSelection,
+  onReaderSelectionChange,
+  onSaveAnnotation,
+  onRemoveHighlightForSelection,
+  annotations,
+  annotationOverlayRects,
+  onFocusAnnotation,
+  agentContext,
   agentBusy,
   agentError,
   onAgentInputChange,
@@ -146,8 +155,7 @@ export function PaperDetailWorkspace({
   onExternalSearchChange,
   onAgentSubmit,
   onSelectionClear,
-  onQuickExplain,
-  onQuickSummary,
+  onAskAI,
   onCitationOpen,
 }: PaperDetailWorkspaceProps) {
   const { t } = useTranslation()
@@ -163,8 +171,9 @@ export function PaperDetailWorkspace({
     typeof window === "undefined" ? true : window.innerWidth >= 1024,
   )
   const [activeTab, setActiveTab] = useState<"Assistant" | "My Notes" | "Comments" | "Similar">("Assistant")
+  const [expandedAnnotationId, setExpandedAnnotationId] = useState<string | null>(null)
   const messageListRef = useRef<HTMLDivElement | null>(null)
-
+  // removed context menu state
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SPLIT_STORAGE_KEY, String(splitRatio))
@@ -205,26 +214,23 @@ export function PaperDetailWorkspace({
     return () => window.cancelAnimationFrame(frameId)
   }, [agentBusy, agentTurns])
 
-  const sourceAvailable = availableModes.includes("source")
-  const translatedAvailable = availableModes.includes("translated")
-  const sourceKind = preferredMode === "source" ? reader?.source?.kind ?? null : null
   const sourceHtmlContent =
-    preferredMode === "source" && reader?.source?.kind === "source_html"
+    (preferredMode === "source") && reader?.source?.kind === "source_html"
       ? (reader.source.html_content ?? null)
       : null
-  const translatedResource = preferredMode === "translated" ? reader?.translated ?? null : null
+  const translatedResource = (preferredMode === "translated" || preferredMode === "translated_html" || preferredMode === "translated_pdf") ? reader?.translated ?? null : null
   const translatedHtmlContent =
-    preferredMode === "translated"
+    (preferredMode === "translated" || preferredMode === "translated_html")
       ? (reader?.translated?.html_content ?? preview?.html_content ?? null)
       : null
   const translatedPreviewAvailable =
-    preferredMode === "translated" &&
+    (preferredMode === "translated" || preferredMode === "translated_html") &&
     (Boolean(preview?.html_content) ||
       reader?.translated?.kind === "preview_html" ||
       paper.latest_asset?.asset_type === "preview_html")
   const translatedPreviewPayload: CommunityPaperPreviewResponse | null =
     preview ??
-    (preferredMode === "translated" &&
+    ((preferredMode === "translated" || preferredMode === "translated_html") &&
       reader?.translated?.kind === "preview_html" &&
       reader.translated.html_content
       ? {
@@ -246,24 +252,22 @@ export function PaperDetailWorkspace({
       }
       : null)
   const translatedPdfFallback =
-    preferredMode === "translated" && translatedResource?.kind === "translated_pdf"
+    (preferredMode === "translated" || preferredMode === "translated_pdf") && translatedResource?.kind === "translated_pdf"
       ? translatedResource
       : null
+  const translatedPdfFallbackUrl = translatedPdfFallback?.url ?? (
+    paper.community_selected_task_id && paper.trans_status === "completed"
+      ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/pdf`
+      : null
+  )
+  const noteAnnotations = [...annotations].reverse()
   const sourceDocumentUrl =
-    preferredMode === "source"
-      ? sourceKind === "source_pdf"
-        ? reader?.source?.url ?? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null)
-        : sourceKind === "external_arxiv_html"
-          ? paper.arxiv_id
-            ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf`
-            : null
-          : reader?.source?.url ?? null
+    (preferredMode === "source")
+      ? (paper.community_selected_task_id
+        ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/source-pdf`
+        : (reader?.source?.url ?? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null)))
       : null
-  const sourceExternalLink =
-    preferredMode === "source"
-      ? reader?.source?.url ??
-      (paper.arxiv_id ? `https://arxiv.org/abs/${paper.arxiv_id}` : originalSourceUrl)
-      : null
+
 
   function handleResizeStart(event: React.PointerEvent<HTMLDivElement>) {
     const container = containerRef.current
@@ -299,9 +303,44 @@ export function PaperDetailWorkspace({
     onAgentSubmit()
   }
 
+  function applySelectionHighlight(color: string) {
+    if (!readerSelection?.range) {
+      return
+    }
+
+    let savedRange: Range
+    try {
+      savedRange = readerSelection.range.cloneRange()
+    } catch {
+      return
+    }
+
+    onSaveAnnotation({
+      id: crypto.randomUUID(),
+      text: readerSelection.text,
+      range: savedRange,
+      anchor_id: readerSelection.anchor_id,
+      mode: readerSelection.mode,
+      color,
+      note: readerSelection.note || "",
+    })
+    onReaderSelectionChange(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
   return (
     <>
-      <style>{`::highlight(${READER_SELECTION_HIGHLIGHT_NAME}) { background-color: rgba(250, 204, 21, 0.45); }`}</style>
+      <style>{`
+        ::highlight(${READER_SELECTION_HIGHLIGHT_NAME}) { background-color: rgba(250, 204, 21, 0.45); }
+        ::highlight(paper-annotation-red) { background-color: rgba(255, 82, 82, 0.33); }
+        ::highlight(paper-annotation-orange) { background-color: rgba(255, 171, 64, 0.33); }
+        ::highlight(paper-annotation-yellow) { background-color: rgba(255, 215, 64, 0.33); }
+        ::highlight(paper-annotation-green) { background-color: rgba(105, 240, 174, 0.33); }
+        ::highlight(paper-annotation-blue) { background-color: rgba(68, 138, 255, 0.33); }
+        ::highlight(paper-annotation-purple) { background-color: rgba(179, 136, 255, 0.33); }
+        ::highlight(paper-annotation-fuchsia) { background-color: rgba(255, 64, 129, 0.33); }
+        ::highlight(paper-annotation-cyan) { background-color: rgba(24, 255, 255, 0.33); }
+      `}</style>
       <div
         ref={containerRef}
         data-testid="paper-detail-top-panels"
@@ -313,48 +352,51 @@ export function PaperDetailWorkspace({
           className={cn(
             "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-container-lowest transition-all [&_[data-reader-anchor-active='true']]:rounded-md [&_[data-reader-anchor-active='true']]:ring-2 [&_[data-reader-anchor-active='true']]:ring-primary/70 [&_[data-reader-anchor-active='true']]:ring-offset-2 [&_[data-reader-anchor-active='true']]:ring-offset-surface-container-lowest [&_[data-reader-selection-active='true']]:rounded-sm [&_[data-reader-selection-active='true']]:bg-primary-fixed/40 [&_[data-reader-selection-active='true']]:shadow-[inset_0_0_0_1px_var(--color-primary-fixed-dim)]",
             readerHighlight ? "ring-2 ring-primary/60" : "",
-            isDesktop ? "border-r border-outline-variant/30" : "border-b border-outline-variant/30 min-h-[50vh]"
+            isDesktop ? "" : "border-b border-outline-variant/30 min-h-[50vh]"
           )}
         >
-          <div className="h-10 shrink-0 hidden lg:flex items-center justify-between px-4 border-b border-outline-variant/30 bg-surface-container-low">
-            <div className="flex items-center gap-2 text-sm text-on-surface-variant font-medium">
-              <ScrollText className="w-4 h-4 text-primary" />
-              {preferredMode === "source" ? "LaTeX Document Reader" : "Translated Document Reader"}
-            </div>
-            {sourceExternalLink ? (
-              <a
-                href={sourceExternalLink}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex items-center gap-2 text-xs text-on-surface-variant transition hover:text-on-surface"
-              >
-                <Link2 className="h-3.5 w-3.5" />
-                {t("community.detail.originalSource")}
-              </a>
-            ) : null}
-          </div>
 
-          <div className="flex-1 overflow-auto bg-surface-container-lowest">
+          <div 
+            data-testid="paper-reader-scroll-root"
+            className="relative flex-1 overflow-auto bg-surface-container-lowest [&_article::selection]:bg-yellow-200 [&_article::selection]:text-gray-900"
+          >
+            {annotationOverlayRects.length > 0 ? (
+              <div aria-hidden className="pointer-events-none absolute inset-0 z-[3]">
+                {annotationOverlayRects.map((rect) => (
+                  <span
+                    key={rect.id}
+                    className="absolute rounded-[2px]"
+                    style={{
+                      top: rect.top,
+                      left: rect.left,
+                      width: rect.width,
+                      height: rect.height,
+                      backgroundColor: getHighlightOverlayColor(rect.color),
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
+
             {preferredMode === "source" ? (
-              sourceHtmlContent ? (
-                <article
-                  data-testid="paper-source-reader"
-                  className="h-full bg-surface-container-lowest px-6 py-6 text-on-surface sm:px-8 lg:px-10 lg:py-8 [&_article]:mx-auto [&_article]:max-w-[1040px] [&_article]:space-y-6 [&_figcaption]:text-sm [&_figcaption]:leading-6 [&_figcaption]:text-on-surface-variant [&_figure]:my-8 [&_figure]:overflow-x-auto [&_h1]:mt-8 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-[-0.04em] [&_h2]:mt-10 [&_h2]:text-[1.85rem] [&_h2]:font-semibold [&_h2]:tracking-[-0.03em] [&_h3]:mt-8 [&_h3]:text-[1.35rem] [&_h3]:font-semibold [&_li]:leading-8 [&_ol]:space-y-3 [&_p]:text-[17px] [&_p]:leading-8 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:bg-surface-container [&_pre]:p-4 [&_pre]:text-sm [&_pre]:text-on-surface [&_table]:w-full [&_table]:overflow-x-auto [&_table]:text-sm [&_td]:border [&_td]:border-outline-variant/30 [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:border-outline-variant/30 [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-2 [&_ul]:space-y-3 [&_math]:overflow-x-auto [&_math]:block [&_math]:py-2"
-                  dangerouslySetInnerHTML={{ __html: sourceHtmlContent }}
-                />
-              ) : sourceDocumentUrl ? (
+              sourceDocumentUrl ? (
                 <iframe
                   data-testid="paper-source-pdf-reader"
                   title={`${paper.title} PDF`}
                   src={sourceDocumentUrl}
                   className="h-full w-full border-0 bg-surface-container-lowest"
                 />
+              ) : sourceHtmlContent ? (
+                <article
+                  data-testid="paper-source-reader"
+                  className="h-full bg-surface-container-lowest px-6 py-6 text-on-surface sm:px-8 lg:px-10 lg:py-8 [&_article]:mx-auto [&_article]:max-w-[1040px] [&_article]:space-y-6 [&_figcaption]:text-sm [&_figcaption]:leading-6 [&_figcaption]:text-on-surface-variant [&_figure]:my-8 [&_figure]:overflow-x-auto [&_h1]:mt-8 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-[-0.04em] [&_h2]:mt-10 [&_h2]:text-[1.85rem] [&_h2]:font-semibold [&_h2]:tracking-[-0.03em] [&_h3]:mt-8 [&_h3]:text-[1.35rem] [&_h3]:font-semibold [&_li]:leading-8 [&_ol]:space-y-3 [&_p]:text-[17px] [&_p]:leading-8 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:bg-surface-container [&_pre]:p-4 [&_pre]:text-sm [&_pre]:text-on-surface [&_table]:w-full [&_table]:overflow-x-auto [&_table]:text-sm [&_td]:border [&_td]:border-outline-variant/30 [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:border-outline-variant/30 [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-2 [&_ul]:space-y-3 [&_math]:overflow-x-auto [&_math]:block [&_math]:py-2"
+                  dangerouslySetInnerHTML={{ __html: sourceHtmlContent }}
+                />
               ) : (
                 <article
                   data-testid="paper-source-reader"
                   className="flex h-full flex-col gap-4 px-10 py-8"
                 >
-                  <h2 className="text-2xl font-semibold text-on-surface">{paper.title}</h2>
                   <p className="max-w-4xl text-base leading-8 text-on-surface-variant">{abstractText}</p>
                   {originalSourceUrl ? (
                     <a
@@ -369,12 +411,12 @@ export function PaperDetailWorkspace({
                   ) : null}
                 </article>
               )
-            ) : preferredMode === "translated" && readerState === "warming" ? (
-              <div className="h-full p-3 bg-surface-container-lowest">
+            ) : (preferredMode === "translated_html" || preferredMode === "translated") && readerState === "warming" ? (
+              <div className="h-full bg-surface-container-lowest">
                 <PaperPreviewReader ref={previewRef} paperId={paper.id} initialPreview={null} readerState={readerState} />
               </div>
             ) : translatedPreviewAvailable ? (
-              <div className="h-full p-3 bg-surface-container-lowest">
+              <div className="h-full bg-surface-container-lowest">
                 <PaperPreviewReader
                   ref={previewRef}
                   paperId={paper.id}
@@ -382,7 +424,7 @@ export function PaperDetailWorkspace({
                   readerState={readerState}
                 />
               </div>
-            ) : translatedHtmlContent ? (
+            ) : translatedHtmlContent && (preferredMode === "translated_html" || preferredMode === "translated") ? (
               (
                 <article
                   data-testid="paper-translated-reader"
@@ -390,7 +432,14 @@ export function PaperDetailWorkspace({
                   dangerouslySetInnerHTML={{ __html: translatedHtmlContent }}
                 />
               )
-            ) : translatedPdfFallback?.kind === "translated_pdf" ? (
+            ) : (preferredMode === "translated_pdf" || preferredMode === "translated") && translatedPdfFallbackUrl ? (
+              <iframe
+                data-testid="paper-translated-pdf-reader"
+                title={`${paper.title} Translated PDF`}
+                src={translatedPdfFallbackUrl}
+                className="h-full w-full border-0 bg-surface-container-lowest"
+              />
+            ) : (preferredMode === "translated_pdf" || preferredMode === "translated") && translatedPdfFallback?.kind === "translated_pdf" ? (
               <article
                 data-testid="paper-translated-pdf-fallback"
                 className="flex h-full flex-col items-center justify-center gap-4 px-10 py-8 text-center"
@@ -409,11 +458,87 @@ export function PaperDetailWorkspace({
                 data-testid="paper-translated-reader"
                 className="flex h-full flex-col gap-4 px-10 py-8"
               >
-                <h2 className="text-2xl font-semibold text-on-surface">{paper.title}</h2>
                 <p className="max-w-4xl text-base leading-8 text-on-surface-variant">{abstractText}</p>
               </article>
             )}
           </div>
+
+          {readerSelection?.position && (
+            <div
+              data-reader-selection-toolbar="true"
+              className="fixed z-50 rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl min-w-[320px] animate-in fade-in zoom-in-95 duration-150"
+              style={{ 
+                top: Math.max(80, readerSelection.position.y), 
+                left: readerSelection.position.x, 
+                transform: 'translateX(-50%)' 
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <textarea
+                value={readerSelection.note || ""}
+                onChange={(e) => onReaderSelectionChange({ ...readerSelection, note: e.target.value })}
+                placeholder="Add text here..."
+                className="mb-4 min-h-[40px] w-full resize-none border-none bg-white text-sm text-slate-900 outline-none placeholder:text-slate-500"
+              />
+              
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { id: 'red', color: '#ff5252' },
+                    { id: 'orange', color: '#ffab40' },
+                    { id: 'yellow', color: '#ffd740' },
+                    { id: 'green', color: '#69f0ae' },
+                    { id: 'blue', color: '#448aff' },
+                    { id: 'purple', color: '#b388ff' },
+                    { id: 'fuchsia', color: '#ff4081' },
+                    { id: 'cyan', color: '#18ffff' },
+                  ].map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applySelectionHighlight(item.id)}
+                      className={cn(
+                        "w-5 h-5 rounded-full transition-transform hover:scale-125 border-2",
+                        readerSelection.color === item.id ? "border-primary" : "border-transparent"
+                      )}
+                      style={{ backgroundColor: item.color }}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      if (readerSelection) {
+                        onRemoveHighlightForSelection(readerSelection)
+                      }
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                  >
+                    <ScrollText className="w-3.5 h-3.5" />
+                    取消高亮
+                  </button>
+
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      if (onAskAI && readerSelection) {
+                        onAskAI(readerSelection)
+                      }
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Ask AI
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {isDesktop ? (
@@ -437,7 +562,7 @@ export function PaperDetailWorkspace({
             isDesktop ? "h-full" : "min-h-[500px]"
           )}
         >
-          <div className="flex bg-surface-container-lowest border-b border-outline-variant/30 shrink-0 px-2 pt-2 gap-1 overflow-x-auto">
+          <div className="flex bg-surface-container-lowest border-b border-outline-variant/30 shrink-0 px-2 pt-2 gap-1 overflow-hidden no-scrollbar">
             {(["Assistant", "My Notes", "Comments", "Similar"] as const).map((tab) => (
               <button
                 key={tab}
@@ -455,23 +580,129 @@ export function PaperDetailWorkspace({
             ))}
           </div>
 
-          {activeTab !== "Assistant" ? (
-             <div className="flex-1 flex flex-col items-center justify-center p-8 text-on-surface-variant/50 gap-4">
-                <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center">
-                  <Bot className="w-6 h-6 opacity-30" />
+          {activeTab === "My Notes" ? (
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+              {noteAnnotations.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-on-surface-variant/60">
+                  <ScrollText className="h-6 w-6 opacity-40" />
+                  <p className="text-sm font-medium">No highlights yet</p>
+                  <p className="text-xs">Pick a color to highlight selected text.</p>
                 </div>
-                <p className="text-sm font-medium">Coming Soon</p>
-             </div>
+              ) : (
+                <div className="space-y-2">
+                  {noteAnnotations.map((annotation) => {
+                    const expanded = expandedAnnotationId === annotation.id
+                    const modeLabel = annotation.mode === "source" ? "Source" : "Translated"
+                    return (
+                      <div
+                        key={annotation.id}
+                        className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExpandedAnnotationId((current) =>
+                              current === annotation.id ? null : annotation.id,
+                            )
+                            onFocusAnnotation(annotation)
+                          }}
+                          className="flex w-full items-start gap-3 px-3 py-3 text-left"
+                        >
+                          <span
+                            className="mt-1 h-3 w-3 shrink-0 rounded-full"
+                            style={{ backgroundColor: getHighlightOverlayColor(annotation.color) }}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs text-on-surface-variant/70">{modeLabel}</span>
+                            <span className="block truncate text-sm text-on-surface">{annotation.text}</span>
+                          </span>
+                          <span className="text-xs text-on-surface-variant/70">{expanded ? "Collapse" : "Expand"}</span>
+                        </button>
+
+                        {expanded ? (
+                          <div className="border-t border-outline-variant/20 px-3 py-3 text-xs text-on-surface-variant space-y-2">
+                            {annotation.note ? (
+                              <p className="whitespace-pre-wrap text-on-surface">{annotation.note}</p>
+                            ) : (
+                              <p>No note for this highlight.</p>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : activeTab !== "Assistant" ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-on-surface-variant/50 gap-4">
+              <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center">
+                <Bot className="w-6 h-6 opacity-30" />
+              </div>
+              <p className="text-sm font-medium">Coming Soon</p>
+            </div>
           ) : (
             <>
-
           <div ref={messageListRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
             {agentTurns.length === 0 ? (
-               <div className="h-full flex flex-col items-center justify-center text-center p-6 text-on-surface-variant/70 space-y-4">
-                  <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center mb-2">
-                     <Sparkles className="w-8 h-8 text-primary/40" />
+               <div className="h-full flex flex-col items-center justify-center text-center p-6 text-on-surface-variant/70">
+                  <div className="w-16 h-16 rounded-3xl bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center mb-6 shadow-[inset_0_1px_4px_rgba(0,0,0,0.05)]">
+                     <Sparkles className="w-8 h-8 text-primary/70" />
                   </div>
-                  <p className="text-sm">I can help you analyze this document, summarize sections, or explain complex concepts.</p>
+                  <h3 className="text-[15px] font-semibold text-on-surface mb-2">Need a prompt idea?</h3>
+                  <p className="text-xs text-on-surface-variant/80 mb-6 max-w-[200px]">
+                    You can click a card below and let AI analyze this paper.
+                  </p>
+                  
+                  <div className="w-full flex flex-col gap-3 max-w-sm">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAgentInputChange("Summarize this paper");
+                      }}
+                      className="w-full text-left p-3 rounded-2xl border border-outline-variant/30 hover:border-primary/40 bg-surface-container-lowest hover:bg-primary/5 hover:shadow-sm transition-all group flex items-start gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                        <ScrollText className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex flex-col mt-0.5">
+                        <span className="text-[13px] font-semibold text-on-surface leading-tight">Summarize this paper</span>
+                        <span className="text-[11px] text-on-surface-variant mt-1.5 opacity-80 leading-tight">Extract key goals and contributions</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAgentInputChange("Explain this highlighted section in detail");
+                      }}
+                      className="w-full text-left p-3 rounded-2xl border border-outline-variant/30 hover:border-primary/40 bg-surface-container-lowest hover:bg-primary/5 hover:shadow-sm transition-all group flex items-start gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex flex-col mt-0.5">
+                        <span className="text-[13px] font-semibold text-on-surface leading-tight">Ask about a highlighted section</span>
+                        <span className="text-[11px] text-on-surface-variant mt-1.5 opacity-80 leading-tight">Select text and ask for deeper explanation</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAgentInputChange("What is the core idea of this paper?");
+                      }}
+                      className="w-full text-left p-3 rounded-2xl border border-outline-variant/30 hover:border-primary/40 bg-surface-container-lowest hover:bg-primary/5 hover:shadow-sm transition-all group flex items-start gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                        <Bot className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex flex-col mt-0.5">
+                        <span className="text-[13px] font-semibold text-on-surface leading-tight">What is the core idea?</span>
+                        <span className="text-[11px] text-on-surface-variant mt-1.5 opacity-80 leading-tight">Understand the author&apos;s main findings</span>
+                      </div>
+                    </button>
+                  </div>
                </div>
             ) : null}
 
@@ -566,7 +797,7 @@ export function PaperDetailWorkspace({
           </div>
 
           <div className="p-4 bg-surface-container-lowest border-t border-outline-variant/30 shrink-0">
-            {readerSelection ? (
+            {agentContext ? (
               <div className="mb-3 rounded-xl bg-surface-container p-3 border border-outline-variant/30">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
@@ -581,8 +812,13 @@ export function PaperDetailWorkspace({
                     {t("common.actions.cancel")}
                   </button>
                 </div>
-                <div className="text-[13px] leading-relaxed text-on-surface-variant line-clamp-3 pl-2 border-l-2 border-primary/30">
-                  {readerSelection.text}
+                <div className="text-[13px] leading-relaxed text-on-surface-variant pl-2 border-l-2 border-primary/30 space-y-1">
+                  <div className="line-clamp-3 italic opacity-90">{agentContext.text}</div>
+                  {agentContext.note && (
+                    <div className="text-on-surface font-medium border-t border-outline-variant/10 pt-1 mt-1">
+                      {agentContext.note}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
@@ -619,27 +855,30 @@ export function PaperDetailWorkspace({
                   type="button"
                   onClick={() => onAgentModeChange(agentMode === "chat" ? "deep_research" : "chat")}
                   className={cn(
-                    "flex items-center gap-1 hover:text-on-surface transition-colors",
-                    agentMode === "deep_research" ? "text-primary font-medium" : ""
+                    "flex items-center gap-1.5 transition-all text-[11px] px-2.5 py-1.5 rounded-lg font-medium active:scale-95",
+                    agentMode === "deep_research"
+                      ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(var(--color-primary-rgb),0.2)]"
+                      : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest"
                   )}
                 >
-                  <Sparkles className="w-3 h-3" />
+                  <Sparkles className={cn("w-3.5 h-3.5", agentMode === "deep_research" && "animate-pulse")} />
                   Deep Research
                 </button>
-                <div className="w-px h-3 bg-outline-variant/50" />
+                <div className="w-px h-3 bg-outline-variant/50 ml-1 mr-1" />
                 <button
                   type="button"
                   onClick={() => onExternalSearchChange(!externalSearchEnabled)}
                   className={cn(
-                    "flex items-center gap-1 hover:text-on-surface transition-colors",
-                    externalSearchEnabled ? "text-primary font-medium" : ""
+                    "flex items-center gap-1.5 transition-all text-[11px] px-2.5 py-1.5 rounded-lg font-medium active:scale-95",
+                    externalSearchEnabled
+                      ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(var(--color-primary-rgb),0.2)]"
+                      : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest"
                   )}
                 >
-                  <Link2 className="w-3 h-3" />
+                  <Link2 className={cn("w-3.5 h-3.5", externalSearchEnabled && "animate-pulse")} />
                   Web Search
                 </button>
               </div>
-              <span className="hidden sm:inline opacity-70">Shift + Return to break line</span>
             </div>
           </div>
           </>
@@ -649,3 +888,6 @@ export function PaperDetailWorkspace({
     </>
   )
 }
+
+
+

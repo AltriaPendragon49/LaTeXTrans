@@ -5,7 +5,7 @@ import { useStore } from '@/store/useStore'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Loader2, History, Clock, FileText, ArrowRight, LogIn, RefreshCw, ChevronDown, Settings2, Languages, Wrench, Sparkles, CheckCircle2, XCircle, Trash2, Download, Eye } from 'lucide-react'
+import { Loader2, FileText, LogIn, RefreshCw, Settings2, Languages, Wrench, Sparkles, CheckCircle2, XCircle, Trash2, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     AlertDialog,

@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock3, Link2, Download, Languages, Timer } from "lucide-react"
+import { ArrowLeft, ChevronDown, ChevronUp, Download, Languages, Timer } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
@@ -28,6 +28,9 @@ import type {
   CommunityPaperExperience,
   CommunityPaperReader,
   CommunityPaperReaderMode,
+  ReaderSelectionContext,
+  PaperAnnotation,
+  PaperAnnotationOverlayRect,
 } from "@/types/community"
 
 function formatAuthors(authors: unknown[], fallback: string) {
@@ -48,23 +51,6 @@ function formatAuthors(authors: unknown[], fallback: string) {
     })
     .filter(Boolean)
     .join(", ")
-}
-
-function formatDetailDate(value: string | null | undefined, locale: string, fallback: string) {
-  if (!value) {
-    return fallback
-  }
-
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) {
-    return fallback
-  }
-
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(parsed)
 }
 
 function extractActionErrorMessage(error: unknown): string | null {
@@ -160,13 +146,8 @@ function findReaderAnchorElement(
   return null
 }
 
-interface ReaderSelectionContext {
-  text: string
-  anchor_id: string | null
-  mode: CommunityPaperReaderMode
-}
-
 const READER_SELECTION_HIGHLIGHT_NAME = "paper-detail-reader-selection"
+const READER_ANNOTATION_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "fuchsia", "cyan"] as const
 const READER_SELECTION_BLOCK_TAGS = new Set([
   "p",
   "li",
@@ -230,6 +211,119 @@ function findSelectionHighlightElement(target: Node | null, root: HTMLElement | 
     return target.parentElement
   }
   return null
+}
+
+function isSelectionToolbarEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Node)) {
+    return false
+  }
+  const element = target instanceof Element ? target : target.parentElement
+  return Boolean(element?.closest("[data-reader-selection-toolbar='true']"))
+}
+
+function normalizeReaderMode(mode: CommunityPaperReaderMode): "source" | "translated" {
+  return mode === "source" ? "source" : "translated"
+}
+
+function isAnnotationVisibleInMode(annotationMode: CommunityPaperReaderMode, currentMode: CommunityPaperReaderMode): boolean {
+  return normalizeReaderMode(annotationMode) === normalizeReaderMode(currentMode)
+}
+
+function hasPersistableRange(range: Range): boolean {
+  try {
+    if (range.collapsed) {
+      return false
+    }
+    const startNode = range.startContainer
+    const endNode = range.endContainer
+    const startDoc = startNode.ownerDocument
+    const endDoc = endNode.ownerDocument
+    if (!startDoc || startDoc !== endDoc) {
+      return false
+    }
+    return startDoc.contains(startNode) && startDoc.contains(endNode)
+  } catch {
+    return false
+  }
+}
+
+function buildRangeFromAnnotationText(annotation: PaperAnnotation): Range | null {
+  const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+  if (!readerPanel) {
+    return null
+  }
+
+  const normalizedText = normalizeSelectionText(annotation.text)
+  if (!normalizedText) {
+    return null
+  }
+
+  const scope = annotation.anchor_id
+    ? (findReaderAnchorElement(readerPanel, annotation.anchor_id) ?? readerPanel)
+    : readerPanel
+
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null)
+  let node = walker.nextNode()
+  while (node) {
+    const rawText = node.textContent ?? ""
+    const exactIndex = rawText.indexOf(annotation.text)
+    if (exactIndex >= 0) {
+      const range = document.createRange()
+      range.setStart(node, exactIndex)
+      range.setEnd(node, exactIndex + annotation.text.length)
+      if (hasPersistableRange(range)) {
+        return range
+      }
+    }
+
+    const normalizedNodeText = normalizeSelectionText(rawText)
+    const normalizedIndex = normalizedNodeText.indexOf(normalizedText)
+    if (normalizedIndex >= 0) {
+      const prefix = normalizedNodeText.slice(0, normalizedIndex)
+      const suffix = normalizedNodeText.slice(0, normalizedIndex + normalizedText.length)
+      const startHint = prefix.length
+      const endHint = suffix.length
+      const start = Math.min(Math.max(startHint, 0), rawText.length)
+      const end = Math.min(Math.max(endHint, start + 1), rawText.length)
+
+      if (end > start) {
+        const range = document.createRange()
+        range.setStart(node, start)
+        range.setEnd(node, end)
+        if (hasPersistableRange(range)) {
+          return range
+        }
+      }
+    }
+
+    node = walker.nextNode()
+  }
+
+  return null
+}
+
+function isSelectionEquivalent(
+  selection: Pick<ReaderSelectionContext, "text" | "anchor_id" | "mode">,
+  annotation: Pick<PaperAnnotation, "text" | "anchor_id" | "mode">,
+): boolean {
+  if (normalizeReaderMode(selection.mode) !== normalizeReaderMode(annotation.mode)) {
+    return false
+  }
+  if ((selection.anchor_id ?? null) !== (annotation.anchor_id ?? null)) {
+    return false
+  }
+
+  const selectionText = normalizeSelectionText(selection.text)
+  const annotationText = normalizeSelectionText(annotation.text)
+  if (!selectionText || !annotationText) {
+    return false
+  }
+
+  return (
+    selectionText === annotationText ||
+    selectionText.includes(annotationText) ||
+    annotationText.includes(selectionText)
+  )
 }
 
 function createUserTurn(content: string): CommunityConversationTurn {
@@ -384,7 +478,8 @@ function applyStreamEventToRun(
 }
 
 export default function PaperDetailPage() {
-  const { i18n, t } = useTranslation()
+  const { t } = useTranslation()
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(true)
   const location = useLocation()
   const navigate = useNavigate()
   const previewRef = useRef<HTMLDivElement>(null)
@@ -404,6 +499,15 @@ export default function PaperDetailPage() {
   const [agentMode, setAgentMode] = useState<CommunityAgentMode>("chat")
   const [externalSearchEnabled, setExternalSearchEnabled] = useState(false)
   const [readerSelection, setReaderSelection] = useState<ReaderSelectionContext | null>(null)
+  const agentContextRef = useRef<ReaderSelectionContext | null>(null)
+  const [agentContext, _setAgentContext] = useState<ReaderSelectionContext | null>(null)
+  const setAgentContext = useCallback((val: ReaderSelectionContext | null) => {
+    agentContextRef.current = val
+    _setAgentContext(val)
+  }, [])
+  // removed duplicate agent context
+  const [annotations, setAnnotations] = useState<PaperAnnotation[]>([])
+  const [annotationOverlayRects, setAnnotationOverlayRects] = useState<PaperAnnotationOverlayRect[]>([])
   const [selectedMode, setSelectedMode] = useState<CommunityPaperReaderMode>("source")
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null)
   const [pendingAnchorId, setPendingAnchorId] = useState<string | null>(null)
@@ -518,33 +622,174 @@ export default function PaperDetailPage() {
 
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
-      clearReaderSelectionVisual()
+      if (!agentContextRef.current) clearReaderSelectionVisual()
       setReaderSelection(null)
       return
     }
 
     const range = selection.getRangeAt(0)
     if (!readerPanel.contains(range.commonAncestorContainer)) {
-      clearReaderSelectionVisual()
+      if (!agentContextRef.current) clearReaderSelectionVisual()
       setReaderSelection(null)
       return
     }
 
     const selectedText = normalizeSelectionText(selection.toString())
     if (!selectedText) {
-      clearReaderSelectionVisual()
+      if (!agentContextRef.current) clearReaderSelectionVisual()
       setReaderSelection(null)
       return
     }
 
     const anchorId = findSelectionAnchorId(range.startContainer, readerPanel)
     applyReaderSelectionVisual(range, readerPanel)
+    let position = { x: 0, y: 0 }
+    if (typeof range.getBoundingClientRect === 'function') {
+      const rect = range.getBoundingClientRect()
+      position = { x: rect.left + rect.width / 2, y: rect.bottom + 8 }
+    }
+
     setReaderSelection({
       text: selectedText,
       anchor_id: anchorId,
       mode: selectedMode,
+      position,
+      range: range.cloneRange(),
+      color: "yellow",
+      note: "",
     })
   }, [applyReaderSelectionVisual, clearReaderSelectionVisual, selectedMode])
+
+  useEffect(() => {
+    const cssHighlights = (
+      window as Window & {
+        CSS?: {
+          highlights?: {
+            delete: (name: string) => void
+            set: (name: string, highlight: unknown) => void
+          }
+        }
+      }
+    ).CSS?.highlights
+    const HighlightCtor = (window as Window & { Highlight?: new (...ranges: Range[]) => unknown }).Highlight
+    const supportsCssHighlights = Boolean(cssHighlights && HighlightCtor)
+
+    const allHighlights = [...annotations]
+    if (readerSelection?.range) {
+      allHighlights.push({
+        id: "draft",
+        text: readerSelection.text,
+        range: readerSelection.range,
+        anchor_id: readerSelection.anchor_id,
+        mode: readerSelection.mode,
+        color: readerSelection.color || "yellow",
+        note: readerSelection.note || "",
+      })
+    }
+    const resolveVisibleHighlights = (): PaperAnnotation[] =>
+      allHighlights
+        .filter((ann) => ann.range && isAnnotationVisibleInMode(ann.mode, selectedMode))
+        .map((ann) => {
+          const range = hasPersistableRange(ann.range)
+            ? ann.range
+            : buildRangeFromAnnotationText(ann)
+          if (!range || !hasPersistableRange(range)) {
+            return null
+          }
+          return {
+            ...ann,
+            range,
+          }
+        })
+        .filter((ann): ann is PaperAnnotation => Boolean(ann))
+
+    // Always compute absolute overlay rectangles as a robust visual fallback.
+    const readerViewport = document.querySelector<HTMLElement>('[data-testid="paper-reader-scroll-root"]')
+    const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+    const previewViewport = readerPanel?.querySelector<HTMLElement>('[data-testid="paper-preview-viewport"]')
+      ?? document.querySelector<HTMLElement>('[data-testid="paper-preview-viewport"]')
+    if (!readerViewport) {
+      setAnnotationOverlayRects([])
+      return
+    }
+
+    let rafId: number | null = null
+    const computeOverlayRects = () => {
+      const visibleHighlights = resolveVisibleHighlights()
+
+      if (supportsCssHighlights && cssHighlights && HighlightCtor) {
+        READER_ANNOTATION_COLORS.forEach((color) => cssHighlights.delete(`paper-annotation-${color}`))
+
+        const colorRanges: Record<string, Range[]> = {}
+        visibleHighlights.forEach((ann) => {
+          const color = ann.color || "yellow"
+          if (!colorRanges[color]) colorRanges[color] = []
+          colorRanges[color].push(ann.range)
+        })
+
+        Object.entries(colorRanges).forEach(([color, ranges]) => {
+          try {
+            cssHighlights.set(`paper-annotation-${color}`, new HighlightCtor(...ranges.map((r) => r.cloneRange())))
+          } catch {
+            // Ignore invalid range errors caused by disconnected DOM nodes.
+          }
+        })
+      }
+
+      const viewportRect = readerViewport.getBoundingClientRect()
+      const nextRects: PaperAnnotationOverlayRect[] = []
+
+      visibleHighlights.forEach((annotation) => {
+        const range = annotation.range
+        let rects: DOMRectList
+        try {
+          rects = range.getClientRects()
+        } catch {
+          return
+        }
+        Array.from(rects).forEach((rect, index) => {
+          if (rect.width < 1 || rect.height < 1) {
+            return
+          }
+          nextRects.push({
+            id: `${annotation.id}-${index}`,
+            color: annotation.color || "yellow",
+            top: rect.top - viewportRect.top + readerViewport.scrollTop,
+            left: rect.left - viewportRect.left + readerViewport.scrollLeft,
+            width: rect.width,
+            height: rect.height,
+          })
+        })
+      })
+
+      setAnnotationOverlayRects(nextRects)
+    }
+
+    const scheduleOverlayRecompute = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId)
+      }
+      rafId = window.requestAnimationFrame(computeOverlayRects)
+    }
+
+    scheduleOverlayRecompute()
+    readerViewport.addEventListener("scroll", scheduleOverlayRecompute, { passive: true })
+    previewViewport?.addEventListener("scroll", scheduleOverlayRecompute, { passive: true })
+    readerPanel?.addEventListener("scroll", scheduleOverlayRecompute, true)
+    document.addEventListener("scroll", scheduleOverlayRecompute, true)
+    window.addEventListener("resize", scheduleOverlayRecompute)
+
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId)
+      }
+      readerViewport.removeEventListener("scroll", scheduleOverlayRecompute)
+      previewViewport?.removeEventListener("scroll", scheduleOverlayRecompute)
+      readerPanel?.removeEventListener("scroll", scheduleOverlayRecompute, true)
+      document.removeEventListener("scroll", scheduleOverlayRecompute, true)
+      window.removeEventListener("resize", scheduleOverlayRecompute)
+    }
+  }, [annotations, readerSelection, selectedMode])
 
   useEffect(() => {
     return () => {
@@ -561,10 +806,16 @@ export default function PaperDetailPage() {
       return
     }
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: MouseEvent) => {
+      if (isSelectionToolbarEventTarget(event.target)) {
+        return
+      }
       captureReaderSelection()
     }
-    const handleKeyUp = () => {
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (isSelectionToolbarEventTarget(event.target)) {
+        return
+      }
       captureReaderSelection()
     }
 
@@ -575,6 +826,37 @@ export default function PaperDetailPage() {
       readerPanel.removeEventListener("keyup", handleKeyUp)
     }
   }, [captureReaderSelection, selectedMode, reader, preview])
+
+  useEffect(() => {
+    if (!readerSelection) {
+      return
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (isSelectionToolbarEventTarget(event.target)) {
+        return
+      }
+      if (!(event.target instanceof Node)) {
+        return
+      }
+
+      const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
+      if (readerPanel?.contains(event.target)) {
+        return
+      }
+
+      window.getSelection()?.removeAllRanges()
+      setReaderSelection(null)
+      if (!agentContextRef.current) {
+        clearReaderSelectionVisual()
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+    }
+  }, [clearReaderSelectionVisual, readerSelection])
 
   useEffect(() => {
     const readerPanel = document.querySelector<HTMLElement>('[data-testid="paper-detail-reader-panel"]')
@@ -602,10 +884,10 @@ export default function PaperDetailPage() {
   }, [activeAnchorId, selectedMode, reader, preview])
 
   useEffect(() => {
-    if (!readerSelection) {
+    if (!readerSelection && !agentContext) {
       clearReaderSelectionVisual()
     }
-  }, [clearReaderSelectionVisual, readerSelection])
+  }, [clearReaderSelectionVisual, readerSelection, agentContext])
 
   useEffect(() => {
     if (!pendingAnchorId) {
@@ -704,9 +986,10 @@ export default function PaperDetailPage() {
     setAgentError(null)
     setAgentBusy(false)
     setReaderSelection(null)
+    setAgentContext(null)
     setExternalSearchEnabled(false)
     setAgentMode("chat")
-  }, [paperId])
+  }, [paperId, setAgentContext])
 
   useEffect(() => {
     setReaderSelection(null)
@@ -806,11 +1089,6 @@ export default function PaperDetailPage() {
   }
 
   const activePaper = paper
-  const includedAtLabel = formatDetailDate(
-    activePaper.created_at,
-    i18n.language,
-    t("community.detail.unavailable"),
-  )
   const originalSourceUrl =
     activePaper.source === "arxiv" && activePaper.arxiv_id
       ? `https://arxiv.org/abs/${activePaper.arxiv_id}`
@@ -837,15 +1115,6 @@ export default function PaperDetailPage() {
         ? "community.detail.stage.sourceReady"
         : "community.detail.stage.translatedReady"),
   )
-  const detailMetaItems = [
-    {
-      key: "includedAt",
-      icon: Clock3,
-      label: t("community.detail.includedAt", { value: includedAtLabel }),
-      ariaLabel: t("community.detail.includedAt", { value: includedAtLabel }),
-    },
-  ]
-
   async function handleTranslate() {
     if (!paperId) {
       return
@@ -883,11 +1152,12 @@ export default function PaperDetailPage() {
     const skillToggles: CommunityAgentSkillToggles = {
       external_search: externalSearchEnabled,
     }
-    const selectionContext = readerSelection
+    const selectionContext = agentContext
       ? {
-        text: readerSelection.text,
-        anchor_id: readerSelection.anchor_id,
-        mode: readerSelection.mode,
+        text: agentContext.text,
+        anchor_id: agentContext.anchor_id,
+        mode: agentContext.mode,
+        note: agentContext.note,
       }
       : null
 
@@ -1077,102 +1347,234 @@ export default function PaperDetailPage() {
     }
   }
 
+  function handleSaveAnnotation(annotation: PaperAnnotation) {
+    let savedRange: Range | null = null
+    try {
+      const clonedRange = annotation.range.cloneRange()
+      if (hasPersistableRange(clonedRange)) {
+        savedRange = clonedRange
+      }
+    } catch {
+      savedRange = null
+    }
+
+    if (!savedRange) {
+      savedRange = buildRangeFromAnnotationText(annotation)
+    }
+
+    if (!savedRange) {
+      return
+    }
+    setAnnotations((prev) => {
+      const deduped = prev.filter((item) => !isSelectionEquivalent(annotation, item))
+      return [...deduped, { ...annotation, range: savedRange }]
+    })
+  }
+
+  function handleRemoveHighlightForSelection(selection: ReaderSelectionContext) {
+    setAnnotations((prev) => prev.filter((item) => !isSelectionEquivalent(selection, item)))
+    window.getSelection()?.removeAllRanges()
+    setReaderSelection(null)
+    if (!agentContextRef.current) {
+      clearReaderSelectionVisual()
+    }
+  }
+
+  function handleFocusAnnotation(annotation: PaperAnnotation) {
+    const targetMode: CommunityPaperReaderMode =
+      normalizeReaderMode(annotation.mode) === "source" ? "source" : "translated_html"
+
+    if (targetMode === "source" && availableModes.includes("source")) {
+      setSelectedMode("source")
+    } else if (targetMode !== "source" && availableModes.includes("translated")) {
+      setSelectedMode("translated_html")
+    }
+
+    setAgentContext({
+      text: annotation.text,
+      anchor_id: annotation.anchor_id,
+      mode: targetMode,
+      note: annotation.note,
+    })
+
+    if (annotation.note) {
+      setAgentInput(annotation.note)
+    }
+
+    if (annotation.anchor_id?.trim()) {
+      setPendingAnchorId(annotation.anchor_id)
+    }
+  }
+
   return (
     <div
       data-testid="paper-detail-page-shell"
       className="flex-1 flex min-h-0 flex-col min-w-0 bg-surface-container-lowest h-full overflow-hidden"
     >
-      <header className="h-14 shrink-0 flex items-center justify-between px-6 border-b border-outline-variant/30 bg-surface-container-lowest z-10 relative">
-        <div className="flex items-center gap-4 min-w-0 flex-1">
-          <Link
-            to="/"
-            className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest rounded-full transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            aria-label={t("community.detail.backToFeed")}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <h1 className="text-base font-medium text-on-surface truncate max-w-2xl" title={activePaper.title}>
-            {activePaper.title}
-          </h1>
-          <span className="text-sm text-on-surface-variant truncate max-w-md hidden lg:inline border-l border-outline-variant/30 pl-4" title={authorsLabel}>
-            {authorsLabel}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0 ml-4">
-          <div className="hidden sm:flex bg-surface-container-low rounded-lg p-1 border border-outline-variant/30">
-            <button
-              type="button"
-              disabled={!availableModes.includes("source")}
-              onClick={() => setSelectedMode("source")}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all border ${
-                selectedMode === "source"
-                  ? "bg-surface-container-highest text-on-surface shadow-sm border-outline-variant/30"
-                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              }`}
+      <nav className="shrink-0 flex flex-col border-b border-outline-variant/30 bg-surface-container-lowest z-10 sticky top-0 transition-all duration-300">
+        {/* Row 1: Back + Title */}
+        <div className="h-12 flex items-center justify-between px-6 border-b border-outline-variant/10 relative">
+          <div className="flex items-center gap-4 min-w-0 flex-1">
+            <Link
+              to="/"
+              className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest rounded-full transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={t("community.detail.backToFeed")}
             >
-              {t("community.detail.mode.source")}
-            </button>
-            <button
-              type="button"
-              disabled={!availableModes.includes("translated")}
-              onClick={() => setSelectedMode("translated")}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all border ${
-                selectedMode === "translated"
-                  ? "bg-surface-container-highest text-on-surface shadow-sm border-outline-variant/30"
-                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              }`}
-            >
-              {t("community.detail.mode.translated")}
-            </button>
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <h1 className="text-lg font-bold text-on-surface truncate" title={activePaper.title}>
+              {activePaper.title}
+            </h1>
           </div>
 
-          <div className="hidden sm:block w-px h-6 bg-outline-variant/30" />
-          
-          <div className="hidden md:flex items-center gap-2 text-xs text-on-surface-variant px-2">
-             <span className={`flex h-2 w-2 rounded-full ${actionError ? 'bg-error' : (hasTranslatedReader ? 'bg-primary' : 'bg-primary/50 animate-pulse')}`} />
-             {actionError ? "Error" : stageLabel}
+          <div className="flex items-center gap-3 shrink-0 ml-4">
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-primary/40 mr-4 hidden md:block">
+              Lumina Archive
+            </div>
+            
+            <div className="flex bg-surface-container-low rounded-xl p-1 border border-outline-variant/30 shadow-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedMode("source")}
+                className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
+                  selectedMode === "source"
+                    ? "bg-surface-container-highest text-on-surface shadow-sm border border-outline-variant/30"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                }`}
+              >
+                原文
+              </button>
+              <button
+                type="button"
+                disabled={!availableModes.includes("translated")}
+                onClick={() => setSelectedMode("translated_html")}
+                className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
+                  selectedMode === "translated_html" || selectedMode === "translated"
+                    ? "bg-surface-container-highest text-on-surface shadow-sm border border-outline-variant/30"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                }`}
+              >
+                译文 (html)
+              </button>
+              <button
+                type="button"
+                disabled={!availableModes.includes("translated") && !canDownload}
+                onClick={() => setSelectedMode("translated_pdf")}
+                className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
+                  selectedMode === "translated_pdf"
+                    ? "bg-surface-container-highest text-on-surface shadow-sm border border-outline-variant/30"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                }`}
+              >
+                译文 (pdf)
+              </button>
+            </div>
+
+            <div className="w-px h-6 bg-outline-variant/30 mx-1 hidden sm:block" />
+
+            <div className="flex items-center gap-2">
+               <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">
+                 UA
+               </div>
+               {!isHeaderExpanded && (
+                 <button
+                   onClick={() => setIsHeaderExpanded(true)}
+                   className="p-1 text-on-surface-variant hover:text-primary transition-colors ml-1"
+                   title="Expand Header"
+                 >
+                   <ChevronDown className="w-4 h-4" />
+                 </button>
+               )}
+            </div>
           </div>
-
-          {canTranslate && !canViewProgress && (
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={handleTranslate}
-              className="flex items-center gap-2 px-3 py-1.5"
-            >
-              <Languages className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("community.actions.translate")}</span>
-            </Button>
-          )}
-
-          {canViewProgress && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleViewProgress}
-              className="flex items-center gap-2 px-3 py-1.5"
-            >
-              <Timer className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("community.actions.viewProgress")}</span>
-            </Button>
-          )}
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={!canDownload}
-            onClick={handleDownload}
-            className="flex items-center gap-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest rounded-lg px-3 py-1.5 transition-colors font-medium border border-transparent shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("community.actions.download")}</span>
-          </Button>
         </div>
-      </header>
+
+        {isHeaderExpanded && (
+          <div className="animate-in slide-in-from-top-1 duration-200">
+            {/* Row 2: Authors, Date, Tags */}
+            <div className="h-8 flex items-center justify-between px-6 border-b border-outline-variant/10 bg-surface-container-lowest/50">
+              <div className="flex items-center gap-6 text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest overflow-hidden">
+                 <div className="flex items-center gap-2 max-w-2xl truncate">
+                   <span className="text-on-surface-variant font-black">Authors:</span>
+                   <span className="truncate">{authorsLabel}</span>
+                 </div>
+                 <div className="flex items-center gap-2 shrink-0">
+                   <span className="text-on-surface-variant font-black">Published:</span>
+                   <span>{activePaper.official_published_at ? new Date(activePaper.official_published_at).toLocaleDateString() : (activePaper.created_at ? new Date(activePaper.created_at).toLocaleDateString() : 'N/A')}</span>
+                 </div>
+                 <div className="flex items-center gap-2 shrink-0">
+                   <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-[8px] font-black tracking-tighter">PEER REVIEWED</span>
+                 </div>
+              </div>
+
+              <div className="flex items-center gap-4 shrink-0">
+                 {canTranslate && !canViewProgress && (
+                   <button
+                     type="button"
+                     onClick={handleTranslate}
+                     className="text-[9px] font-black uppercase tracking-widest text-primary hover:text-primary-dim transition-colors flex items-center gap-1.5"
+                   >
+                     <Languages className="w-3 h-3" />
+                     {t("community.actions.translate")}
+                   </button>
+                 )}
+                 {canViewProgress && (
+                   <button
+                     type="button"
+                     onClick={handleViewProgress}
+                     className="text-[9px] font-black uppercase tracking-widest text-primary hover:text-primary-dim transition-colors flex items-center gap-1.5"
+                   >
+                     <Timer className="w-3 h-3" />
+                     {t("community.actions.viewProgress")}
+                   </button>
+                 )}
+                 <button
+                   type="button"
+                   disabled={!canDownload}
+                   onClick={handleDownload}
+                   className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1.5 disabled:opacity-30"
+                 >
+                   <Download className="w-3 h-3" />
+                   Download
+                 </button>
+              </div>
+            </div>
+
+            {/* Row 3: Metrics */}
+            <div className="h-8 flex items-center px-6 gap-8 bg-surface-container-lowest relative">
+               <div className="flex items-center gap-2 group cursor-pointer">
+                  <div className="text-[9px] font-black text-on-surface-variant/40 group-hover:text-primary transition-colors uppercase tracking-tighter">Likes</div>
+                  <div className="text-[10px] font-bold text-on-surface">{activePaper.like_count || 0}</div>
+               </div>
+               <div className="flex items-center gap-2 group cursor-pointer">
+                  <div className="text-[9px] font-black text-on-surface-variant/40 group-hover:text-primary transition-colors uppercase tracking-tighter">Saves</div>
+                  <div className="text-[10px] font-bold text-on-surface">{activePaper.favorite_count || 0}</div>
+               </div>
+               <div className="flex items-center gap-2">
+                  <div className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-tighter">Visibility</div>
+                  <div className="text-[10px] font-bold text-on-surface">Public</div>
+               </div>
+               <div className="flex items-center gap-2">
+                  <div className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-tighter">Views</div>
+                  <div className="text-[10px] font-bold text-on-surface">{activePaper.view_count || "1.2k"}</div>
+               </div>
+               
+               <div className="ml-auto flex items-center gap-3">
+                 <div className={`px-2 py-0.5 rounded text-[8px] font-black tracking-tighter uppercase ${hasTranslatedReader ? 'bg-green-500/10 text-green-600' : 'bg-primary/10 text-primary animate-pulse'}`}>
+                   {actionError ? "Error" : stageLabel.replace('community.detail.stage.', '')}
+                 </div>
+                 <button
+                   onClick={() => setIsHeaderExpanded(false)}
+                   className="p-1 text-on-surface-variant hover:text-primary transition-colors"
+                   title="Collapse Header"
+                 >
+                   <ChevronUp className="w-4 h-4" />
+                 </button>
+               </div>
+            </div>
+          </div>
+        )}
+      </nav>
       
       <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden relative">
 
@@ -1204,15 +1606,33 @@ export default function PaperDetailPage() {
             agentMode={agentMode}
             externalSearchEnabled={externalSearchEnabled}
             readerSelection={readerSelection}
+            onReaderSelectionChange={setReaderSelection}
+            onSaveAnnotation={handleSaveAnnotation}
+            onRemoveHighlightForSelection={handleRemoveHighlightForSelection}
+            annotations={annotations}
+            annotationOverlayRects={annotationOverlayRects}
+            onFocusAnnotation={handleFocusAnnotation}
+            agentContext={agentContext}
             agentBusy={agentBusy}
             agentError={agentError}
             onAgentInputChange={setAgentInput}
             onAgentModeChange={setAgentMode}
             onExternalSearchChange={setExternalSearchEnabled}
             onAgentSubmit={() => void handleAgentSubmit()}
+            onAskAI={(selection: ReaderSelectionContext) => {
+              setAgentContext(selection)
+              if (selection.note) {
+                setAgentInput(selection.note)
+              } else {
+                 setAgentInput("")
+              }
+              setReaderSelection(null)
+              window.getSelection()?.removeAllRanges()
+            }}
             onSelectionClear={() => {
               window.getSelection()?.removeAllRanges()
               setReaderSelection(null)
+              setAgentContext(null)
               clearReaderSelectionVisual()
             }}
             onQuickExplain={() => void handleAgentQuickRun(t("community.detail.quickExplain"))}

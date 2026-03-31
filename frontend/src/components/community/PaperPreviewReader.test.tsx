@@ -180,4 +180,30 @@ describe("PaperPreviewReader", () => {
 
     expect(scrollIntoViewMock).toHaveBeenCalled()
   })
+
+  it("normalizes legacy latex residue blocks before rendering", async () => {
+    const preview = {
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview-legacy",
+        task_id: "task-1",
+        asset_type: "preview_html" as const,
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      html_content:
+        "<article class=\"paper-preview\"><section class=\"paper-preview__section\"><div class=\"paper-preview__block paper-preview__block--latex\"><pre class=\"paper-preview__latex\">\\begin{quote}Legacy quote.</pre></div><div class=\"paper-preview__block\"><p>\\flushright{Legacy author}\\n\\end{quote}</p></div><div class=\"paper-preview__block\"><p>\\end{snugshade*}</p></div><div class=\"paper-preview__block\"><p>\\lettrine[findent=2pt]{T}{his paragraph survives.}</p></div></section></article>",
+      generated_at: "2026-03-18T02:00:00Z",
+    }
+
+    render(<PaperPreviewReader paperId="paper-1" initialPreview={preview} readerState="ready" />)
+
+    expect(await screen.findByText("Legacy quote.")).toBeInTheDocument()
+    expect(await screen.findByText("Legacy author")).toBeInTheDocument()
+    expect(await screen.findByText("This paragraph survives.")).toBeInTheDocument()
+    expect(screen.queryByText("\\begin{quote}Legacy quote.")).not.toBeInTheDocument()
+    expect(screen.queryByText("\\end{snugshade*}")).not.toBeInTheDocument()
+  })
 })

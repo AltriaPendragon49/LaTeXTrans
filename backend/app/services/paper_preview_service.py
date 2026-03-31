@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import quote_plus
 
 
-PREVIEW_READER_VERSION = "reader-v12"
+PREVIEW_READER_VERSION = "reader-v13"
 
 HEADING_COMMAND_PATTERN = re.compile(
     r"\\(?P<kind>section|subsection|subsubsection)\*?\{(?P<title>[^}]*)\}",
@@ -23,7 +23,7 @@ PLACEHOLDER_PATTERN = re.compile(r"<(?:PLACEHOLDER|PROTECTED)_[^>]+>")
 CAPTION_PATTERN = re.compile(r"\\caption\{(?P<caption>.*?)\}", re.DOTALL)
 BLOCK_PLACEHOLDER_PATTERN = re.compile(r"__PAPER_PREVIEW_BLOCK_\d+__")
 SPECIAL_ENV_PATTERN = re.compile(
-    r"\\begin\{(?P<kind>figure\*?|table\*?|itemize|enumerate|thebibliography|algorithm\*?|tabular\*?|equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?|split|CD|center)\}"
+    r"\\begin\{(?P<kind>figure\*?|table\*?|itemize|enumerate|thebibliography|algorithm\*?|tabular\*?|equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?|split|CD|center|quote|snugshade\*?)\}"
     r"(?P<options>(?:\[[^\]]*\])?(?:\{[^{}]*\})?)"
     r"(?P<body>.*?)"
     r"\\end\{(?P=kind)\}",
@@ -153,6 +153,10 @@ def _strip_structural_commands(text: str, *, preserve_references: bool = False) 
     cleaned = re.sub(r"\\(?:vspace|vskip|hspace|hskip)\*?\{[^}]*\}", " ", cleaned)
     cleaned = re.sub(r"\\(?:smallskip|medskip|bigskip)\b", " ", cleaned)
     cleaned = re.sub(r"\\hfill\b", " ", cleaned)
+    cleaned = re.sub(r"\\begin\{(?:quote|snugshade\*?)\}", "\n", cleaned)
+    cleaned = re.sub(r"\\end\{(?:quote|snugshade\*?)\}", "\n", cleaned)
+    cleaned = _replace_braced_command(cleaned, "flushright", lambda body: body)
+    cleaned = _normalize_lettrine_commands(cleaned)
     if not preserve_references:
         cleaned = LABEL_PATTERN.sub(" ", cleaned)
         cleaned = CITATION_PATTERN.sub("", cleaned)
@@ -232,6 +236,65 @@ def _strip_cjk_wrappers(text: str) -> str:
         previous = current
         current = CJK_WRAPPER_PATTERN.sub(lambda match: match.group("body"), previous)
     return current
+
+
+def _normalize_lettrine_commands(text: str) -> str:
+    needle = "\\lettrine"
+    cursor = 0
+    parts: List[str] = []
+
+    def _normalize_fragment(fragment: str) -> str:
+        cleaned = _unwrap_formatting_commands(fragment)
+        cleaned = re.sub(r"\\fbox\{([^{}]*)\}\{([^{}]*)\}", r"\1\2", cleaned)
+        cleaned = cleaned.replace(r"\{", "{").replace(r"\}", "}")
+        cleaned = re.sub(r"\\[A-Za-z]+\*?", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned
+
+    while True:
+        start = text.find(needle, cursor)
+        if start < 0:
+            parts.append(text[cursor:])
+            break
+
+        parts.append(text[cursor:start])
+        position = start + len(needle)
+        while position < len(text) and text[position].isspace():
+            position += 1
+
+        if position < len(text) and text[position] == "[":
+            _, next_position = _consume_balanced_group(text, position, "[", "]")
+            if next_position <= position:
+                parts.append(text[start : start + len(needle)])
+                cursor = start + len(needle)
+                continue
+            position = next_position
+
+        while position < len(text) and text[position].isspace():
+            position += 1
+
+        first, next_position = _consume_balanced_group(text, position, "{", "}")
+        if first is None or next_position <= position:
+            parts.append(text[start : start + len(needle)])
+            cursor = start + len(needle)
+            continue
+
+        position = next_position
+        while position < len(text) and text[position].isspace():
+            position += 1
+
+        second, second_end = _consume_balanced_group(text, position, "{", "}")
+        if second is None or second_end <= position:
+            parts.append(_normalize_fragment(first))
+            cursor = position
+            continue
+
+        initial = _normalize_fragment(first)
+        remainder = _normalize_fragment(second)
+        parts.append(f"{initial}{remainder}".strip())
+        cursor = second_end
+
+    return "".join(parts)
 
 
 def _replace_braced_command(text: str, command: str, replacer) -> str:
@@ -545,6 +608,8 @@ def _strip_formula_noise_from_paragraph(text: str) -> str:
 def _should_render_as_latex_fallback(text: str) -> bool:
     stripped = text.lstrip()
     if stripped.startswith("\\begin{"):
+        if stripped.startswith("\\begin{quote") or stripped.startswith("\\begin{snugshade"):
+            return False
         return True
 
     if "\n" not in text:
@@ -1254,6 +1319,29 @@ def _render_environment_block(
             "</div>"
         )
         return ("command", rendered)
+
+    if stripped.startswith("\\begin{quote"):
+        quote_text = re.sub(r"^\s*\\begin\{quote\}", "", chunk.strip(), count=1)
+        quote_text = re.sub(r"\\end\{quote\}\s*$", "", quote_text.strip(), count=1, flags=re.DOTALL)
+        quote_text = _strip_formula_noise_from_paragraph(_normalize_inline_text(quote_text, preserve_references=True))
+        if not quote_text:
+            return None
+        rendered = f"<blockquote><p>{_render_inline_html(quote_text)}</p></blockquote>"
+        return ("quote", rendered)
+
+    if stripped.startswith("\\begin{snugshade"):
+        shaded_text = re.sub(r"^\s*\\begin\{snugshade\*?\}", "", chunk.strip(), count=1)
+        shaded_text = re.sub(r"\\end\{snugshade\*?\}\s*$", "", shaded_text.strip(), count=1, flags=re.DOTALL)
+        mixed = _render_mixed_content_html(shaded_text)
+        if mixed:
+            return ("rich-text", mixed)
+
+        shaded_paragraph = _strip_formula_noise_from_paragraph(
+            _normalize_inline_text(shaded_text, preserve_references=True)
+        )
+        if not shaded_paragraph:
+            return None
+        return ("paragraph", f"<p>{_render_inline_html(shaded_paragraph)}</p>")
 
     if _is_display_math_block(chunk):
         equation = _extract_display_math_environment(chunk) or _normalize_inline_text(chunk)

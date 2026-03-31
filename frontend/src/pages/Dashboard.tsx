@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ChevronDown, ChevronRight, Download, FileText, Info, Loader2, Play, RefreshCw, X, Zap } from "lucide-react"
+import { ChevronDown, Download, FileText, Info, Loader2, RefreshCw, X, Zap } from "lucide-react"
 
 import { AdvancedConfig } from "@/components/AdvancedConfig"
 import { BatchTranslation, type BatchTranslationHandle, type BatchTranslationState } from "@/components/BatchTranslation"

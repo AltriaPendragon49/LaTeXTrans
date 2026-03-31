@@ -1,4 +1,4 @@
-import { Search, Paperclip, ChevronDown, Sparkles, ArrowUp } from "lucide-react"
+import { Search, Sparkles } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
@@ -42,17 +42,13 @@ export default function CommunityFeedPage() {
 
   return (
     <div className="flex-1 w-full bg-surface text-on-surface">
-      {/* TOP NAVIGATION / AGENT INPUT AREA */}
-      <header className="px-8 md:px-12 pt-8 pb-4 border-b border-outline-variant/10">
-        <div className="max-w-5xl mx-auto flex flex-col gap-8">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">{t("community.feed.launchTitle", "Community Feed")}</h1>
-
-          </div>
-
-          {/* Agent Input (Prominent & Centered) */}
-          <div className="max-w-3xl mx-auto w-full">
-            <form onSubmit={handleSubmit} className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-4 shadow-xl focus-within:border-primary/50 transition-all">
+      {/* FEED CANVAS */}
+      <div className="max-w-6xl mx-auto px-8 py-8">
+        
+        {/* Agent Search Section */}
+        <section className="mb-10">
+          <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/20 shadow-sm">
+            <form onSubmit={handleSubmit} className="relative">
               <textarea 
                 aria-label={t("community.agent.aria")}
                 value={agentInput}
@@ -63,95 +59,85 @@ export default function CommunityFeedPage() {
                     if (agentInput.trim() !== '') handleSubmit(e as unknown as FormEvent<HTMLFormElement>);
                   }
                 }}
-                className="w-full bg-transparent border-none outline-none focus:ring-0 text-on-surface placeholder:text-tertiary resize-none h-20 text-base" 
-                placeholder={t("community.agent.placeholder", "Ask or search anything...")}
+                className="w-full bg-surface-container-low border-none rounded-xl p-5 text-on-surface-variant focus:ring-2 focus:ring-primary/10 min-h-[120px] resize-none text-lg font-light tracking-tight placeholder:text-slate-400" 
+                placeholder={t("community.agent.placeholder", "Ask the Digital Curator to find specific research papers...")}
               />
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-outline-variant/10">
-                <div className="flex gap-2">
-                  <button type="button" className="p-2 text-tertiary hover:text-primary transition-colors">
-                    <Paperclip className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={externalSearchEnabled}
-                    aria-label={t("community.agent.externalSearch.label")}
-                    onClick={() => setExternalSearchEnabled((current) => !current)}
-                    className={`flex items-center gap-2 px-3 py-1 text-xs font-bold rounded-lg border transition-colors uppercase tracking-wider ${
-                      externalSearchEnabled
-                        ? "bg-primary text-on-primary border-primary shadow-sm"
-                        : "bg-surface-container-high hover:bg-surface-container-highest border-outline-variant/20 text-on-surface"
-                    }`}
-                  >
-                    <Search className="w-4 h-4" /> {t("community.agent.intent.search", "Search")}
-                  </button>
-                  <button type="button" className="flex items-center gap-2 px-3 py-1 bg-surface-container-high hover:bg-surface-container-highest text-xs font-bold rounded-lg border border-outline-variant/20 transition-colors uppercase tracking-wider text-on-surface">
-                    <Sparkles className="w-4 h-4" /> Balanced <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  <span className="text-[10px] font-bold text-tertiary uppercase tracking-widest hidden sm:block">Enter to search</span>
-                  <button type="submit" aria-label={t("community.agent.run")} className="w-9 h-9 bg-primary text-on-primary rounded-lg flex items-center justify-center hover:bg-primary/90 transition-colors shadow-md border-none">
-                    <ArrowUp className="w-5 h-5 font-bold" />
-                  </button>
-                </div>
+              <div className="absolute bottom-4 right-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setExternalSearchEnabled(v => !v)}
+                  className={`px-6 py-2.5 rounded-full font-semibold text-sm transition-all border ${externalSearchEnabled ? "bg-primary text-on-primary border-primary" : "bg-slate-100 text-slate-600 dark:bg-surface-container-highest dark:text-on-surface-variant border-transparent"}`}
+                >
+                  <Search className="w-4 h-4 inline-block mr-1 mb-0.5" /> Web Search
+                </button>
+                <button type="submit" aria-label={t("community.agent.run")} className="px-8 py-2.5 bg-primary text-on-primary rounded-full font-semibold text-sm flex items-center gap-2 transition-all hover:opacity-90 shadow-lg shadow-primary/20">
+                  <Sparkles className="text-lg w-4 h-4" />
+                  {t("community.agent.intent.search", "Search")}
+                </button>
               </div>
             </form>
           </div>
+        </section>
 
-          {/* Sorting Tabs */}
-          <div className="flex gap-8 items-center mt-4">
+        {/* Sorting Tabs & Actions */}
+        <div className="flex justify-between items-center mb-8 border-b border-outline-variant/10">
+          <div className="flex items-center gap-10">
             <button 
               onClick={() => setActiveTab("hot")}
-              className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-[0.2em] transition-colors ${activeTab === 'hot' ? 'border-primary text-primary' : 'border-transparent text-tertiary hover:text-on-surface'}`}
+              className={`font-bold pb-4 flex items-center gap-2 transition-colors ${activeTab === 'hot' ? 'text-primary border-b-2 border-primary' : 'text-tertiary hover:text-primary'}`}
             >
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>local_fire_department</span>
               Hot
             </button>
             <button 
               onClick={() => setActiveTab("latest")}
-              className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-[0.2em] transition-colors ${activeTab === 'latest' ? 'border-primary text-primary' : 'border-transparent text-tertiary hover:text-on-surface'}`}
+              className={`font-bold pb-4 flex items-center gap-2 transition-colors ${activeTab === 'latest' ? 'text-primary border-b-2 border-primary' : 'text-tertiary hover:text-primary'}`}
             >
+              <span className="material-symbols-outlined text-sm">schedule</span>
               Latest
             </button>
-            <button className="pb-3 border-b-2 border-transparent text-tertiary hover:text-on-surface transition-colors font-bold text-xs uppercase tracking-[0.2em] ml-auto">
-              Filters
+          </div>
+          <div className="flex gap-4 pb-4">
+            <button className="flex items-center gap-2 px-4 py-1.5 text-tertiary hover:text-primary transition-colors text-sm font-medium">
+              <span className="material-symbols-outlined text-xl">filter_list</span>
+              Filter
             </button>
           </div>
         </div>
-      </header>
 
-      {/* FEED LIST */}
-      <section className="max-w-5xl mx-auto px-8 md:px-12 py-8 relative">
-        {error ? <PaperFeedErrorState onRetry={refetch} /> : null}
+        {/* PAPER FEED (Single Column) */}
+        <div className="flex flex-col gap-6 relative">
+          {error ? <PaperFeedErrorState onRetry={refetch} /> : null}
 
-        {!error && loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-48">
-                <PaperCardSkeleton />
-              </div>
-            ))}
-            <div className="md:col-span-2 flex justify-center py-8">
-              <div className="flex items-center gap-3 text-tertiary">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]"></div>
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] ml-2">Exploring more papers</span>
+          {!error && loading ? (
+            <div className="flex flex-col gap-6">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="h-48">
+                  <PaperCardSkeleton />
+                </div>
+              ))}
+              <div className="flex justify-center py-8">
+                <div className="flex items-center gap-3 text-tertiary">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]"></div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]"></div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] ml-2">Exploring more papers</span>
+                </div>
               </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {!error && !loading && !items.length ? <PaperFeedEmptyState /> : null}
+          {!error && !loading && !items.length ? <PaperFeedEmptyState /> : null}
 
-        {!error && !loading && items.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {items.map((paper) => (
-              <PaperCard key={paper.id} paper={paper} />
-            ))}
-          </div>
-        ) : null}
-      </section>
+          {!error && !loading && items.length > 0 ? (
+            <>
+              {items.map((paper) => (
+                <PaperCard key={paper.id} paper={paper} />
+              ))}
+            </>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }

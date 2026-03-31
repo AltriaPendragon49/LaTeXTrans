@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lumina Archive - Tools Hub</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "inverse-on-surface": "#f0f0fb",
+              "on-primary": "#ffffff",
+              "tertiary-fixed-dim": "#ffb59c",
+              "on-error-container": "#93000a",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f3f2fe",
+              "on-secondary-container": "#3d4c83",
+              "surface-bright": "#faf8ff",
+              "on-primary-fixed": "#001551",
+              "on-tertiary-fixed-variant": "#832700",
+              "surface": "#faf8ff",
+              "on-surface": "#1a1b23",
+              "on-tertiary-fixed": "#390c00",
+              "error": "#ba1a1a",
+              "primary": "#0037b0",
+              "error-container": "#ffdad6",
+              "on-tertiary": "#ffffff",
+              "surface-variant": "#e2e1ed",
+              "on-secondary-fixed-variant": "#35437b",
+              "on-surface-variant": "#434655",
+              "on-background": "#1a1b23",
+              "inverse-surface": "#2e3039",
+              "on-primary-container": "#cad3ff",
+              "outline-variant": "#c4c5d7",
+              "on-secondary": "#ffffff",
+              "secondary": "#4d5b94",
+              "on-secondary-fixed": "#03164d",
+              "surface-container-high": "#e8e7f3",
+              "secondary-fixed-dim": "#b7c4ff",
+              "surface-container-highest": "#e2e1ed",
+              "surface-dim": "#d9d9e5",
+              "surface-container-lowest": "#ffffff",
+              "outline": "#747686",
+              "on-tertiary-container": "#ffc9b7",
+              "primary-fixed": "#dce1ff",
+              "primary-container": "#1d4ed8",
+              "surface-container": "#ededf9",
+              "on-primary-fixed-variant": "#0039b5",
+              "secondary-fixed": "#dce1ff",
+              "surface-tint": "#2151da",
+              "tertiary-fixed": "#ffdbcf",
+              "background": "#faf8ff",
+              "secondary-container": "#b0befe",
+              "inverse-primary": "#b7c4ff",
+              "tertiary-container": "#a73400",
+              "tertiary": "#7f2500",
+              "primary-fixed-dim": "#b7c4ff"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #faf8ff;
+            font-family: 'Inter', sans-serif;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body antialiased selection:bg-secondary-container">
+<!-- SideNavBar (from JSON) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col py-8 px-4 h-screen w-64 border-r-0 rounded-r-[32px] bg-slate-50 dark:bg-slate-900 z-50">
+<div class="flex items-center gap-3 px-2 mb-10">
+<div class="w-10 h-10 bg-primary-container rounded-lg flex items-center justify-center text-white">
+<span class="material-symbols-outlined" data-icon="construction">construction</span>
+</div>
+<div>
+<h1 class="text-xl font-bold text-slate-900 dark:text-slate-50 leading-none">Lumina Archive</h1>
+<p class="text-xs text-slate-500 mt-1">Digital Curator</p>
+</div>
+</div>
+<nav class="flex-1 space-y-2">
+<!-- Navigation Items Mapping -->
+<a class="flex items-center gap-4 px-4 py-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors duration-200 group" href="#">
+<span class="material-symbols-outlined" data-icon="explore">explore</span>
+<span class="font-medium">Explore</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors duration-200 group" href="#">
+<span class="material-symbols-outlined" data-icon="chat">chat</span>
+<span class="font-medium">Conversation</span>
+</a>
+<!-- Active State: Tools -->
+<a class="flex items-center gap-4 px-4 py-3 bg-blue-600 text-white rounded-[24px] shadow-lg shadow-blue-500/20 active:scale-95 duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="construction" style="font-variation-settings: 'FILL' 1;">construction</span>
+<span class="font-medium">Tools</span>
+</a>
+</nav>
+<div class="mt-auto space-y-2 pt-6 border-t border-slate-200 dark:border-slate-800">
+<a class="flex items-center gap-4 px-4 py-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-medium">Settings</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="font-medium">Profile</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen">
+<!-- TopNavBar (from JSON) -->
+<header class="flex justify-between items-center w-full px-8 h-16 sticky top-0 z-40 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl">
+<div class="flex items-center gap-8">
+<h2 class="text-lg font-black tracking-tighter text-blue-700 dark:text-blue-500">Tools Hub</h2>
+<div class="hidden md:flex gap-6">
+<button class="text-blue-700 border-b-2 border-blue-700 pb-1 font-medium transition-all">Dashboard</button>
+<button class="text-slate-500 hover:text-blue-600 font-medium transition-all">History</button>
+<button class="text-slate-500 hover:text-blue-600 font-medium transition-all">Settings</button>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" data-icon="search">search</span>
+<input class="bg-surface-container-lowest border-none rounded-md pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary/20 w-64 transition-all" placeholder="Search archives..." type="text"/>
+</div>
+<button class="p-2 text-slate-500 hover:text-blue-700 transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-slate-500 hover:text-blue-700 transition-colors">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+</header>
+<!-- Tools Dashboard Grid -->
+<section class="p-8 max-w-7xl mx-auto">
+<!-- Hero Header -->
+<div class="mb-12">
+<h3 class="text-display-sm font-bold tracking-tight text-on-surface mb-2">Knowledge Acquisition</h3>
+<p class="text-on-surface-variant max-w-2xl">Integrate global research directly into your workspace. Fetch papers from arXiv or upload specialized local documentation for curation.</p>
+</div>
+<div class="grid grid-cols-12 gap-8">
+<!-- Main Fetching Interface (Bento Card Large) -->
+<div class="col-span-12 lg:col-span-8 space-y-8">
+<div class="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-outline-variant/10">
+<div class="flex items-center justify-between mb-8">
+<div class="flex gap-4">
+<button class="px-6 py-2.5 bg-primary text-on-primary rounded-full font-medium flex items-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[20px]" data-icon="cloud_download">cloud_download</span>
+                                    arXiv Fetch
+                                </button>
+<button class="px-6 py-2.5 bg-secondary-container text-on-secondary-container rounded-full font-medium flex items-center gap-2 hover:bg-opacity-80 transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="upload_file">upload_file</span>
+                                    Local Upload
+                                </button>
+</div>
+<span class="px-4 py-1.5 bg-surface-container-highest text-on-surface-variant rounded-full text-xs font-bold tracking-widest uppercase">System Status: Ready</span>
+</div>
+<div class="space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="text-xs font-bold text-on-surface-variant tracking-wider uppercase ml-1">ArXiv ID or DOI</label>
+<input class="w-full bg-surface-container-low border-none rounded-md px-4 py-3 focus:ring-2 focus:ring-primary/20 text-on-surface transition-all" placeholder="e.g. 2103.00020" type="text"/>
+</div>
+<div class="space-y-2">
+<label class="text-xs font-bold text-on-surface-variant tracking-wider uppercase ml-1">Target Collection</label>
+<select class="w-full bg-surface-container-low border-none rounded-md px-4 py-3 focus:ring-2 focus:ring-primary/20 text-on-surface transition-all appearance-none cursor-pointer">
+<option>Main Archive</option>
+<option>Quantum Computing Project</option>
+<option>Neural Architectures</option>
+</select>
+</div>
+</div>
+<div class="bg-surface-container-low/50 rounded-lg p-6 space-y-4">
+<div class="flex items-center justify-between">
+<h4 class="font-bold text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="tune">tune</span>
+                                        Advanced Parameters
+                                    </h4>
+<span class="material-symbols-outlined text-slate-400 cursor-pointer" data-icon="info">info</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+<div class="flex items-center gap-3">
+<input class="rounded text-primary focus:ring-primary/30 w-5 h-5 cursor-pointer" id="param-1" type="checkbox"/>
+<label class="text-sm text-on-surface-variant font-medium cursor-pointer" for="param-1">Full-text extraction</label>
+</div>
+<div class="flex items-center gap-3">
+<input checked="" class="rounded text-primary focus:ring-primary/30 w-5 h-5 cursor-pointer" id="param-2" type="checkbox"/>
+<label class="text-sm text-on-surface-variant font-medium cursor-pointer" for="param-2">Reference mapping</label>
+</div>
+<div class="flex items-center gap-3">
+<input class="rounded text-primary focus:ring-primary/30 w-5 h-5 cursor-pointer" id="param-3" type="checkbox"/>
+<label class="text-sm text-on-surface-variant font-medium cursor-pointer" for="param-3">Auto-translate</label>
+</div>
+</div>
+</div>
+<button class="w-full py-4 bg-primary text-white rounded-md font-bold text-lg hover:shadow-xl hover:shadow-primary/20 transition-all flex items-center justify-center gap-3">
+<span class="material-symbols-outlined" data-icon="bolt">bolt</span>
+                                Initialize Fetch Process
+                            </button>
+</div>
+</div>
+<!-- History Preview (Horizontal Carousel Style) -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h4 class="text-lg font-bold text-on-surface">Recent Activity</h4>
+<button class="text-primary text-sm font-bold hover:underline">View Full History</button>
+</div>
+<div class="flex gap-6 overflow-x-auto pb-4 no-scrollbar">
+<!-- Card 1 -->
+<div class="min-w-[280px] bg-surface-container-lowest p-6 rounded-lg shadow-sm border border-outline-variant/10 flex flex-col gap-4">
+<div class="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div>
+<p class="text-xs font-bold text-slate-400 uppercase tracking-tighter mb-1">2 hours ago</p>
+<h5 class="font-bold text-on-surface leading-tight">Attention is All You Need</h5>
+<p class="text-xs text-on-surface-variant mt-2">Source: arXiv (1706.03762)</p>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="min-w-[280px] bg-surface-container-lowest p-6 rounded-lg shadow-sm border border-outline-variant/10 flex flex-col gap-4">
+<div class="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="sync" data-weight="fill">sync</span>
+</div>
+<div>
+<p class="text-xs font-bold text-slate-400 uppercase tracking-tighter mb-1">5 hours ago</p>
+<h5 class="font-bold text-on-surface leading-tight">Quantum Latency Curves</h5>
+<p class="text-xs text-on-surface-variant mt-2">Processing dependencies...</p>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="min-w-[280px] bg-surface-container-lowest p-6 rounded-lg shadow-sm border border-outline-variant/10 flex flex-col gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+</div>
+<div>
+<p class="text-xs font-bold text-slate-400 uppercase tracking-tighter mb-1">Yesterday</p>
+<h5 class="font-bold text-on-surface leading-tight">Bio-Neural Interface v2</h5>
+<p class="text-xs text-on-surface-variant mt-2">Stored in Main Archive</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Side - Insights & Settings (Bento Column) -->
+<div class="col-span-12 lg:col-span-4 space-y-8">
+<!-- Quick Stats -->
+<div class="bg-primary p-8 rounded-xl text-white shadow-2xl shadow-primary/30 relative overflow-hidden group">
+<div class="absolute -right-4 -bottom-4 opacity-10 scale-150 group-hover:scale-125 transition-transform duration-1000">
+<span class="material-symbols-outlined text-[120px]" data-icon="monitoring">monitoring</span>
+</div>
+<h4 class="text-white/60 font-bold text-xs uppercase tracking-widest mb-6">Archive Utilization</h4>
+<div class="space-y-6 relative z-10">
+<div class="flex items-end justify-between">
+<div>
+<p class="text-3xl font-black">1,248</p>
+<p class="text-sm font-medium text-white/80">Active Citations</p>
+</div>
+<div class="text-right">
+<p class="text-xl font-bold">+12%</p>
+<p class="text-xs text-white/60">This Month</p>
+</div>
+</div>
+<div class="w-full bg-white/20 h-2 rounded-full overflow-hidden">
+<div class="bg-white h-full w-[72%]"></div>
+</div>
+<p class="text-xs font-medium text-white/70 italic">Storage: 4.2GB / 10GB used</p>
+</div>
+</div>
+<!-- Tools Settings Summary -->
+<div class="bg-surface-container-high rounded-xl p-8 border border-outline-variant/20">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="settings">settings</span>
+<h4 class="text-lg font-bold text-on-surface">Configuration</h4>
+</div>
+<div class="space-y-6">
+<div class="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg">
+<div>
+<p class="text-sm font-bold text-on-surface">Auto-Indexing</p>
+<p class="text-xs text-on-surface-variant">Real-time processing</p>
+</div>
+<div class="w-12 h-6 bg-primary rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+</div>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg">
+<div>
+<p class="text-sm font-bold text-on-surface">Semantic Search</p>
+<p class="text-xs text-on-surface-variant">NLP-powered discovery</p>
+</div>
+<div class="w-12 h-6 bg-primary rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+</div>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg opacity-50">
+<div>
+<p class="text-sm font-bold text-on-surface">Batch Processing</p>
+<p class="text-xs text-on-surface-variant">Queue multiple fetch jobs</p>
+</div>
+<div class="w-12 h-6 bg-slate-300 rounded-full relative cursor-pointer">
+<div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+</div>
+</div>
+</div>
+<button class="w-full mt-6 py-3 border border-primary text-primary rounded-md font-bold text-sm hover:bg-primary/5 transition-colors">
+                            Manage API Integrations
+                        </button>
+</div>
+<!-- Editorial Feature Card -->
+<div class="rounded-xl overflow-hidden bg-white shadow-sm group">
+<div class="h-48 relative">
+<img alt="Library interior" class="w-full h-full object-cover grayscale transition-all group-hover:grayscale-0 group-hover:scale-105 duration-700" data-alt="Modern minimalist library with clean wooden shelves, soft natural light streaming through high windows, and quiet scholarly atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRfXPZfIFMOCKqnxA1yb7OvozNdQea29wcNfB7Z8--qc3uihfg3lRRhwTQ5g1GXyU9MwoiAj1diZQN_EI_tMJB-i3GJ-vv3nD0aLTNwCMssgCOrnbI9HFPCsd868Gf-A_aNkhBl3y3D0hC28bsRnLvrNMeGjtOJUVsfkvu5FxfQJN3XjcR_1Rj7oRxQL6U-4H3kQEOzS9iiVxA-p6M-pVKpw3sjZxoSoYwr53_GuUP6mXj9Q8vpbI6H4nJQgj2BHwkFsv72LLlIUX3"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+<div class="absolute bottom-4 left-4 right-4">
+<span class="bg-primary text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded-sm text-white">Curated Guide</span>
+<h5 class="text-white font-bold mt-1">Ethical AI Research: A 2024 Framework</h5>
+</div>
+</div>
+<div class="p-6">
+<p class="text-xs text-on-surface-variant line-clamp-2">Learn how to effectively structure your archive for high-performance AI interrogation and semantic retrieval.</p>
+<a class="mt-4 inline-flex items-center gap-2 text-primary text-xs font-bold hover:gap-3 transition-all" href="#">
+                                Read Publication
+                                <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+</body></html>

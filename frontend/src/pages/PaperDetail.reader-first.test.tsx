@@ -1124,11 +1124,161 @@ describe("PaperDetailPage reader-first", () => {
       expect(paragraph).toHaveAttribute("data-reader-selection-active", "true")
     })
 
+    selection?.removeAllRanges()
+    fireEvent.mouseUp(screen.getByTestId("paper-detail-reader-panel"))
+
+    await waitFor(() => {
+      expect(paragraph).toHaveAttribute("data-reader-selection-active", "true")
+    })
+
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
 
     await waitFor(() => {
       expect(paragraph).not.toHaveAttribute("data-reader-selection-active")
     })
+  })
+
+  it("keeps persisted highlight overlay recomputed on translated preview viewport scroll", async () => {
+    usePaperDetailMock.mockReturnValue({
+      paper: {
+        id: "paper-1",
+        source: "arxiv",
+        arxiv_id: "2503.01010",
+        title: "Detail Page Title",
+        authors: ["Ada Lovelace"],
+        categories: ["cs.AI"],
+        abstract_raw: "English abstract",
+        abstract_translated: "Chinese abstract",
+        community_status: "official",
+        trans_status: "completed",
+        created_at: "2026-03-18T00:00:00Z",
+        official_published_at: null,
+        community_selected_task_id: "task-preview",
+        community_selected_asset_id: "asset-preview",
+        latest_asset: {
+          id: "asset-preview",
+          task_id: "task-preview",
+          asset_type: "preview_html",
+          file_name: "preview.html",
+          mime_type: "text/html",
+          created_at: "2026-03-18T02:00:00Z",
+        },
+        assets: {
+          preview_html: {
+            id: "asset-preview",
+            task_id: "task-preview",
+            asset_type: "preview_html",
+            file_name: "preview.html",
+            mime_type: "text/html",
+            created_at: "2026-03-18T02:00:00Z",
+          },
+        },
+      },
+      preview: {
+        paper_id: "paper-1",
+        task_id: "task-preview",
+        asset: {
+          id: "asset-preview",
+          task_id: "task-preview",
+          asset_type: "preview_html",
+          file_name: "preview.html",
+          mime_type: "text/html",
+          created_at: "2026-03-18T02:00:00Z",
+        },
+        html_content:
+          "<article><h2 id=\"section-highlight\">Section</h2><p id=\"translated-highlight-target\">Translated paragraph for sticky highlight verification.</p></article>",
+        generated_at: "2026-03-18T02:00:00Z",
+      },
+      readerState: "ready",
+      reader: {
+        preferred_mode: "translated",
+        available_modes: ["source", "translated"],
+        source: {
+          kind: "source_html",
+          html_content: "<article><p>Source fallback.</p></article>",
+          url: "https://arxiv.org/html/2503.01010",
+        },
+        translated: {
+          kind: "preview_html",
+          html_content:
+            "<article><h2 id=\"section-highlight\">Section</h2><p id=\"translated-highlight-target\">Translated paragraph for sticky highlight verification.</p></article>",
+          url: null,
+        },
+        state: "translated_ready",
+      },
+      experience: {
+        stage_label: "Chinese version is ready",
+        can_leave_hint: null,
+        failure_type: null,
+      },
+      loading: false,
+      error: null,
+      notFound: false,
+      refetch: vi.fn(),
+    })
+
+    let dynamicTop = 120
+    const originalRangeGetClientRects = Range.prototype.getClientRects
+    const originalRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect
+    const makeRect = () => new DOMRect(48, dynamicTop, 220, 20)
+
+    Range.prototype.getClientRects = vi.fn(() => [makeRect()] as unknown as DOMRectList)
+    Range.prototype.getBoundingClientRect = vi.fn(() => makeRect())
+
+    try {
+      render(
+        <MemoryRouter initialEntries={["/paper/paper-1"]}>
+          <Routes>
+            <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+
+      await userEvent.click(screen.getByRole("button", { name: /译文 \(html\)|translated \(html\)/i }))
+
+      const paragraph = await screen.findByText(
+        "Translated paragraph for sticky highlight verification.",
+      )
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(paragraph)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      fireEvent.mouseUp(paragraph)
+
+      const toolbar = document.querySelector("[data-reader-selection-toolbar='true']")
+      expect(toolbar).toBeTruthy()
+      const toolbarButtons = toolbar?.querySelectorAll<HTMLButtonElement>("button") ?? []
+      expect(toolbarButtons.length).toBeGreaterThanOrEqual(3)
+      await userEvent.click(toolbarButtons[2]!)
+
+      const readerScrollRoot = screen.getByTestId("paper-reader-scroll-root")
+      await waitFor(() => {
+        const overlays = readerScrollRoot.querySelectorAll("span")
+        expect(overlays.length).toBeGreaterThan(0)
+      })
+
+      const getOverlayTop = () => {
+        const overlay = readerScrollRoot.querySelector("span")
+        return Number(overlay?.getAttribute("style")?.match(/top:\s*([\d.]+)px/)?.[1] ?? "0")
+      }
+
+      const initialTop = getOverlayTop()
+      expect(initialTop).toBeGreaterThan(0)
+
+      dynamicTop = 260
+      const previewViewport = screen.getByTestId("paper-preview-viewport")
+      previewViewport.scrollTop = 320
+      fireEvent.scroll(previewViewport)
+
+      await waitFor(() => {
+        const recomputedTop = getOverlayTop()
+        expect(recomputedTop).toBeGreaterThan(initialTop + 100)
+      })
+    } finally {
+      Range.prototype.getClientRects = originalRangeGetClientRects
+      Range.prototype.getBoundingClientRect = originalRangeGetBoundingClientRect
+    }
   })
 
   it("runs a true multi-turn paper chat and injects highlighted reader context", async () => {

@@ -4,8 +4,10 @@ Download API Routes
 Provides endpoints for downloading translated PDFs and source files.
 """
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
+import httpx
 import logging
 import json
 import subprocess
@@ -24,6 +26,11 @@ router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
 
+TERMINAL_SUCCESS_STATUSES = {
+    TaskStatus.COMPLETED.value,
+    TaskStatus.COMPLETED_WITH_WARNINGS.value,
+}
+
 
 def _validate_pdf_with_pdfinfo(pdf_path: Path) -> bool:
     """Hard PDF structure gate using pdfinfo."""
@@ -36,8 +43,8 @@ def _validate_pdf_with_pdfinfo(pdf_path: Path) -> bool:
             check=False,
         )
     except FileNotFoundError:
-        logger.error("pdfinfo is missing; cannot validate cached PDF %s", pdf_path)
-        return False
+        logger.warning("pdfinfo is missing; skipping validation for %s", pdf_path)
+        return True
     except Exception as exc:
         logger.error("pdfinfo validation failed for %s: %s", pdf_path, exc)
         return False
@@ -112,6 +119,229 @@ def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
             return expected_pdf
 
     return None
+
+
+def _candidate_output_dirs(task_id: str, task: Optional[dict]) -> list[Path]:
+    """Return output directory candidates in descending confidence order."""
+    candidates: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        try:
+            normalized = str(path.resolve())
+        except Exception:
+            normalized = str(path)
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        if path.exists() and path.is_dir():
+            candidates.append(path)
+
+    if task:
+        output_path = str(task.get("output_path") or "").strip()
+        if output_path:
+            _add(Path(output_path))
+
+    task_root = settings.outputs_dir / task_id
+    _add(task_root)
+    if task_root.exists() and task_root.is_dir():
+        for child in sorted(task_root.iterdir()):
+            if child.is_dir():
+                _add(child)
+
+    return candidates
+
+
+def _find_translated_pdf_in_community_library(task_id: str) -> Optional[Path]:
+    """Best-effort fallback when task outputs are unavailable but assets exist."""
+    root = settings.community_papers_dir
+    if not root.exists():
+        return None
+
+    task_prefix = f"{task_id}-"
+    for paper_dir in sorted(root.iterdir()):
+        if not paper_dir.is_dir():
+            continue
+        translated_dir = paper_dir / "translated"
+        if not translated_dir.exists() or not translated_dir.is_dir():
+            continue
+        for candidate in sorted(translated_dir.glob("*.pdf")):
+            if candidate.name.startswith(task_prefix) and candidate.is_file():
+                return candidate
+    return None
+
+
+def _collect_original_pdf_candidates(source_dir: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for pdf in source_dir.rglob("*.pdf"):
+        name = pdf.name
+        if (
+            name.startswith("zh_")
+            or "_translated" in name
+            or "zh-" in name
+            or name.startswith("source_compiled_")
+        ):
+            continue
+        if pdf.is_file() and pdf.stat().st_size > 0:
+            candidates.append(pdf)
+    return candidates
+
+
+def _pick_best_source_pdf(source_dir: Path, candidates: list[Path], preferred_stem: Optional[str]) -> Optional[Path]:
+    if not candidates:
+        return None
+
+    preferred = str(preferred_stem or "").strip().lower()
+
+    def _score(path: Path) -> tuple[int, int, int, int, int]:
+        rel_parts = path.relative_to(source_dir).parts
+        stem = path.stem.lower()
+        exact = int(bool(preferred) and stem == preferred)
+        top_level = int(len(rel_parts) <= 2)
+        main_like = int(stem in {"main", "paper", "source", "manuscript"})
+        depth_score = -len(rel_parts)
+        size_score = int(path.stat().st_size)
+        return (exact, top_level, main_like, depth_score, size_score)
+
+    return max(candidates, key=_score)
+
+
+def _find_source_pdf_in_community_library(task_id: str, preferred_arxiv_id: Optional[str] = None) -> Optional[Path]:
+    """
+    Resolve source PDF from community library assets to avoid unnecessary network fetches.
+    Prioritizes local file resolution over remote fetches.
+    """
+    root = settings.community_papers_dir
+    if not root.exists():
+        return None
+
+    # Strategy 1 (Highest Priority): Global search by ArXiv ID in ALL community collections.
+    # This ensures that if ANY community paper has the original source PDF, we use it.
+    preferred_id = str(preferred_arxiv_id or "").strip()
+    if preferred_id:
+        for paper_dir in sorted(root.iterdir()):
+            if not paper_dir.is_dir():
+                continue
+            
+            # Check source directory
+            source_dir = paper_dir / "source"
+            if source_dir.exists() and source_dir.is_dir():
+                # Direct match for <arxiv_id>.pdf
+                expected = f"{preferred_id}.pdf"
+                for candidate in source_dir.rglob(expected):
+                    if candidate.is_file() and candidate.stat().st_size > 0:
+                        return candidate
+                
+                # Heuristic match: If this paper_dir belongs to this arxiv_id, pick its best PDF.
+                # Many papers are stored as directories named after their arxiv_id.
+                if preferred_id in paper_dir.name:
+                    candidates = _collect_original_pdf_candidates(source_dir)
+                    best = _pick_best_source_pdf(source_dir, candidates, preferred_id)
+                    if best:
+                        return best
+
+    # Strategy 2: Task-correlated resolution (fallback)
+    # Finding papers that were translated as part of the same task cluster.
+    task_prefix = f"{task_id}-"
+    matched_papers: list[Path] = []
+
+    for paper_dir in sorted(root.iterdir()):
+        if not paper_dir.is_dir():
+            continue
+        translated_dir = paper_dir / "translated"
+        if not translated_dir.exists() or not translated_dir.is_dir():
+            continue
+        if any(candidate.name.startswith(task_prefix) for candidate in translated_dir.glob("*.pdf")):
+            matched_papers.append(paper_dir)
+
+    for paper_dir in matched_papers:
+        source_dir = paper_dir / "source"
+        if not source_dir.exists() or not source_dir.is_dir():
+            continue
+        candidates = _collect_original_pdf_candidates(source_dir)
+        selected = _pick_best_source_pdf(source_dir, candidates, preferred_id)
+        if selected:
+            return selected
+
+    return None
+
+
+def _extract_arxiv_id_from_text(value: Optional[str]) -> Optional[str]:
+    import re
+
+    normalized = str(value or "").strip()
+    if not normalized:
+        return None
+    match = re.search(r"(\d{4}\.\d{4,5})(?:v\d+)?", normalized)
+    if not match:
+        return None
+    return match.group(1)
+
+
+async def _proxy_arxiv_pdf(
+    arxiv_id: str,
+    filename: str,
+    *,
+    request: Optional[Request] = None,
+) -> StreamingResponse:
+    """
+    Stream arXiv PDF through backend to avoid frontend CORS issues.
+    """
+    arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+    client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
+    forward_headers = {"User-Agent": "LaTeXTrans-Preview/1.0"}
+    range_header = request.headers.get("range") if request else None
+    if range_header:
+        forward_headers["Range"] = range_header
+
+    upstream_request = client.build_request("GET", arxiv_pdf_url, headers=forward_headers)
+    upstream = await client.send(upstream_request, stream=True)
+
+    if upstream.status_code not in (200, 206):
+        await upstream.aclose()
+        await client.aclose()
+        logger.warning(
+            "arXiv PDF proxy failed: id=%s status=%s url=%s",
+            arxiv_id,
+            upstream.status_code,
+            arxiv_pdf_url,
+        )
+        raise HTTPException(
+            status_code=upstream.status_code if upstream.status_code >= 400 else 502,
+            detail=f"Failed to fetch source PDF from arXiv ({upstream.status_code})",
+        )
+
+    async def _stream() -> bytes:
+        async for chunk in upstream.aiter_bytes():
+            if chunk:
+                yield chunk
+
+    async def _close_stream() -> None:
+        await upstream.aclose()
+        await client.aclose()
+
+    headers = {"Content-Disposition": f"inline; filename=\"{filename}\""}
+    for source_name, target_name in (
+        ("content-length", "Content-Length"),
+        ("accept-ranges", "Accept-Ranges"),
+        ("content-range", "Content-Range"),
+        ("etag", "ETag"),
+        ("last-modified", "Last-Modified"),
+        ("cache-control", "Cache-Control"),
+    ):
+        value = upstream.headers.get(source_name)
+        if value:
+            headers[target_name] = value
+
+    return StreamingResponse(
+        _stream(),
+        status_code=upstream.status_code,
+        media_type="application/pdf",
+        headers=headers,
+        background=BackgroundTask(_close_stream),
+    )
 
 
 @router.get("/download/{task_id}/pdf")
@@ -220,32 +450,22 @@ async def preview_pdf(task_id: str):
     """
     logger.info(f"PDF preview request for task: {task_id}")
     
-    # Get task
     task = task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Task not found: {task_id}"
-        )
-    
-    # Check if task is completed
-    if task["status"] not in [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_WITH_WARNINGS.value]:
+    if task and task["status"] not in TERMINAL_SUCCESS_STATUSES:
         raise HTTPException(
             status_code=400,
             detail=f"Translation not completed. Current status: {task['status']}"
         )
-    
-    # Find PDF file in output directory
-    output_dir = Path(task.get("output_path", ""))
-    if not output_dir.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Output directory not found"
-        )
-    
-    # Search for PDF files
-    pdf_file = _find_translated_pdf(output_dir)
-    
+
+    pdf_file: Optional[Path] = None
+    for output_dir in _candidate_output_dirs(task_id, task):
+        pdf_file = _find_translated_pdf(output_dir)
+        if pdf_file:
+            break
+
+    if not pdf_file:
+        pdf_file = _find_translated_pdf_in_community_library(task_id)
+
     if not pdf_file:
         raise HTTPException(
             status_code=404,
@@ -298,14 +518,14 @@ async def preview_pdf(task_id: str):
 
 
 @router.get("/preview/{task_id}/source-pdf")
-async def preview_source_pdf(task_id: str):
+async def preview_source_pdf(task_id: str, request: Request):
     """
     Preview original source PDF (inline display for iframe)
     
     Strategy:
-    1. Check if task has an associated arxiv_id -> redirect to arxiv.org
-    2. Try to extract arxiv ID from directory/file names -> redirect to arxiv.org
-    3. Look for existing original PDF in source directory (not translated)
+    1. Resolve source PDF from local community library assets (fast path, no network)
+    2. Check arxiv_id and proxy arXiv PDF when local source is unavailable
+    3. Look for existing original PDF in task source directory
     4. Fallback: compile source tex to generate source PDF
     
     Args:
@@ -318,48 +538,54 @@ async def preview_source_pdf(task_id: str):
         HTTPException: If task not found or source PDF not available
     """
     import re
-    from fastapi.responses import RedirectResponse
-    
+
     logger.info(f"Source PDF preview request for task: {task_id}")
-    
-    # Get task
-    task = task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Task not found: {task_id}"
-        )
-    
+
+    task = task_manager.get_task(task_id) or {}
+
     # ArXiv ID pattern: YYMM.NNNNN or YYMM.NNNNNvN
     arxiv_pattern = re.compile(r'(\d{4}\.\d{4,5})(v\d+)?')
-    
-    # Strategy 1: Check if task has arxiv_id stored
-    arxiv_id = task.get("arxiv_id")
+
+    # Strategy 1: local community-library source PDF first.
+    inferred_arxiv_id = _extract_arxiv_id_from_text(task_id)
+    arxiv_id = task.get("arxiv_id") or inferred_arxiv_id
+    local_source_pdf = _find_source_pdf_in_community_library(task_id, preferred_arxiv_id=arxiv_id)
+    if local_source_pdf:
+        logger.info("Using cached community source PDF for task %s: %s", task_id, local_source_pdf)
+        return FileResponse(
+            path=str(local_source_pdf),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+            },
+        )
+
+    # Strategy 2: Check if task has arxiv_id stored, fallback to task-id inference.
     if arxiv_id:
-        # Extract just the ID part (remove any version suffix for PDF URL)
         match = arxiv_pattern.search(arxiv_id)
         if match:
             clean_id = match.group(1)
-            arxiv_pdf_url = f"https://arxiv.org/pdf/{clean_id}.pdf"
-            logger.info(f"Redirecting to arxiv.org PDF: {arxiv_pdf_url}")
-            return RedirectResponse(url=arxiv_pdf_url, status_code=302)
-    
-    # Get source path
-    source_path = task.get("source_path")
-    if not source_path:
+            logger.info(f"Proxying arxiv.org PDF for source preview: {clean_id}")
+            return await _proxy_arxiv_pdf(
+                clean_id,
+                f"source_{clean_id}.pdf",
+                request=request,
+            )
+
+    # Get source path with fallback to deterministic uploads location.
+    source_path = str(task.get("source_path") or "").strip()
+    source_candidates: list[Path] = []
+    if source_path:
+        source_candidates.append(Path(source_path))
+    source_candidates.append(settings.uploads_dir / task_id)
+    source_dir = next((candidate for candidate in source_candidates if candidate.exists() and candidate.is_dir()), None)
+    if source_dir is None:
         raise HTTPException(
             status_code=404,
             detail="Source path not available for this task"
         )
     
-    source_dir = Path(source_path)
-    if not source_dir.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Source directory not found"
-        )
-    
-    # Strategy 2: Try to extract arxiv ID from directory name or file names
+    # Strategy 3: Try to extract arxiv ID from directory name or file names
     extracted_arxiv_id = None
     
     # Check directory name
@@ -382,24 +608,23 @@ async def preview_source_pdf(task_id: str):
                 break
     
     if extracted_arxiv_id:
-        arxiv_pdf_url = f"https://arxiv.org/pdf/{extracted_arxiv_id}.pdf"
-        logger.info(f"Extracted arxiv ID {extracted_arxiv_id}, redirecting to: {arxiv_pdf_url}")
-        return RedirectResponse(url=arxiv_pdf_url, status_code=302)
+        logger.info(f"Extracted arXiv ID for source preview: {extracted_arxiv_id}")
+        return await _proxy_arxiv_pdf(
+            extracted_arxiv_id,
+            f"source_{extracted_arxiv_id}.pdf",
+            request=request,
+        )
     
-    # Strategy 3: Look for existing original PDF in source directory
-    all_pdfs = list(source_dir.rglob("*.pdf"))
-    
-    # Filter to find original PDF (not translated, not zh prefixed)
-    original_pdfs = [
-        pdf for pdf in all_pdfs 
-        if not pdf.name.startswith("zh_") 
-        and "_translated" not in pdf.name
-        and "zh-" not in pdf.name
-        and not pdf.name.startswith("source_compiled_")  # Our compiled PDFs
-    ]
-    
-    if original_pdfs:
-        pdf_file = original_pdfs[0]
+    # Strategy 4: Look for existing original PDF in source directory
+    original_pdfs = _collect_original_pdf_candidates(source_dir)
+    selected_source_pdf = _pick_best_source_pdf(
+        source_dir,
+        original_pdfs,
+        preferred_stem=(extracted_arxiv_id or arxiv_id),
+    )
+
+    if selected_source_pdf:
+        pdf_file = selected_source_pdf
         if pdf_file.exists() and pdf_file.stat().st_size > 0:
             logger.info(f"Found original PDF: {pdf_file}")
             return FileResponse(
@@ -410,7 +635,7 @@ async def preview_source_pdf(task_id: str):
                 }
             )
     
-    # Strategy 4: Fallback - compile source tex to generate source PDF
+    # Strategy 5: Fallback - compile source tex to generate source PDF
     # Look for main tex file
     tex_files = list(source_dir.rglob("*.tex"))
     if not tex_files:

@@ -31,6 +31,68 @@ function getPreviewSignature(preview: CommunityPaperPreviewResponse | null | und
   ].join("::")
 }
 
+function normalizePreviewHtml(rawHtml: string): string {
+  if (!rawHtml) {
+    return ""
+  }
+
+  let normalized = rawHtml
+
+  normalized = normalized.replace(
+    /<pre class="paper-preview__latex">([\s\S]*?)<\/pre>/g,
+    (_match, source: string) => {
+      const cleanedSource = String(source || "").trim()
+      if (!cleanedSource) {
+        return ""
+      }
+
+      const isMathLike =
+        /\\begin\{(?:equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?|split|CD)\}/.test(
+          cleanedSource,
+        ) ||
+        /\\\[/.test(cleanedSource) ||
+        /\$\$/.test(cleanedSource)
+
+      if (isMathLike) {
+        return `<div class="paper-preview__math-block">${cleanedSource}</div>`
+      }
+
+      const prose = cleanedSource
+        .replace(/\\begin\{(?:quote|snugshade\*?)\}/g, " ")
+        .replace(/\\end\{(?:quote|snugshade\*?)\}/g, " ")
+        .replace(/\\flushright\{([^}]*)\}/g, "$1")
+        .replace(/\\lettrine(?:\[[^\]]*\])?\{([^}]*)\}\{([^}]*)\}/g, "$1$2")
+        .replace(/\s+/g, " ")
+        .trim()
+
+      return prose ? `<p>${prose}</p>` : ""
+    },
+  )
+
+  normalized = normalized.replace(
+    /<p>\s*\\flushright\{([^}]*)\}(?:\s*\\n)?\s*\\end\{quote\}\s*<\/p>/g,
+    "<p>$1</p>",
+  )
+  normalized = normalized.replace(
+    /<p>\s*\\(?:begin|end)\{(?:quote|snugshade\*?)\}\s*<\/p>/g,
+    "",
+  )
+  normalized = normalized.replace(
+    /<p>\s*\\flushright\{([^}]*)\}\s*<\/p>/g,
+    "<p>$1</p>",
+  )
+  normalized = normalized.replace(
+    /<p>\s*\\lettrine(?:\[[^\]]*\])?\{([^}]*)\}\{([^}]*)\}\s*<\/p>/g,
+    "<p>$1$2</p>",
+  )
+  normalized = normalized.replace(
+    /<p>\s*\\end\{(?:quote|snugshade\*?)\}\s*<\/p>/g,
+    "",
+  )
+
+  return normalized
+}
+
 export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderProps>(
   function PaperPreviewReader({ paperId, initialPreview = null, readerState = "unavailable" }, ref) {
     const { t } = useTranslation()
@@ -107,7 +169,8 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
         return preparedPreviewRef.current.html
       }
 
-      const sanitized = DOMPurify.sanitize(preview.html_content)
+      const normalized = normalizePreviewHtml(preview.html_content)
+      const sanitized = DOMPurify.sanitize(normalized)
       preparedPreviewRef.current = {
         signature: previewSignature,
         html: sanitized,
@@ -289,16 +352,11 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
         <div
           ref={attachRootRef}
           id="paper-preview-reader"
-          className="flex h-full min-h-0 flex-col rounded-[24px] border border-[color:var(--shell-border)] bg-[var(--shell-surface-strong)] p-6 text-[var(--shell-text)] shadow-none"
+          className="flex h-full min-h-0 flex-col text-[var(--shell-text)]"
         >
-          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--shell-text-muted)]">
-            <span>{t("community.reader.sectionTitle")}</span>
-            <span>·</span>
-            <span>{preview.asset.file_name}</span>
-          </div>
           <div
             data-testid="paper-preview-viewport"
-            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[20px] border border-[color:var(--shell-border-strong)] bg-[var(--shell-bg)]/40 px-6 py-5 xl:px-8 xl:py-6"
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-6 py-5 xl:px-8 xl:py-6"
           >
             <div
               ref={contentRef}

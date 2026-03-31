@@ -73,10 +73,13 @@ def _normalize_reader_selection(context: Dict[str, Any]) -> Dict[str, str] | Non
     normalized: Dict[str, str] = {"text": text[:4000]}
     anchor_id = _normalize_text(payload.get("anchor_id"))
     mode = _normalize_text(payload.get("mode"))
+    note = _normalize_text(payload.get("note"))
     if anchor_id:
         normalized["anchor_id"] = anchor_id
     if mode:
         normalized["mode"] = mode
+    if note:
+        normalized["note"] = note[:2000]
     return normalized
 
 

@@ -330,7 +330,7 @@ def test_get_paper_preview_recovers_from_outputs_dir_when_task_runtime_missing(m
     monkeypatch.setattr(
         paper_service.paper_preview_service,
         "generate_preview_html",
-        lambda output_dir, target_dir, source_dirs=None: {
+        lambda output_dir, target_dir, source_dirs=None, paper_metadata=None: {
             "file_path": str((target_dir / "preview.html").resolve()),
             "file_name": "preview.html",
             "mime_type": "text/html",

@@ -163,16 +163,16 @@ def test_route_preserves_service_reader_payload(monkeypatch) -> None:
     assert data["experience"]["stage_label"] == "中文版已准备好"
 
 
-def test_current_reader_version_allows_latex_blocks_in_preview_html() -> None:
+def test_current_reader_version_marks_raw_latex_blocks_as_stale() -> None:
     html = (
-        '<article class="paper-preview" data-reader-version="reader-v12">'
+        '<article class="paper-preview" data-reader-version="reader-v13">'
         '<div class="paper-preview__block paper-preview__block--latex">'
         '<pre class="paper-preview__latex">\\\\begin{promptbox}Example</pre>'
         "</div>"
         "</article>"
     )
 
-    assert paper_service._preview_html_needs_refresh(html) is False
+    assert paper_service._preview_html_needs_refresh(html) is True
 
 
 def test_looks_untranslated_for_zh_ignores_tiny_cjk_noise_in_english_text() -> None:
@@ -184,7 +184,7 @@ def test_untranslated_english_preview_html_is_not_treated_as_translated(tmp_path
     preview_path = tmp_path / "preview.html"
     preview_path.write_text(
         (
-            '<article class="paper-preview" data-reader-version="reader-v12">'
+            '<article class="paper-preview" data-reader-version="reader-v13">'
             "<section><h2>Introduction</h2>"
             "<p>Large Language Models provide a strong baseline for survey simulation and synthetic respondents.</p>"
             "</section></article>"

@@ -1077,3 +1077,36 @@ def test_generate_preview_html_appends_external_reference_search_links(tmp_path:
 
     assert "https://scholar.google.com/scholar?q=" in html
     assert "paper-preview__reference-link" in html
+
+
+def test_generate_preview_html_cleans_quote_snugshade_and_lettrine_residue(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "16",
+            "content": "\\section{Narrative}\nBody.",
+            "trans_content": (
+                "\\section{叙述}\n"
+                "\\begin{snugshade*}\n"
+                "\\begin{quote}\n"
+                "\\flushright{H. Jackson Brown Jr.}\n"
+                "\\end{quote}\n"
+                "\\end{snugshade*}\n"
+                "\\lettrine[findent=2pt]{\\fbox{T}{ }}{he barrier remains porous.}\n"
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "H. Jackson Brown Jr." in html
+    assert "The barrier remains porous." in html
+    assert "paper-preview__latex" not in html
+    assert "\\begin{quote}" not in html
+    assert "\\end{snugshade*}" not in html
+    assert "\\lettrine[" not in html

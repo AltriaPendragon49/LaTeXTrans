@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lumina Archive | Community Feed</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "inverse-on-surface": "#f0f0fb",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb59c",
+                        "on-error-container": "#93000a",
+                        "on-error": "#ffffff",
+                        "surface-container-low": "#f3f2fe",
+                        "on-secondary-container": "#3d4c83",
+                        "surface-bright": "#faf8ff",
+                        "on-primary-fixed": "#001551",
+                        "on-tertiary-fixed-variant": "#832700",
+                        "surface": "#faf8ff",
+                        "on-surface": "#1a1b23",
+                        "on-tertiary-fixed": "#390c00",
+                        "error": "#ba1a1a",
+                        "primary": "#0037b0",
+                        "error-container": "#ffdad6",
+                        "on-tertiary": "#ffffff",
+                        "surface-variant": "#e2e1ed",
+                        "on-secondary-fixed-variant": "#35437b",
+                        "on-surface-variant": "#434655",
+                        "on-background": "#1a1b23",
+                        "inverse-surface": "#2e3039",
+                        "on-primary-container": "#cad3ff",
+                        "outline-variant": "#c4c5d7",
+                        "on-secondary": "#ffffff",
+                        "secondary": "#4d5b94",
+                        "on-secondary-fixed": "#03164d",
+                        "surface-container-high": "#e8e7f3",
+                        "secondary-fixed-dim": "#b7c4ff",
+                        "surface-container-highest": "#e2e1ed",
+                        "surface-dim": "#d9d9e5",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#747686",
+                        "on-tertiary-container": "#ffc9b7",
+                        "primary-fixed": "#dce1ff",
+                        "primary-container": "#1d4ed8",
+                        "surface-container": "#ededf9",
+                        "on-primary-fixed-variant": "#0039b5",
+                        "secondary-fixed": "#dce1ff",
+                        "surface-tint": "#2151da",
+                        "tertiary-fixed": "#ffdbcf",
+                        "background": "#faf8ff",
+                        "secondary-container": "#b0befe",
+                        "inverse-primary": "#b7c4ff",
+                        "tertiary-container": "#a73400",
+                        "tertiary": "#7f2500",
+                        "primary-fixed-dim": "#b7c4ff"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<!-- Main Content Area - Removed Sidebar for single column layout -->
+<main class="min-h-screen">
+<!-- Top Navigation Shell -->
+<header class="flex justify-between items-center w-full px-8 h-20 sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-outline-variant/10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-3xl text-primary">auto_stories</span>
+<span class="text-xl font-black tracking-tighter text-blue-700">Lumina Archive</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-slate-500 cursor-pointer hover:text-blue-600 transition-all">notifications</span>
+<span class="material-symbols-outlined text-slate-500 cursor-pointer hover:text-blue-600 transition-all">help_outline</span>
+<div class="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+<img alt="Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcLuqAJOmpDzuEnrUBAnYEi8G_CjXRXHIFWNHpH-JAvUan-1DqSATZRnyL9605HFRds-OL3q36SWqz6hB0wy_SeLBozahpgWzixbIU6aEWvWVQd7d_owFiNoaU96xVYwlvj0TOEe8qqiGwYiAZnhMDf0qa_A4wND-t-LaTL8DCgkABCkDWbaughlZ05GYqaBc-7EPLCA3LDUT7USTW0iWNZsY1AjolMQ7XZGWs8bErk8Ps5DJt5oVfZhfxGMqxcWOsfu2u3c8gz6X7"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Feed Canvas -->
+<div class="max-w-6xl mx-auto px-8 py-8">
+<!-- Agent Search Section -->
+<section class="mb-10">
+<div class="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/20 shadow-sm">
+<div class="relative">
+<textarea class="w-full bg-surface-container-low border-none rounded-xl p-5 text-on-surface-variant focus:ring-2 focus:ring-primary/10 min-h-[120px] resize-none text-lg font-light tracking-tight placeholder:text-slate-400" placeholder="Ask the Digital Curator to find specific research papers..."></textarea>
+<div class="absolute bottom-4 right-4 flex gap-3">
+<button class="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-semibold text-sm transition-all hover:bg-slate-200">Balanced</button>
+<button class="px-8 py-2.5 bg-primary text-on-primary rounded-full font-semibold text-sm flex items-center gap-2 transition-all hover:opacity-90 shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-lg">search</span>
+                                Search
+                            </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Sorting Tabs & Actions -->
+<div class="flex justify-between items-center mb-8 border-b border-outline-variant/10">
+<div class="flex items-center gap-10">
+<button class="text-blue-700 border-b-2 border-blue-700 font-bold pb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+                        Hot
+                    </button>
+<button class="text-slate-500 hover:text-blue-600 transition-all font-semibold pb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">schedule</span>
+                        Latest
+                    </button>
+</div>
+<div class="flex gap-4 pb-4">
+<button class="flex items-center gap-2 px-4 py-1.5 text-slate-500 hover:text-primary transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-xl">filter_list</span>
+                        Filter
+                    </button>
+</div>
+</div>
+<!-- Paper Feed (Single Column, Full Width) -->
+<div class="flex flex-col gap-6">
+<!-- Card 1 -->
+<div class="group bg-surface-container-lowest rounded-2xl p-8 flex flex-col md:flex-row gap-10 transition-all hover:border-primary/30 border border-outline-variant/10 cursor-pointer shadow-sm hover:shadow-xl hover:shadow-primary/5">
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-6">
+<span class="bg-surface-container-low text-primary text-[11px] font-extrabold tracking-widest px-4 py-1.5 rounded-full uppercase border border-primary/10">Quantum Physics</span>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">bookmark</span>
+</div>
+<h3 class="text-2xl font-bold text-on-surface leading-tight mb-5 group-hover:text-primary transition-colors">Neural Entanglement in Distributed Compute Architectures</h3>
+<p class="text-on-surface-variant text-base mb-8 leading-relaxed line-clamp-3">A comprehensive study on how localized neural nodes can maintain coherence across high-latency distribution networks using novel entanglement protocols. This paper addresses the critical bottleneck in decentralized AI training architectures.</p>
+</div>
+<div class="flex items-center justify-between pt-6 border-t border-outline-variant/10">
+<div class="flex items-center gap-3">
+<img alt="Author" class="w-9 h-9 rounded-full border border-outline-variant/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvzS53Aj9PvCRXBWCvGSBjk86oeBXEb1eApJ6AEUSA2PNCqq5JjXS1g2taOaEuirVXJOkYaSGarg7O3MkxFWIP0jTh5ajNOMyB6xx7SPVfo0U8POSjG7KGv71GN90Egh1cOElxnLnNfFMCBXPkIvRMiJVDUDUv01fkfixMQicCSHZ1gzqtywOIvCXeRJwKDxvUlN1vdIqYbPzzHwCf6mW03lr6r03pZhygfMN2wibBG9lcBdSDBeMY8BF5wr5zZuKiWytE_FIGkRGI"/>
+<span class="text-sm font-bold text-slate-700">Dr. Aris Thorne</span>
+</div>
+<div class="flex items-center gap-5 text-slate-400 text-sm">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-lg">visibility</span> 12k</span>
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-lg">comment</span> 42</span>
+</div>
+</div>
+</div>
+<!-- PDF Previews Side-by-Side -->
+<div class="md:w-2/5 flex gap-5 bg-slate-50 p-6 rounded-2xl items-center justify-center border border-slate-100">
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 flex flex-col p-3 overflow-hidden relative group/preview">
+<div class="h-2 w-3/4 bg-slate-200 mb-2"></div>
+<div class="h-1 w-full bg-slate-100 mb-1.5"></div>
+<div class="h-1 w-full bg-slate-100 mb-1.5"></div>
+<div class="h-1 w-5/6 bg-slate-100 mb-5"></div>
+<div class="h-24 w-full bg-slate-50 rounded"></div>
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-primary scale-125">picture_as_pdf</span>
+</div>
+</div>
+<span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Original</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 flex flex-col p-3 overflow-hidden relative group/preview">
+<div class="h-2 w-3/4 bg-blue-100 mb-2"></div>
+<div class="h-1 w-full bg-slate-100 mb-1.5"></div>
+<div class="h-1 w-full bg-slate-100 mb-1.5"></div>
+<div class="h-1 w-5/6 bg-slate-100 mb-5"></div>
+<div class="h-24 w-full bg-blue-50/50 rounded"></div>
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-primary scale-125">translate</span>
+</div>
+</div>
+<span class="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Translated</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group bg-surface-container-lowest rounded-2xl p-8 flex flex-col md:flex-row gap-10 transition-all hover:border-primary/30 border border-outline-variant/10 cursor-pointer shadow-sm hover:shadow-xl hover:shadow-primary/5">
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-6">
+<span class="bg-surface-container-low text-primary text-[11px] font-extrabold tracking-widest px-4 py-1.5 rounded-full uppercase border border-primary/10">Bio-Ethics</span>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">bookmark</span>
+</div>
+<h3 class="text-2xl font-bold text-on-surface leading-tight mb-5 group-hover:text-primary transition-colors">The Moral Calculus of Synthetic Consciousness</h3>
+<p class="text-on-surface-variant text-base mb-8 leading-relaxed line-clamp-3">Exploring the boundaries between algorithm and awareness through the lens of modern synthetic biology and digital twin simulations. This work proposes a new framework for sentient rights in the age of post-human compute.</p>
+</div>
+<div class="flex items-center justify-between pt-6 border-t border-outline-variant/10">
+<div class="flex items-center gap-3">
+<img alt="Author" class="w-9 h-9 rounded-full border border-outline-variant/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAypD1AGQIUaBaiD9FLYxMUdOezc9gNSvVxvh_UP6Nl5BXC5iXOiiKCAvWvcIJYxZ23pMyO6T2Xx_A0Z-lgXXGAel4Qlc7fSQmGNins3nYIp2jRLtRFu9yqLeOisVgAV4vgXtZHLrOm3DflUA4yn1dgBhcQryx-1GXCkOOK_bjewzJFWlN02xuTnXcSh4G07wZdZpBitOKE8KUJxhVp39fEwsP0QvjT23tg9OllfFe9FgAzhsRCF8gX-3TbhNMJS5vXacJrirJbZXdz"/>
+<span class="text-sm font-bold text-slate-700">Elena Vance</span>
+</div>
+<div class="flex items-center gap-5 text-slate-400 text-sm">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-lg">visibility</span> 8.4k</span>
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-lg">comment</span> 156</span>
+</div>
+</div>
+</div>
+<div class="md:w-2/5 flex gap-5 bg-slate-50 p-6 rounded-2xl items-center justify-center border border-slate-100">
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 flex flex-col p-3 overflow-hidden relative">
+<div class="h-2 w-3/4 bg-slate-200 mb-2"></div>
+<div class="h-24 w-full bg-slate-50 rounded mt-auto"></div>
+</div>
+<span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Original</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 flex flex-col p-3 overflow-hidden relative">
+<div class="h-2 w-3/4 bg-blue-100 mb-2"></div>
+<div class="h-24 w-full bg-blue-50/50 rounded mt-auto"></div>
+</div>
+<span class="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Translated</span>
+</div>
+</div>
+</div>
+<!-- Card 3 (Featured) -->
+<div class="group bg-primary text-on-primary rounded-2xl p-8 flex flex-col md:flex-row gap-10 transition-all hover:translate-y-[-4px] cursor-pointer shadow-xl shadow-primary/20">
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<div class="inline-block bg-white/20 backdrop-blur-md text-[10px] font-black tracking-widest px-4 py-2 rounded-full uppercase mb-8 border border-white/30">Editor's Pick</div>
+<h3 class="text-3xl font-extrabold leading-[1.15] mb-6 tracking-tight">Decolonizing the Digital Archive: A Post-Structuralist Approach</h3>
+<p class="text-primary-fixed text-lg leading-relaxed font-light opacity-90 mb-8">How digital curation methodologies can inadvertently perpetuate historical biases and the emerging frameworks to dismantle them. A cornerstone piece for modern sociologists.</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex -space-x-2">
+<img alt="User" class="w-9 h-9 rounded-full border-2 border-primary" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCK8qjgH_EzQRIY4btIa2PmoLRfpUUW63AO77Ietk_pOFq3NJpZwnIfpKU2-e17Z7DxZA6ujFJmkv5MepbY-_H-cYA0EXTJAe7Bu1loixch5Y3kYdnFXNaqd6p5Y-AWwXDbPMF3thNe4mIId4yZTNDZuZzQGGIlevzegtBj7GqpPkiKTpM_ngm9ip_seCfR4z8EdiwFOzG8Fskq_ylO9pSGZw1o76PAoftcluu1a1ktvIKqtEifyuV4X6bzjAik92cJrd9A20Hr5m9b"/>
+<img alt="User" class="w-9 h-9 rounded-full border-2 border-primary" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7-xs_TP69hZ05QYZcsWogVfva9VHIgk97RT3PIqgL940Ln0QViSuZywpoXttQE-La13LjR8YCd0tMkBENJRWwerr2-44HF1fLQRobHBtendeSrsXR0tNHkf8dC7UBnYdk6Yck-Xw8AcMvqDcdE1lY60eZPmEW1XmVuZu114ns7C1KeESM7EIcqe3pZMtepV5LSt29ayTnoaMerRNsbT-JzdEi8A1FFMmvT-FnDE1GRCCVMLb6ASVsCmAKQ43Qg4kw3CGvWKnNAf49"/>
+</div>
+<span class="text-sm font-bold opacity-90">Joined by 1.2k scholars</span>
+</div>
+</div>
+<div class="md:w-2/5 flex gap-5 bg-white/10 backdrop-blur-md p-6 rounded-2xl items-center justify-center border border-white/10">
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white/95 rounded-lg shadow-lg border border-white/20 flex flex-col p-3 overflow-hidden relative">
+<div class="h-2 w-3/4 bg-slate-300 mb-2"></div>
+<div class="h-24 w-full bg-slate-100/50 rounded mt-auto"></div>
+</div>
+<span class="text-[10px] font-black text-white uppercase tracking-[0.2em]">Original</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white/95 rounded-lg shadow-lg border border-white/20 flex flex-col p-3 overflow-hidden relative">
+<div class="h-2 w-3/4 bg-blue-400 mb-2"></div>
+<div class="h-24 w-full bg-blue-50/50 rounded mt-auto"></div>
+</div>
+<span class="text-[10px] font-black text-white uppercase tracking-[0.2em]">Translated</span>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="group bg-surface-container-lowest rounded-2xl p-8 flex flex-col md:flex-row gap-10 transition-all hover:border-primary/30 border border-outline-variant/10 cursor-pointer shadow-sm hover:shadow-xl hover:shadow-primary/5">
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-6">
+<span class="bg-surface-container-low text-primary text-[11px] font-extrabold tracking-widest px-4 py-1.5 rounded-full uppercase border border-primary/10">Linguistics</span>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">bookmark</span>
+</div>
+<h3 class="text-2xl font-bold text-on-surface leading-tight mb-5 group-hover:text-primary transition-colors">Semantic Drift in Generative Latent Spaces</h3>
+<p class="text-on-surface-variant text-base mb-8 leading-relaxed line-clamp-3">Analyzing how recursive training loops affect the density and accuracy of human language representation. This paper proves a steady decay in semantic variety over generations of models.</p>
+</div>
+<div class="flex items-center justify-between pt-6 border-t border-outline-variant/10">
+<div class="flex items-center gap-3">
+<img alt="Author" class="w-9 h-9 rounded-full border border-outline-variant/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE_0pg88BVMeTiMvapnQQp-PmzuvUdW-mlogXjNnZTz912h0LmhhzTXrDgTaZvb0z7Im0MDKkBrfcfNDFKI2jaz1JrkfuhwZD00Poa5t2WHQkEtxRiHqpkyL9yJs3SgMqy2c3Bg9iPKegXNHIDqQLMxB1hfHqyGTEtOKDJCVx9rgx4Hfer0v7RUgRSEjJH6glTfvEbtG9ykFkyu405PEuizo-d7SG7m4ut5Zl1mt46XK-3-H-7dEPY-BlyE7QzRqecSbkmKZkzi85C"/>
+<span class="text-sm font-bold text-slate-700">Marcus Chen</span>
+</div>
+<div class="flex items-center gap-5 text-slate-400 text-sm">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-lg">visibility</span> 5.1k</span>
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-lg">comment</span> 29</span>
+</div>
+</div>
+</div>
+<div class="md:w-2/5 flex gap-5 bg-slate-50 p-6 rounded-2xl items-center justify-center border border-slate-100">
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 flex flex-col p-3 overflow-hidden relative">
+<div class="h-2 w-3/4 bg-slate-200 mb-2"></div>
+<div class="h-24 w-full bg-slate-50 rounded mt-auto"></div>
+</div>
+<span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Original</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-3">
+<div class="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 flex flex-col p-3 overflow-hidden relative">
+<div class="h-2 w-3/4 bg-blue-100 mb-2"></div>
+<div class="h-24 w-full bg-blue-50/50 rounded mt-auto"></div>
+</div>
+<span class="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Translated</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

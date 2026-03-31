@@ -1,15 +1,5 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  CircleDashed,
-  Clock3,
-  RadioTower,
-  ShieldCheck,
-  Users,
-} from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { CommunityStatus, TranslationStatus } from "@/types/community"
 
