@@ -101,18 +101,20 @@ def test_list_papers_orders_official_before_fallback(monkeypatch):
     monkeypatch.setattr(paper_service, "run_db_blocking", lambda fn, **_kwargs: asyncio.sleep(0, result=fn()))
     monkeypatch.setattr(
         paper_service,
-        "_fetch_latest_assets",
+        "_fetch_asset_maps_for_papers",
         lambda _paper_ids: asyncio.sleep(
             0,
             result={
                 "paper-official": {
-                    "id": "asset-official",
-                    "task_id": "task-official",
-                    "asset_type": "translated_pdf",
-                    "file_path": "/tmp/official.pdf",
-                    "file_name": "official.pdf",
-                    "mime_type": "application/pdf",
-                    "created_at": "2026-03-18T04:00:00+00:00",
+                    "translated_pdf": {
+                        "id": "asset-official",
+                        "task_id": "task-official",
+                        "asset_type": "translated_pdf",
+                        "file_path": "/tmp/official.pdf",
+                        "file_name": "official.pdf",
+                        "mime_type": "application/pdf",
+                        "created_at": "2026-03-18T04:00:00+00:00",
+                    },
                 }
             },
         ),
@@ -164,7 +166,7 @@ def test_list_papers_retries_transient_supabase_disconnect(monkeypatch):
     monkeypatch.setattr(paper_service, "run_db_blocking", _flaky_run_db_blocking)
     monkeypatch.setattr(
         paper_service,
-        "_fetch_latest_assets",
+        "_fetch_asset_maps_for_papers",
         lambda _paper_ids: asyncio.sleep(0, result={}),
     )
 
@@ -173,6 +175,80 @@ def test_list_papers_retries_transient_supabase_disconnect(monkeypatch):
     assert attempts["count"] == 2
     assert result["total"] == 1
     assert result["items"][0]["id"] == "paper-official"
+
+
+def test_list_recovers_completed_state_when_source_asset_is_newer_than_preview(monkeypatch, tmp_path):
+    preview_file = tmp_path / "preview.html"
+    preview_file.write_text(
+        "<article><p>这是中文翻译内容用于测试预览状态一致性。</p></article>",
+        encoding="utf-8",
+    )
+
+    papers = [
+        {
+            "id": "paper-asset-priority",
+            "source": "arxiv",
+            "arxiv_id": "2501.44444",
+            "title": "Asset priority paper",
+            "authors": [],
+            "categories": [],
+            "visibility": "public",
+            "status": "published",
+            "trans_status": "completed",
+            "created_by": "admin-1",
+            "trans_latest_task_id": "task-translate",
+            "trans_latest_asset_pdf_id": None,
+            "like_count": 0,
+            "favorite_count": 0,
+            "comment_count": 0,
+            "view_count": 0,
+            "download_count": 0,
+            "created_at": "2026-03-18T02:00:00+00:00",
+            "updated_at": "2026-03-18T02:00:00+00:00",
+            "community_status": "official",
+            "community_selected_task_id": "task-translate",
+            "community_selected_asset_id": "asset-preview",
+            "official_published_at": "2026-03-18T04:00:00+00:00",
+        }
+    ]
+
+    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: _Client(papers))
+    monkeypatch.setattr(paper_service, "run_db_blocking", lambda fn, **_kwargs: asyncio.sleep(0, result=fn()))
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(
+            0,
+            result={
+                "paper-asset-priority": {
+                    "preview_html": {
+                        "id": "asset-preview",
+                        "task_id": "task-translate",
+                        "asset_type": "preview_html",
+                        "file_path": str(preview_file),
+                        "file_name": "preview.html",
+                        "mime_type": "text/html",
+                        "created_at": "2026-03-18T03:00:00+00:00",
+                    },
+                    "source_archive": {
+                        "id": "asset-source",
+                        "task_id": "task-intake",
+                        "asset_type": "source_archive",
+                        "file_path": "/tmp/source.zip",
+                        "file_name": "source.zip",
+                        "mime_type": "application/zip",
+                        "created_at": "2026-03-18T04:00:00+00:00",
+                    },
+                }
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.list_community_papers(sort="latest"))
+
+    assert result["total"] == 1
+    assert result["items"][0]["trans_status"] == "completed"
+    assert result["items"][0]["latest_asset"]["asset_type"] == "preview_html"
 
 
 def test_detail_returns_selected_version_and_viewer_state(monkeypatch):

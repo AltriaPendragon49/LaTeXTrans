@@ -110,6 +110,213 @@ def test_get_paper_preview_rejects_missing_relative_library_file(monkeypatch, tm
     assert exc_info.value.status_code == 404
 
 
+def test_get_paper_preview_falls_back_to_existing_english_preview_when_strict_zh_check_rejects(
+    monkeypatch, tmp_path
+):
+    base_dir = tmp_path / "repo"
+    preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.write_text(
+        (
+            f'<article class="paper-preview" data-reader-version="{paper_preview_service.PREVIEW_READER_VERSION}">'
+            "<section><h2>Introduction</h2><p>This is an English fallback preview that should remain readable.</p></section>"
+            "</article>"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "preview_html": {
+                    "id": "asset-preview",
+                    "task_id": "task-1",
+                    "asset_type": "preview_html",
+                    "file_path": "data/community_papers/paper-1/preview/preview.html",
+                    "file_name": "preview.html",
+                    "mime_type": "text/html",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_resolve_preview_html_asset",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+
+    result = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+
+    assert result["paper_id"] == "paper-1"
+    assert result["asset"]["id"] == "asset-preview"
+    assert "English fallback preview" in result["html_content"]
+
+
+def test_get_paper_preview_falls_back_to_existing_stale_preview_when_refresh_path_unavailable(
+    monkeypatch, tmp_path
+):
+    base_dir = tmp_path / "repo"
+    preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.write_text(
+        "<article><h2>Legacy Preview</h2><pre class=\"paper-preview__latex\">E=mc^2</pre><p>Readable fallback content.</p></article>",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "preview_html": {
+                    "id": "asset-preview",
+                    "task_id": "task-1",
+                    "asset_type": "preview_html",
+                    "file_path": "data/community_papers/paper-1/preview/preview.html",
+                    "file_name": "preview.html",
+                    "mime_type": "text/html",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_resolve_preview_html_asset",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+
+    result = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+
+    assert result["paper_id"] == "paper-1"
+    assert result["asset"]["id"] == "asset-preview"
+    assert "Legacy Preview" in result["html_content"]
+    assert "paper-preview__latex" not in result["html_content"]
+    assert "paper-preview__math-block" in result["html_content"]
+
+
+def test_get_paper_preview_strips_raw_latex_command_blocks_from_legacy_preview(monkeypatch, tmp_path):
+    base_dir = tmp_path / "repo"
+    preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.write_text(
+        (
+            "<article>"
+            "<h2>Legacy Preview</h2>"
+            "<div class=\"paper-preview__command-block\"><code>\\begin{tabular}{cc}A & B \\\\ 1 & 2 \\\\ \\end{tabular}</code></div>"
+            "</article>"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "preview_html": {
+                    "id": "asset-preview",
+                    "task_id": "task-1",
+                    "asset_type": "preview_html",
+                    "file_path": "data/community_papers/paper-1/preview/preview.html",
+                    "file_name": "preview.html",
+                    "mime_type": "text/html",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_resolve_preview_html_asset",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+
+    result = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+
+    assert "LaTeX source snippet omitted in HTML preview" in result["html_content"]
+    assert "paper-preview__command-block" not in result["html_content"]
+    assert "\\begin{tabular}" not in result["html_content"]
+
+
+def test_get_paper_preview_strips_legacy_table_cell_latex_source_tokens(monkeypatch, tmp_path):
+    base_dir = tmp_path / "repo"
+    preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.write_text(
+        (
+            "<article>"
+            "<table class=\"paper-preview__table\"><tr>"
+            "<th>\\begin{table}\\begin{tabular}{cc}\\hline</th>"
+            "<td>\\includegraphics{demo.png}\\multirow{2}{*}{Score}</td>"
+            "</tr></table>"
+            "</article>"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "preview_html": {
+                    "id": "asset-preview",
+                    "task_id": "task-1",
+                    "asset_type": "preview_html",
+                    "file_path": "data/community_papers/paper-1/preview/preview.html",
+                    "file_name": "preview.html",
+                    "mime_type": "text/html",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_resolve_preview_html_asset",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+
+    result = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+
+    assert "\\begin{table}" not in result["html_content"]
+    assert "\\begin{tabular}" not in result["html_content"]
+    assert "\\includegraphics" not in result["html_content"]
+    assert "\\multirow" not in result["html_content"]
+
+
 def test_preview_asset_refreshes_when_reader_version_mismatches(tmp_path):
     preview_path = tmp_path / "preview.html"
     preview_path.write_text(
@@ -124,6 +331,20 @@ def test_preview_asset_refreshes_when_same_version_still_contains_stale_reader_a
     preview_path = tmp_path / "preview.html"
     preview_path.write_text(
         '<article class="paper-preview" data-reader-version="reader-v9"><table><tr><td>[1.1pt] \\multirow{2}{*}{System}</td></tr></table></article>',
+        encoding="utf-8",
+    )
+
+    assert paper_service._preview_asset_needs_refresh(preview_path) is True
+
+
+def test_preview_asset_refreshes_when_command_block_contains_raw_latex_source(tmp_path):
+    preview_path = tmp_path / "preview.html"
+    preview_path.write_text(
+        (
+            '<article class="paper-preview" data-reader-version="reader-v13">'
+            '<div class="paper-preview__command-block"><code>\\includegraphics{demo.png}</code></div>'
+            "</article>"
+        ),
         encoding="utf-8",
     )
 

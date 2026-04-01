@@ -30,7 +30,7 @@ SPECIAL_ENV_PATTERN = re.compile(
     re.DOTALL,
 )
 FORMAT_COMMAND_PATTERN = re.compile(
-    r"\\(?:textbf|textit|emph|underline|textrm|textsc|mathrm|mathbf|mathit|bd)\{([^{}]*)\}"
+    r"\\(?:textbf|textit|textup|emph|underline|textrm|textsc|mathrm|mathbf|mathit|bd)\{([^{}]*)\}"
 )
 HREF_PATTERN = re.compile(r"\\href\{[^}]*\}\{([^}]*)\}")
 HREF_COMMAND_PATTERN = re.compile(r"\\href\{(?P<url>[^}]*)\}\{(?P<label>[^}]*)\}")
@@ -39,11 +39,11 @@ URL_COMMAND_PATTERN = re.compile(r"\\url\{(?P<url>[^}]*)\}")
 ANGLE_BRACKET_URL_PATTERN = re.compile(r"\[<(?P<url>https?://[^>\s]+)>\]")
 BARE_URL_PATTERN = re.compile(r"(?P<url>https?://[^\s<>\])]+)")
 REFERENCE_PATTERN = re.compile(r"\\(?:eqref|autoref|cref|Cref|ref)\{[^}]*\}")
-CITATION_PATTERN = re.compile(r"~?\\cite[a-zA-Z*]*\s*\{[^}]*\}")
+CITATION_PATTERN = re.compile(r"~?\\cite[a-zA-Z*]*(?:\s*\[[^\]]*\])*\s*\{[^}]*\}")
 LABEL_PATTERN = re.compile(r"\\label\{[^}]*\}")
 FOOTNOTE_PATTERN = re.compile(r"\\footnote\{.*?\}", re.DOTALL)
 REFERENCE_COMMAND_PATTERN = re.compile(r"\\(?P<command>eqref|autoref|cref|Cref|ref)\{(?P<labels>[^}]*)\}")
-CITATION_COMMAND_PATTERN = re.compile(r"~?\\cite[a-zA-Z*]*\s*\{(?P<keys>[^}]*)\}")
+CITATION_COMMAND_PATTERN = re.compile(r"~?\\cite[a-zA-Z*]*(?:\s*\[[^\]]*\])*\s*\{(?P<keys>[^}]*)\}")
 BIBITEM_ENTRY_PATTERN = re.compile(
     r"\\bibitem(?:\[[^\]]*\])?\{(?P<key>[^}]*)\}\s*(?P<body>.*?)(?=(?:\\bibitem(?:\[[^\]]*\])?\{)|\Z)",
     re.DOTALL,
@@ -86,12 +86,29 @@ STRUCTURAL_LINE_PATTERN = re.compile(
 )
 FORMULA_NOISE_PATTERN = re.compile(r"[\u200b\s]+")
 SIMPLE_SYMBOL_MATH_PATTERN = re.compile(r"(?<!\\)\$\s*([↑↓✓])\s*(?<!\\)\$")
-DISPLAY_MATH_INLINE_PATTERN = re.compile(r"(?P<block>\$\$(?P<dollar>.*?)\$\$|\\\[(?P<bracket>.*?)\\\])", re.DOTALL)
+DISPLAY_MATH_INLINE_PATTERN = re.compile(
+    r"(?P<block>\$\$(?P<dollar>.*?)\$\$|\\\[(?P<bracket>.*?)\\\]|\\begin\{(?P<env>equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?|split|CD)\}(?P<env_body>.*?)\\end\{(?P=env)\})",
+    re.DOTALL,
+)
+DISPLAY_MATH_ENV_BLOCK_PATTERN = re.compile(
+    r"\\begin\{(?P<env>equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?|split|CD)\}(?P<body>[\s\S]*?)\\end\{(?P=env)\}",
+    re.DOTALL,
+)
+INLINE_MATH_SEGMENT_PATTERN = re.compile(
+    r"(?P<block>(?<!\\)\$\$(?:[\s\S]*?)(?<!\\)\$\$|(?<!\\)\$(?:[^$\n]|\\\$)+(?<!\\)\$|\\\((?:[\s\S]*?)\\\)|\\\[(?:[\s\S]*?)\\\])",
+    re.DOTALL,
+)
 LATEX_SYMBOL_REPLACEMENTS = {
     r"\uparrow": "↑",
     r"\downarrow": "↓",
     r"\checkmark": "✓",
 }
+FORMATTING_PREFIX_RESIDUE_PATTERN = re.compile(
+    r"\\(?:textbf|textit|textup|emph|underline|textrm|textsc|mathrm|mathbf|mathit|bf|it|rm|tt)(?=[A-Za-z0-9])"
+)
+ORPHAN_DELIMITER_COMMAND_PATTERN = re.compile(
+    r"\\(?:left|right|big|Big|bigg|Bigg|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr)\b"
+)
 
 
 def _load_json(path: Path) -> List[Dict[str, Any]]:
@@ -150,6 +167,7 @@ def _strip_structural_commands(text: str, *, preserve_references: bool = False) 
     cleaned = re.sub(r"\\noindent\b", " ", cleaned)
     cleaned = re.sub(r"\\appendix\b", "\n", cleaned)
     cleaned = re.sub(r"\\bibliography\{[^}]*\}", " ", cleaned)
+    cleaned = re.sub(r"\\bibliographystyle\{[^}]*\}", " ", cleaned)
     cleaned = re.sub(r"\\(?:vspace|vskip|hspace|hskip)\*?\{[^}]*\}", " ", cleaned)
     cleaned = re.sub(r"\\(?:smallskip|medskip|bigskip)\b", " ", cleaned)
     cleaned = re.sub(r"\\hfill\b", " ", cleaned)
@@ -169,7 +187,7 @@ def _strip_structural_commands(text: str, *, preserve_references: bool = False) 
 
 def _unwrap_formatting_commands(text: str) -> str:
     current = text
-    command_names = ("textbf", "textit", "emph", "underline", "textrm", "textsc", "mathrm", "mathbf", "mathit", "bd")
+    command_names = ("textbf", "textit", "textup", "emph", "underline", "textrm", "textsc", "mathrm", "mathbf", "mathit", "bd")
     previous = None
     while current != previous:
         previous = current
@@ -183,13 +201,19 @@ def _unwrap_formatting_commands(text: str) -> str:
 
 def _normalize_inline_text(text: str, *, preserve_references: bool = False) -> str:
     cleaned = _strip_structural_commands(text, preserve_references=preserve_references)
+    cleaned = _replace_display_math_environments_with_dollars(cleaned)
+    cleaned = _strip_control_command_residue(cleaned)
     cleaned = _strip_latex_reference_noise(cleaned, preserve_references=preserve_references)
     cleaned = _replace_latex_symbol_commands(cleaned)
     cleaned = _unwrap_formatting_commands(cleaned)
+    cleaned = _strip_plaintext_latex_residue(cleaned, preserve_references=preserve_references)
     cleaned = FOOTNOTE_PATTERN.sub("", cleaned)
     cleaned = re.sub(r"\\hline\b", " ", cleaned)
-    cleaned = re.sub(r"\\([A-Za-z][A-Za-z0-9]+)\{\}", r"\1", cleaned)
-    cleaned = re.sub(r"\\([A-Z][A-Za-z0-9]+)\b", r"\1", cleaned)
+    cleaned = _apply_outside_inline_math(cleaned, _strip_empty_command_braces)
+    cleaned = _apply_outside_inline_math(
+        cleaned,
+        lambda segment: re.sub(r"\\([A-Z][A-Za-z0-9]+)(?![A-Za-z0-9])", r"\1", segment),
+    )
     cleaned = cleaned.replace(r"\_", "_")
     cleaned = cleaned.replace(r"\&", "&").replace(r"\%", "%").replace(r"\_", "_").replace(r"\#", "#")
     cleaned = cleaned.replace(r"\{", "{").replace(r"\}", "}")
@@ -197,8 +221,10 @@ def _normalize_inline_text(text: str, *, preserve_references: bool = False) -> s
     cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
     cleaned = SIMPLE_SYMBOL_MATH_PATTERN.sub(r"\1", cleaned)
     cleaned = _strip_malformed_inline_math_fragments(cleaned)
+    cleaned = re.sub(r"\\([A-Za-z0-9]*[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)(?![A-Za-z0-9])", r"\1", cleaned)
     return cleaned.strip()
 
 
@@ -209,6 +235,14 @@ def _replace_latex_symbol_commands(text: str) -> str:
     return cleaned
 
 
+def _replace_display_math_environments_with_dollars(text: str) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        body = (match.group("body") or "").strip()
+        return f"$${body}$$" if body else ""
+
+    return DISPLAY_MATH_ENV_BLOCK_PATTERN.sub(_replace, text or "")
+
+
 def _strip_latex_reference_noise(text: str, *, preserve_references: bool = False) -> str:
     if preserve_references:
         return LABEL_PATTERN.sub("", text)
@@ -216,8 +250,106 @@ def _strip_latex_reference_noise(text: str, *, preserve_references: bool = False
     cleaned = CITATION_PATTERN.sub("", text)
     cleaned = REFERENCE_PATTERN.sub("", cleaned)
     cleaned = LABEL_PATTERN.sub("", cleaned)
-    cleaned = re.sub(r"~?\\cite[a-zA-Z*]*\s*\{[^}\n]*(?:\}|$)", "", cleaned)
+    cleaned = re.sub(r"~?\\cite[a-zA-Z*]*(?:\s*\[[^\]]*\])*\s*\{[^}\n]*(?:\}|$)", "", cleaned)
     cleaned = re.sub(r"\\(?:eqref|autoref|cref|Cref|ref|label)\s*\{[^}\n]*(?:\}|$)", "", cleaned)
+    return cleaned
+
+
+def _strip_plaintext_latex_residue(text: str, *, preserve_references: bool = False) -> str:
+    preserved_reference_commands = {
+        "eqref",
+        "autoref",
+        "cref",
+        "Cref",
+        "ref",
+        "label",
+    }
+
+    def _transform(segment: str) -> str:
+        cleaned = segment
+        cleaned = cleaned.replace(r"\ ", " ")
+        cleaned = cleaned.replace(r"\,", " ")
+        cleaned = cleaned.replace(r"\;", " ")
+        cleaned = cleaned.replace(r"\:", " ")
+        cleaned = cleaned.replace(r"\!", " ")
+        cleaned = re.sub(r"\\penalty\s*-?\d+\b", " ", cleaned)
+        cleaned = re.sub(r"\\(?:enspace|quad|qquad|thinspace|medspace|thickspace)\b", " ", cleaned)
+        cleaned = ORPHAN_DELIMITER_COMMAND_PATTERN.sub(" ", cleaned)
+        cleaned = FORMATTING_PREFIX_RESIDUE_PATTERN.sub("", cleaned)
+        cleaned = re.sub(
+            r"\\(?:textbf|textit|textup|emph|underline|textrm|textsc|mathrm|mathbf|mathit|bf|it|rm|tt)\b",
+            " ",
+            cleaned,
+        )
+        if not preserve_references:
+            cleaned = re.sub(r"\\(?:begin|end)\{[^}]*\}", " ", cleaned)
+
+        def _strip_lowercase_command(match: re.Match[str]) -> str:
+            command = match.group("command") or ""
+            if preserve_references and (command.startswith("cite") or command in preserved_reference_commands):
+                return match.group(0)
+            if command in {"texttt", "textsubscript", "textsuperscript", "href", "url", "textbackslash", "begin", "end"}:
+                return match.group(0)
+            return " "
+
+        cleaned = re.sub(r"\\(?P<command>[a-z][A-Za-z@0-9]*)\b", _strip_lowercase_command, cleaned)
+        return cleaned
+
+    return _apply_outside_inline_math(text, _transform)
+
+
+def _strip_empty_command_braces(segment: str) -> str:
+    protected_commands = {"textbackslash", "texttt", "textsubscript", "textsuperscript", "href", "url"}
+
+    def _replace(match: re.Match[str]) -> str:
+        command = match.group("command") or ""
+        if command in protected_commands:
+            return match.group(0)
+        return command
+
+    return re.sub(r"\\(?P<command>[A-Za-z][A-Za-z0-9]+)\{\}", _replace, segment)
+
+
+def _apply_outside_inline_math(text: str, transform) -> str:
+    if not text:
+        return text
+
+    parts: List[str] = []
+    cursor = 0
+    for match in INLINE_MATH_SEGMENT_PATTERN.finditer(text):
+        parts.append(transform(text[cursor : match.start()]))
+        parts.append(match.group("block"))
+        cursor = match.end()
+    parts.append(transform(text[cursor:]))
+    return "".join(parts)
+
+
+def _strip_control_command_residue(text: str) -> str:
+    cleaned = text
+    cleaned = re.sub(r"(?m)^\s*\\renewcommand\*?.*$", " ", cleaned)
+    cleaned = re.sub(r"(?m)^\s*\\setcounter\s*\{[^{}]*\}\s*\{[^{}]*\}\s*$", " ", cleaned)
+    cleaned = re.sub(
+        r"\\(?:re)?newcommand\*?\s*(?:\{[^{}]*\}|\\[A-Za-z@]+)\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}",
+        " ",
+        cleaned,
+    )
+    cleaned = re.sub(r"\\setcounter\s*\{[^{}]*\}\s*\{[^{}]*\}", " ", cleaned)
+    for command_name in (
+        "section",
+        "section*",
+        "subsection",
+        "subsection*",
+        "subsubsection",
+        "subsubsection*",
+        "paragraph",
+        "paragraph*",
+        "PAR",
+        "PARR",
+        "defn",
+        "textup",
+    ):
+        cleaned = _replace_braced_command(cleaned, command_name, lambda body: body)
+    cleaned = re.sub(r"\\(?:label|phantomsection)\{[^}]*\}", " ", cleaned)
     return cleaned
 
 
@@ -652,6 +784,27 @@ def _normalize_command_block_text(text: str) -> str:
     return cleaned
 
 
+def _contains_latex_source_commands(text: str) -> bool:
+    snippet = (text or "").strip()
+    if not snippet:
+        return False
+    if re.search(r"\\begin\{[^}]+\}", snippet) or re.search(r"\\end\{[^}]+\}", snippet):
+        return True
+    if re.search(r"\\includegraphics(?:\[[^\]]*\])?\{", snippet):
+        return True
+    if re.search(r"\\[A-Za-z]{2,}", snippet) and snippet.count("\\") >= 2:
+        return True
+    return False
+
+
+def _render_latex_source_omitted_note() -> str:
+    return (
+        "<div class=\"paper-preview__note\">"
+        "LaTeX source snippet omitted in HTML preview. Please refer to the PDF version."
+        "</div>"
+    )
+
+
 def _render_inline_html(text: str) -> str:
     working = _strip_cjk_wrappers(text)
     code_tokens: Dict[str, str] = {}
@@ -698,6 +851,8 @@ def _render_inline_html(text: str) -> str:
         working,
     )
     working = BARE_URL_PATTERN.sub(lambda match: _anchor_replacer(match.group("url")), working)
+    working = working.replace(r"\textbackslash{}", "\\").replace(r"\textbackslash", "\\")
+    working = working.replace(r"\%", "%")
     working = working.replace("``", "“").replace("''", "”")
     escaped = html.escape(working, quote=False)
     for token, code_html in code_tokens.items():
@@ -720,7 +875,7 @@ def _normalize_reference_text(text: str) -> str:
 
 
 def _render_mixed_content_html(text: str) -> Optional[str]:
-    if "$$" not in text and r"\[" not in text:
+    if "$$" not in text and r"\[" not in text and "\\begin{" not in text:
         return None
 
     parts: List[str] = []
@@ -760,6 +915,12 @@ def _normalize_display_math_fragment(text: str) -> str:
         inner = block[2:-2]
     elif block.startswith(r"\[") and block.endswith(r"\]"):
         inner = block[2:-2]
+    elif block.startswith(r"\begin{"):
+        environment_match = re.match(
+            r"\\begin\{(?P<env>equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?|split|CD)\}(?P<body>[\s\S]*?)\\end\{(?P=env)\}\s*$",
+            block,
+        )
+        inner = environment_match.group("body") if environment_match else block
     else:
         inner = block
     normalized = _normalize_display_math_text(inner)
@@ -1308,11 +1469,22 @@ def _render_environment_block(
         return ("algorithm", rendered) if rendered else None
 
     if stripped.startswith("\\begin{center"):
-        command_text = re.sub(r"^\\begin\{center\}", "", chunk.strip())
-        command_text = re.sub(r"\\end\{center\}$", "", command_text.strip(), flags=re.DOTALL)
-        command_text = _normalize_command_block_text(command_text)
+        center_body = re.sub(r"^\\begin\{center\}", "", chunk.strip())
+        center_body = re.sub(r"\\end\{center\}$", "", center_body.strip(), flags=re.DOTALL)
+        if re.search(r"\\begin\{(?:table\*?|tabular\*?)\}", center_body):
+            rendered_table = _render_table_block(center_body)
+            if rendered_table:
+                return ("table", rendered_table)
+        if re.search(r"\\includegraphics(?:\[[^\]]*\])?\{", center_body):
+            rendered_figure = _render_figure_block(center_body, source_dirs)
+            if rendered_figure:
+                return ("figure", rendered_figure)
+
+        command_text = _normalize_command_block_text(center_body)
         if not command_text:
             return None
+        if _contains_latex_source_commands(command_text):
+            return ("note", _render_latex_source_omitted_note())
         rendered = (
             "<div class=\"paper-preview__command-block\">"
             f"<code>{html.escape(command_text, quote=False)}</code>"
@@ -1345,7 +1517,7 @@ def _render_environment_block(
 
     if _is_display_math_block(chunk):
         equation = _extract_display_math_environment(chunk) or _normalize_inline_text(chunk)
-        equation = _normalize_display_math_text(equation)
+        equation = _normalize_display_math_fragment(equation)
         if not equation:
             return None
         return ("math", f"<div class=\"paper-preview__math-block\">{html.escape(equation, quote=False)}</div>")
@@ -1555,7 +1727,17 @@ def _render_block(
         return ("empty", "")
 
     if _should_render_as_latex_fallback(cleaned):
-        return ("latex", f"<pre class=\"paper-preview__latex\">{html.escape(cleaned, quote=False)}</pre>")
+        command_text = _normalize_command_block_text(cleaned)
+        if not command_text:
+            return ("empty", "")
+        if _contains_latex_source_commands(command_text):
+            return ("note", _render_latex_source_omitted_note())
+        return (
+            "command",
+            "<div class=\"paper-preview__command-block\">"
+            f"<code>{html.escape(command_text, quote=False)}</code>"
+            "</div>",
+        )
 
     return ("paragraph", f"<p>{_render_inline_html(cleaned)}</p>")
 

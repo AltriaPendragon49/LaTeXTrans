@@ -65,6 +65,7 @@ class _FakeSupabaseClient:
 
 
 def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ENABLE_STALE_PAPER_PURGE", "true")
     community_root = tmp_path / "community_papers"
     community_root.mkdir(parents=True, exist_ok=True)
     (community_root / "paper-1").mkdir()
@@ -79,6 +80,8 @@ def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp
             "id": "paper-1",
             "trans_latest_task_id": "task-latest",
             "community_selected_task_id": "task-community",
+            "visibility": "private",
+            "status": "draft",
         }
     ]
     asset_rows = [
@@ -160,6 +163,65 @@ def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp
     assert "paper_favorites" in deleted_tables
     assert "translation_tasks" in deleted_tables
     assert "papers" in deleted_tables
+
+
+def test_reset_stale_community_tasks_keeps_public_papers_even_if_non_success(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ENABLE_STALE_PAPER_PURGE", "true")
+    community_root = tmp_path / "community_papers"
+    community_root.mkdir(parents=True, exist_ok=True)
+    (community_root / "paper-public").mkdir()
+
+    deleted = {"tables": []}
+    paper_rows = [
+        {
+            "id": "paper-public",
+            "trans_latest_task_id": "task-public",
+            "community_selected_task_id": "task-public",
+            "visibility": "public",
+            "status": "published",
+        }
+    ]
+
+    def handler(query: _FakeQuery):
+        if query.table_name == "papers" and query.mode == "select":
+            if (
+                (
+                    "in",
+                    "trans_status",
+                    ("not_started", "queued", "processing", "failed", "failed_compilation", "structure_invalid"),
+                )
+                in query.filters
+            ):
+                return paper_rows
+        if query.mode == "delete":
+            deleted["tables"].append(query.table_name)
+            return [{"ok": True}]
+        return []
+
+    class _FakeTaskManager:
+        def delete_task_full(self, task_id: str):
+            return {"success": True, "deleted_dirs": [f"/tmp/{task_id}"], "errors": []}
+
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        SimpleNamespace(
+            supabase_service_role_key="service-role",
+            supabase_url="https://example.supabase.co",
+            community_papers_dir=community_root,
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.app.core.supabase_client.create_supabase_admin_client",
+        lambda: _FakeSupabaseClient(handler),
+    )
+    monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
+
+    result = asyncio.run(main_module.reset_stale_community_tasks())
+
+    assert result.get("purged_records", 0) == 0
+    assert (community_root / "paper-public").exists()
+    assert not deleted["tables"]
 
 
 def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(monkeypatch):

@@ -52,7 +52,7 @@ def test_generate_preview_html_writes_semantic_reader_output(tmp_path: Path):
     assert "<h3" in html
     assert "方法" in html
     assert "<p>第一段。</p>" in html
-    assert "\\begin{equation}a=b\\end{equation}" in html
+    assert "$$a=b$$" in html
     assert "$E=mc^2$" in html
 
 
@@ -231,7 +231,7 @@ def test_generate_preview_html_emits_anchorable_math_blocks_instead_of_pre(tmp_p
     assert 'data-block-kind="algorithm"' in html
     assert "<pre class=\"paper-preview__latex\">" not in html
     assert "<pre class=\"paper-preview__latex paper-preview__algorithm\">" not in html
-    assert "\\begin{equation}a=b\\end{equation}" in html
+    assert "$$a=b$$" in html
 
 
 def test_generate_preview_html_renders_pdf_figures_inline_when_rasterizer_succeeds(tmp_path: Path, monkeypatch):
@@ -485,8 +485,9 @@ def test_generate_preview_html_prefers_clean_display_math_environment(tmp_path: 
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "paper-preview__math-block" in html
-    assert "\\begin{align}" in html
-    assert "\\end{align}" in html
+    assert "$$L_{NCE} =" in html
+    assert "\\begin{align}" not in html
+    assert "\\end{align}" not in html
     assert "\\label{eq:Lnce}" not in html
     assert "LNCE=−12N" not in html
     assert "LNCE​=−2N1" not in html
@@ -1110,3 +1111,399 @@ def test_generate_preview_html_cleans_quote_snugshade_and_lettrine_residue(tmp_p
     assert "\\begin{quote}" not in html
     assert "\\end{snugshade*}" not in html
     assert "\\lettrine[" not in html
+
+
+def test_generate_preview_html_strips_starred_sections_and_optional_cite_commands(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "17",
+            "content": (
+                "\\section{Body}\n"
+                "See \\cite[cf.][Section~2]{foo,bar} for details.\n"
+                "\\section*{Funding}\n"
+                "No external support."
+            ),
+            "trans_content": (
+                "\\section{正文}\n"
+                "See \\cite[cf.][Section~2]{foo,bar} for details.\n"
+                "\\section*{Funding}\n"
+                "No external support."
+            ),
+        },
+        {
+            "section": "18",
+            "content": "<PLACEHOLDER_ENV_1>",
+            "trans_content": "<PLACEHOLDER_ENV_1>",
+        },
+    ]
+    envs = [
+        {
+            "placeholder": "<PLACEHOLDER_ENV_1>",
+            "env_name": "thebibliography",
+            "content": (
+                "\\begin{thebibliography}{2}\n"
+                "\\bibitem{foo} Foo reference.\n"
+                "\\bibitem{bar} Bar reference.\n"
+                "\\end{thebibliography}"
+            ),
+            "trans_content": (
+                "\\begin{thebibliography}{2}\n"
+                "\\bibitem{foo} Foo reference.\n"
+                "\\bibitem{bar} Bar reference.\n"
+                "\\end{thebibliography}"
+            ),
+        }
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+    (output_dir / "envs_map.json").write_text(json.dumps(envs, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "\\cite[" not in html
+    assert "\\section*" not in html
+    assert "Funding" in html
+    assert 'href="#reference-foo"' in html
+    assert 'href="#reference-bar"' in html
+
+
+def test_generate_preview_html_preserves_uppercase_math_macros_in_inline_math(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "19",
+            "content": "\\section{Math}\nWe use $\\Delta t$ as the step size.",
+            "trans_content": "\\section{数学}\nWe use $\\Delta t$ as the step size.",
+        }
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "$\\Delta t$" in html
+    assert "$Delta t$" not in html
+
+
+def test_generate_preview_html_removes_renewcommand_setcounter_and_defn_residue(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "20",
+            "content": (
+                "\\section{Appendix}\n"
+                "\\renewcommand{\\thesection}{\\Alph{section}}\n"
+                "\\setcounter{equation}{0}\n"
+                "A \\defn{reaction trajectory} links states."
+            ),
+            "trans_content": (
+                "\\section{附录}\n"
+                "\\renewcommand{\\thesection}{\\Alph{section}}\n"
+                "\\setcounter{equation}{0}\n"
+                "A \\defn{reaction trajectory} links states."
+            ),
+        }
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "\\renewcommand" not in html
+    assert "\\setcounter" not in html
+    assert "\\defn{" not in html
+    assert "reaction trajectory" in html
+
+
+def test_generate_preview_html_cleans_spaced_control_sequences_and_uppercase_command_residue(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "21",
+            "content": "\\section{Body}\nText.",
+            "trans_content": (
+                "\\section{正文}\n"
+                "Porites P.\\ lobata links to Model \\PPNeSF and uses \\NIF with \\IE."
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "P. lobata" in html
+    assert "P.\\ lobata" not in html
+    assert "\\PPNeSF" not in html
+    assert "\\NIF" not in html
+    assert "\\IE" not in html
+    assert "Model PPNeSF and uses NIF with IE." in html
+
+
+def test_generate_preview_html_cleans_bibliography_penalty_and_emph_command_fragments(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "22",
+            "content": "<PLACEHOLDER_ENV_1>",
+            "trans_content": "<PLACEHOLDER_ENV_1>",
+        },
+    ]
+    envs = [
+        {
+            "placeholder": "<PLACEHOLDER_ENV_1>",
+            "env_name": "thebibliography",
+            "content": (
+                "\\begin{thebibliography}{1}\n"
+                "\\bibitem{demo}\n"
+                "A. Author.\n"
+                "\\newblock In \\emphJ. Marine Science\\penalty0, 2024.\n"
+                "\\end{thebibliography}"
+            ),
+            "trans_content": (
+                "\\begin{thebibliography}{1}\n"
+                "\\bibitem{demo}\n"
+                "A. Author.\n"
+                "\\newblock In \\emphJ. Marine Science\\penalty0, 2024.\n"
+                "\\end{thebibliography}"
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+    (output_dir / "envs_map.json").write_text(json.dumps(envs, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "In J. Marine Science, 2024." in html
+    assert "\\emph" not in html
+    assert "\\penalty" not in html
+
+
+def test_generate_preview_html_removes_orphan_left_right_commands_from_prose(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "23",
+            "content": "\\section{Body}\nText.",
+            "trans_content": "\\section{正文}\nThe broken fragment keeps \\left and \\right in prose.",
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "\\left" not in html
+    assert "\\right" not in html
+    assert "The broken fragment keeps and in prose." in html
+
+
+def test_generate_preview_html_renders_embedded_equation_environments_inside_paragraphs(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "24",
+            "content": "\\section{Body}\nText.",
+            "trans_content": (
+                "\\section{正文}\n"
+                "We define flux as follows: "
+                "\\begin{equation}f_{ij}=P_{ij}q_i^-q_j^+\\end{equation} "
+                "and continue with interpretation."
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "paper-preview__math-block" in html
+    assert "\\begin{equation}" not in html
+    assert "\\end{equation}" not in html
+    assert "and continue with interpretation." in html
+
+
+def test_generate_preview_html_normalizes_mixed_case_model_macros_and_textbackslash_percent(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "25",
+            "content": "\\section{Body}\nText.",
+            "trans_content": (
+                "\\section{正文}\n"
+                "The baseline is \\ZipNeRFwoRGB, ours is \\PPNeSF, and recall is 47\\textbackslash{}%."
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "ZipNeRFwoRGB" in html
+    assert "PPNeSF" in html
+    assert "47%" in html
+    assert "\\ZipNeRFwoRGB" not in html
+    assert "\\PPNeSF" not in html
+    assert "\\textbackslash" not in html
+
+
+def test_generate_preview_html_cleans_macro_residue_when_adjacent_to_cjk_characters(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "26",
+            "content": "\\section{Body}\nText.",
+            "trans_content": (
+                "\\section{正文}\n"
+                "证明\\PPNeSF模型在定位任务中有效。"
+                "我们评估\\NIF的隐私程度，并优化\\GF、\\SF和\\IE的参数。"
+                "附录继续说明特征场\\FF以及对应训练策略。"
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "PPNeSF模型" in html
+    assert "NIF的隐私程度" in html
+    assert "GF、SF和IE的参数" in html
+    assert "特征场FF以及" in html
+    assert "\\PPNeSF" not in html
+    assert "\\NIF" not in html
+    assert "\\GF" not in html
+    assert "\\SF" not in html
+    assert "\\IE" not in html
+    assert "\\FF" not in html
+
+
+def test_generate_preview_html_converts_display_math_env_inside_list_items(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "27",
+            "content": "\\section{Body}\n<PLACEHOLDER_ENV_1>",
+            "trans_content": "\\section{正文}\n<PLACEHOLDER_ENV_1>",
+        },
+    ]
+    envs = [
+        {
+            "placeholder": "<PLACEHOLDER_ENV_1>",
+            "env_name": "itemize",
+            "content": (
+                "\\begin{itemize}\n"
+                "\\item 定义如下：\\begin{equation}f(x)=x^2\\end{equation}\n"
+                "\\end{itemize}"
+            ),
+            "trans_content": (
+                "\\begin{itemize}\n"
+                "\\item 定义如下：\\begin{equation}f(x)=x^2\\end{equation}\n"
+                "\\end{itemize}"
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+    (output_dir / "envs_map.json").write_text(json.dumps(envs, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "f(x)=x^2" in html
+    assert "$$f(x)=x^2$$" in html
+    assert "\\begin{equation}" not in html
+    assert "\\end{equation}" not in html
+
+
+def test_generate_preview_html_renders_centered_tabular_as_table_not_raw_command(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "28",
+            "content": "\\section{Results}\nBody.",
+            "trans_content": (
+                "\\section{Results}\n"
+                "\\begin{center}\n"
+                "\\begin{tabular}{cc}\n"
+                "Method & Score \\\\\n"
+                "Baseline & 81 \\\\\n"
+                "Ours & 93 \\\\\n"
+                "\\end{tabular}\n"
+                "\\end{center}\n"
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "paper-preview__table" in html
+    assert "<th>Method</th>" in html
+    assert "<td>Ours</td>" in html
+    assert "paper-preview__command-block" not in html
+    assert "\\begin{tabular}" not in html
+
+
+def test_generate_preview_html_omits_unknown_latex_environment_source_block(tmp_path: Path):
+    output_dir = tmp_path / "task-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sections = [
+        {
+            "section": "29",
+            "content": "\\section{Noise}\nBody.",
+            "trans_content": (
+                "\\section{Noise}\n"
+                "\\begin{foobar}\n"
+                "\\custommacro{arg}\n"
+                "\\anothermacro{value}\n"
+                "\\end{foobar}\n"
+            ),
+        },
+    ]
+
+    (output_dir / "sections_map.json").write_text(json.dumps(sections, ensure_ascii=False), encoding="utf-8")
+
+    result = paper_preview_service.generate_preview_html(output_dir)
+    html = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "LaTeX source snippet omitted in HTML preview" in html
+    assert "paper-preview__command-block" not in html
+    assert "\\custommacro" not in html

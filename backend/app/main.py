@@ -9,6 +9,7 @@ Minimal MVP version with:
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 from typing import List, Set
 
@@ -89,6 +90,11 @@ async def reset_stale_community_tasks() -> dict:
     from backend.app.core.supabase_client import create_supabase_admin_client
 
     result = {"reset_papers": 0, "deleted_folders": 0, "errors": []}
+    purge_enabled = os.getenv("ENABLE_STALE_PAPER_PURGE", "true").strip().lower() in {"1", "true", "yes", "on"}
+    if not purge_enabled:
+        logger.info("[StaleCleanup] Purge disabled (set ENABLE_STALE_PAPER_PURGE=true to enable).")
+        result["purge_disabled"] = True
+        return result
 
     if not settings.supabase_service_role_key:
         msg = "[StaleCleanup] SUPABASE_SERVICE_ROLE_KEY is not configured; cleanup skipped"
@@ -111,11 +117,18 @@ async def reset_stale_community_tasks() -> dict:
     try:
         purgeable_res = await _asyncio.to_thread(
             lambda: client.table("papers")
-            .select("id, trans_latest_task_id, community_selected_task_id")
+            .select("id, trans_latest_task_id, community_selected_task_id, visibility, status")
             .in_("trans_status", NON_SUCCESS_PAPER_STATUSES)
             .execute()
         )
-        purgeable_rows = purgeable_res.data or []
+        # Safety guard: never purge public published papers on startup.
+        # Purge only drafts/private/removed records that are still in non-success states.
+        purgeable_rows = [
+            row
+            for row in (purgeable_res.data or [])
+            if str(row.get("status") or "").strip() == "removed"
+            or str(row.get("visibility") or "").strip() not in {"public"}
+        ]
         purgeable_ids = [row["id"] for row in purgeable_rows if row.get("id")]
         logger.info("[StaleCleanup] Purgeable non-success papers: %s", purgeable_ids)
 

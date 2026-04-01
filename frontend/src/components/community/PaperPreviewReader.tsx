@@ -198,22 +198,49 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       }
 
       let cancelled = false
-      const frameHandle = window.requestAnimationFrame(() => {
-        void (async () => {
-          if (!contentRef.current || cancelled) {
-            return
-          }
+      const target = contentRef.current
+      void (async () => {
+        const fallbackRenderMathBlocks = async () => {
+          const katexModule = await import("katex")
+          const katex = katexModule.default
+          target.querySelectorAll<HTMLElement>(".paper-preview__math-block").forEach((block) => {
+            const source = (block.textContent || "").trim()
+            if (!source) {
+              return
+            }
+            block.innerHTML = katex.renderToString(source, {
+              displayMode: true,
+              strict: "ignore",
+              throwOnError: false,
+            })
+          })
+        }
 
-          await enhancePaperPreviewElement(contentRef.current, {
+        try {
+          await enhancePaperPreviewElement(target, {
             previewAssetId,
             previewSignature,
           })
-        })()
-      })
+        } catch {
+          if (!cancelled) {
+            await fallbackRenderMathBlocks()
+          }
+          return
+        }
+
+        if (cancelled) {
+          return
+        }
+
+        const hasMathBlocks = target.querySelector(".paper-preview__math-block") !== null
+        const hasKaTeX = target.querySelector(".katex, .katex-display") !== null
+        if (hasMathBlocks && !hasKaTeX) {
+          await fallbackRenderMathBlocks()
+        }
+      })()
 
       return () => {
         cancelled = true
-        window.cancelAnimationFrame(frameHandle)
       }
     }, [previewAssetId, previewSignature, sanitizedHtml])
 

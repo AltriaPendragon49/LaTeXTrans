@@ -78,7 +78,7 @@ def test_list_papers_falls_back_to_operator_baseline_seed(monkeypatch, tmp_path)
     monkeypatch.setattr(paper_service.settings, "community_baseline_seed_path", baseline_path)
     monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: _Client())
     monkeypatch.setattr(paper_service, "run_db_blocking", lambda fn, **_kwargs: asyncio.sleep(0, result=fn()))
-    monkeypatch.setattr(paper_service, "_fetch_latest_assets", lambda _paper_ids: asyncio.sleep(0, result={}))
+    monkeypatch.setattr(paper_service, "_fetch_asset_maps_for_papers", lambda _paper_ids: asyncio.sleep(0, result={}))
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 

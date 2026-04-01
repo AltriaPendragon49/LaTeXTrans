@@ -63,12 +63,20 @@ async def _run_db_blocking_with_retry(
     operation_name: str,
     operation,
     *,
-    retries: int = 1,
+    retries: int = 3,
 ) -> Any:
     for attempt in range(retries + 1):
         try:
             return await run_db_blocking(operation)
-        except httpx.RemoteProtocolError:
+        except (
+            httpx.RemoteProtocolError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            httpx.ConnectError,
+            httpx.NetworkError,
+            httpx.TransportError,
+            httpx.TimeoutException,
+        ):
             if attempt >= retries:
                 raise
             logger.warning(
@@ -77,7 +85,7 @@ async def _run_db_blocking_with_retry(
                 attempt + 1,
                 retries + 1,
             )
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.3 * (attempt + 1))
 
 
 def _normalize_metadata_text(value: Optional[str]) -> Optional[str]:
@@ -117,6 +125,80 @@ def _preview_html_looks_untranslated_for_zh(html_content: Optional[str]) -> bool
         text = html_content
 
     return _looks_untranslated_for_zh(text)
+
+
+def _normalize_legacy_preview_math_blocks(html_content: str) -> str:
+    if not html_content:
+        return html_content
+    normalized = html_content
+    if "paper-preview__latex" in normalized:
+        normalized = re.sub(
+            r'<pre class="paper-preview__latex">([\s\S]*?)</pre>',
+            r'<div class="paper-preview__math-block">\1</div>',
+            normalized,
+            flags=re.DOTALL,
+        )
+
+    if "paper-preview__command-block" in normalized:
+        omitted_note = (
+            "<div class=\"paper-preview__note\">"
+            "LaTeX source snippet omitted in HTML preview. Please refer to the PDF version."
+            "</div>"
+        )
+
+        def _replace_command_block(match: re.Match[str]) -> str:
+            command_body = match.group("body") or ""
+            if not re.search(r"\\(?:begin|end)\{|\\includegraphics(?:\[[^\]]*\])?\{|\\[A-Za-z]{2,}", command_body):
+                return match.group(0)
+            return omitted_note
+
+        normalized = re.sub(
+            r'<div class="paper-preview__command-block">\s*<code>(?P<body>[\s\S]*?)</code>\s*</div>',
+            _replace_command_block,
+            normalized,
+            flags=re.DOTALL,
+        )
+
+    # Legacy previews sometimes leaked table/layout TeX commands directly into table cells.
+    # Strip these source tokens so readers do not see raw TeX in rendered HTML.
+    normalized = re.sub(
+        r"\\begin\{(?:table\*?|tabular\*?|tabulary|center)\}(?:\{[^}]*\})?",
+        " ",
+        normalized,
+    )
+    normalized = re.sub(r"\\end\{(?:table\*?|tabular\*?|tabulary|center)\}", " ", normalized)
+    normalized = re.sub(r"\\includegraphics(?:\[[^\]]*\])?\{[^}]*\}", " ", normalized)
+
+    def _sanitize_table_cell(match: re.Match[str]) -> str:
+        opening, body, closing = match.group(1), match.group(2), match.group(3)
+        if "\\" not in body:
+            return match.group(0)
+        if not re.search(
+            r"\\(?:multirow|multicolumn|resizebox|tabular|tabulary|cmidrule(?:\([^)]*\))?|cline|hline|toprule|midrule|bottomrule)\b|\[1\.1pt\]",
+            body,
+        ):
+            return match.group(0)
+        cleaned = body
+        cleaned = re.sub(
+            r"\\(?:multirow|multicolumn|resizebox|tabular|tabulary|cmidrule(?:\([^)]*\))?|cline|hline|toprule|midrule|bottomrule)\b(?:\{[^}]*\})*",
+            " ",
+            cleaned,
+        )
+        cleaned = re.sub(r"\\[A-Za-z]{2,}", " ", cleaned)
+        cleaned = cleaned.replace("{", " ").replace("}", " ")
+        cleaned = re.sub(r"\[1\.1pt\]", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if not cleaned:
+            cleaned = "LaTeX source omitted"
+        return f"{opening}{cleaned}{closing}"
+
+    normalized = re.sub(
+        r"(<t[hd][^>]*>)([\s\S]*?)(</t[hd]>)",
+        _sanitize_table_cell,
+        normalized,
+        flags=re.DOTALL,
+    )
+    return normalized
 
 
 def _preview_asset_has_translated_content(preview_asset: Optional[Dict[str, Any]]) -> bool:
@@ -493,13 +575,24 @@ def _preview_html_needs_refresh(html_content: str) -> bool:
         "\\begin{document}",
         "\\clearpage",
         "\\begin{figure",
+        "\\begin{tabular",
+        "\\includegraphics",
+        "paper-preview__command-block\"><code>\\",
         "\\begin{algorithm",
         "\\begin{quote}",
         "\\end{quote}",
         "\\begin{snugshade",
         "\\end{snugshade",
         "\\paragraph{",
+        "\\section*{",
+        "\\subsection*{",
+        "\\subsubsection*{",
         "\\PARR{",
+        "\\renewcommand",
+        "\\setcounter{",
+        "\\defn{",
+        "\\textup{",
+        "\\cite[",
         "\\lettrine[",
         "\\flushright{",
         "\\KwData",
@@ -563,6 +656,8 @@ def _load_preview_payload(
     paper_id: str,
     paper: Dict[str, Any],
     preview_asset: Dict[str, Any],
+    allow_untranslated_zh: bool = False,
+    allow_stale_reader: bool = False,
 ) -> Optional[Dict[str, Any]]:
     preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
     if not preview_path.exists():
@@ -578,10 +673,11 @@ def _load_preview_payload(
         html_content = preview_path.read_text(encoding="utf-8")
     except Exception:
         return None
+    html_content = _normalize_legacy_preview_math_blocks(html_content)
 
-    if _preview_html_needs_refresh(html_content):
+    if not allow_stale_reader and _preview_html_needs_refresh(html_content):
         return None
-    if _preview_html_looks_untranslated_for_zh(html_content):
+    if not allow_untranslated_zh and _preview_html_looks_untranslated_for_zh(html_content):
         return None
 
     payload = {
@@ -601,11 +697,15 @@ def _build_preview_payload(
     paper_id: str,
     paper: Dict[str, Any],
     preview_asset: Dict[str, Any],
+    allow_untranslated_zh: bool = False,
+    allow_stale_reader: bool = False,
 ) -> Optional[Dict[str, Any]]:
     return _load_preview_payload(
         paper_id=paper_id,
         paper=paper,
         preview_asset=preview_asset,
+        allow_untranslated_zh=allow_untranslated_zh,
+        allow_stale_reader=allow_stale_reader,
     )
 
 
@@ -1040,6 +1140,39 @@ async def _fetch_latest_assets(paper_ids: List[str]) -> Dict[str, Dict[str, Any]
     for row in result.data or []:
         latest_by_paper.setdefault(row["paper_id"], row)
     return latest_by_paper
+
+
+async def _fetch_asset_maps_for_papers(
+    paper_ids: List[str],
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    if not paper_ids:
+        return {}
+
+    admin_client = get_supabase_admin_client()
+    if admin_client is None:
+        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
+
+    result = await _run_db_blocking_with_retry(
+        "fetch_asset_maps_for_papers",
+        lambda: (
+            admin_client.table("paper_assets")
+            .select("id, paper_id, task_id, asset_type, file_path, file_name, mime_type, is_latest, created_at")
+            .in_("paper_id", paper_ids)
+            .eq("is_latest", True)
+            .order("created_at", desc=True)
+            .execute()
+        ),
+    )
+
+    asset_maps: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for row in result.data or []:
+        paper_id = row.get("paper_id")
+        asset_type = row.get("asset_type")
+        if not paper_id or not asset_type:
+            continue
+        by_type = asset_maps.setdefault(str(paper_id), {})
+        by_type.setdefault(str(asset_type), row)
+    return asset_maps
 
 
 async def _create_source_asset(
@@ -1932,9 +2065,7 @@ async def _sync_task_assets_for_paper(
     task = task_manager.get_task(task_id)
     if not task:
         return {"done": False, "status": None}
-    paper = await _fetch_paper_by_id(paper_id)
-    if not paper:
-        return {"done": True, "status": "paper_missing"}
+    paper: Optional[Dict[str, Any]] = None
 
     source_asset_id: Optional[str] = None
     if task.get("source_available") and task.get("source_path"):
@@ -1961,6 +2092,9 @@ async def _sync_task_assets_for_paper(
             return {"done": True, "status": "pending", "paper": paper}
 
     if task.get("status") in {"completed", "completed_with_warnings"}:
+        paper = await _fetch_paper_by_id(paper_id)
+        if not paper:
+            return {"done": True, "status": "paper_missing"}
         translated_asset = await _resolve_translated_pdf_asset(
             paper_id=paper_id,
             task_id=task_id,
@@ -1986,6 +2120,9 @@ async def _sync_task_assets_for_paper(
         return {"done": True, "status": "completed", "paper": paper}
 
     if task.get("status") in TERMINAL_TASK_STATUSES:
+        paper = await _fetch_paper_by_id(paper_id)
+        if not paper:
+            return {"done": True, "status": "paper_missing"}
         translated_asset = await _resolve_translated_pdf_asset(
             paper_id=paper_id,
             task_id=task_id,
@@ -2477,6 +2614,7 @@ async def get_paper_preview(*, paper_id: str) -> Dict[str, Any]:
     paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
     preview_asset = asset_map.get("preview_html")
+    original_preview_asset = preview_asset
     preview_payload = (
         _build_preview_payload(
             paper_id=paper_id,
@@ -2501,16 +2639,36 @@ async def get_paper_preview(*, paper_id: str) -> Dict[str, Any]:
             )
             if preview_asset:
                 break
-    if not preview_asset:
-        raise HTTPException(status_code=404, detail="Preview not available")
 
-    preview_payload = _build_preview_payload(
-        paper_id=paper_id,
-        paper=paper,
-        preview_asset=preview_asset,
+    preview_payload = (
+        _build_preview_payload(
+            paper_id=paper_id,
+            paper=paper,
+            preview_asset=preview_asset,
+        )
+        if preview_asset
+        else None
     )
     if preview_payload:
         return preview_payload
+
+    for candidate_asset in (preview_asset, original_preview_asset):
+        if not candidate_asset:
+            continue
+        fallback_payload = _build_preview_payload(
+            paper_id=paper_id,
+            paper=paper,
+            preview_asset=candidate_asset,
+            allow_untranslated_zh=True,
+            allow_stale_reader=True,
+        )
+        if fallback_payload:
+            logger.info(
+                "Serving fallback preview payload for paper %s from asset %s despite untranslated-zh heuristic",
+                paper_id,
+                candidate_asset.get("id"),
+            )
+            return fallback_payload
 
     raise HTTPException(status_code=404, detail="Preview file not found")
 
@@ -2608,9 +2766,12 @@ async def list_community_papers(
         papers = papers[:limit]
 
     paper_ids = [paper["id"] for paper in papers]
-    latest_assets = await _fetch_latest_assets(paper_ids) if admin_client is not None else {}
+    asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if admin_client is not None else {}
     items = [
-        _paper_summary(paper, latest_asset=latest_assets.get(paper["id"]))
+        _paper_summary(
+            paper,
+            asset_map=asset_maps.get(paper["id"]),
+        )
         for paper in papers
     ]
     return {"items": items, "total": len(items), "source_mode": source_mode}
