@@ -15,6 +15,8 @@ pydantic-settings==2.1.0
 
 # 数据库集成
 supabase==2.16.0
+PyMySQL>=1.1.1
+pymysql
 
 # 论文处理与翻译核心 (使用兼容范围以解决 ResolutionImpossible)
 arxiv>=2.1.0

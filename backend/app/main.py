@@ -573,9 +573,10 @@ async def favicon():
 
 
 # Import and include API routes
-from backend.app.api.routes import arxiv, upload, task, translate, download, history, papers, community_agent
+from backend.app.api.routes import auth, arxiv, upload, task, translate, download, history, papers, community_agent
 from backend.app.api.routes import settings as settings_routes
 
+api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(upload.router, tags=["upload"])
 api_router.include_router(arxiv.router, tags=["arxiv"])
 api_router.include_router(translate.router, tags=["translate"])

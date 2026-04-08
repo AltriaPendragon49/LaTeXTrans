@@ -13,11 +13,10 @@ import logging
 import shutil
 import zipfile
 import tarfile
-import base64
-import json
 import re
 from pathlib import Path
 
+from backend.app.core.auth import optional_current_user, resolve_current_user_id
 from backend.app.services.task_manager import get_task_manager
 from backend.app.services.latex_validator import validate_latex_directory
 from backend.app.core.config import get_settings, TaskStatus
@@ -105,7 +104,8 @@ def get_file_extension(filename: str) -> str:
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[dict] = Depends(optional_current_user),
 ):
     """
     Upload .zip, .tar.gz, .rar or .tex file
@@ -139,22 +139,9 @@ async def upload_file(
     
     logger.info(f"Uploading file: {file.filename} ({file_ext})")
     
-    # Get user_id from token if authenticated
-    user_id = None
-    if credentials:
-        try:
-            # Parse JWT to get user_id (sub claim)
-            token = credentials.credentials
-            # Decode JWT payload (no verification, just reading claims)
-            payload_b64 = token.split('.')[1]
-            # Add padding if needed
-            payload_b64 += '=' * (4 - len(payload_b64) % 4)
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-            user_id = payload.get('sub')
-            if user_id:
-                logger.info(f"Authenticated user uploading file: {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to parse user_id from token: {e}")
+    user_id = resolve_current_user_id(current_user, credentials)
+    if user_id:
+        logger.info(f"Authenticated user uploading file: {user_id}")
     
     # Create task with folder_upload source type for archives
     source_type = "folder_upload" if file_ext != ".tex" else "upload"

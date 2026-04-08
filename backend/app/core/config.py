@@ -86,6 +86,62 @@ class Settings(BaseSettings):
         description="Service Role Key for admin operations (bypasses RLS)"
     )
 
+    # Local auth / MySQL configuration
+    database_url: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "MYSQL_DATABASE_URL"),
+        description="Business database URL. MySQL is the target for runtime migration.",
+    )
+    auth_provider_mode: str = Field(
+        default="niutrans_local",
+        validation_alias="AUTH_PROVIDER_MODE",
+    )
+    auth_jwt_keys: str = Field(
+        default="v1:change-me-local-dev-secret",
+        validation_alias="AUTH_JWT_KEYS",
+        description="Comma-separated versioned signing keys, e.g. v3:secret3,v2:secret2",
+    )
+    auth_jwt_issuer: str = Field(
+        default="latextrans-local",
+        validation_alias="AUTH_JWT_ISSUER",
+    )
+    auth_jwt_audience: str = Field(
+        default="latextrans-api",
+        validation_alias="AUTH_JWT_AUDIENCE",
+    )
+    auth_access_token_ttl_seconds: int = Field(
+        default=28800,
+        validation_alias="AUTH_ACCESS_TOKEN_TTL_SECONDS",
+    )
+    niutrans_auth_url: str = Field(
+        default="https://niutrans.com/niutrans-auth/auth/login",
+        validation_alias="NIUTRANS_AUTH_URL",
+    )
+    niutrans_login_url: str = Field(
+        default="https://niutrans.com/login?active=0",
+        validation_alias="NIUTRANS_LOGIN_URL",
+    )
+    niutrans_register_url: str = Field(
+        default="https://niutrans.com/login?active=3",
+        validation_alias="NIUTRANS_REGISTER_URL",
+    )
+    niutrans_account_url: str = Field(
+        default="https://niutrans.com/login?active=0",
+        validation_alias="NIUTRANS_ACCOUNT_URL",
+    )
+    local_admin_external_user_ids: list[str] = Field(
+        default_factory=list,
+        validation_alias="LOCAL_ADMIN_EXTERNAL_USER_IDS",
+    )
+    enable_supabase_import_readonly: bool = Field(
+        default=False,
+        validation_alias="ENABLE_SUPABASE_IMPORT_READONLY",
+    )
+    migration_dry_run: bool = Field(
+        default=False,
+        validation_alias="MIGRATION_DRY_RUN",
+    )
+
     
     # Encryption Configuration
     encryption_key: Optional[str] = Field(
@@ -281,6 +337,17 @@ class Settings(BaseSettings):
         if mode not in {"per_call_client", "shared_client"}:
             return "per_call_client"
         return mode
+
+    @field_validator("local_admin_external_user_ids", mode="before")
+    @classmethod
+    def _parse_local_admin_external_user_ids(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return []
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

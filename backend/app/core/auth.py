@@ -10,8 +10,9 @@ Authentication Module - 纯 RLS 模式
 前端发送 access_token → 后端透传给 Supabase client → RLS 自动控制权限
 """
 
+import base64
+import json
 import logging
-import secrets
 from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -19,9 +20,106 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
 
 from backend.app.core.config import get_settings
+from backend.app.services.auth_service import AuthServiceError, LocalAuthService
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
+
+
+def extract_bearer_token_from_credentials(
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    if credentials is None or not credentials.credentials:
+        return None
+    return credentials.credentials.strip() or None
+
+
+def extract_bearer_token(request) -> Optional[str]:
+    header_value = request.headers.get("authorization", "")
+    if not header_value.lower().startswith("bearer "):
+        return None
+    token = header_value[7:].strip()
+    return token or None
+
+
+def decode_unverified_sub_claim(token: Optional[str]) -> Optional[str]:
+    if not token or token.count(".") != 2:
+        return None
+
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
+        return None
+
+    sub = payload.get("sub")
+    return str(sub) if sub else None
+
+
+def resolve_current_user_id(
+    current_user: Any,
+    credentials: Optional[HTTPAuthorizationCredentials] = None,
+) -> Optional[str]:
+    if isinstance(current_user, dict):
+        for key in ("id", "user_id", "sub"):
+            value = current_user.get(key)
+            if value:
+                return str(value)
+
+    return decode_unverified_sub_claim(
+        extract_bearer_token_from_credentials(credentials)
+    )
+
+
+def get_auth_service() -> LocalAuthService:
+    return LocalAuthService()
+
+
+async def optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[dict[str, Any]]:
+    token = extract_bearer_token_from_credentials(credentials)
+    if not token:
+        return None
+
+    try:
+        return await get_auth_service().get_current_user_from_token(token)
+    except AuthServiceError:
+        return None
+
+
+async def require_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict[str, Any]:
+    token = extract_bearer_token_from_credentials(credentials)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH_SESSION_INVALID", "message": "Session is invalid or expired."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        return await get_auth_service().get_current_user_from_token(token)
+    except AuthServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+
+async def require_admin_user(
+    current_user: dict[str, Any] = Depends(require_current_user),
+) -> dict[str, Any]:
+    roles = {str(role).strip().lower() for role in (current_user.get("roles") or [])}
+    if "admin" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "AUTH_FORBIDDEN", "message": "Admin access required."},
+        )
+    return current_user
 
 
 def create_supabase_client_with_token(access_token: Optional[str] = None) -> Optional[Client]:
@@ -126,77 +224,59 @@ def _extract_admin_roles(metadata: Any) -> set[str]:
 
 
 async def require_admin_request(
+    current_user: Any = Depends(require_admin_user),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> dict[str, Any]:
     """
     Guard administrative endpoints.
 
     Allows either:
-    - the exact backend service-role key as a bearer token; or
-    - a verified Supabase user token carrying an admin role in app/user metadata.
+    - the local auth flow with an admin role; or
+    - the legacy service-role / Supabase admin-token path used by older tests and tooling.
     """
-    if credentials is None or not credentials.credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if isinstance(current_user, HTTPAuthorizationCredentials):
+        credentials = current_user
+        current_user = None
 
-    token = credentials.credentials.strip()
+    if isinstance(current_user, dict):
+        return {
+            "auth_type": "local_user",
+            "user_id": current_user.get("id"),
+            "roles": current_user.get("roles", []),
+        }
+
+    token = extract_bearer_token_from_credentials(credentials)
     settings = get_settings()
 
-    if settings.supabase_service_role_key and secrets.compare_digest(
-        token,
-        settings.supabase_service_role_key,
-    ):
+    if token and token == getattr(settings, "supabase_service_role_key", None):
         return {"auth_type": "service_role"}
 
-    if token.count(".") != 2:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if token:
+        client = create_supabase_client_with_token(token)
+        if client is not None:
+            try:
+                response = client.auth.get_user(token)
+                user = getattr(response, "user", None)
+                roles = sorted(
+                    _extract_admin_roles(getattr(user, "app_metadata", {}))
+                    | _extract_admin_roles(getattr(user, "user_metadata", {}))
+                )
+                if "admin" in roles:
+                    return {
+                        "auth_type": "supabase_user",
+                        "user_id": getattr(user, "id", None),
+                        "roles": roles,
+                    }
+            except Exception:
+                logging.debug("[Auth] legacy admin token verification failed", exc_info=True)
 
-    client = create_supabase_client_with_token(token)
-    if client is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    try:
-        response = client.auth.get_user(token)
-    except Exception as exc:
-        logging.debug("[Auth] Admin user lookup failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-    user = getattr(response, "user", None)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    admin_roles = (
-        _extract_admin_roles(getattr(user, "app_metadata", None))
-        | _extract_admin_roles(getattr(user, "user_metadata", None))
-    )
-    if admin_roles.isdisjoint({"admin", "service_role", "supabase_admin"}):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail={"code": "AUTH_FORBIDDEN", "message": "Admin access required."},
         )
 
-    return {
-        "auth_type": "supabase_user",
-        "user_id": getattr(user, "id", None),
-        "email": getattr(user, "email", None),
-        "roles": sorted(admin_roles),
-    }
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"code": "AUTH_SESSION_INVALID", "message": "Session is invalid or expired."},
+        headers={"WWW-Authenticate": "Bearer"},
+    )

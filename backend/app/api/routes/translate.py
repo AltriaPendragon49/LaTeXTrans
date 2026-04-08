@@ -23,7 +23,13 @@ from backend.app.services import task_manager as task_manager_module
 from backend.app.services.agents.coordinator_agent import CoordinatorAgent
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services.config_capture import capture_task_config
+from backend.app.core.auth import (
+    optional_current_user,
+    require_current_user,
+    resolve_current_user_id,
+)
 from backend.app.core.config import get_settings, TaskStatus
+from backend.app.repositories import UserSettingsRepository
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
@@ -106,22 +112,12 @@ def get_user_api_config(user_id: str) -> dict:
         包含 base_url 和 api_key 的字典，或空字典
     """
     try:
-        client = get_supabase_admin_client()
-        if not client:
-            logger.warning("Supabase admin client not available")
-            return {}
-        
-        result = client.table("user_settings").select(
-            "custom_base_url, custom_api_key_encrypted"
-        ).eq("user_id", user_id).execute()
-        
-        if not result.data or len(result.data) == 0:
+        settings_row = UserSettingsRepository().get_user_settings(user_id)
+        if not settings_row:
             logger.info(f"No user settings found for user {user_id}")
             return {}
-        
-        settings = result.data[0]
-        
-        encrypted_key = settings.get("custom_api_key_encrypted")
+
+        encrypted_key = settings_row.get("custom_api_key_encrypted")
         if not encrypted_key:
             logger.info(f"No custom API key stored for user {user_id}")
             return {}
@@ -133,7 +129,7 @@ def get_user_api_config(user_id: str) -> dict:
         
         logger.info(f"Successfully retrieved user's custom API config for user {user_id}")
         return {
-            "base_url": settings.get("custom_base_url"),
+            "base_url": settings_row.get("custom_base_url"),
             "api_key": api_key
         }
     except Exception as e:
@@ -143,33 +139,16 @@ def get_user_api_config(user_id: str) -> dict:
 
 async def get_user_api_config_async(user_id: str) -> dict:
     """
-    Async-safe wrapper for fetching user API config from Supabase.
+    Async-safe wrapper for fetching user API config from local persistence.
     """
     try:
-        client = get_supabase_admin_client()
-        if not client:
-            logger.warning("Supabase admin client not available")
-            return {}
-
-        def _shared_call():
-            return client.table("user_settings").select(
-                "custom_base_url, custom_api_key_encrypted"
-            ).eq("user_id", user_id).execute()
-
-        def _per_call_client():
-            c = create_supabase_admin_client()
-            if not c:
-                return None
-            return c.table("user_settings").select(
-                "custom_base_url, custom_api_key_encrypted"
-            ).eq("user_id", user_id).execute()
-
-        result = await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
-        if result is None or not result.data or len(result.data) == 0:
+        settings_row = await run_db_blocking(
+            lambda: UserSettingsRepository().get_user_settings(user_id)
+        )
+        if not settings_row:
             logger.info(f"No user settings found for user {user_id}")
             return {}
 
-        settings_row = result.data[0]
         encrypted_key = settings_row.get("custom_api_key_encrypted")
         if not encrypted_key:
             logger.info(f"No custom API key stored for user {user_id}")
@@ -892,7 +871,8 @@ async def run_translation(
 async def start_translation(
     task_id: str,
     request: TranslateRequest,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[dict[str, Any]] = Depends(optional_current_user),
 ):
     """
     Start translation for a task
@@ -910,20 +890,9 @@ async def start_translation(
     """
     logger.info(f"Translation request for task: {task_id}")
 
-    # Get user_id from token if authenticated
-    user_id = None
-    if credentials:
-        try:
-            import base64
-            import json
-            token = credentials.credentials
-            payload_b64 = token.split('.')[1]
-            payload_b64 += '=' * (4 - len(payload_b64) % 4)
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-            user_id = payload.get('sub')
-            logger.info(f"Authenticated user: {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to parse user_id from token: {e}")
+    user_id = resolve_current_user_id(current_user, credentials)
+    if user_id:
+        logger.info(f"Authenticated user: {user_id}")
 
     # Validate task exists
     task = task_manager.get_task(task_id)
@@ -1026,7 +995,8 @@ async def start_translation(
 
 @router.get("/queue/status")
 async def get_queue_status(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[dict[str, Any]] = Depends(optional_current_user),
 ):
     """
     Get current task queue status.
@@ -1047,20 +1017,7 @@ async def get_queue_status(
 
     status = tq.get_status()
 
-    # Add user quota info if authenticated
-    user_id = None
-    if credentials:
-        try:
-            import base64
-            import json
-            token = credentials.credentials
-            payload_b64 = token.split('.')[1]
-            payload_b64 += '=' * (4 - len(payload_b64) % 4)
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-            user_id = payload.get('sub')
-        except Exception:
-            pass
-
+    user_id = resolve_current_user_id(current_user, credentials)
     status["user_quota_used"] = tq.get_user_active_count(user_id) if user_id else 0
     status["user_quota_max"] = settings.max_user_active_tasks
     return status
@@ -1069,7 +1026,8 @@ async def get_queue_status(
 @router.post("/batch-translate", response_model=BatchTranslateResponse)
 async def batch_translate(
     request: BatchTranslateRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=True))
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=True)),
+    current_user: dict[str, Any] = Depends(require_current_user),
 ):
     """
     Batch translation for authenticated users only.
@@ -1087,19 +1045,7 @@ async def batch_translate(
     Returns:
         Batch ID and list of task IDs
     """
-    # Parse user_id from JWT
-    user_id = None
-    try:
-        import base64
-        import json
-        token = credentials.credentials
-        payload_b64 = token.split('.')[1]
-        payload_b64 += '=' * (4 - len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-        user_id = payload.get('sub')
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
-
+    user_id = resolve_current_user_id(current_user, credentials)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required for batch translation")
 
