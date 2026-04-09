@@ -117,6 +117,161 @@ def test_get_agent_run_strict_raises_when_missing() -> None:
         )
 
 
+def test_get_agent_run_falls_back_to_repository_when_runtime_state_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeRunRepository:
+        def get_run(self, run_id: str):  # type: ignore[no-untyped-def]
+            assert run_id == "run-db-1"
+            return {
+                "run_id": run_id,
+                "user_id": "user-123",
+                "status": "completed",
+                "intent": "answer",
+                "mode": "chat",
+                "message": "from-db",
+                "summary": "from-db",
+                "error": None,
+                "report": None,
+            }
+
+        def list_events(self, run_id: str):  # type: ignore[no-untyped-def]
+            assert run_id == "run-db-1"
+            return [
+                {
+                    "type": "status",
+                    "run_id": run_id,
+                    "sequence": 1,
+                    "timestamp": "2026-04-09T10:00:00+00:00",
+                    "data": {"status": "running"},
+                },
+                {
+                    "type": "complete",
+                    "run_id": run_id,
+                    "sequence": 2,
+                    "timestamp": "2026-04-09T10:00:01+00:00",
+                    "data": {
+                        "snapshot": {
+                            "run_id": run_id,
+                            "status": "completed",
+                            "intent": "answer",
+                            "mode": "chat",
+                            "message": "from-db",
+                            "summary": "from-db",
+                            "tool_trace": [],
+                            "citations": [],
+                            "provider_state": {"internal_search": "enabled"},
+                            "action": None,
+                            "report": None,
+                            "events": [],
+                        }
+                    },
+                },
+            ]
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.CommunityAgentRunRepository",
+        lambda: FakeRunRepository(),
+    )
+
+    payload = asyncio.run(
+        community_agent_service.get_agent_run(
+            "run-db-1",
+            owner_user_id="user-123",
+            strict=True,
+        )
+    )
+
+    assert payload["run_id"] == "run-db-1"
+    assert payload["status"] == "completed"
+    assert payload["message"] == "from-db"
+    assert len(payload["events"]) == 2
+
+
+def test_get_agent_run_repository_fallback_enforces_owner_user_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeRunRepository:
+        def get_run(self, run_id: str):  # type: ignore[no-untyped-def]
+            return {
+                "run_id": run_id,
+                "user_id": "user-123",
+                "status": "completed",
+                "intent": "answer",
+                "mode": "chat",
+                "message": "from-db",
+                "summary": "from-db",
+                "error": None,
+                "report": None,
+            }
+
+        def list_events(self, run_id: str):  # type: ignore[no-untyped-def]
+            return []
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.CommunityAgentRunRepository",
+        lambda: FakeRunRepository(),
+    )
+
+    with pytest.raises(PermissionError):
+        asyncio.run(
+            community_agent_service.get_agent_run(
+                "run-db-2",
+                owner_user_id="other-user",
+            )
+        )
+
+
+def test_create_agent_run_attempts_repository_persistence_for_owned_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved: dict[str, object] = {"run_upserts": [], "events": []}
+
+    class FakeRunRepository:
+        def upsert_run(self, record: dict[str, object]):  # type: ignore[no-untyped-def]
+            saved["run_upserts"].append(record)
+
+        def append_event(self, run_id: str, sequence_no: int, event: dict[str, object]):  # type: ignore[no-untyped-def]
+            saved["events"].append((run_id, sequence_no, event))
+
+    async def fake_run_agent(*, input_text, context, skill_toggles, run_mode, event_callback):  # type: ignore[no-untyped-def]
+        del input_text, context, skill_toggles, run_mode, event_callback
+        return {
+            "status": "completed",
+            "intent": "answer",
+            "mode": "chat",
+            "message": "ok",
+            "summary": "ok",
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": {"internal_search": "enabled"},
+            "action": None,
+            "report": None,
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.CommunityAgentRunRepository",
+        lambda: FakeRunRepository(),
+    )
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.run_agent",
+        fake_run_agent,
+    )
+
+    payload = asyncio.run(
+        community_agent_service.create_agent_run(
+            "hello",
+            {"source": "conversation"},
+            {"external_search": False},
+            owner_user_id="user-123",
+        )
+    )
+
+    assert payload["status"] == "completed"
+    assert saved["run_upserts"]
+    assert saved["events"]
+
+
 def test_conversational_agent_accepts_direct_assistant_reply(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_call_chat_completion(*, messages, tools):  # type: ignore[no-untyped-def]
         assert messages

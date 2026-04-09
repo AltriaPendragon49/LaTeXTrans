@@ -1,8 +1,11 @@
+import asyncio
+import base64
+import json
 from typing import Any, Dict
 
-import asyncio
 import httpx
 
+from backend.app.core.auth import optional_current_user
 from backend.app.main import app
 from backend.app.services import paper_service
 
@@ -161,6 +164,155 @@ def test_route_preserves_service_reader_payload(monkeypatch) -> None:
     assert data["reader"]["preferred_mode"] == "translated"
     assert data["reader"]["translated"]["kind"] == "translated_pdf"
     assert data["experience"]["stage_label"] == "中文版已准备好"
+
+
+def test_paper_detail_ignores_forged_viewer_sub_claim(monkeypatch) -> None:
+    async def fake_get_detail(
+        *,
+        paper_id: str,
+        viewer_user_id: str | None = None,
+        fast_path: bool = False,
+    ) -> Dict[str, Any]:
+        assert paper_id == "paper-forged"
+        assert viewer_user_id is None
+        assert fast_path is True
+        return {
+            "paper": {
+                "id": "paper-forged",
+                "source": "arxiv",
+                "arxiv_id": "2503.77777",
+                "title": "Forged viewer state",
+                "authors": [],
+                "categories": [],
+                "abstract_raw": None,
+                "abstract_translated": None,
+                "community_status": "official",
+                "trans_status": "processing",
+                "created_at": "2026-03-18T00:00:00Z",
+                "official_published_at": None,
+                "community_selected_task_id": None,
+                "community_selected_asset_id": None,
+                "visibility": "public",
+                "status": None,
+                "like_count": 0,
+                "favorite_count": 0,
+                "comment_count": 0,
+                "view_count": 0,
+                "download_count": 0,
+                "latest_asset": None,
+                "assets": {},
+                "viewer_state": {"liked": False, "favorited": False},
+            },
+            "preview": None,
+            "reader_state": "warming",
+            "reader": {
+                "preferred_mode": "source",
+                "available_modes": ["source"],
+                "source": None,
+                "translated": None,
+                "state": "warming",
+            },
+            "experience": {
+                "stage_label": "warming",
+                "can_leave_hint": None,
+                "failure_type": None,
+            },
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.get_community_paper_detail",
+        fake_get_detail,
+    )
+
+    forged_payload = base64.urlsafe_b64encode(
+        json.dumps({"sub": "usr-forged"}).encode("utf-8")
+    ).decode("utf-8").rstrip("=")
+    forged_token = f"header.{forged_payload}.signature"
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get(
+                "/api/papers/paper-forged",
+                headers={"Authorization": f"Bearer {forged_token}"},
+            )
+
+    response = asyncio.run(_call())
+
+    assert response.status_code == 200
+
+
+def test_paper_detail_uses_verified_current_user_for_viewer_state(monkeypatch) -> None:
+    async def fake_optional_current_user():
+        return {"id": "usr-verified", "roles": ["user"]}
+
+    async def fake_get_detail(
+        *,
+        paper_id: str,
+        viewer_user_id: str | None = None,
+        fast_path: bool = False,
+    ) -> Dict[str, Any]:
+        assert paper_id == "paper-verified"
+        assert viewer_user_id == "usr-verified"
+        assert fast_path is True
+        return {
+            "paper": {
+                "id": "paper-verified",
+                "source": "arxiv",
+                "arxiv_id": "2503.88888",
+                "title": "Verified viewer state",
+                "authors": [],
+                "categories": [],
+                "abstract_raw": None,
+                "abstract_translated": None,
+                "community_status": "official",
+                "trans_status": "completed",
+                "created_at": "2026-03-18T00:00:00Z",
+                "official_published_at": None,
+                "community_selected_task_id": None,
+                "community_selected_asset_id": None,
+                "visibility": "public",
+                "status": None,
+                "like_count": 0,
+                "favorite_count": 0,
+                "comment_count": 0,
+                "view_count": 0,
+                "download_count": 0,
+                "latest_asset": None,
+                "assets": {},
+                "viewer_state": {"liked": True, "favorited": False},
+            },
+            "preview": None,
+            "reader_state": "ready",
+            "reader": {
+                "preferred_mode": "translated",
+                "available_modes": ["translated"],
+                "source": None,
+                "translated": None,
+                "state": "ready",
+            },
+            "experience": {
+                "stage_label": "ready",
+                "can_leave_hint": None,
+                "failure_type": None,
+            },
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.get_community_paper_detail",
+        fake_get_detail,
+    )
+    app.dependency_overrides[optional_current_user] = fake_optional_current_user
+
+    try:
+        async def _call():
+            async with _make_client() as client:
+                return await client.get("/api/papers/paper-verified")
+
+        response = asyncio.run(_call())
+    finally:
+        app.dependency_overrides.pop(optional_current_user, None)
+
+    assert response.status_code == 200
 
 
 def test_current_reader_version_marks_raw_latex_blocks_as_stale() -> None:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
@@ -10,25 +8,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from backend.app.api.routes.translate import TranslateRequest
+from backend.app.core.auth import optional_current_user
 from backend.app.services import community_content_pool_service, paper_service
 
 router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
-
-
-def _decode_user_id(credentials: Optional[HTTPAuthorizationCredentials]) -> Optional[str]:
-    if credentials is None or credentials.credentials.count(".") != 2:
-        return None
-
-    try:
-        payload_b64 = credentials.credentials.split(".")[1]
-        payload_b64 += "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")))
-        if isinstance(payload, dict):
-            return payload.get("sub")
-    except Exception:
-        return None
-    return None
 
 
 def _require_authenticated_credentials(credentials: Optional[HTTPAuthorizationCredentials]) -> None:
@@ -239,9 +223,9 @@ async def list_papers(
     sort: str = "latest",
     q: Optional[str] = None,
     limit: Optional[int] = Query(default=None, ge=1, le=12),
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
-    user_id = _decode_user_id(credentials)
+    user_id = str(current_user.get("id")) if isinstance(current_user, dict) and current_user.get("id") else None
     payload = await paper_service.list_community_papers(
         sort=sort,
         q=q,
@@ -275,9 +259,9 @@ async def get_content_pool_job_log(
 async def get_paper_detail(
     paper_id: str,
     response: Response,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
-    user_id = _decode_user_id(credentials)
+    user_id = str(current_user.get("id")) if isinstance(current_user, dict) and current_user.get("id") else None
     payload = await paper_service.get_community_paper_detail(
         paper_id=paper_id,
         viewer_user_id=user_id,

@@ -12,6 +12,11 @@ from backend.app.repositories.translation_task_repository import (
 from backend.app.repositories.community_agent_repository import (
     CommunityAgentConversationRepository,
 )
+from backend.app.repositories.community_paper_repository import (
+    CommunityPaperRepository,
+    PAPER_COLUMNS,
+    PAPER_ASSET_COLUMNS,
+)
 
 __all__ = [
     "AuthRepository",
@@ -20,4 +25,7 @@ __all__ = [
     "TranslationTaskRepository",
     "TRANSLATION_TASK_COLUMNS",
     "CommunityAgentConversationRepository",
+    "CommunityPaperRepository",
+    "PAPER_COLUMNS",
+    "PAPER_ASSET_COLUMNS",
 ]

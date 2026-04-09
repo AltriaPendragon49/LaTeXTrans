@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
+from uuid import uuid4
 
 import httpx
 import requests
@@ -27,6 +28,8 @@ from backend.app.api.routes import download as download_route
 from backend.app.api.routes import translate as translate_route
 from backend.app.api.routes import upload as upload_route
 from backend.app.core.config import TaskStatus, get_settings
+from backend.app.db import DatabaseUnavailableError, db_connection, get_database_dialect
+from backend.app.repositories import CommunityPaperRepository
 from backend.app.core.supabase_client import get_supabase_admin_client
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex
 from backend.app.services.latex_validator import find_main_tex_file
@@ -57,6 +60,14 @@ _source_html_cache: Dict[str, str] = {}
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def get_community_paper_repository() -> CommunityPaperRepository:
+    return CommunityPaperRepository()
+
+
+async def _run_local_repo(operation):
+    return await asyncio.to_thread(operation)
 
 
 async def _run_db_blocking_with_retry(
@@ -865,27 +876,41 @@ async def resolve_submitter_context_by_user_id(user_id: str) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    admin_client = get_supabase_admin_client()
-    if admin_client is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Supabase admin client unavailable",
-        )
+    def _query_roles() -> List[str]:
+        placeholder = "?" if get_database_dialect() == "sqlite" else "%s"
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"select role from user_roles where user_id = {placeholder} order by role asc",
+                (normalized_user_id,),
+            )
+            rows = cursor.fetchall() or []
+        roles: List[str] = []
+        for row in rows:
+            if isinstance(row, dict):
+                role = row.get("role")
+            else:
+                try:
+                    role = row["role"]
+                except Exception:
+                    role = None
+            if role is not None:
+                roles.append(str(role))
+        return roles
 
-    result = await _run_db_blocking_with_retry(
-        "resolve_submitter_context",
-        lambda: (
-            admin_client.table("user_roles")
-            .select("role")
-            .eq("user_id", normalized_user_id)
-            .execute()
-        )
-    )
+    try:
+        local_roles = await _run_local_repo(_query_roles)
+    except DatabaseUnavailableError:
+        local_roles = []
+    except Exception as exc:
+        logger.warning("Failed to resolve submitter roles for %s from local auth: %s", normalized_user_id, exc)
+        local_roles = []
+
     roles = sorted(
         {
-            row.get("role")
-            for row in (result.data or [])
-            if row.get("role") in {"admin", "moderator"}
+            str(role).strip()
+            for role in local_roles
+            if str(role).strip() in {"admin", "moderator"}
         }
     )
     return {
@@ -907,6 +932,17 @@ def _paper_select_clause() -> str:
 
 
 async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        local_row = await _run_local_repo(lambda: repository.get_paper_by_id(paper_id))
+    except DatabaseUnavailableError:
+        local_row = None
+    except Exception as exc:
+        logger.warning("Failed to fetch paper %s from local repository: %s", paper_id, exc)
+        local_row = None
+    if local_row is not None:
+        return _apply_runtime_paper_override(local_row)
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         return _apply_runtime_paper_override(
@@ -938,6 +974,17 @@ async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        local_row = await _run_local_repo(lambda: repository.get_paper_by_arxiv_id(arxiv_id))
+    except DatabaseUnavailableError:
+        local_row = None
+    except Exception as exc:
+        logger.warning("Failed to fetch arXiv paper %s from local repository: %s", arxiv_id, exc)
+        local_row = None
+    if local_row is not None:
+        return _apply_runtime_paper_override(local_row)
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         return _apply_runtime_paper_override(
@@ -977,6 +1024,19 @@ async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def _fetch_paper_by_title(*, title: str, source: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        local_row = await _run_local_repo(
+            lambda: repository.get_paper_by_title(title=title, source=source)
+        )
+    except DatabaseUnavailableError:
+        local_row = None
+    except Exception as exc:
+        logger.warning("Failed to fetch paper by title from local repository: %s", exc)
+        local_row = None
+    if local_row is not None:
+        return local_row
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
@@ -999,45 +1059,43 @@ async def _fetch_paper_by_title(*, title: str, source: Optional[str] = None) -> 
 
 
 async def _insert_paper(payload: Dict[str, Any]) -> Dict[str, Any]:
-    admin_client = get_supabase_admin_client()
-    if admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
-
-    result = await _run_db_blocking_with_retry(
-        "insert_paper",
-        lambda: admin_client.table("papers").insert(payload).execute()
-    )
-    rows = result.data or []
-    if not rows:
-        raise HTTPException(status_code=500, detail="Failed to create paper")
-    return rows[0]
+    repository = get_community_paper_repository()
+    normalized_payload = dict(payload)
+    normalized_payload.setdefault("id", f"paper-{uuid4().hex}")
+    normalized_payload.setdefault("created_at", _utc_now_iso())
+    normalized_payload.setdefault("updated_at", normalized_payload["created_at"])
+    try:
+        return await _run_local_repo(lambda: repository.insert_paper(normalized_payload))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to insert paper into local repository: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create paper") from exc
 
 
 async def _update_paper(paper_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    admin_client = get_supabase_admin_client()
-    if admin_client is None:
-        current = await _fetch_paper_by_id(paper_id)
-        if current is None:
-            raise HTTPException(status_code=404, detail="Paper not found")
-        merged = dict(current)
-        merged.update(payload)
-        _RUNTIME_PAPER_OVERRIDES[paper_id] = merged
-        return merged
-
-    result = await _run_db_blocking_with_retry(
-        "update_paper",
-        lambda: admin_client.table("papers").update(payload).eq("id", paper_id).execute()
-    )
-    rows = result.data or []
-    if not rows:
-        refreshed = await _fetch_paper_by_id(paper_id)
-        if refreshed is None:
-            raise HTTPException(status_code=404, detail="Paper not found")
-        return refreshed
-    return rows[0]
+    repository = get_community_paper_repository()
+    try:
+        local_row = await _run_local_repo(lambda: repository.update_paper(paper_id, payload))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to update paper %s in local repository: %s", paper_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to update paper") from exc
+    if local_row is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return _apply_runtime_paper_override(local_row)
 
 
 async def _fetch_asset_rows_for_paper(paper_id: str) -> List[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        return await _run_local_repo(lambda: repository.list_latest_assets_for_paper(paper_id))
+    except DatabaseUnavailableError:
+        pass
+    except Exception as exc:
+        logger.warning("Failed to fetch asset rows for paper %s from local repository: %s", paper_id, exc)
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
@@ -1074,51 +1132,42 @@ async def _upsert_latest_asset(
     file_name: Optional[str] = None,
     mime_type: Optional[str] = None,
 ) -> Dict[str, Any]:
-    admin_client = get_supabase_admin_client()
-    if admin_client is None:
-        raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
-
+    repository = get_community_paper_repository()
     resolved_name = file_name or Path(file_path).name
     resolved_mime = mime_type or mimetypes.guess_type(resolved_name)[0] or "application/octet-stream"
-
-    await _run_db_blocking_with_retry(
-        "clear_latest_asset",
-        lambda: (
-            admin_client.table("paper_assets")
-            .update({"is_latest": False})
-            .eq("paper_id", paper_id)
-            .eq("asset_type", asset_type)
-            .execute()
-        )
-    )
-    result = await _run_db_blocking_with_retry(
-        "insert_latest_asset",
-        lambda: (
-            admin_client.table("paper_assets")
-            .insert(
-                {
-                    "paper_id": paper_id,
-                    "task_id": task_id,
-                    "asset_type": asset_type,
-                    "storage_backend": "local_disk",
-                    "file_path": file_path,
-                    "file_name": resolved_name,
-                    "mime_type": resolved_mime,
-                    "is_latest": True,
-                }
+    try:
+        return await _run_local_repo(
+            lambda: repository.upsert_latest_asset(
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_type=asset_type,
+                file_path=file_path,
+                file_name=resolved_name,
+                mime_type=resolved_mime,
             )
-            .execute()
         )
-    )
-    rows = result.data or []
-    if not rows:
-        raise HTTPException(status_code=500, detail=f"Failed to create asset: {asset_type}")
-    return rows[0]
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to upsert latest asset %s for paper %s locally: %s", asset_type, paper_id, exc)
+        raise HTTPException(status_code=500, detail=f"Failed to create asset: {asset_type}") from exc
 
 
 async def _fetch_latest_assets(paper_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     if not paper_ids:
         return {}
+
+    repository = get_community_paper_repository()
+    try:
+        rows = await _run_local_repo(lambda: repository.list_latest_assets_for_papers(paper_ids))
+        latest_by_paper: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            latest_by_paper.setdefault(str(row["paper_id"]), row)
+        return latest_by_paper
+    except DatabaseUnavailableError:
+        pass
+    except Exception as exc:
+        logger.warning("Failed to fetch latest assets from local repository: %s", exc)
 
     admin_client = get_supabase_admin_client()
     if admin_client is None:
@@ -1147,6 +1196,23 @@ async def _fetch_asset_maps_for_papers(
 ) -> Dict[str, Dict[str, Dict[str, Any]]]:
     if not paper_ids:
         return {}
+
+    repository = get_community_paper_repository()
+    try:
+        rows = await _run_local_repo(lambda: repository.list_latest_assets_for_papers(paper_ids))
+        asset_maps: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for row in rows:
+            paper_id = row.get("paper_id")
+            asset_type = row.get("asset_type")
+            if not paper_id or not asset_type:
+                continue
+            by_type = asset_maps.setdefault(str(paper_id), {})
+            by_type.setdefault(str(asset_type), row)
+        return asset_maps
+    except DatabaseUnavailableError:
+        pass
+    except Exception as exc:
+        logger.warning("Failed to fetch asset maps from local repository: %s", exc)
 
     admin_client = get_supabase_admin_client()
     if admin_client is None:
@@ -1351,6 +1417,14 @@ async def _fetch_viewer_state(
     if not user_id or not paper_ids:
         return default_state
 
+    repository = get_community_paper_repository()
+    try:
+        return await _run_local_repo(lambda: repository.get_viewer_state(paper_ids, user_id=user_id))
+    except DatabaseUnavailableError:
+        pass
+    except Exception as exc:
+        logger.warning("Failed to fetch viewer paper state from local repository: %s", exc)
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         return default_state
@@ -1440,6 +1514,17 @@ def _decode_download_token(token: str) -> Dict[str, Any]:
 
 
 async def _increment_paper_download_count(paper_id: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        count = await _run_local_repo(lambda: repository.increment_download_count(paper_id))
+    except DatabaseUnavailableError:
+        count = None
+    except Exception as exc:
+        logger.warning("Failed to increment download count for paper %s locally: %s", paper_id, exc)
+        count = None
+    if count is not None:
+        return {"paper_id": paper_id, "download_count": count}
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         raise HTTPException(status_code=500, detail="Supabase admin client unavailable")
@@ -2061,11 +2146,11 @@ async def _sync_task_assets_for_paper(
     paper_id: str,
     task_id: str,
     promote_to_official: bool,
+    paper: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     task = task_manager.get_task(task_id)
     if not task:
         return {"done": False, "status": None}
-    paper: Optional[Dict[str, Any]] = None
 
     source_asset_id: Optional[str] = None
     if task.get("source_available") and task.get("source_path"):
@@ -2092,7 +2177,8 @@ async def _sync_task_assets_for_paper(
             return {"done": True, "status": "pending", "paper": paper}
 
     if task.get("status") in {"completed", "completed_with_warnings"}:
-        paper = await _fetch_paper_by_id(paper_id)
+        if not paper:
+            paper = await _fetch_paper_by_id(paper_id)
         if not paper:
             return {"done": True, "status": "paper_missing"}
         translated_asset = await _resolve_translated_pdf_asset(
@@ -2120,7 +2206,8 @@ async def _sync_task_assets_for_paper(
         return {"done": True, "status": "completed", "paper": paper}
 
     if task.get("status") in TERMINAL_TASK_STATUSES:
-        paper = await _fetch_paper_by_id(paper_id)
+        if not paper:
+            paper = await _fetch_paper_by_id(paper_id)
         if not paper:
             return {"done": True, "status": "paper_missing"}
         translated_asset = await _resolve_translated_pdf_asset(
@@ -2209,6 +2296,7 @@ async def ensure_task_published_to_community_library(
         paper_id=paper["id"],
         task_id=task_id,
         promote_to_official=promote_to_official,
+        paper=paper,
     )
     return {"paper": sync_result.get("paper") or paper, "published": True}
 
@@ -2250,12 +2338,19 @@ async def _watch_task_and_sync_asset(
 
 
 async def mark_paper_translation_failed_by_task(task_id: str) -> int:
-    admin_client = get_supabase_admin_client()
-    if admin_client is None:
-        return 0
-
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
+        return 0
+    repository = get_community_paper_repository()
+    try:
+        return await _run_local_repo(lambda: repository.mark_translation_failed_by_task(normalized_task_id))
+    except DatabaseUnavailableError:
+        pass
+    except Exception as exc:
+        logger.warning("Failed to mark paper translation failed for task %s locally: %s", normalized_task_id, exc)
+
+    admin_client = get_supabase_admin_client()
+    if admin_client is None:
         return 0
 
     result = await _run_db_blocking_with_retry(
@@ -2289,20 +2384,27 @@ async def resume_inflight_paper_translation_watchers() -> Dict[str, Any]:
     """
     Recreate in-memory paper watchers for tasks still marked queued/processing.
     """
-    admin_client = get_supabase_admin_client()
-    if admin_client is None:
-        return {"resumed_watchers": 0}
+    repository = get_community_paper_repository()
+    try:
+        rows = await _run_local_repo(repository.list_inflight_translation_papers)
+    except DatabaseUnavailableError:
+        admin_client = get_supabase_admin_client()
+        if admin_client is None:
+            return {"resumed_watchers": 0}
+        result = await _run_db_blocking_with_retry(
+            "resume_inflight_paper_translation_watchers",
+            lambda: (
+                admin_client.table("papers")
+                .select("id, community_selected_task_id, trans_status, community_status")
+                .in_("trans_status", ["queued", "processing"])
+                .execute()
+            ),
+        )
+        rows = result.data or []
+    except Exception as exc:
+        logger.warning("Failed to load inflight paper watchers from local repository: %s", exc)
+        rows = []
 
-    result = await _run_db_blocking_with_retry(
-        "resume_inflight_paper_translation_watchers",
-        lambda: (
-            admin_client.table("papers")
-            .select("id, community_selected_task_id, trans_status, community_status")
-            .in_("trans_status", ["queued", "processing"])
-            .execute()
-        ),
-    )
-    rows = result.data or []
     resumed_watchers = 0
     for row in rows:
         paper_id = str(row.get("id") or "").strip()
@@ -2732,10 +2834,19 @@ async def list_community_papers(
     viewer_user_id: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
-    admin_client = get_supabase_admin_client()
+    repository = get_community_paper_repository()
+    admin_client = None
     papers: List[Dict[str, Any]] = []
     source_mode = "database"
-    if admin_client is not None:
+    try:
+        papers = await _run_local_repo(repository.list_public_papers)
+    except DatabaseUnavailableError:
+        admin_client = get_supabase_admin_client()
+    except Exception as exc:
+        logger.warning("Failed to list community papers from local repository: %s", exc)
+        admin_client = get_supabase_admin_client()
+
+    if admin_client is not None and not papers:
         result = await _run_db_blocking_with_retry(
             "list_community_papers",
             lambda: (
@@ -2754,7 +2865,7 @@ async def list_community_papers(
             papers = baseline_rows
             source_mode = "baseline_seed"
 
-    if not papers and admin_client is None:
+    if not papers:
         logger.warning(
             "Supabase admin client unavailable and no baseline seed rows found; returning empty community list"
         )
@@ -2766,7 +2877,7 @@ async def list_community_papers(
         papers = papers[:limit]
 
     paper_ids = [paper["id"] for paper in papers]
-    asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if admin_client is not None else {}
+    asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if paper_ids else {}
     items = [
         _paper_summary(
             paper,
@@ -2932,6 +3043,17 @@ async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]
 
 
 async def record_community_paper_view(*, paper_id: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        count = await _run_local_repo(lambda: repository.increment_view_count(paper_id))
+    except DatabaseUnavailableError:
+        count = None
+    except Exception as exc:
+        logger.warning("Failed to increment view count for paper %s locally: %s", paper_id, exc)
+        count = None
+    if count is not None:
+        return {"paper_id": paper_id, "view_count": count}
+
     admin_client = get_supabase_admin_client()
     if admin_client is None:
         paper = await _fetch_paper_by_id(paper_id)

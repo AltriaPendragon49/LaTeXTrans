@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from backend.app.services.community_agent import run_agent
 from backend.app.repositories import CommunityAgentConversationRepository
+from backend.app.repositories.community_agent_repository import CommunityAgentRunRepository
 from backend.app.utils.async_blocking import run_blocking
 
 _RUNTIME_AGENT_RUNS: Dict[str, "_RunRecord"] = {}
@@ -25,6 +26,7 @@ class _RunRecord:
     run_id: str
     owner_user_id: str | None
     auth_token_hash: str | None
+    conversation_id: str | None = None
     status: str = "queued"
     intent: str = "answer"
     mode: str = "chat"
@@ -38,6 +40,9 @@ class _RunRecord:
     events: List[Dict[str, Any]] = field(default_factory=list)
     error: str | None = None
     completed: bool = False
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    completed_at: str | None = None
     thread: threading.Thread | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -59,6 +64,118 @@ def _default_provider_state() -> Dict[str, str]:
         "reasoning": "unknown",
         "translation_bridge": "enabled",
     }
+
+
+def _should_persist_run(record: _RunRecord) -> bool:
+    return bool(record.owner_user_id)
+
+
+def _save_run_to_repository(record: _RunRecord) -> None:
+    if not _should_persist_run(record):
+        return
+    with record.lock:
+        payload = {
+            "run_id": record.run_id,
+            "user_id": record.owner_user_id,
+            "conversation_id": record.conversation_id,
+            "status": record.status,
+            "intent": record.intent,
+            "mode": record.mode,
+            "message": record.message,
+            "summary": record.summary,
+            "error": record.error,
+            "report": record.report if isinstance(record.report, dict) else None,
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
+            "completed_at": record.completed_at,
+        }
+    try:
+        CommunityAgentRunRepository().upsert_run(payload)
+    except Exception:
+        return
+
+
+def _save_event_to_repository(record: _RunRecord, event: Dict[str, Any]) -> None:
+    if not _should_persist_run(record):
+        return
+    try:
+        CommunityAgentRunRepository().append_event(
+            record.run_id,
+            int(event.get("sequence") or 0),
+            event,
+        )
+    except Exception:
+        return
+
+
+def _load_run_record_from_repository(
+    run_id: str,
+    *,
+    owner_user_id: str | None,
+) -> _RunRecord | None:
+    if not owner_user_id:
+        return None
+
+    try:
+        repository = CommunityAgentRunRepository()
+        row = repository.get_run(run_id)
+    except Exception:
+        return None
+
+    if row is None:
+        return None
+
+    expected_owner = str(row.get("user_id") or "").strip()
+    if not expected_owner or expected_owner != owner_user_id:
+        raise PermissionError("Authentication required")
+
+    try:
+        events = repository.list_events(run_id)
+    except Exception:
+        events = []
+
+    snapshot: Dict[str, Any] | None = None
+    for event in reversed(events):
+        if str(event.get("type") or "") != "complete":
+            continue
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        loaded = data.get("snapshot")
+        if isinstance(loaded, dict):
+            snapshot = loaded
+            break
+
+    report = row.get("report") if isinstance(row.get("report"), dict) else None
+    if snapshot and isinstance(snapshot.get("report"), dict):
+        report = dict(snapshot["report"])
+
+    status = str(row.get("status") or (snapshot or {}).get("status") or "failed")
+    completed_at = str(row.get("completed_at") or "").strip() or None
+    completed = bool(completed_at or status in {"completed", "failed"})
+
+    return _RunRecord(
+        run_id=str(row.get("run_id") or run_id),
+        owner_user_id=expected_owner,
+        auth_token_hash=None,
+        conversation_id=str(row.get("conversation_id") or "").strip() or None,
+        status=status,
+        intent=str(row.get("intent") or (snapshot or {}).get("intent") or "answer"),
+        mode=str(row.get("mode") or (snapshot or {}).get("mode") or "chat"),
+        message=row.get("message") or (snapshot or {}).get("message"),
+        summary=row.get("summary") or (snapshot or {}).get("summary"),
+        tool_trace=list((snapshot or {}).get("tool_trace") or []),
+        citations=list((snapshot or {}).get("citations") or []),
+        provider_state=dict((snapshot or {}).get("provider_state") or _default_provider_state()),
+        action=(snapshot or {}).get("action") if isinstance((snapshot or {}).get("action"), dict) else None,
+        report=report,
+        events=list(events),
+        error=row.get("error"),
+        completed=completed,
+        created_at=str(row.get("created_at") or "") or _now_iso(),
+        updated_at=str(row.get("updated_at") or "") or _now_iso(),
+        completed_at=completed_at,
+    )
 
 
 def _build_snapshot(record: _RunRecord, *, include_urls: bool = False) -> Dict[str, Any]:
@@ -93,12 +210,18 @@ def _publish_stream_event(record: _RunRecord, event: Dict[str, Any]) -> Dict[str
             "data": event.get("data") if isinstance(event.get("data"), dict) else {},
         }
         record.events.append(payload)
-        return payload
+    _save_event_to_repository(record, payload)
+    return payload
 
 
 def _set_status(record: _RunRecord, status: str, *, phase: str | None = None) -> None:
     with record.lock:
         record.status = status
+        record.updated_at = _now_iso()
+        if status in {"completed", "failed"} and not record.completed_at:
+            record.completed_at = record.updated_at
+            record.completed = True
+    _save_run_to_repository(record)
     data: Dict[str, Any] = {"status": status}
     if phase:
         data["phase"] = phase
@@ -113,7 +236,13 @@ def _require_run_record(
 ) -> _RunRecord:
     record = _RUNTIME_AGENT_RUNS.get(run_id)
     if record is None:
-        raise KeyError(run_id)
+        record = _load_run_record_from_repository(
+            run_id,
+            owner_user_id=owner_user_id,
+        )
+        if record is None:
+            raise KeyError(run_id)
+        _RUNTIME_AGENT_RUNS[run_id] = record
 
     expected_owner_user_id = record.owner_user_id
     if expected_owner_user_id:
@@ -155,6 +284,9 @@ async def _run_agent_once(
             record.report = None
             record.error = str(exc)
             record.completed = True
+            record.updated_at = _now_iso()
+            record.completed_at = record.updated_at
+        _save_run_to_repository(record)
         _publish_stream_event(record, {"type": "error", "data": {"message": str(exc)}})
         _publish_stream_event(record, {"type": "complete", "data": {"snapshot": _build_snapshot(record)}})
         return
@@ -171,6 +303,9 @@ async def _run_agent_once(
         record.action = payload.get("action") if isinstance(payload.get("action"), dict) else payload.get("action")
         record.report = payload.get("report") if isinstance(payload.get("report"), dict) else None
         record.completed = True
+        record.updated_at = _now_iso()
+        record.completed_at = record.updated_at
+    _save_run_to_repository(record)
 
     _publish_stream_event(record, {"type": "complete", "data": {"snapshot": _build_snapshot(record)}})
 
@@ -213,11 +348,13 @@ async def create_agent_run(
     trusted_context = dict(context or {})
     if owner_user_id:
         trusted_context["user_id"] = owner_user_id
+    conversation_id = str(trusted_context.get("conversation_id") or "").strip() or None
 
     record = _RunRecord(
         run_id=run_id,
         owner_user_id=owner_user_id,
         auth_token_hash=_hash_access_token(access_token),
+        conversation_id=conversation_id,
         mode=run_mode,
         provider_state={
             "internal_search": "enabled",
@@ -229,11 +366,10 @@ async def create_agent_run(
         },
     )
     _RUNTIME_AGENT_RUNS[run_id] = record
+    _save_run_to_repository(record)
 
     if execution_mode == "async":
-        with record.lock:
-            record.status = "accepted"
-        _publish_stream_event(record, {"type": "status", "data": {"status": "accepted", "phase": "accepted"}})
+        _set_status(record, "accepted", phase="accepted")
         _start_background_run(
             record,
             input_text=input_text,

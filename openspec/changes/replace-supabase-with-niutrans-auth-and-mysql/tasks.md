@@ -111,3 +111,81 @@
   - end-to-end local verification that community-agent persistence is fully detached from Supabase in a configured local database
 - `1.4` advanced substantially, but remains unchecked until more route-level ad hoc ownership checks outside this slice move onto the shared authorization entrypoint.
 - `4.3` advanced substantially, but remains unchecked until more community authorization paths beyond conversation CRUD are fully centralized under app-layer policies.
+
+### 2026-04-09 Community Paper Local Repository Cutover
+
+- `4.1` advanced substantially, but is not complete yet.
+- Completed in this slice:
+  - added a local `CommunityPaperRepository` for `papers` and `paper_assets`, with SQLite/MySQL-compatible reads, updates, latest-asset upserts, viewer-state reads, and local counter increments
+  - rewired `paper_service` read/download/view core paths to prefer the local repository before any Supabase fallback:
+    - paper lookup by id/arXiv/title
+    - public paper list
+    - latest asset lookup and asset-map construction
+    - local preview/download counter increments
+    - paper translation-failure status reconciliation by `community_selected_task_id`
+    - inflight watcher resumption from local `papers` rows
+  - updated restart failover so community paper status reconciliation can advance in local-only mode, without requiring Supabase admin access
+  - added focused local SQLite verification for:
+    - public community-paper listing from local persistence
+    - local view-count increment semantics
+    - restart failover updating community-paper translation state in local-only mode
+- Remaining work inside `4.1` is now concentrated in:
+  - full write-path cutover for all community paper creation/update/delete flows, not just the read/download/view/status helpers
+  - stale community cleanup removing the remaining Supabase-admin dependency in startup/admin cleanup
+  - migration/bootstrap DDL and data import coverage for the full community paper/asset model
+- `2.3` also advanced in this slice because the community paper service no longer requires runtime Supabase admin-client access for the covered local paths.
+- `6.4` has stronger partial evidence now for community paper display on MySQL/local persistence, but it remains unchecked until the remaining community persistence and cleanup paths are verified end-to-end.
+
+### 2026-04-09 Community Cleanup And MySQL Baseline
+
+- `4.1` advanced again, but is still not complete yet.
+- Completed in this slice:
+  - switched `reset_stale_community_tasks()` to prefer the local `CommunityPaperRepository` for stale non-success paper cleanup, only falling back to Supabase when the local database is unavailable
+  - added local repository cleanup helpers for purge-related comment/report/task lookup and deletion so startup/admin cleanup can remove local paper rows, related joins, and task rows without Supabase runtime credentials
+  - added focused regression coverage proving stale private community papers are purged through local persistence even when Supabase credentials are absent
+  - added the missing MySQL baseline migration under `backend/migrations_mysql/20260409_0001_local_auth_mysql.sql`
+  - baseline migration now covers the current local-auth/local-persistence tables used by code, including `users`, `user_roles`, `auth_sessions`, `user_settings`, `translation_tasks`, `papers`, `paper_assets`, `paper_likes`, `paper_favorites`, `comments`, `community_agent_conversations`, `community_agent_runs`, and `community_agent_events`
+  - added focused migration tests so local verification now checks the baseline file exists and contains the required core tables, indexes, and foreign keys
+- Remaining work impacted by this slice:
+  - `2.2` advanced substantially, but remains unchecked until the DDL/index/constraint strategy is reconciled against any remaining in-scope entities and migration scripts beyond the baseline
+  - `2.3` advanced again because startup/admin cleanup no longer requires Supabase when local paper persistence is configured
+  - `4.1` still needs full write-side community paper cutover and end-to-end MySQL-backed verification beyond cleanup/read paths
+  - `6.4` has stronger local evidence now for community paper persistence and cleanup, but remains unchecked until community-agent persistence and broader end-to-end local verification are completed
+
+### 2026-04-09 Community-Agent Run/Event Local Persistence
+
+- `4.2` advanced again, but is still not complete yet.
+- Completed in this slice:
+  - added `CommunityAgentRunRepository` for local DB-backed `community_agent_runs` and `community_agent_events` persistence
+  - switched `community_agent_service` to best-effort persist owned run snapshots and stream events into the local repository while preserving the current in-memory fallback path when the database is unavailable
+  - added DB-backed run hydration/replay so `GET /api/community-agent/runs/{run_id}` and `GET /api/community-agent/runs/{run_id}/events` can recover completed owned runs even after runtime-memory loss
+  - added focused repository/service regression coverage for owned-run persistence, DB replay, and owner enforcement on DB-hydrated runs
+- Remaining work impacted by this slice:
+  - `4.2` still needs broader end-to-end verification in a configured local database beyond repository/service unit coverage
+  - ownerless or token-hash-only run semantics still rely on the runtime-memory fallback path rather than durable DB replay
+  - this slice does not yet add migration/import tooling for preexisting community-agent run data
+
+### 2026-04-09 Papers Viewer Auth Hardening
+
+- `2.3` and `4.3` both advanced incrementally in the paper-reader path.
+- Completed in this slice:
+  - removed the `/api/papers` route-layer fallback that decoded unverified bearer-token payloads to derive `viewer_user_id`
+  - switched paper list/detail viewer-state resolution to verified local `optional_current_user` state so liked/favorited viewer metadata now depends on the local auth boundary instead of a forged `sub` claim
+  - added focused route regression coverage proving forged JWT-looking bearer tokens do not leak another user's viewer state while verified local users still receive their own viewer-scoped paper metadata
+- Remaining work impacted by this slice:
+  - route-level community authorization is still only partially centralized and `1.4` remains unchecked
+  - other community/paper paths still need end-to-end audit so all user-scoped reads and writes consistently depend on verified local auth state
+
+### 2026-04-09 Community Write Cutover And Restart Failover Hardening
+
+- `2.3`, `4.1`, and `6.4` all advanced again, but remain incomplete overall.
+- Completed in this slice:
+  - changed `fail_interrupted_translation_tasks()` to reconcile affected paper translation state through the local community-paper path even when legacy Supabase env vars are present
+  - removed the restart-failover dependency on creating a Supabase admin client for paper-status repair, and added regression coverage proving the local path stays authoritative
+  - switched `resolve_submitter_context_by_user_id()` to resolve local admin/moderator roles from `user_roles` in the local database rather than from a Supabase admin query
+  - changed `_insert_paper(...)`, `_update_paper(...)`, and `_upsert_latest_asset(...)` to be local-write-only for this slice, returning explicit local-database errors instead of silently falling back to Supabase runtime writes
+  - added focused write-cutover tests proving those helpers now use local persistence and do not attempt Supabase fallback when the local database is unavailable
+- Remaining work impacted by this slice:
+  - `4.1` still has other community-paper helper paths that retain Supabase fallbacks outside the covered write helpers
+  - `5.6` advanced, but remains unchecked until the remaining startup/community runtime Supabase dependencies are removed more broadly
+  - `6.4` now has stronger focused evidence for community write-path cutover and restart-failover behavior, but still lacks a broader end-to-end configured-MySQL verification pass

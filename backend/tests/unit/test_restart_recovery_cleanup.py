@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -101,6 +102,199 @@ class _FakeTranslationTaskRepository:
     def list_existing_task_ids(self, task_ids):
         self.existing_queries.append(tuple(task_ids))
         return [task_id for task_id in task_ids if task_id in self.existing_ids]
+
+
+def _create_local_cleanup_schema(database_path: Path) -> None:
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(database_path))
+    try:
+        cursor = connection.cursor()
+        cursor.executescript(
+            """
+            create table papers (
+              id text primary key,
+              created_by text null,
+              source text not null,
+              arxiv_id text null,
+              title text not null,
+              authors text null,
+              categories text null,
+              abstract_raw text null,
+              abstract_translated text null,
+              visibility text not null,
+              status text not null,
+              community_status text not null,
+              trans_status text not null,
+              trans_latest_task_id text null,
+              trans_latest_asset_pdf_id text null,
+              community_selected_task_id text null,
+              community_selected_asset_id text null,
+              like_count integer not null default 0,
+              favorite_count integer not null default 0,
+              comment_count integer not null default 0,
+              view_count integer not null default 0,
+              download_count integer not null default 0,
+              official_published_at text null,
+              created_at text not null,
+              updated_at text not null
+            );
+
+            create table paper_assets (
+              id text primary key,
+              paper_id text not null,
+              task_id text null,
+              asset_type text not null,
+              storage_backend text not null,
+              file_path text not null,
+              file_name text not null,
+              mime_type text not null,
+              is_latest integer not null default 1,
+              created_at text not null
+            );
+
+            create table comments (
+              id text primary key,
+              paper_id text not null
+            );
+
+            create table reports (
+              id text primary key,
+              target_type text not null,
+              target_id text not null,
+              status text not null default 'open',
+              created_at text not null
+            );
+
+            create table moderation_actions (
+              id text primary key,
+              report_id text not null,
+              action_type text not null,
+              created_at text not null
+            );
+
+            create table paper_likes (
+              paper_id text not null,
+              user_id text not null
+            );
+
+            create table paper_favorites (
+              paper_id text not null,
+              user_id text not null
+            );
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _seed_local_cleanup_rows(database_path: Path) -> None:
+    connection = sqlite3.connect(str(database_path))
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            insert into papers (
+              id, created_by, source, arxiv_id, title, authors, categories,
+              abstract_raw, abstract_translated, visibility, status,
+              community_status, trans_status, trans_latest_task_id,
+              trans_latest_asset_pdf_id, community_selected_task_id,
+              community_selected_asset_id, like_count, favorite_count,
+              comment_count, view_count, download_count, official_published_at,
+              created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "paper-local-purge",
+                "usr-local-1",
+                "upload",
+                None,
+                "Local draft paper",
+                "[]",
+                "[]",
+                "raw",
+                None,
+                "private",
+                "draft",
+                "user_fallback",
+                "processing",
+                "task-latest",
+                None,
+                "task-community",
+                None,
+                0,
+                0,
+                0,
+                0,
+                0,
+                None,
+                "2026-04-09T09:00:00",
+                "2026-04-09T09:00:00",
+            ),
+        )
+        cursor.execute(
+            """
+            insert into paper_assets (
+              id, paper_id, task_id, asset_type, storage_backend,
+              file_path, file_name, mime_type, is_latest, created_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "asset-source-1",
+                "paper-local-purge",
+                "task-source",
+                "source_archive",
+                "local_disk",
+                "data/community_papers/paper-local-purge/source.zip",
+                "source.zip",
+                "application/zip",
+                1,
+                "2026-04-09T09:01:00",
+            ),
+        )
+        cursor.execute(
+            "insert into comments (id, paper_id) values (?, ?)",
+            ("comment-local-1", "paper-local-purge"),
+        )
+        cursor.execute(
+            """
+            insert into reports (id, target_type, target_id, status, created_at)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("report-paper-1", "paper", "paper-local-purge", "open", "2026-04-09T09:02:00"),
+        )
+        cursor.execute(
+            """
+            insert into reports (id, target_type, target_id, status, created_at)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("report-comment-1", "comment", "comment-local-1", "open", "2026-04-09T09:03:00"),
+        )
+        cursor.execute(
+            """
+            insert into moderation_actions (id, report_id, action_type, created_at)
+            values (?, ?, ?, ?)
+            """,
+            ("action-report-1", "report-paper-1", "dismiss", "2026-04-09T09:04:00"),
+        )
+        cursor.execute(
+            """
+            insert into moderation_actions (id, report_id, action_type, created_at)
+            values (?, ?, ?, ?)
+            """,
+            ("action-report-2", "report-comment-1", "dismiss", "2026-04-09T09:05:00"),
+        )
+        cursor.execute(
+            "insert into paper_likes (paper_id, user_id) values (?, ?)",
+            ("paper-local-purge", "usr-local-1"),
+        )
+        cursor.execute(
+            "insert into paper_favorites (paper_id, user_id) values (?, ?)",
+            ("paper-local-purge", "usr-local-1"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp_path: Path):
@@ -263,6 +457,65 @@ def test_reset_stale_community_tasks_keeps_public_papers_even_if_non_success(mon
     assert not deleted["tables"]
 
 
+def test_reset_stale_community_tasks_uses_local_repository_without_supabase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    community_root = tmp_path / "community_papers"
+    community_root.mkdir(parents=True, exist_ok=True)
+    (community_root / "paper-local-purge").mkdir()
+    database_path = tmp_path / "community-cleanup.db"
+    _create_local_cleanup_schema(database_path)
+    _seed_local_cleanup_rows(database_path)
+
+    deleted_task_ids = []
+
+    class _FakeTaskManager:
+        def delete_task_full(self, task_id: str):
+            deleted_task_ids.append(task_id)
+            return {"success": True, "deleted_dirs": [f"/tmp/{task_id}"], "errors": []}
+
+    settings = main_module.get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        SimpleNamespace(
+            supabase_service_role_key="",
+            supabase_url="",
+            community_papers_dir=community_root,
+        ),
+    )
+    monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
+
+    result = asyncio.run(main_module.reset_stale_community_tasks())
+
+    assert result["purged_records"] == 1
+    assert result["deleted_folders"] == 1
+    assert set(deleted_task_ids) == {"task-community", "task-latest", "task-source"}
+    assert not (community_root / "paper-local-purge").exists()
+
+    connection = sqlite3.connect(str(database_path))
+    try:
+        paper_count = connection.execute("select count(*) from papers").fetchone()[0]
+        asset_count = connection.execute("select count(*) from paper_assets").fetchone()[0]
+        comment_count = connection.execute("select count(*) from comments").fetchone()[0]
+        report_count = connection.execute("select count(*) from reports").fetchone()[0]
+        moderation_action_count = connection.execute("select count(*) from moderation_actions").fetchone()[0]
+        like_count = connection.execute("select count(*) from paper_likes").fetchone()[0]
+        favorite_count = connection.execute("select count(*) from paper_favorites").fetchone()[0]
+    finally:
+        connection.close()
+
+    assert paper_count == 0
+    assert asset_count == 0
+    assert comment_count == 0
+    assert report_count == 0
+    assert moderation_action_count == 0
+    assert like_count == 0
+    assert favorite_count == 0
+
+
 def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(monkeypatch):
     affected_papers = [{"id": "paper-1"}]
     stale_papers = [{"id": "paper-2", "community_selected_task_id": "task-run"}]
@@ -320,14 +573,23 @@ def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(mo
 def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(monkeypatch):
     deleted_task_ids = []
     fake_repo = _FakeTranslationTaskRepository(active_ids=["task-run"])
+    marked_task_ids = []
 
     class _FakeTaskManager:
         def delete_task_full(self, task_id: str):
             deleted_task_ids.append(task_id)
             return {"success": True, "deleted_dirs": [f"/tmp/{task_id}"], "errors": []}
 
+    async def _fake_mark_paper_translation_failed_by_task(task_id: str):
+        marked_task_ids.append(task_id)
+        return 1
+
     monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
     monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.mark_paper_translation_failed_by_task",
+        _fake_mark_paper_translation_failed_by_task,
+    )
     monkeypatch.setattr(
         main_module,
         "settings",
@@ -340,11 +602,74 @@ def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(mo
     result = asyncio.run(main_module.fail_interrupted_translation_tasks())
 
     assert result["failed_tasks"] == 1
-    assert result["updated_papers"] == 0
+    assert result["updated_papers"] == 1
     assert result["cleaned_task_artifacts"] == 1
     assert deleted_task_ids == ["task-run"]
+    assert marked_task_ids == ["task-run"]
     assert fake_repo.updated_batches
     assert fake_repo.updated_batches[-1][1]["status"] == "failed"
+
+
+def test_fail_interrupted_translation_tasks_prefers_local_paper_reconciliation_even_with_supabase_configured(
+    monkeypatch,
+):
+    deleted_task_ids = []
+    marked_task_ids = []
+    fake_repo = _FakeTranslationTaskRepository(
+        active_ids=["task-run", "task-download"],
+        status_map={"task-run": "failed", "task-stale": "failed"},
+    )
+
+    class _FakeTaskManager:
+        def delete_task_full(self, task_id: str):
+            deleted_task_ids.append(task_id)
+            return {"success": True, "deleted_dirs": [f"/tmp/{task_id}"], "errors": []}
+
+    class _FakeCommunityPaperRepository:
+        def list_inflight_translation_papers(self):
+            return [
+                {"id": "paper-1", "community_selected_task_id": "task-run"},
+                {"id": "paper-2", "community_selected_task_id": "task-stale"},
+                {"id": "paper-3", "community_selected_task_id": "task-ok"},
+            ]
+
+    async def _fake_mark_paper_translation_failed_by_task(task_id: str):
+        marked_task_ids.append(task_id)
+        return 1 if task_id in {"task-run", "task-stale"} else 0
+
+    def _unexpected_supabase_client():
+        raise AssertionError("Supabase admin client should not be used during local restart failover")
+
+    monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
+    monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
+    monkeypatch.setattr(main_module, "get_community_paper_repository", lambda: _FakeCommunityPaperRepository())
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.mark_paper_translation_failed_by_task",
+        _fake_mark_paper_translation_failed_by_task,
+    )
+    monkeypatch.setattr(
+        "backend.app.core.supabase_client.create_supabase_admin_client",
+        _unexpected_supabase_client,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        SimpleNamespace(
+            supabase_service_role_key="service-role",
+            supabase_url="https://example.supabase.co",
+        ),
+    )
+
+    result = asyncio.run(main_module.fail_interrupted_translation_tasks())
+
+    assert result["failed_tasks"] == 2
+    assert result["updated_papers"] == 2
+    assert set(deleted_task_ids) == {"task-run", "task-download"}
+    assert marked_task_ids.count("task-run") == 1
+    assert marked_task_ids.count("task-stale") == 1
+    assert "task-download" in marked_task_ids
+    assert fake_repo.status_queries
+    assert set(fake_repo.status_queries[-1]) == {"task-run", "task-stale", "task-ok"}
 
 
 def test_startup_orphan_cleanup_uses_local_translation_task_repository(monkeypatch, tmp_path: Path):

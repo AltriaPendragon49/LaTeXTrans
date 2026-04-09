@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.core.auth import require_admin_request
 from backend.app.core.config import get_settings
-from backend.app.repositories import TranslationTaskRepository
+from backend.app.db import DatabaseUnavailableError
+from backend.app.repositories import CommunityPaperRepository, TranslationTaskRepository
 from backend.app.services.task_manager import (
     get_task_manager,
     get_task_queue,
@@ -85,52 +86,74 @@ def _dedupe_non_empty(values: List[str]) -> List[str]:
 def get_translation_task_repository() -> TranslationTaskRepository:
     return TranslationTaskRepository()
 
+
+def get_community_paper_repository() -> CommunityPaperRepository:
+    return CommunityPaperRepository()
+
+
 async def reset_stale_community_tasks() -> dict:
     """
     Purge non-success community-paper rows.
-    This removes related local artifacts and paper-related Supabase rows.
+    This removes related local artifacts and paper-related local or Supabase rows.
     """
     import asyncio as _asyncio
     import shutil as _shutil
     from backend.app.core.supabase_client import create_supabase_admin_client
 
     result = {"reset_papers": 0, "deleted_folders": 0, "errors": []}
+    repository = get_community_paper_repository()
+    task_manager = get_task_manager()
     purge_enabled = os.getenv("ENABLE_STALE_PAPER_PURGE", "true").strip().lower() in {"1", "true", "yes", "on"}
     if not purge_enabled:
         logger.info("[StaleCleanup] Purge disabled (set ENABLE_STALE_PAPER_PURGE=true to enable).")
         result["purge_disabled"] = True
         return result
 
-    if not settings.supabase_service_role_key:
-        msg = "[StaleCleanup] SUPABASE_SERVICE_ROLE_KEY is not configured; cleanup skipped"
-        logger.error(msg)
-        result["errors"].append(msg)
-        return result
-    if not settings.supabase_url:
-        msg = "[StaleCleanup] SUPABASE_URL is not configured; cleanup skipped"
-        logger.error(msg)
-        result["errors"].append(msg)
-        return result
-
-    client = create_supabase_admin_client()
-    if not client:
-        msg = "[StaleCleanup] Failed to create Supabase admin client"
-        logger.error(msg)
-        result["errors"].append(msg)
-        return result
+    client = None
+    purgeable_rows = []
+    using_local_repository = False
 
     try:
-        purgeable_res = await _asyncio.to_thread(
-            lambda: client.table("papers")
-            .select("id, trans_latest_task_id, community_selected_task_id, visibility, status")
-            .in_("trans_status", NON_SUCCESS_PAPER_STATUSES)
-            .execute()
-        )
+        purgeable_rows = repository.list_purgeable_non_success_papers(NON_SUCCESS_PAPER_STATUSES)
+        using_local_repository = True
+    except DatabaseUnavailableError:
+        logger.info("[StaleCleanup] Local community repository unavailable; attempting Supabase fallback.")
+    except Exception as exc:
+        logger.warning("[StaleCleanup] Failed to query local community repository: %s", exc)
+
+    if not using_local_repository:
+        if not settings.supabase_service_role_key:
+            msg = "[StaleCleanup] SUPABASE_SERVICE_ROLE_KEY is not configured; cleanup skipped"
+            logger.error(msg)
+            result["errors"].append(msg)
+            return result
+        if not settings.supabase_url:
+            msg = "[StaleCleanup] SUPABASE_URL is not configured; cleanup skipped"
+            logger.error(msg)
+            result["errors"].append(msg)
+            return result
+
+        client = create_supabase_admin_client()
+        if not client:
+            msg = "[StaleCleanup] Failed to create Supabase admin client"
+            logger.error(msg)
+            result["errors"].append(msg)
+            return result
+
+    try:
+        if not using_local_repository:
+            purgeable_res = await _asyncio.to_thread(
+                lambda: client.table("papers")
+                .select("id, trans_latest_task_id, community_selected_task_id, visibility, status")
+                .in_("trans_status", NON_SUCCESS_PAPER_STATUSES)
+                .execute()
+            )
+            purgeable_rows = purgeable_res.data or []
         # Safety guard: never purge public published papers on startup.
         # Purge only drafts/private/removed records that are still in non-success states.
         purgeable_rows = [
             row
-            for row in (purgeable_res.data or [])
+            for row in purgeable_rows
             if str(row.get("status") or "").strip() == "removed"
             or str(row.get("visibility") or "").strip() not in {"public"}
         ]
@@ -153,67 +176,108 @@ async def reset_stale_community_tasks() -> dict:
             logger.info("[StaleCleanup] Nothing to purge")
             return result
 
-        task_manager = get_task_manager()
-        asset_res = await _asyncio.to_thread(
-            lambda: client.table("paper_assets")
-            .select("task_id")
-            .in_("paper_id", purgeable_ids)
-            .execute()
-        )
-        comment_res = await _asyncio.to_thread(
-            lambda: client.table("comments")
-            .select("id")
-            .in_("paper_id", purgeable_ids)
-            .execute()
-        )
-        comment_ids = _dedupe_non_empty([row.get("id") for row in (comment_res.data or [])])
-
-        paper_report_res = await _asyncio.to_thread(
-            lambda: client.table("reports")
-            .select("id")
-            .eq("target_type", "paper")
-            .in_("target_id", purgeable_ids)
-            .execute()
-        )
-        report_ids = [row.get("id") for row in (paper_report_res.data or [])]
-        if comment_ids:
-            comment_report_res = await _asyncio.to_thread(
-                lambda: client.table("reports")
-                .select("id")
-                .eq("target_type", "comment")
-                .in_("target_id", comment_ids)
-                .execute()
+        if using_local_repository:
+            asset_task_ids = await _asyncio.to_thread(repository.list_asset_task_ids_for_papers, purgeable_ids)
+            comment_ids = await _asyncio.to_thread(repository.list_comment_ids_for_papers, purgeable_ids)
+            report_ids = await _asyncio.to_thread(
+                repository.list_report_ids_for_targets,
+                target_type="paper",
+                target_ids=purgeable_ids,
             )
-            report_ids.extend(row.get("id") for row in (comment_report_res.data or []))
-        report_ids = _dedupe_non_empty(report_ids)
+            if comment_ids:
+                report_ids.extend(
+                    await _asyncio.to_thread(
+                        repository.list_report_ids_for_targets,
+                        target_type="comment",
+                        target_ids=comment_ids,
+                    )
+                )
+            report_ids = _dedupe_non_empty(report_ids)
 
-        if report_ids:
-            await _asyncio.to_thread(
-                lambda: client.table("moderation_actions")
-                .delete()
-                .in_("report_id", report_ids)
-                .execute()
-            )
-            await _asyncio.to_thread(
-                lambda: client.table("reports")
-                .delete()
-                .in_("id", report_ids)
-                .execute()
-            )
+            if report_ids:
+                await _asyncio.to_thread(
+                    repository.delete_rows_by_ids,
+                    "moderation_actions",
+                    id_column="report_id",
+                    row_ids=report_ids,
+                )
+                await _asyncio.to_thread(
+                    repository.delete_rows_by_ids,
+                    "reports",
+                    id_column="id",
+                    row_ids=report_ids,
+                )
 
-        for table_name in ["comments", "paper_assets", "paper_likes", "paper_favorites"]:
-            await _asyncio.to_thread(
-                lambda t=table_name: client.table(t)
-                .delete()
+            for table_name in ["comments", "paper_assets", "paper_likes", "paper_favorites"]:
+                await _asyncio.to_thread(repository.delete_rows_for_papers, table_name, purgeable_ids)
+
+            purgeable_task_ids = _dedupe_non_empty(
+                [row.get("trans_latest_task_id") for row in purgeable_rows]
+                + [row.get("community_selected_task_id") for row in purgeable_rows]
+                + asset_task_ids
+            )
+        else:
+            asset_res = await _asyncio.to_thread(
+                lambda: client.table("paper_assets")
+                .select("task_id")
                 .in_("paper_id", purgeable_ids)
                 .execute()
             )
+            comment_res = await _asyncio.to_thread(
+                lambda: client.table("comments")
+                .select("id")
+                .in_("paper_id", purgeable_ids)
+                .execute()
+            )
+            comment_ids = _dedupe_non_empty([row.get("id") for row in (comment_res.data or [])])
 
-        purgeable_task_ids = _dedupe_non_empty(
-            [row.get("trans_latest_task_id") for row in purgeable_rows]
-            + [row.get("community_selected_task_id") for row in purgeable_rows]
-            + [row.get("task_id") for row in (asset_res.data or [])]
-        )
+            paper_report_res = await _asyncio.to_thread(
+                lambda: client.table("reports")
+                .select("id")
+                .eq("target_type", "paper")
+                .in_("target_id", purgeable_ids)
+                .execute()
+            )
+            report_ids = [row.get("id") for row in (paper_report_res.data or [])]
+            if comment_ids:
+                comment_report_res = await _asyncio.to_thread(
+                    lambda: client.table("reports")
+                    .select("id")
+                    .eq("target_type", "comment")
+                    .in_("target_id", comment_ids)
+                    .execute()
+                )
+                report_ids.extend(row.get("id") for row in (comment_report_res.data or []))
+            report_ids = _dedupe_non_empty(report_ids)
+
+            if report_ids:
+                await _asyncio.to_thread(
+                    lambda: client.table("moderation_actions")
+                    .delete()
+                    .in_("report_id", report_ids)
+                    .execute()
+                )
+                await _asyncio.to_thread(
+                    lambda: client.table("reports")
+                    .delete()
+                    .in_("id", report_ids)
+                    .execute()
+                )
+
+            for table_name in ["comments", "paper_assets", "paper_likes", "paper_favorites"]:
+                await _asyncio.to_thread(
+                    lambda t=table_name: client.table(t)
+                    .delete()
+                    .in_("paper_id", purgeable_ids)
+                    .execute()
+                )
+
+            purgeable_task_ids = _dedupe_non_empty(
+                [row.get("trans_latest_task_id") for row in purgeable_rows]
+                + [row.get("community_selected_task_id") for row in purgeable_rows]
+                + [row.get("task_id") for row in (asset_res.data or [])]
+            )
+
         for task_id in purgeable_task_ids:
             deletion_result = task_manager.delete_task_full(task_id)
             result.setdefault("deleted_task_artifacts", []).append(
@@ -226,19 +290,25 @@ async def reset_stale_community_tasks() -> dict:
             result.setdefault("task_cleanup_errors", []).extend(deletion_result.get("errors", []))
 
         if purgeable_task_ids:
+            if using_local_repository:
+                await _asyncio.to_thread(repository.delete_translation_tasks, purgeable_task_ids)
+            else:
+                await _asyncio.to_thread(
+                    lambda: client.table("translation_tasks")
+                    .delete()
+                    .in_("task_id", purgeable_task_ids)
+                    .execute()
+                )
+
+        if using_local_repository:
+            await _asyncio.to_thread(repository.delete_rows_for_papers, "papers", purgeable_ids)
+        else:
             await _asyncio.to_thread(
-                lambda: client.table("translation_tasks")
+                lambda: client.table("papers")
                 .delete()
-                .in_("task_id", purgeable_task_ids)
+                .in_("id", purgeable_ids)
                 .execute()
             )
-
-        await _asyncio.to_thread(
-            lambda: client.table("papers")
-            .delete()
-            .in_("id", purgeable_ids)
-            .execute()
-        )
         result["purged_records"] = len(purgeable_ids)
     except Exception as e:
         msg = f"[StaleCleanup] Unexpected error: {e}"
@@ -257,17 +327,14 @@ async def fail_interrupted_translation_tasks() -> dict:
     result = {"failed_tasks": 0, "updated_papers": 0, "cleaned_task_artifacts": 0, "errors": []}
     repository = get_translation_task_repository()
     task_manager = get_task_manager()
-    client = None
-    if settings.supabase_service_role_key and settings.supabase_url:
-        from backend.app.core.supabase_client import create_supabase_admin_client
-
-        client = create_supabase_admin_client()
 
     try:
+        from backend.app.services.paper_service import mark_paper_translation_failed_by_task
+
         active_ids = _dedupe_non_empty(repository.list_task_ids_by_status(INTERRUPTED_TASK_STATUSES))
-        updated_paper_ids: Set[str] = set()
+        locally_updated_papers = 0
         now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
-        now_iso = now.isoformat()
+        handled_task_ids: Set[str] = set()
 
         if active_ids:
             for task_id in active_ids:
@@ -288,57 +355,34 @@ async def fail_interrupted_translation_tasks() -> dict:
                 },
             )
 
-            if client is not None:
-                affected_papers_res = await asyncio.to_thread(
-                    lambda: client.table("papers")
-                    .select("id")
-                    .in_("trans_status", ["queued", "processing"])
-                    .in_("community_selected_task_id", active_ids)
-                    .execute()
-                )
-                affected_paper_ids = _dedupe_non_empty([row.get("id") for row in (affected_papers_res.data or [])])
-                if affected_paper_ids:
-                    await asyncio.to_thread(
-                        lambda: client.table("papers")
-                        .update({"trans_status": "failed", "updated_at": now_iso})
-                        .in_("id", affected_paper_ids)
-                        .execute()
-                    )
-                    updated_paper_ids.update(affected_paper_ids)
+            for task_id in active_ids:
+                handled_task_ids.add(task_id)
+                locally_updated_papers += await mark_paper_translation_failed_by_task(task_id)
 
-        if client is not None:
-            stale_papers_res = await asyncio.to_thread(
-                lambda: client.table("papers")
-                .select("id, community_selected_task_id")
-                .in_("trans_status", ["queued", "processing"])
-                .execute()
-            )
-            stale_rows = stale_papers_res.data or []
+        try:
+            community_repository = get_community_paper_repository()
+            stale_rows = await asyncio.to_thread(community_repository.list_inflight_translation_papers)
+        except DatabaseUnavailableError:
+            stale_rows = []
+        except Exception as exc:
+            logger.warning("[RestartFailover] Failed to load inflight local papers: %s", exc)
+            stale_rows = []
+
+        if stale_rows:
             stale_task_ids = _dedupe_non_empty([row.get("community_selected_task_id") for row in stale_rows])
             terminal_failed_statuses = {"failed", "failed_compilation", "structure_invalid"}
-            failed_task_ids = {
+            failed_task_ids = [
                 task_id
                 for task_id, status in repository.list_task_statuses(stale_task_ids).items()
                 if status in terminal_failed_statuses
-            }
-            stale_paper_ids = _dedupe_non_empty(
-                [
-                    row.get("id")
-                    for row in stale_rows
-                    if str(row.get("community_selected_task_id") or "").strip() in failed_task_ids
-                ]
-            )
-            stale_paper_ids = [paper_id for paper_id in stale_paper_ids if paper_id not in updated_paper_ids]
-            if stale_paper_ids:
-                await asyncio.to_thread(
-                    lambda: client.table("papers")
-                    .update({"trans_status": "failed", "updated_at": now_iso})
-                    .in_("id", stale_paper_ids)
-                    .execute()
-                )
-                updated_paper_ids.update(stale_paper_ids)
+            ]
+            for task_id in failed_task_ids:
+                if task_id in handled_task_ids:
+                    continue
+                handled_task_ids.add(task_id)
+                locally_updated_papers += await mark_paper_translation_failed_by_task(task_id)
 
-        result["updated_papers"] = len(updated_paper_ids)
+        result["updated_papers"] = locally_updated_papers
     except Exception as exc:
         msg = f"[RestartFailover] Unexpected error: {exc}"
         logger.error(msg, exc_info=True)
