@@ -9,15 +9,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from postgrest.exceptions import APIError
-from supabase import Client
-
 from backend.app.services.community_agent import run_agent
-from backend.app.core.auth import clone_supabase_client_with_same_auth
-from backend.app.utils.async_blocking import run_db_blocking
+from backend.app.repositories import CommunityAgentConversationRepository
+from backend.app.utils.async_blocking import run_blocking
 
 _RUNTIME_AGENT_RUNS: Dict[str, "_RunRecord"] = {}
-_CONVERSATIONS_TABLE = "community_agent_conversations"
 
 
 class RunNotFoundError(KeyError):
@@ -364,110 +360,27 @@ def _normalize_conversation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def list_conversations(*, supabase_client: Client) -> List[Dict[str, Any]]:
-    def _shared_call():
-        return (
-            supabase_client.table(_CONVERSATIONS_TABLE)
-            .select("conversation_id,title,created_at,updated_at,turns")
-            .order("updated_at", desc=True)
-            .execute()
-        )
-
-    def _per_call():
-        cloned = clone_supabase_client_with_same_auth(supabase_client)
-        client = cloned or supabase_client
-        return (
-            client.table(_CONVERSATIONS_TABLE)
-            .select("conversation_id,title,created_at,updated_at,turns")
-            .order("updated_at", desc=True)
-            .execute()
-        )
-
-    result = await run_db_blocking(_shared_call, per_call_client_call=_per_call)
-    return [_normalize_conversation_record(item) for item in (result.data or [])]
+async def list_conversations(*, owner_user_id: str) -> List[Dict[str, Any]]:
+    repository = CommunityAgentConversationRepository()
+    return await run_blocking(lambda: repository.list_conversations_for_user(owner_user_id))
 
 
-async def upsert_conversation(*, supabase_client: Client, record: Dict[str, Any]) -> Dict[str, Any]:
+async def upsert_conversation(*, owner_user_id: str, record: Dict[str, Any]) -> Dict[str, Any]:
     normalized = _normalize_conversation_record(record)
     if not normalized["id"]:
         raise ValueError("conversation id is required")
-
-    payload = {
-        "conversation_id": normalized["id"],
-        "title": normalized["title"],
-        "updated_at": normalized["updated_at"],
-        "turns": normalized["turns"],
-    }
-    if normalized["created_at"]:
-        payload["created_at"] = normalized["created_at"]
-
-    def _select_existing(client: Client):
-        return (
-            client.table(_CONVERSATIONS_TABLE)
-            .select("conversation_id")
-            .eq("conversation_id", normalized["id"])
-            .limit(1)
-            .execute()
-        )
-
-    def _insert(client: Client):
-        return client.table(_CONVERSATIONS_TABLE).insert(payload).execute()
-
-    def _update(client: Client):
-        return (
-            client.table(_CONVERSATIONS_TABLE)
-            .update(payload)
-            .eq("conversation_id", normalized["id"])
-            .execute()
-        )
-
-    def _insert_or_update_on_conflict(client: Client):
-        try:
-            return _insert(client)
-        except APIError as error:
-            code = str(getattr(error, "code", "") or "")
-            message = str(getattr(error, "message", "") or "")
-            if code == "23505" or "duplicate key value violates unique constraint" in message.lower():
-                return _update(client)
-            raise
-
-    def _shared_call():
-        existing = _select_existing(supabase_client)
-        if existing.data:
-            return _update(supabase_client)
-        return _insert_or_update_on_conflict(supabase_client)
-
-    def _per_call():
-        client = clone_supabase_client_with_same_auth(supabase_client) or supabase_client
-        existing = _select_existing(client)
-        if existing.data:
-            return _update(client)
-        return _insert_or_update_on_conflict(client)
-
-    result = await run_db_blocking(_shared_call, per_call_client_call=_per_call)
-    rows = result.data or []
-    if rows:
-        return _normalize_conversation_record(rows[0])
-    return normalized
+    repository = CommunityAgentConversationRepository()
+    return await run_blocking(
+        lambda: repository.upsert_conversation_for_user(owner_user_id, normalized)
+    )
 
 
-async def delete_conversation(*, supabase_client: Client, conversation_id: str) -> Dict[str, Any]:
+async def delete_conversation(*, owner_user_id: str, conversation_id: str) -> Dict[str, Any]:
     normalized_id = str(conversation_id or "").strip()
     if not normalized_id:
         raise ValueError("conversation id is required")
-
-    def _shared_call():
-        return (
-            supabase_client.table(_CONVERSATIONS_TABLE)
-            .delete()
-            .eq("conversation_id", normalized_id)
-            .execute()
-        )
-
-    def _per_call():
-        client = clone_supabase_client_with_same_auth(supabase_client) or supabase_client
-        return client.table(_CONVERSATIONS_TABLE).delete().eq("conversation_id", normalized_id).execute()
-
-    result = await run_db_blocking(_shared_call, per_call_client_call=_per_call)
-    deleted = bool(result.data)
+    repository = CommunityAgentConversationRepository()
+    deleted = await run_blocking(
+        lambda: repository.delete_conversation_for_user(owner_user_id, normalized_id)
+    )
     return {"deleted": deleted, "conversation_id": normalized_id}

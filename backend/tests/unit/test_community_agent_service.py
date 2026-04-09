@@ -1,7 +1,6 @@
 import asyncio
 import json
 import pytest
-from postgrest.exceptions import APIError
 
 from backend.app.services import community_agent_service
 
@@ -678,121 +677,65 @@ def test_nonexistent_community_paper_can_be_imported_and_auto_translation_starte
     assert any(trace["provider"] == "start_translation_kernel" for trace in result["tool_trace"])
 
 
-def test_upsert_conversation_recovers_from_duplicate_insert_race(
+def test_local_conversation_crud_routes_owner_to_repository(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeResponse:
-        def __init__(self, data):
-            self.data = data
+    captured: dict[str, object] = {}
 
-    class FakeQuery:
-        def __init__(self, client):
-            self.client = client
-            self.action = None
-            self.payload = None
+    class FakeRepository:
+        def list_conversations_for_user(self, user_id: str):  # type: ignore[no-untyped-def]
+            captured["list_user_id"] = user_id
+            return [
+                {
+                    "id": "conversation-1",
+                    "title": "Grounded chat",
+                    "created_at": "2026-03-23T16:00:00Z",
+                    "updated_at": "2026-03-23T16:00:01Z",
+                    "turns": [],
+                }
+            ]
 
-        def select(self, *_args, **_kwargs):
-            self.action = "select"
-            return self
+        def upsert_conversation_for_user(self, user_id: str, record: dict[str, object]):  # type: ignore[no-untyped-def]
+            captured["upsert_user_id"] = user_id
+            captured["upsert_record"] = record
+            return record
 
-        def order(self, *_args, **_kwargs):
-            return self
+        def delete_conversation_for_user(self, user_id: str, conversation_id: str):  # type: ignore[no-untyped-def]
+            captured["delete_user_id"] = user_id
+            captured["delete_conversation_id"] = conversation_id
+            return True
 
-        def eq(self, *_args, **_kwargs):
-            return self
-
-        def limit(self, *_args, **_kwargs):
-            return self
-
-        def insert(self, payload):
-            self.action = "insert"
-            self.payload = payload
-            return self
-
-        def update(self, payload):
-            self.action = "update"
-            self.payload = payload
-            return self
-
-        def delete(self):
-            self.action = "delete"
-            return self
-
-        def execute(self):
-            if self.action == "select":
-                return FakeResponse([])
-            if self.action == "insert":
-                self.client.insert_calls += 1
-                raise APIError(
-                    {
-                        "message": 'duplicate key value violates unique constraint "community_agent_conversations_pkey"',
-                        "code": "23505",
-                    }
-                )
-            if self.action == "update":
-                self.client.updated_payload = self.payload
-                return FakeResponse(
-                    [
-                        {
-                            "conversation_id": self.payload["conversation_id"],
-                            "title": self.payload["title"],
-                            "created_at": self.payload.get("created_at"),
-                            "updated_at": self.payload["updated_at"],
-                            "turns": self.payload["turns"],
-                        }
-                    ]
-                )
-            raise AssertionError(f"unexpected action: {self.action}")
-
-    class FakeClient:
-        def __init__(self):
-            self.insert_calls = 0
-            self.updated_payload = None
-
-        def table(self, _name):
-            return FakeQuery(self)
-
-    async def fake_run_db_blocking(shared_call, per_call_client_call=None):  # type: ignore[no-untyped-def]
-        return per_call_client_call() if per_call_client_call else shared_call()
-
-    fake_client = FakeClient()
     monkeypatch.setattr(
-        "backend.app.services.community_agent_service.clone_supabase_client_with_same_auth",
-        lambda client: client,
-    )
-    monkeypatch.setattr(
-        "backend.app.services.community_agent_service.run_db_blocking",
-        fake_run_db_blocking,
+        "backend.app.services.community_agent_service.CommunityAgentConversationRepository",
+        lambda: FakeRepository(),
     )
 
-    result = asyncio.run(
+    listed = asyncio.run(
+        community_agent_service.list_conversations(owner_user_id="usr-local-1")
+    )
+    upserted = asyncio.run(
         community_agent_service.upsert_conversation(
-            supabase_client=fake_client,
+            owner_user_id="usr-local-1",
             record={
-                "id": "conversation-race",
-                "title": "Race-safe conversation",
+                "id": "conversation-1",
+                "title": "Grounded chat",
                 "created_at": "2026-03-23T16:00:00Z",
                 "updated_at": "2026-03-23T16:00:01Z",
-                "turns": [
-                    {
-                        "id": "user-1",
-                        "role": "user",
-                        "content": "Explain the paper.",
-                        "created_at": "2026-03-23T16:00:00Z",
-                    },
-                    {
-                        "id": "assistant-1",
-                        "role": "assistant",
-                        "content": "Here is the grounded answer.",
-                        "created_at": "2026-03-23T16:00:01Z",
-                        "status": "completed",
-                    },
-                ],
+                "turns": [],
             },
         )
     )
+    deleted = asyncio.run(
+        community_agent_service.delete_conversation(
+            owner_user_id="usr-local-1",
+            conversation_id="conversation-1",
+        )
+    )
 
-    assert fake_client.insert_calls == 1
-    assert fake_client.updated_payload is not None
-    assert len(fake_client.updated_payload["turns"]) == 2
-    assert result["id"] == "conversation-race"
+    assert listed[0]["id"] == "conversation-1"
+    assert upserted["id"] == "conversation-1"
+    assert deleted == {"deleted": True, "conversation_id": "conversation-1"}
+    assert captured["list_user_id"] == "usr-local-1"
+    assert captured["upsert_user_id"] == "usr-local-1"
+    assert captured["delete_user_id"] == "usr-local-1"
+    assert captured["delete_conversation_id"] == "conversation-1"

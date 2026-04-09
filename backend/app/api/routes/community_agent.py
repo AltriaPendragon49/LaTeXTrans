@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from supabase import Client
 
-from backend.app.core.auth import get_supabase_client_from_request, require_current_user
+from backend.app.core.auth import require_current_user
+from backend.app.policies import authorize
 from backend.app.services import community_agent_service
 
 router = APIRouter(prefix="/community-agent")
@@ -67,6 +67,21 @@ class CommunityAgentRunResponse(BaseModel):
     result_url: Optional[str] = None
 
 
+def _ensure_conversation_authorized(current_user: Dict[str, Any], action: str) -> None:
+    decision = authorize(
+        current_user,
+        "community_conversation",
+        action,
+        {"owner_user_id": str(current_user.get("id") or "")},
+    )
+    if decision.allowed:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=decision.reason,
+    )
+
+
 @router.post("/runs", response_model=CommunityAgentRunResponse)
 async def create_agent_run(
     request: CommunityAgentRunRequest,
@@ -97,35 +112,26 @@ async def create_agent_run(
 
 @router.get("/conversations", response_model=List[CommunityConversationRecordPayload])
 async def list_agent_conversations(
-    supabase: Optional[Client] = Depends(get_supabase_client_from_request),
+    current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return await community_agent_service.list_conversations(supabase_client=supabase)
+    _ensure_conversation_authorized(current_user, "read")
+    return await community_agent_service.list_conversations(
+        owner_user_id=str(current_user["id"]),
+    )
 
 
 @router.put("/conversations/{conversation_id}", response_model=CommunityConversationRecordPayload)
 async def upsert_agent_conversation(
     conversation_id: str,
     request: CommunityConversationRecordPayload,
-    supabase: Optional[Client] = Depends(get_supabase_client_from_request),
+    current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    _ensure_conversation_authorized(current_user, "update")
     if request.id != conversation_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="conversation id mismatch")
 
     return await community_agent_service.upsert_conversation(
-        supabase_client=supabase,
+        owner_user_id=str(current_user["id"]),
         record=request.model_dump(),
     )
 
@@ -133,17 +139,11 @@ async def upsert_agent_conversation(
 @router.delete("/conversations/{conversation_id}", response_model=CommunityConversationDeleteResponse)
 async def delete_agent_conversation(
     conversation_id: str,
-    supabase: Optional[Client] = Depends(get_supabase_client_from_request),
+    current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
+    _ensure_conversation_authorized(current_user, "delete")
     return await community_agent_service.delete_conversation(
-        supabase_client=supabase,
+        owner_user_id=str(current_user["id"]),
         conversation_id=conversation_id,
     )
 

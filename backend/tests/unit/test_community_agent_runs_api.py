@@ -322,8 +322,8 @@ def test_agent_run_result_route_uses_verified_current_user(monkeypatch: pytest.M
 def test_agent_conversation_routes_forward_authenticated_crud_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     saved_calls: Dict[str, Any] = {}
 
-    async def fake_list_conversations(*, supabase_client):  # type: ignore[no-untyped-def]
-        saved_calls["list_supabase"] = supabase_client
+    async def fake_list_conversations(*, owner_user_id):  # type: ignore[no-untyped-def]
+        saved_calls["list_owner_user_id"] = owner_user_id
         return [
             {
                 "id": "conversation-1",
@@ -341,13 +341,13 @@ def test_agent_conversation_routes_forward_authenticated_crud_calls(monkeypatch:
             }
         ]
 
-    async def fake_upsert_conversation(*, supabase_client, record):  # type: ignore[no-untyped-def]
-        saved_calls["upsert_supabase"] = supabase_client
+    async def fake_upsert_conversation(*, owner_user_id, record):  # type: ignore[no-untyped-def]
+        saved_calls["upsert_owner_user_id"] = owner_user_id
         saved_calls["record"] = record
         return record
 
-    async def fake_delete_conversation(*, supabase_client, conversation_id):  # type: ignore[no-untyped-def]
-        saved_calls["delete_supabase"] = supabase_client
+    async def fake_delete_conversation(*, owner_user_id, conversation_id):  # type: ignore[no-untyped-def]
+        saved_calls["delete_owner_user_id"] = owner_user_id
         saved_calls["delete_conversation_id"] = conversation_id
         return {"deleted": True, "conversation_id": conversation_id}
 
@@ -364,8 +364,7 @@ def test_agent_conversation_routes_forward_authenticated_crud_calls(monkeypatch:
         fake_delete_conversation,
     )
 
-    fake_supabase = object()
-    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: fake_supabase
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-conv-1"}
 
     async def _call():
         async with _make_client() as client:
@@ -396,8 +395,31 @@ def test_agent_conversation_routes_forward_authenticated_crud_calls(monkeypatch:
     assert list_response.status_code == 200
     assert upsert_response.status_code == 200
     assert delete_response.status_code == 200
-    assert saved_calls["list_supabase"] is fake_supabase
-    assert saved_calls["upsert_supabase"] is fake_supabase
-    assert saved_calls["delete_supabase"] is fake_supabase
+    assert saved_calls["list_owner_user_id"] == "usr-conv-1"
+    assert saved_calls["upsert_owner_user_id"] == "usr-conv-1"
+    assert saved_calls["delete_owner_user_id"] == "usr-conv-1"
     assert saved_calls["record"]["id"] == "conversation-1"
     assert saved_calls["delete_conversation_id"] == "conversation-1"
+
+
+def test_agent_conversation_routes_respect_authorization_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Denied:
+        allowed = False
+        reason = "policy denied conversation access"
+
+    monkeypatch.setattr(
+        community_agent_route,
+        "authorize",
+        lambda *_args, **_kwargs: _Denied(),
+    )
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-conv-1"}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/community-agent/conversations")
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "policy denied conversation access"

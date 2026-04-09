@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
 from backend.app.core import auth
+from backend.app.policies.base import AuthorizationResult
 from backend.app.main import app
 import backend.app.main as main_module
 
@@ -100,3 +101,29 @@ def test_require_admin_request_accepts_service_role_key(monkeypatch: pytest.Monk
     )
 
     assert result["auth_type"] == "service_role"
+
+
+def test_require_admin_request_uses_central_authorization_for_local_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth,
+        "authorize",
+        lambda *_args, **_kwargs: AuthorizationResult(
+            allowed=False,
+            reason="central policy denied admin cleanup",
+            resource="admin_cleanup",
+            action="execute",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            auth.require_admin_request(
+                current_user={"id": "usr-1", "roles": ["admin"]},
+                credentials=None,
+            )
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["message"] == "central policy denied admin cleanup"

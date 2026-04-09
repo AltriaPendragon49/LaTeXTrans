@@ -18,6 +18,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
 
 from backend.app.core.config import get_settings
+from backend.app.policies import authorize
 from backend.app.services.auth_service import AuthServiceError, LocalAuthService
 
 # Allow missing Authorization header (guest mode)
@@ -222,6 +223,12 @@ async def require_admin_request(
         current_user = None
 
     if isinstance(current_user, dict):
+        decision = authorize(current_user, "admin_cleanup", "execute")
+        if not decision.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "AUTH_FORBIDDEN", "message": decision.reason},
+            )
         return {
             "auth_type": "local_user",
             "user_id": current_user.get("id"),

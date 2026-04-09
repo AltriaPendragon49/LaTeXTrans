@@ -95,3 +95,19 @@
   - conversation CRUD persistence, which still uses the Supabase-backed `community_agent_conversations` path
   - MySQL-backed community-agent repositories and schema for conversation/run/event persistence
   - end-to-end local verification that community-agent persistence, not just run auth, is fully detached from Supabase
+
+### 2026-04-09 Community-Agent Conversation Local Persistence
+
+- `4.2` advanced again, but is still not complete yet.
+- Completed in this slice:
+  - replaced community conversation CRUD route dependencies on `get_supabase_client_from_request` with verified local `require_current_user`
+  - added `CommunityAgentConversationRepository` for local DB-backed list/upsert/delete with explicit `user_id` scoping
+  - switched `community_agent_service` conversation CRUD from Supabase client calls to local repository calls
+  - introduced a shared `authorize(user, resource, action, context)` policy package and wired it into community-conversation routes plus local admin cleanup authorization
+  - added focused repository, route, service, admin-auth, and policy tests for the local conversation persistence and centralized authorization entrypoint
+- Remaining work inside `4.2` is now concentrated in:
+  - durable persistence for community-agent runs and event replay, which are still runtime-memory-backed
+  - explicit migration/bootstrap DDL for local MySQL rollout beyond the repository test schema
+  - end-to-end local verification that community-agent persistence is fully detached from Supabase in a configured local database
+- `1.4` advanced substantially, but remains unchecked until more route-level ad hoc ownership checks outside this slice move onto the shared authorization entrypoint.
+- `4.3` advanced substantially, but remains unchecked until more community authorization paths beyond conversation CRUD are fully centralized under app-layer policies.
