@@ -29,11 +29,10 @@ from backend.app.core.auth import (
     resolve_current_user_id,
 )
 from backend.app.core.config import get_settings, TaskStatus
-from backend.app.repositories import UserSettingsRepository
+from backend.app.repositories import TranslationTaskRepository, UserSettingsRepository
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
-from backend.app.core.supabase_client import get_supabase_admin_client, create_supabase_admin_client
 from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids, get_arxiv_category
 from backend.app.utils.async_blocking import run_db_blocking
 
@@ -66,6 +65,10 @@ def _schedule_community_publish_watch(task_id: str, user_id: Optional[str]) -> N
         await paper_service.watch_task_and_publish_community_library(task_id=task_id)
 
     asyncio.create_task(_watch())
+
+
+def get_translation_task_repository() -> TranslationTaskRepository:
+    return TranslationTaskRepository()
 
 
 class TranslateRequest(BaseModel):
@@ -355,69 +358,42 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
         已完成任务的 output_path,若无则返回 None
     """
     try:
-        client = get_supabase_admin_client()
-        if not client:
-            logger.warning("Supabase admin client not available for output reuse")
+        repository = get_translation_task_repository()
+        record = await run_db_blocking(
+            lambda: repository.find_reusable_completed_task(
+                config_hash,
+                exclude_task_id=task_id,
+            )
+        )
+        if not record:
             return None
-        
-        def _shared_call():
-            return client.table("translation_tasks").select(
-                "task_id, output_path"
-            ).eq(
-                "config_hash", config_hash
-            ).in_(
-                "status", ["completed", "completed_with_warnings"]
-            ).neq(
-                "task_id", task_id
-            ).limit(1).execute()
 
-        def _per_call_client():
-            c = create_supabase_admin_client()
-            if not c:
-                return None
-            return c.table("translation_tasks").select(
-                "task_id, output_path"
-            ).eq(
-                "config_hash", config_hash
-            ).in_(
-                "status", ["completed", "completed_with_warnings"]
-            ).neq(
-                "task_id", task_id
-            ).limit(1).execute()
+        reusable_task_id = str(record.get("task_id") or "").strip()
+        output_path_value = str(record.get("output_path") or "").strip()
 
-        result = await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
-        if result is None:
-            return None
-        
-        if result.data:
-            record = result.data[0] or {}
-            reusable_task_id = str(record.get("task_id") or "").strip()
-            output_path_value = str(record.get("output_path") or "").strip()
+        candidate_paths = []
+        if output_path_value:
+            candidate_paths.append(Path(output_path_value))
+        if reusable_task_id:
+            candidate_paths.append(settings.outputs_dir / reusable_task_id)
 
-            candidate_paths = []
-            if output_path_value:
-                candidate_paths.append(Path(output_path_value))
-            if reusable_task_id:
-                candidate_paths.append(settings.outputs_dir / reusable_task_id)
+        checked_paths = []
+        for candidate_path in candidate_paths:
+            normalized_candidate = str(candidate_path)
+            if normalized_candidate in checked_paths:
+                continue
+            checked_paths.append(normalized_candidate)
+            if candidate_path.exists():
+                logger.info(f"Found reusable output: {candidate_path}")
+                return str(candidate_path)
 
-            checked_paths = []
-            for candidate_path in candidate_paths:
-                normalized_candidate = str(candidate_path)
-                if normalized_candidate in checked_paths:
-                    continue
-                checked_paths.append(normalized_candidate)
-                if candidate_path.exists():
-                    logger.info(f"Found reusable output: {candidate_path}")
-                    return str(candidate_path)
-
-            if checked_paths:
-                logger.warning(
-                    "Reusable output referenced in DB but no local candidate exists: %s",
-                    checked_paths,
-                )
+        if checked_paths:
+            logger.warning(
+                "Reusable output referenced in local DB but no local candidate exists: %s",
+                checked_paths,
+            )
 
         return None
-        
     except Exception as e:
         logger.warning(f"Error searching for reusable output: {e}")
         return None
@@ -426,27 +402,13 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
 async def persist_task_config_hash(task_id: str, config_hash: str) -> bool:
     """Persist config_hash for an already-created authenticated task row."""
     try:
-        client = get_supabase_admin_client()
-        if not client:
-            logger.warning("Supabase admin client not available for config_hash persistence")
-            return False
-
-        def _shared_call():
-            return client.table("translation_tasks").update({
-                "config_hash": config_hash
-            }).eq("task_id", task_id).execute()
-
-        def _per_call_client():
-            c = create_supabase_admin_client()
-            if not c:
-                return None
-            return c.table("translation_tasks").update({
-                "config_hash": config_hash
-            }).eq("task_id", task_id).execute()
-
-        await run_db_blocking(_shared_call, per_call_client_call=_per_call_client)
-        logger.info(f"Stored config_hash in database for task {task_id}")
-        return True
+        repository = get_translation_task_repository()
+        updated = await run_db_blocking(
+            lambda: repository.update_task(task_id, {"config_hash": config_hash})
+        )
+        if updated:
+            logger.info(f"Stored config_hash in local database for task {task_id}")
+        return bool(updated)
     except Exception as e:
         logger.warning(f"Failed to store config_hash for task {task_id}: {e}")
         return False

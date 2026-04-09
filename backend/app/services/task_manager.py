@@ -21,10 +21,11 @@ import re
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable, Union, List
-from backend.app.core.config import TaskStatus, CompilationStage, get_settings
-from backend.app.core.supabase_client import get_supabase_admin_client
-from backend.app.core.timezone_utils import get_cst_now, get_cst_now_iso
+from typing import Dict, Any, Optional, Callable, Union, List
+from backend.app.core.config import TaskStatus, CompilationStage, get_settings
+from backend.app.core.supabase_client import get_supabase_admin_client
+from backend.app.repositories import TranslationTaskRepository
+from backend.app.core.timezone_utils import get_cst_now, get_cst_now_iso
 from backend.app.services.task_detail import (
     infer_task_detail,
     normalize_detail_params,
@@ -35,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 _runtime_shutting_down = False
 _runtime_state_lock = threading.Lock()
+
+
+def get_translation_task_repository() -> TranslationTaskRepository:
+    return TranslationTaskRepository()
 
 
 def set_runtime_shutting_down(value: bool) -> None:
@@ -1310,8 +1315,8 @@ class TaskManager:
         advanced_config: Optional[Dict[str, Any]],
         config_hash: Optional[str] = None,
     ) -> bool:
-        """
-        Persist task creation to Supabase (authenticated users only)
+        """
+        Persist task creation to local translation-task storage.
         
         Args:
             task_id: Task ID
@@ -1321,92 +1326,74 @@ class TaskManager:
             source_language: Source language code
             target_language: Target language code
             advanced_config: Advanced configuration snapshot
-        """
+        """
         try:
-            client = get_supabase_admin_client()
-            if not client:
-                logger.warning(f"[TaskManager] Supabase admin client not available, skipping persistence for task {task_id}")
-                return False
-            
-            # Build database record
-            db_record = {
-                "task_id": task_id,
-                "user_id": user_id,
-                "source_type": source_type,
-                "arxiv_id": arxiv_id,
-                "source_language": source_language,
-                "target_language": target_language,
-                "status": TaskStatus.PENDING.value,
-                "progress": 0,
-                "stage": CompilationStage.IDLE.value,
-                "detail_code": "task_waiting",
-                "detail_params": None,
-            }
-            if config_hash:
-                db_record["config_hash"] = config_hash
-            
-            # Extract advanced config fields if available
-            if advanced_config and isinstance(advanced_config, dict):
-                db_record["translation_mode"] = advanced_config.get("translation_mode", "full")
-                db_record["compile_strategy"] = advanced_config.get("compile_strategy", "auto")
-                db_record["translation_model"] = advanced_config.get("translation_model")
-                db_record["generate_glossary"] = advanced_config.get("generate_terminology_table", True)
-                db_record["use_author_api"] = advanced_config.get("use_author_api", True)
-                db_record["custom_base_url"] = advanced_config.get("custom_base_url")
-                db_record["custom_api_key_encrypted"] = advanced_config.get("custom_api_key_encrypted")
-                # Persist formatting config as JSONB
-                fmt = advanced_config.get("formatting")
-                if fmt is not None:
-                    if hasattr(fmt, "model_dump"):
-                        fmt = fmt.model_dump(exclude_none=True)
-                    elif hasattr(fmt, "dict"):
-                        fmt = fmt.dict(exclude_none=True)
-                    db_record["formatting"] = fmt if fmt else None
-            
-            # Insert into database
-            client.table("translation_tasks").insert(db_record).execute()
-            logger.info(f"[TaskManager] Persisted task {task_id} to Supabase for user {user_id}")
-            return True
+            repository = get_translation_task_repository()
+            db_record = {
+                "task_id": task_id,
+                "user_id": user_id,
+                "source_type": source_type,
+                "arxiv_id": arxiv_id,
+                "source_language": source_language,
+                "target_language": target_language,
+                "status": TaskStatus.PENDING.value,
+                "progress": 0,
+                "stage": CompilationStage.IDLE.value,
+                "detail_code": "task_waiting",
+                "message": "Task created",
+                "created_at": get_cst_now_iso(),
+                "completed_at": None,
+                "translation_mode": "full",
+                "compile_strategy": "auto",
+                "translation_model": None,
+                "generate_glossary": True,
+                "use_author_api": True,
+                "email_notification": False,
+            }
+            if config_hash:
+                db_record["config_hash"] = config_hash
 
+            if advanced_config and isinstance(advanced_config, dict):
+                db_record["translation_mode"] = advanced_config.get("translation_mode", "full")
+                db_record["compile_strategy"] = advanced_config.get("compile_strategy", "auto")
+                db_record["translation_model"] = advanced_config.get("translation_model")
+                db_record["generate_glossary"] = advanced_config.get("generate_terminology_table", True)
+                db_record["use_author_api"] = advanced_config.get("use_author_api", True)
+                db_record["email_notification"] = advanced_config.get("email_notification", False)
+                fmt = advanced_config.get("formatting")
+                if fmt is not None:
+                    if hasattr(fmt, "model_dump"):
+                        fmt = fmt.model_dump(exclude_none=True)
+                    elif hasattr(fmt, "dict"):
+                        fmt = fmt.dict(exclude_none=True)
+                    db_record["formatting"] = fmt if fmt else None
+
+            task_snapshot = self.get_task(task_id) or {}
+            for key in ("source_path", "output_path", "status", "progress", "stage", "message", "error", "completed_at"):
+                if task_snapshot.get(key) is not None:
+                    db_record[key] = task_snapshot.get(key)
+
+            repository.upsert_task(task_id, db_record)
+            logger.info(f"[TaskManager] Persisted task {task_id} to local translation storage for user {user_id}")
+            return True
         except Exception as e:
-            if _is_duplicate_task_insert_error(e):
-                update_record = {key: value for key, value in db_record.items() if key != "task_id"}
-                try:
-                    client.table("translation_tasks").update(update_record).eq("task_id", task_id).execute()
-                    logger.info(
-                        f"[TaskManager] Task {task_id} already existed in Supabase; refreshed existing row"
-                    )
-                    return True
-                except Exception as update_error:
-                    logger.error(
-                        f"[TaskManager] Failed to refresh existing task {task_id} in Supabase: {update_error}",
-                        exc_info=True,
-                    )
-                    return False
-            logger.error(f"[TaskManager] Failed to persist task {task_id} to Supabase: {e}", exc_info=True)
+            logger.error(f"[TaskManager] Failed to persist task {task_id} to local translation storage: {e}", exc_info=True)
             return False
-    
-    def _persist_task_update(self, task_id: str, updates: Dict[str, Any]):
-        """
-        Persist task updates to Supabase
+    
+    def _persist_task_update(self, task_id: str, updates: Dict[str, Any]):
+        """
+        Persist task updates to local translation-task storage.
         
         Args:
             task_id: Task ID
             updates: Dictionary of fields to update
-        """
-        try:
-            client = get_supabase_admin_client()
-            if not client:
-                return
-            
-            # Update in database
-            result = client.table("translation_tasks").update(updates).eq("task_id", task_id).execute()
-            
-            if result.data:
-                logger.debug(f"[TaskManager] Synced task {task_id} to Supabase: {list(updates.keys())}")
-        
-        except Exception as e:
-            logger.error(f"[TaskManager] Failed to sync task {task_id} to Supabase: {e}")
+        """
+        try:
+            repository = get_translation_task_repository()
+            if repository.update_task(task_id, updates):
+                logger.debug(f"[TaskManager] Synced task {task_id} to local translation storage: {list(updates.keys())}")
+        except Exception as e:
+            logger.error(f"[TaskManager] Failed to sync task {task_id} to local translation storage: {e}")
     
     def _recover_task_from_storage(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -1418,10 +1405,10 @@ class TaskManager:
         Returns:
             Task dictionary if found, None otherwise
         """
-        # Try Supabase first
-        task = self._recover_from_supabase(task_id)
-        if task:
-            return task
+        # Try local database first
+        task = self._recover_from_supabase(task_id)
+        if task:
+            return task
         
         # Fallback to local filesystem
         task = self._recover_from_filesystem(task_id)
@@ -1430,71 +1417,66 @@ class TaskManager:
         
         return None
     
-    def _recover_from_supabase(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Recover task from Supabase database
+    def _recover_from_supabase(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Recover task from local translation-task storage.
         
         Args:
             task_id: Task ID
             
-        Returns:
-            Task dictionary if found, None otherwise
-        """
-        try:
-            client = get_supabase_admin_client()
-            if not client:
-                return None
-            
-            result = client.table("translation_tasks").select("*").eq("task_id", task_id).execute()
-            
-            if result.data and len(result.data) > 0:
-                db_task = result.data[0]
-                
-                # Convert database record to internal task format
-                task = {
-                    "task_id": db_task.get("task_id"),
-                    "status": db_task.get("status", "completed"),
-                    "progress": db_task.get("progress", 100),
-                    "stage": db_task.get("stage", "done"),
-                    "message": db_task.get("message", "Task completed"),
-                    "detail_code": db_task.get("detail_code"),
-                    "detail_params": db_task.get("detail_params"),
-                    "error": db_task.get("error"),
-                    "warnings": None,
-                    "source_available": True,
-                    "created_at": db_task.get("created_at", datetime.now(timezone.utc).isoformat()),
-                    "completed_at": db_task.get("completed_at"),
-                    "source_type": db_task.get("source_type", "arxiv"),
-                    "source_path": db_task.get("source_path"),
-                    "output_path": db_task.get("output_path"),
-                    "advanced_config": {
-                        "translation_mode": db_task.get("translation_mode", "full"),
-                        "compile_strategy": db_task.get("compile_strategy", "auto"),
-                        "translation_model": db_task.get("translation_model"),
-                        "generate_terminology_table": db_task.get("generate_glossary", True),
-                        "use_author_api": db_task.get("use_author_api", True),
-                        # fix-task-status-sync Task 2: Restore email notification preference
-                        # so post-restart tasks can still send email on completion.
-                        "email_notification": db_task.get("email_notification", False),
-                    },
-                    "latex_validation": None,
-                    "arxiv_id": db_task.get("arxiv_id"),
-                    "user_id": db_task.get("user_id"),
-                    "source_language": db_task.get("source_language", "en"),
-                    "target_language": db_task.get("target_language", "zh")
-                }
-                
-                # If paths are not in DB, try to infer from local filesystem
-                if not task["output_path"] or not task["source_path"]:
-                    self._infer_paths_from_filesystem(task)
-                
-                logger.debug(f"[TaskManager] Recovered task {task_id} from Supabase")
-                return task
-                
-        except Exception as e:
-            logger.warning(f"[TaskManager] Failed to recover task {task_id} from Supabase: {e}")
-        
-        return None
+        Returns:
+            Task dictionary if found, None otherwise
+        """
+        try:
+            repository = get_translation_task_repository()
+            db_task = repository.get_task(task_id)
+            if not db_task:
+                return None
+
+            task = {
+                "task_id": db_task.get("task_id"),
+                "status": db_task.get("status", "completed"),
+                "progress": db_task.get("progress", 100),
+                "stage": db_task.get("stage", "done"),
+                "message": db_task.get("message", "Task completed"),
+                "detail_code": db_task.get("detail_code"),
+                "detail_params": db_task.get("detail_params"),
+                "error": db_task.get("error"),
+                "warnings": None,
+                "source_available": True,
+                "created_at": db_task.get("created_at", datetime.now(timezone.utc).isoformat()),
+                "completed_at": db_task.get("completed_at"),
+                "source_type": db_task.get("source_type", "arxiv"),
+                "source_path": db_task.get("source_path"),
+                "output_path": db_task.get("output_path"),
+                "advanced_config": {
+                    "translation_mode": db_task.get("translation_mode", "full"),
+                    "compile_strategy": db_task.get("compile_strategy", "auto"),
+                    "translation_model": db_task.get("translation_model"),
+                    "generate_terminology_table": db_task.get("generate_glossary", True),
+                    "use_author_api": db_task.get("use_author_api", True),
+                    "email_notification": db_task.get("email_notification", False),
+                },
+                "latex_validation": None,
+                "arxiv_id": db_task.get("arxiv_id"),
+                "user_id": db_task.get("user_id"),
+                "source_language": db_task.get("source_language", "en"),
+                "target_language": db_task.get("target_language", "zh"),
+            }
+
+            formatting = db_task.get("formatting")
+            if formatting is not None:
+                task["advanced_config"]["formatting"] = formatting
+
+            if not task["output_path"] or not task["source_path"]:
+                self._infer_paths_from_filesystem(task)
+
+            logger.debug(f"[TaskManager] Recovered task {task_id} from local translation storage")
+            return task
+        except Exception as e:
+            logger.warning(f"[TaskManager] Failed to recover task {task_id} from local translation storage: {e}")
+
+        return None
     
     def _recover_from_filesystem(self, task_id: str) -> Optional[Dict[str, Any]]:
         """

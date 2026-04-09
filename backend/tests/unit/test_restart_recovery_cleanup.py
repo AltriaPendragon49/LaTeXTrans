@@ -64,6 +64,45 @@ class _FakeSupabaseClient:
         return _Result(self.handler(query))
 
 
+class _FakeTranslationTaskRepository:
+    def __init__(
+        self,
+        *,
+        active_ids=None,
+        existing_ids=None,
+        status_map=None,
+        update_rowcount=None,
+    ):
+        self.active_ids = list(active_ids or [])
+        self.existing_ids = set(existing_ids or [])
+        self.status_map = dict(status_map or {})
+        self.update_rowcount = update_rowcount
+        self.updated_batches = []
+        self.status_queries = []
+        self.existing_queries = []
+
+    def list_task_ids_by_status(self, _statuses):
+        return list(self.active_ids)
+
+    def update_tasks(self, task_ids, updates):
+        self.updated_batches.append((tuple(task_ids), dict(updates)))
+        if self.update_rowcount is not None:
+            return self.update_rowcount
+        return len(task_ids)
+
+    def list_task_statuses(self, task_ids):
+        self.status_queries.append(tuple(task_ids))
+        return {
+            task_id: self.status_map[task_id]
+            for task_id in task_ids
+            if task_id in self.status_map
+        }
+
+    def list_existing_task_ids(self, task_ids):
+        self.existing_queries.append(tuple(task_ids))
+        return [task_id for task_id in task_ids if task_id in self.existing_ids]
+
+
 def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("ENABLE_STALE_PAPER_PURGE", "true")
     community_root = tmp_path / "community_papers"
@@ -225,19 +264,21 @@ def test_reset_stale_community_tasks_keeps_public_papers_even_if_non_success(mon
 
 
 def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(monkeypatch):
-    active_rows = [
-        {"task_id": "task-run"},
-        {"task_id": "task-download"},
-    ]
     affected_papers = [{"id": "paper-1"}]
+    stale_papers = [{"id": "paper-2", "community_selected_task_id": "task-run"}]
     updates = []
     deleted_task_ids = []
+    fake_repo = _FakeTranslationTaskRepository(
+        active_ids=["task-run", "task-download"],
+        status_map={"task-run": "failed"},
+    )
 
     def handler(query: _FakeQuery):
-        if query.table_name == "translation_tasks" and query.mode == "select":
-            return active_rows
         if query.table_name == "papers" and query.mode == "select":
-            return affected_papers
+            if query.columns == "id":
+                return affected_papers
+            if query.columns == "id, community_selected_task_id":
+                return stale_papers
         if query.mode == "update":
             updates.append((query.table_name, query.payload, tuple(query.filters)))
             return [{"ok": True}]
@@ -253,6 +294,7 @@ def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(mo
         lambda: _FakeSupabaseClient(handler),
     )
     monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
+    monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
     monkeypatch.setattr(
         main_module,
         "settings",
@@ -265,10 +307,106 @@ def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(mo
     result = asyncio.run(main_module.fail_interrupted_translation_tasks())
 
     assert result["failed_tasks"] == 2
-    assert result["updated_papers"] == 1
+    assert result["updated_papers"] == 2
     assert set(deleted_task_ids) == {"task-run", "task-download"}
-    assert any(table == "translation_tasks" for table, _payload, _filters in updates)
+    assert fake_repo.updated_batches
+    batch_task_ids, batch_payload = fake_repo.updated_batches[-1]
+    assert set(batch_task_ids) == {"task-run", "task-download"}
+    assert batch_payload["status"] == "failed"
+    assert batch_payload["detail_code"] == "task_interrupted_restart"
     assert any(table == "papers" for table, _payload, _filters in updates)
+
+
+def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(monkeypatch):
+    deleted_task_ids = []
+    fake_repo = _FakeTranslationTaskRepository(active_ids=["task-run"])
+
+    class _FakeTaskManager:
+        def delete_task_full(self, task_id: str):
+            deleted_task_ids.append(task_id)
+            return {"success": True, "deleted_dirs": [f"/tmp/{task_id}"], "errors": []}
+
+    monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
+    monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        SimpleNamespace(
+            supabase_service_role_key="",
+            supabase_url="",
+        ),
+    )
+
+    result = asyncio.run(main_module.fail_interrupted_translation_tasks())
+
+    assert result["failed_tasks"] == 1
+    assert result["updated_papers"] == 0
+    assert result["cleaned_task_artifacts"] == 1
+    assert deleted_task_ids == ["task-run"]
+    assert fake_repo.updated_batches
+    assert fake_repo.updated_batches[-1][1]["status"] == "failed"
+
+
+def test_startup_orphan_cleanup_uses_local_translation_task_repository(monkeypatch, tmp_path: Path):
+    outputs_dir = tmp_path / "outputs"
+    terms_dir = tmp_path / "data" / "terms"
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    terms_dir.mkdir(parents=True, exist_ok=True)
+    (outputs_dir / "task-orphan").mkdir()
+    (terms_dir / "task-keep").mkdir()
+
+    fake_repo = _FakeTranslationTaskRepository(existing_ids=["task-keep"])
+
+    class _FakeTaskQueue:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def initialize(self):
+            return None
+
+    async def _fake_failover():
+        return {}
+
+    async def _fake_reset():
+        return {}
+
+    async def _fake_sleep(_seconds: float):
+        raise asyncio.CancelledError()
+
+    async def _run() -> None:
+        monkeypatch.setattr(main_module, "fail_interrupted_translation_tasks", _fake_failover)
+        monkeypatch.setattr(main_module, "reset_stale_community_tasks", _fake_reset)
+        monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
+        monkeypatch.setattr(main_module.asyncio, "sleep", _fake_sleep)
+        monkeypatch.setattr(
+            "backend.app.services.task_manager.TaskQueue",
+            _FakeTaskQueue,
+        )
+        monkeypatch.setattr(
+            main_module,
+            "settings",
+            SimpleNamespace(
+                app_name="LaTexTrans",
+                version="test",
+                data_dir=tmp_path / "data",
+                outputs_dir=outputs_dir,
+                guest_task_ttl_hours=0,
+                max_concurrent_translations=1,
+                llm_model="gpt-test",
+                cors_origins=["http://localhost:3000"],
+            ),
+        )
+
+        await main_module.startup_event()
+        with pytest.raises(asyncio.CancelledError):
+            await main_module.app.state.cleanup_task
+
+    asyncio.run(_run())
+
+    assert fake_repo.existing_queries
+    assert set(fake_repo.existing_queries[0]) == {"task-orphan", "task-keep"}
+    assert not (outputs_dir / "task-orphan").exists()
+    assert (terms_dir / "task-keep").exists()
 
 
 def test_run_translation_persists_failed_state_on_cancel(monkeypatch, tmp_path: Path):

@@ -888,3 +888,23 @@ live 数据中两边都没有 admin 用户记录。
 2. `custom_auth_and_authorization_design.md`
 
 第一份聚焦数据与落地顺序，第二份聚焦登录、JWT、权限与管理员模型。
+---
+
+## 2026-04-09 Execution Status Addendum
+
+- Authenticated `translation_tasks` persistence, history retrieval, config-hash persistence, reusable-output lookup, startup interrupted-task failover, and orphan cleanup have now been switched from Supabase `translation_tasks` queries to local repository-backed persistence.
+- The audit sections that describe `translation_tasks/history/main.py` as still depending on Supabase should now be read as historical baseline rather than current execution truth.
+- The remaining highest-risk gaps identified by this audit are still current:
+  - community `papers` and related persistence still need migration plus app-layer authorization rebuild
+  - `resolve_current_user_id(...)` fallback decoding of unverified JWT `sub` still needs cleanup
+  - full local verification is still hindered by Windows temp-directory permission failures during pytest tempdir handling
+
+## 2026-04-09 Execution Status Addendum 2
+
+- The `resolve_current_user_id(...)` fallback cleanup flagged above is now closed for the remaining upload/arxiv/translate entry paths.
+- Local verified-user resolution no longer derives `user_id` from an unverified bearer-token payload `sub`.
+- Focused regression coverage now confirms forged JWT `sub` claims are ignored and guest-compatible routes remain guest when verification fails.
+- The remaining highest-risk gaps from this audit are now:
+  - community `papers` and related persistence still need migration plus app-layer authorization rebuild
+  - legacy Supabase user-scoped client usage in community/auth-context flows still needs full replacement
+  - backend-wide pytest now runs past the old cache-permission blocker after moving temp/runtime files under `backend/tests` and disabling the root pytest cache provider; remaining failures are functional/stale-test issues that still need cleanup

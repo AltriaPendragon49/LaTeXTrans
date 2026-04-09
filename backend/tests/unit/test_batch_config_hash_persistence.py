@@ -2,6 +2,10 @@ import asyncio
 import base64
 import json
 import os
+import sqlite3
+from pathlib import Path
+from shutil import rmtree
+from uuid import uuid4
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
@@ -9,6 +13,7 @@ os.environ.setdefault("LLM_MODEL", "gpt-4o")
 
 from fastapi.security import HTTPAuthorizationCredentials
 
+from backend.app.core.config import get_settings
 from backend.app.api.routes import translate as translate_route
 from backend.app.models.config_models import AdvancedConfig, FormattingConfig
 from backend.app.services.task_manager import TaskManager
@@ -83,6 +88,23 @@ class _DuplicateInsertClient:
         return _DuplicateInsertQuery(self._inserted_records, self._updated_records)
 
 
+class _CapturingTaskRepository:
+    def __init__(self) -> None:
+        self.rows: dict[str, dict] = {}
+        self.upserts: list[tuple[str, dict]] = []
+
+    def get_task(self, task_id: str):
+        row = self.rows.get(task_id)
+        return dict(row) if row is not None else None
+
+    def upsert_task(self, task_id: str, payload: dict):
+        current = dict(self.rows.get(task_id, {}))
+        current.update(payload)
+        self.rows[task_id] = current
+        self.upserts.append((task_id, dict(payload)))
+        return dict(current)
+
+
 def _make_fake_jwt(user_id: str) -> str:
     payload = base64.urlsafe_b64encode(
         json.dumps({"sub": user_id}).encode("utf-8")
@@ -90,11 +112,75 @@ def _make_fake_jwt(user_id: str) -> str:
     return f"header.{payload}.signature"
 
 
+def _create_sqlite_schema(database_path: Path) -> None:
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(database_path))
+    try:
+        cursor = connection.cursor()
+        cursor.executescript(
+            """
+            create table users (
+              id text primary key,
+              external_provider text not null,
+              external_user_id text not null,
+              email text null,
+              display_name text null,
+              token_version integer not null default 1,
+              status text not null default 'active',
+              created_at text not null,
+              updated_at text not null
+            );
+
+            create table translation_tasks (
+              task_id text primary key,
+              user_id text null,
+              source_type text not null,
+              arxiv_id text null,
+              status text not null,
+              stage text null,
+              progress integer not null default 0,
+              message text null,
+              error text null,
+              detail_code text null,
+              source_language text not null,
+              target_language text not null,
+              translation_mode text not null,
+              compile_strategy text not null,
+              translation_model text null,
+              config_hash text null,
+              source_path text null,
+              output_path text null,
+              formatting text null,
+              generate_glossary integer not null default 1,
+              use_author_api integer not null default 1,
+              email_notification integer not null default 0,
+              created_at text not null,
+              completed_at text null
+            );
+            """
+        )
+        cursor.execute(
+            """
+            insert into users (id, external_provider, external_user_id, email, display_name, token_version, status, created_at, updated_at)
+            values ('usr_local_1', 'niutrans', '179017', 'alice@example.com', 'Alice', 1, 'active', '2026-04-09T00:00:00', '2026-04-09T00:00:00')
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _make_workspace_temp_root() -> Path:
+    root = Path("data/__pytest_tmp__")
+    root.mkdir(parents=True, exist_ok=True)
+    return root.resolve()
+
+
 def test_persist_task_if_needed_includes_config_hash(monkeypatch):
-    inserted_records = []
+    fake_repository = _CapturingTaskRepository()
     monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: _InsertClient(inserted_records),
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: fake_repository,
     )
 
     task_manager = TaskManager()
@@ -117,15 +203,14 @@ def test_persist_task_if_needed_includes_config_hash(monkeypatch):
     )
 
     assert task_manager.persist_task_if_needed(task_id) is True
-    assert inserted_records[-1]["config_hash"] == "hash-batch-task"
+    assert fake_repository.upserts[-1][1]["config_hash"] == "hash-batch-task"
 
 
 def test_persist_task_if_needed_treats_duplicate_insert_as_success(monkeypatch):
-    inserted_records = []
-    updated_records = []
+    fake_repository = _CapturingTaskRepository()
     monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: _DuplicateInsertClient(inserted_records, updated_records),
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: fake_repository,
     )
 
     task_manager = TaskManager()
@@ -148,9 +233,12 @@ def test_persist_task_if_needed_treats_duplicate_insert_as_success(monkeypatch):
     )
 
     assert task_manager.persist_task_if_needed(task_id) is True
-    assert inserted_records[-1]["task_id"] == task_id
-    assert updated_records[-1][0] == task_id
-    assert updated_records[-1][1]["config_hash"] == "hash-batch-task"
+    assert fake_repository.rows[task_id]["config_hash"] == "hash-batch-task"
+
+    task_manager.update_task(task_id=task_id, progress=42, message="updated")
+    assert task_manager.persist_task_if_needed(task_id) is True
+    assert fake_repository.rows[task_id]["task_id"] == task_id
+    assert fake_repository.rows[task_id]["config_hash"] == "hash-batch-task"
 
 
 def test_batch_translate_persists_config_hash(monkeypatch):
@@ -207,7 +295,13 @@ def test_batch_translate_persists_config_hash(monkeypatch):
         credentials=_make_fake_jwt("user-1"),
     )
 
-    response = asyncio.run(translate_route.batch_translate(request, credentials))
+    response = asyncio.run(
+        translate_route.batch_translate(
+            request,
+            credentials,
+            current_user={"id": "user-1"},
+        )
+    )
 
     assert response.task_ids == ["task-1"]
     assert len(captured_hashes) == 1
@@ -221,3 +315,142 @@ def test_batch_translate_persists_config_hash(monkeypatch):
         compile_strategy="auto",
         formatting=formatting,
     )
+
+
+def test_persist_task_config_hash_updates_local_database(monkeypatch):
+    temp_root = _make_workspace_temp_root()
+    database_path = temp_root / f"translate-route-{uuid4().hex}.db"
+    try:
+        _create_sqlite_schema(database_path)
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
+
+        connection = sqlite3.connect(str(database_path))
+        try:
+            connection.execute(
+                """
+                insert into translation_tasks (
+                  task_id, user_id, source_type, arxiv_id, status, stage, progress, message, error, detail_code,
+                  source_language, target_language, translation_mode, compile_strategy, translation_model, config_hash,
+                  source_path, output_path, formatting, generate_glossary, use_author_api, email_notification,
+                  created_at, completed_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "task-local-1",
+                    "usr_local_1",
+                    "arxiv",
+                    "2501.00001",
+                    "pending",
+                    "idle",
+                    0,
+                    None,
+                    None,
+                    None,
+                    "en",
+                    "zh",
+                    "full",
+                    "auto",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    1,
+                    1,
+                    0,
+                    "2026-04-09T00:00:00",
+                    None,
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        assert asyncio.run(
+            translate_route.persist_task_config_hash("task-local-1", "cfg-local-1")
+        ) is True
+
+        connection = sqlite3.connect(str(database_path))
+        connection.row_factory = sqlite3.Row
+        try:
+            row = connection.execute(
+                "select config_hash from translation_tasks where task_id = ?",
+                ("task-local-1",),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        assert row is not None
+        assert row["config_hash"] == "cfg-local-1"
+    finally:
+        database_path.unlink(missing_ok=True)
+
+
+def test_find_reusable_output_reads_local_database(monkeypatch):
+    temp_root = _make_workspace_temp_root()
+    database_path = temp_root / f"translate-route-{uuid4().hex}.db"
+    outputs_root = temp_root / f"translate-route-{uuid4().hex}-outputs"
+    try:
+        _create_sqlite_schema(database_path)
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
+        monkeypatch.setattr(settings, "outputs_dir", outputs_root)
+
+        reusable_output = outputs_root / "task-existing"
+        reusable_output.mkdir(parents=True)
+
+        connection = sqlite3.connect(str(database_path))
+        try:
+            connection.execute(
+                """
+                insert into translation_tasks (
+                  task_id, user_id, source_type, arxiv_id, status, stage, progress, message, error, detail_code,
+                  source_language, target_language, translation_mode, compile_strategy, translation_model, config_hash,
+                  source_path, output_path, formatting, generate_glossary, use_author_api, email_notification,
+                  created_at, completed_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "task-existing",
+                    "usr_local_1",
+                    "arxiv",
+                    "2501.00001",
+                    "completed",
+                    "done",
+                    100,
+                    None,
+                    None,
+                    None,
+                    "en",
+                    "zh",
+                    "full",
+                    "auto",
+                    None,
+                    "cfg-local-1",
+                    None,
+                    str(reusable_output),
+                    None,
+                    1,
+                    1,
+                    0,
+                    "2026-04-09T00:00:00",
+                    "2026-04-09T00:10:00",
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        result = asyncio.run(
+            translate_route.find_reusable_output("cfg-local-1", "task-current")
+        )
+
+        assert result == str(reusable_output)
+    finally:
+        database_path.unlink(missing_ok=True)
+        rmtree(outputs_root, ignore_errors=True)

@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.core.auth import require_admin_request
 from backend.app.core.config import get_settings
+from backend.app.repositories import TranslationTaskRepository
 from backend.app.services.task_manager import (
     get_task_manager,
     get_task_queue,
@@ -79,6 +80,10 @@ def _dedupe_non_empty(values: List[str]) -> List[str]:
         seen.add(normalized)
         ordered.append(normalized)
     return ordered
+
+
+def get_translation_task_repository() -> TranslationTaskRepository:
+    return TranslationTaskRepository()
 
 async def reset_stale_community_tasks() -> dict:
     """
@@ -249,28 +254,20 @@ async def fail_interrupted_translation_tasks() -> dict:
     Mark interrupted queued/pending/processing translation tasks as failed on restart.
     Also cleans local task artifacts and updates affected community-paper status.
     """
-    from backend.app.core.supabase_client import create_supabase_admin_client
-
     result = {"failed_tasks": 0, "updated_papers": 0, "cleaned_task_artifacts": 0, "errors": []}
-
-    if not settings.supabase_service_role_key or not settings.supabase_url:
-        return result
-
-    client = create_supabase_admin_client()
+    repository = get_translation_task_repository()
     task_manager = get_task_manager()
-    if not client:
-        return result
+    client = None
+    if settings.supabase_service_role_key and settings.supabase_url:
+        from backend.app.core.supabase_client import create_supabase_admin_client
+
+        client = create_supabase_admin_client()
 
     try:
-        active_res = await asyncio.to_thread(
-            lambda: client.table("translation_tasks")
-            .select("task_id")
-            .in_("status", INTERRUPTED_TASK_STATUSES)
-            .execute()
-        )
-        active_ids = _dedupe_non_empty([row.get("task_id") for row in (active_res.data or [])])
+        active_ids = _dedupe_non_empty(repository.list_task_ids_by_status(INTERRUPTED_TASK_STATUSES))
         updated_paper_ids: Set[str] = set()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+        now_iso = now.isoformat()
 
         if active_ids:
             for task_id in active_ids:
@@ -279,60 +276,50 @@ async def fail_interrupted_translation_tasks() -> dict:
                     result["cleaned_task_artifacts"] += 1
                 result.setdefault("task_cleanup_errors", []).extend(deletion_result.get("errors", []))
 
-            await asyncio.to_thread(
-                lambda: client.table("translation_tasks")
-                .update(
-                    {
-                        "status": "failed",
-                        "progress": 100,
-                        "message": "Task interrupted by backend restart",
-                        "error": "Task interrupted by backend restart",
-                        "detail_code": "task_interrupted_restart",
-                        "completed_at": now_iso,
-                    }
-                )
-                .in_("task_id", active_ids)
-                .execute()
+            result["failed_tasks"] = repository.update_tasks(
+                active_ids,
+                {
+                    "status": "failed",
+                    "progress": 100,
+                    "message": "Task interrupted by backend restart",
+                    "error": "Task interrupted by backend restart",
+                    "detail_code": "task_interrupted_restart",
+                    "completed_at": now,
+                },
             )
-            result["failed_tasks"] = len(active_ids)
 
-            affected_papers_res = await asyncio.to_thread(
-                lambda: client.table("papers")
-                .select("id")
-                .in_("trans_status", ["queued", "processing"])
-                .in_("community_selected_task_id", active_ids)
-                .execute()
-            )
-            affected_paper_ids = _dedupe_non_empty([row.get("id") for row in (affected_papers_res.data or [])])
-            if affected_paper_ids:
-                await asyncio.to_thread(
+            if client is not None:
+                affected_papers_res = await asyncio.to_thread(
                     lambda: client.table("papers")
-                    .update({"trans_status": "failed", "updated_at": now_iso})
-                    .in_("id", affected_paper_ids)
+                    .select("id")
+                    .in_("trans_status", ["queued", "processing"])
+                    .in_("community_selected_task_id", active_ids)
                     .execute()
                 )
-                updated_paper_ids.update(affected_paper_ids)
+                affected_paper_ids = _dedupe_non_empty([row.get("id") for row in (affected_papers_res.data or [])])
+                if affected_paper_ids:
+                    await asyncio.to_thread(
+                        lambda: client.table("papers")
+                        .update({"trans_status": "failed", "updated_at": now_iso})
+                        .in_("id", affected_paper_ids)
+                        .execute()
+                    )
+                    updated_paper_ids.update(affected_paper_ids)
 
-        stale_papers_res = await asyncio.to_thread(
-            lambda: client.table("papers")
-            .select("id, community_selected_task_id")
-            .in_("trans_status", ["queued", "processing"])
-            .execute()
-        )
-        stale_rows = stale_papers_res.data or []
-        stale_task_ids = _dedupe_non_empty([row.get("community_selected_task_id") for row in stale_rows])
-        if stale_task_ids:
-            stale_task_status_res = await asyncio.to_thread(
-                lambda: client.table("translation_tasks")
-                .select("task_id, status")
-                .in_("task_id", stale_task_ids)
+        if client is not None:
+            stale_papers_res = await asyncio.to_thread(
+                lambda: client.table("papers")
+                .select("id, community_selected_task_id")
+                .in_("trans_status", ["queued", "processing"])
                 .execute()
             )
+            stale_rows = stale_papers_res.data or []
+            stale_task_ids = _dedupe_non_empty([row.get("community_selected_task_id") for row in stale_rows])
             terminal_failed_statuses = {"failed", "failed_compilation", "structure_invalid"}
             failed_task_ids = {
-                str(row.get("task_id") or "").strip()
-                for row in (stale_task_status_res.data or [])
-                if str(row.get("status") or "").strip() in terminal_failed_statuses
+                task_id
+                for task_id, status in repository.list_task_statuses(stale_task_ids).items()
+                if status in terminal_failed_statuses
             }
             stale_paper_ids = _dedupe_non_empty(
                 [
@@ -385,9 +372,8 @@ async def startup_event():
     await fail_interrupted_translation_tasks()
     await reset_stale_community_tasks()
 
-    # 鈹€鈹€ Orphaned-task cleanup 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Orphaned task cleanup runs on startup and then periodically.
     from backend.app.services.task_manager import task_manager as _tm
-    from backend.app.core.supabase_client import get_supabase_admin_client
     from pathlib import Path as _Path
     import shutil as _shutil
     import time as _time
@@ -399,10 +385,10 @@ async def startup_event():
         State-independent orphaned task cleanup.
 
         Scans data/outputs and data/terms for directories older than
-        guest_task_ttl_hours. Any task_id not found in the Supabase
-        translation_tasks table is considered orphaned and deleted.
-        If Supabase is unreachable the entire deletion is skipped to
-        prevent accidental data loss.
+        guest_task_ttl_hours. Any task_id not found in local
+        translation-task persistence is considered orphaned and deleted.
+        If local translation-task storage is unreachable the entire
+        deletion is skipped to prevent accidental data loss.
         """
         import asyncio as _asyncio2
         try:
@@ -430,31 +416,22 @@ async def startup_event():
                 logger.debug("[OrphanedCleanup] No old directories found, skipping.")
                 return
 
-            # 2. Bulk-query Supabase to find which task_ids still exist in DB
-            client = get_supabase_admin_client()
-            if not client:
+            # 2. Bulk-query local persistence to find which task_ids still exist in DB
+            repository = get_translation_task_repository()
+            try:
+                db_task_ids = set(
+                    await _asyncio2.to_thread(
+                        repository.list_existing_task_ids,
+                        list(old_task_ids),
+                    )
+                )
+            except Exception as db_err:
                 logger.warning(
-                    "[OrphanedCleanup] Supabase admin client unavailable 鈥?"
+                    f"[OrphanedCleanup] Local translation-task query failed ({db_err}) - "
                     "skipping deletion to prevent accidental data loss."
                 )
                 return
 
-            try:
-                result = await _asyncio2.to_thread(
-                    lambda: (
-                        client.table("translation_tasks")
-                        .select("task_id")
-                        .in_("task_id", list(old_task_ids))
-                        .execute()
-                    )
-                )
-                db_task_ids = {row["task_id"] for row in (result.data or [])}
-            except Exception as db_err:
-                logger.warning(
-                    f"[OrphanedCleanup] Supabase query failed ({db_err}) 鈥?"
-                    "skipping deletion to prevent accidental data loss."
-                )
-                return
 
             # 3. Delete directories whose task_id is NOT in the DB (orphaned)
             orphaned = old_task_ids - db_task_ids

@@ -10,8 +10,6 @@ Authentication Module - 纯 RLS 模式
 前端发送 access_token → 后端透传给 Supabase client → RLS 自动控制权限
 """
 
-import base64
-import json
 import logging
 from typing import Any, Optional
 
@@ -42,34 +40,19 @@ def extract_bearer_token(request) -> Optional[str]:
     return token or None
 
 
-def decode_unverified_sub_claim(token: Optional[str]) -> Optional[str]:
-    if not token or token.count(".") != 2:
-        return None
-
-    try:
-        payload_b64 = token.split(".")[1]
-        payload_b64 += "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-    except Exception:
-        return None
-
-    sub = payload.get("sub")
-    return str(sub) if sub else None
-
-
 def resolve_current_user_id(
     current_user: Any,
     credentials: Optional[HTTPAuthorizationCredentials] = None,
 ) -> Optional[str]:
+    del credentials
+
     if isinstance(current_user, dict):
         for key in ("id", "user_id", "sub"):
             value = current_user.get(key)
             if value:
                 return str(value)
 
-    return decode_unverified_sub_claim(
-        extract_bearer_token_from_credentials(credentials)
-    )
+    return None
 
 
 def get_auth_service() -> LocalAuthService:

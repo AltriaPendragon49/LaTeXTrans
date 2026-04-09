@@ -8,62 +8,34 @@ os.environ.setdefault("LLM_MODEL", "gpt-4o")
 from backend.app.api.routes import history as history_route
 
 
-class _ExecuteQuery:
-    def __init__(self, label: str):
-        self.label = label
+class _Repository:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, int, str | None]] = []
 
-    def select(self, *_args, **_kwargs):
-        return self
-
-    def eq(self, *_args, **_kwargs):
-        return self
-
-    def order(self, *_args, **_kwargs):
-        return self
-
-    def range(self, *_args, **_kwargs):
-        return self
-
-    def execute(self):
-        if self.label == "shared":
-            raise AssertionError("shared authenticated client should not execute in threaded mode")
-
-        class _Result:
-            data = []
-            count = 0
-
-        return _Result()
+    def list_tasks_for_user(self, user_id: str, *, page: int, page_size: int, status_filter: str | None):
+        self.calls.append((user_id, page, page_size, status_filter))
+        return [], 0
 
 
-class _Client:
-    def __init__(self, label: str):
-        self.label = label
+def test_history_route_queries_local_repository_via_run_db_blocking(monkeypatch):
+    repository = _Repository()
 
-    def table(self, table_name):
-        assert table_name == "translation_tasks"
-        return _ExecuteQuery(self.label)
-
-
-def test_history_query_uses_per_call_authenticated_clone(monkeypatch):
-    async def _fake_run_db_blocking(_shared_call, *, per_call_client_call=None):
-        assert per_call_client_call is not None
-        return per_call_client_call()
+    async def _fake_run_db_blocking(shared_call, *, per_call_client_call=None):
+        assert per_call_client_call is None
+        return shared_call()
 
     monkeypatch.setattr(history_route, "run_db_blocking", _fake_run_db_blocking)
-    monkeypatch.setattr(
-        history_route,
-        "clone_supabase_client_with_same_auth",
-        lambda _client: _Client("per-call"),
-    )
 
-    result, offset = asyncio.run(
-        history_route._execute_history_list_query(
-            _Client("shared"),
+    response = asyncio.run(
+        history_route.get_user_history(
+            current_user={"id": "usr_local_1", "roles": ["user"]},
+            repository=repository,
             page=1,
             page_size=10,
             status_filter=None,
         )
     )
 
-    assert result.count == 0
-    assert offset == 0
+    assert response.total == 0
+    assert response.tasks == []
+    assert repository.calls == [("usr_local_1", 1, 10, None)]

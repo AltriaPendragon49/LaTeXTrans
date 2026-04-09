@@ -63,6 +63,7 @@ def test_start_translation_schedules_community_publish_watch_for_authenticated_u
             task_id="task-1",
             request=TranslateRequest(source_language="en", target_language="zh"),
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1"},
         )
     )
 
