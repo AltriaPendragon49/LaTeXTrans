@@ -3,7 +3,7 @@
 - [x] 1.1 Add backend auth endpoints for in-app login, logout, and current-user bootstrap using the NiuTrans login API as the upstream credential verifier.
 - [x] 1.2 Define and implement the local JWT/session contract, including claims, TTL, no-refresh behavior, current-device logout, session invalidation, and multi-device policy.
 - [x] 1.3 Add local JWT/session issuance and verification, plus `optional_current_user`, `require_current_user`, and `require_admin_user` dependencies.
-- [ ] 1.4 Introduce a centralized authorization entrypoint such as `authorize(user, resource, action, context)` and remove route-level ad hoc ownership logic.
+- [x] 1.4 Introduce a centralized authorization entrypoint such as `authorize(user, resource, action, context)` and remove route-level ad hoc ownership logic.
 - [x] 1.5 Define local user mapping based on NiuTrans `userId` and seed an initial local admin strategy that does not depend on Supabase metadata or service-role behavior.
 - [x] 1.6 Replace frontend Supabase auth state management with local token/session handling and authenticated session bootstrap.
 - [x] 1.7 Update login/register/recovery UI so in-app login remains local, while registration and account-management entry points redirect to NiuTrans-managed pages.
@@ -16,7 +16,7 @@
 
 ## 3. Translation Mainline Migration
 
-- [ ] 3.1 Move authenticated translation-task persistence, history retrieval, task deletion, and reconciliation flows from Supabase to MySQL.
+- [x] 3.1 Move authenticated translation-task persistence, history retrieval, task deletion, and reconciliation flows from Supabase to MySQL.
 - [x] 3.2 Move user-settings storage and retrieval from Supabase to MySQL while preserving current default-setting behavior.
 - [ ] 3.3 Keep guest translation behavior intact, including non-persistent guest task semantics and existing cleanup expectations.
 - [ ] 3.4 Replace batch-translation persistence retry behavior so it targets MySQL/local fallback semantics instead of Supabase-specific retry assumptions.
@@ -25,15 +25,15 @@
 
 - [ ] 4.1 Move community paper metadata and paper-asset persistence from Supabase to MySQL while keeping local disk paths as the asset source of truth.
 - [x] 4.2 Move community-agent conversation/run persistence from Supabase-backed auth context to MySQL-backed local user context.
-- [ ] 4.3 Replace community authorization assumptions that currently depend on RLS/service-role patterns with explicit app-layer ownership and admin checks.
+- [x] 4.3 Replace community authorization assumptions that currently depend on RLS/service-role patterns with explicit app-layer ownership and admin checks.
 
 ## 5. Data Migration And Cleanup
 
-- [ ] 5.1 Add repeatable local migration scripts that import current Supabase rows into MySQL for the in-scope entities.
-- [ ] 5.2 Define explicit schema-mapping and field-conversion rules for each migrated entity, including user identity mapping and JSON field normalization.
-- [ ] 5.3 Implement migration dry-run mode, validation reports, checksum or count verification, and a clear rollback procedure for local testing.
-- [ ] 5.4 Write and maintain a rollout note covering migration window, data backup, and rollback triggers for the local-first cutover.
-- [ ] 5.5 Validate migrated file-path references against the local disk layout and emit actionable reports for missing assets without aborting all imports.
+- [x] 5.1 Add repeatable local migration scripts that import current Supabase rows into MySQL for the in-scope entities.
+- [x] 5.2 Define explicit schema-mapping and field-conversion rules for each migrated entity, including user identity mapping and JSON field normalization.
+- [x] 5.3 Implement migration dry-run mode, validation reports, checksum or count verification, and a clear rollback procedure for local testing.
+- [x] 5.4 Write and maintain a rollout note covering migration window, data backup, and rollback triggers for the local-first cutover.
+- [x] 5.5 Validate migrated file-path references against the local disk layout and emit actionable reports for missing assets without aborting all imports.
 - [ ] 5.6 Remove runtime Supabase SDK/config dependencies from local startup paths once MySQL-backed flows are complete.
 - [x] 5.7 Update local setup documentation and env examples so local validation no longer requires Supabase runtime credentials.
 
@@ -41,7 +41,7 @@
 
 - [x] 6.1 Verify in-app login via NiuTrans-backed credential validation plus local token issuance.
 - [ ] 6.2 Verify guest translation still works without login.
-- [ ] 6.3 Verify authenticated history and settings flows run against MySQL.
+- [x] 6.3 Verify authenticated history and settings flows run against MySQL.
 - [ ] 6.4 Verify community paper display and community-agent persistence run against MySQL.
 - [ ] 6.5 Verify migrated local data is visible and coherent after import.
 - [x] 6.6 Run `openspec validate replace-supabase-with-niutrans-auth-and-mysql --strict --no-interactive` and collect local evidence before implementation sign-off.
@@ -201,3 +201,36 @@
   - `3.4` still needs broader batch-translation behavior review so all retry/degradation messaging and cleanup assumptions match the local-first persistence model end-to-end
   - `5.6` still has compatibility naming and config residues (`supabase_*` env fields and legacy helper names) even though the last real backend SDK import path has been removed from local runtime use
   - `2.3` still needs a wider audit of other legacy compatibility shims and route/service comments so the codebase no longer suggests runtime Supabase authority where none remains
+
+### 2026-04-10 Authorization Closure, Task Boundary Hardening, And Import Tooling
+
+- Completed in this slice:
+  - centralized remaining user-scoped translation/community authorization through `authorize(...)` for:
+    - authenticated history list/detail/delete flows
+    - settings read/update flows
+    - task status/delete/SSE access for authenticated tasks while preserving guest-task access
+    - community-agent run create/read/event flows
+  - removed the legacy admin cleanup service-role bypass so runtime admin cleanup now depends on verified local admin authorization only
+  - removed community paper submitter resolution from unverified bearer-token payload parsing and switched submit/translate paper flows to trust verified local `current_user` / `submitter_user_id` only
+  - aligned task deletion policy with the local persisted-task ownership model so users can delete their own persisted tasks
+  - added a repeatable `backend/scripts/import_supabase_to_mysql.py` importer for the in-scope entities with:
+    - JSON export parsing
+    - schema-aware field normalization and user/ownership mapping
+    - dry-run mode and structured report output
+    - repeatable upsert-based imports for local reruns
+    - missing asset-path reporting without aborting the full import
+  - added focused migration/import coverage in `backend/tests/unit/test_import_supabase_to_mysql.py`
+  - added local rollout/backout guidance in `docs/supabase-import-rollout-backout.md`
+  - refreshed frontend locale coverage so the current community/tooling UI passes `npm.cmd run i18n:check`
+- Verification captured in this slice:
+  - `python -m pytest backend/tests/unit/test_authorization_policies.py backend/tests/unit/test_local_translation_history_api.py backend/tests/unit/test_local_user_settings_api.py backend/tests/unit/test_task_detail_metadata.py backend/tests/unit/test_papers_submit_contract.py backend/tests/unit/test_papers_translation_bridge.py backend/tests/unit/test_verified_user_resolution.py backend/tests/unit/test_admin_cleanup_api.py backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_agent_service.py backend/tests/unit/test_import_supabase_to_mysql.py -q`
+    - result: `83 passed`
+  - `npm.cmd run i18n:check`
+    - result: audit passed (warnings only for pre-existing unused/dynamic keys)
+- Remaining work impacted by this slice:
+  - `2.3` remains open because compatibility-named shims/config fields and a few legacy comments still exist even though the active runtime paths are local-first
+  - `3.3` and `6.2` remain open until guest translation cleanup expectations are verified more explicitly beyond the preserved guest/task-route behavior
+  - `3.4` remains open until batch persistence retry messaging and degraded-mode surfacing are fully aligned with the local-first model everywhere
+  - `4.1` and `6.4` remain open because community paper reads still allow baseline-seed fallback and broader MySQL-authoritative verification is not complete yet
+  - `5.6` remains open until runtime Supabase compatibility naming/config residues are removed more broadly
+  - `6.5` remains open until imported data visibility/coherence is verified through a fuller post-import read path, not just the importer unit coverage

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from backend.app.core.auth import require_current_user
 from backend.app.core.encryption import encrypt_api_key
+from backend.app.policies import authorize
 from backend.app.repositories import USER_SETTINGS_DEFAULTS, UserSettingsRepository
 from backend.app.utils.async_blocking import run_db_blocking
 
@@ -69,12 +70,23 @@ def _build_response(settings: dict[str, Any]) -> UserSettingsResponse:
     )
 
 
+def _ensure_settings_authorized(current_user: Dict[str, Any], action: str) -> None:
+    decision = authorize(current_user, "settings", action)
+    if decision.allowed:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=decision.reason,
+    )
+
+
 @router.get("/settings", response_model=UserSettingsResponse)
 async def get_user_settings(
     current_user: Dict[str, Any] = Depends(require_current_user),
     repository: UserSettingsRepository = Depends(_resolve_user_settings_repository),
 ):
     """Get the current user's saved settings or project defaults."""
+    _ensure_settings_authorized(current_user, "read")
 
     try:
         settings = await run_db_blocking(
@@ -95,6 +107,7 @@ async def update_user_settings(
     repository: UserSettingsRepository = Depends(_resolve_user_settings_repository),
 ):
     """Update the current user's saved settings."""
+    _ensure_settings_authorized(current_user, "update")
 
     try:
         update_data: dict[str, Any] = {}

@@ -319,6 +319,66 @@ def test_agent_run_result_route_uses_verified_current_user(monkeypatch: pytest.M
     assert captured == {"run_id": "run-42", "owner_user_id": "usr-result"}
 
 
+def test_agent_run_create_route_respects_centralized_authorization_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Denied:
+        allowed = False
+        reason = "policy denied run creation"
+
+    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, run_mode, owner_user_id):  # type: ignore[no-untyped-def]
+        del input_text, context, skill_toggles, execution_mode, run_mode, owner_user_id
+        return {"run_id": "run-ignored", "status": "completed", "intent": "answer"}
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.create_agent_run",
+        fake_create_run,
+    )
+    monkeypatch.setattr(
+        community_agent_route,
+        "authorize",
+        lambda *_args, **_kwargs: _Denied(),
+    )
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-run-1", "roles": ["user"]}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.post(
+                "/api/community-agent/runs",
+                json={"input": "Explain this paper"},
+            )
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "policy denied run creation"
+
+
+def test_agent_run_result_route_maps_permission_error_to_forbidden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_get_agent_run(run_id: str, *, owner_user_id: str):  # type: ignore[no-untyped-def]
+        del run_id, owner_user_id
+        raise PermissionError("policy denied run read")
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.get_agent_run",
+        fake_get_agent_run,
+    )
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-result"}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/community-agent/runs/run-denied")
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "policy denied run read"
+
+
 def test_agent_conversation_routes_forward_authenticated_crud_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     saved_calls: Dict[str, Any] = {}
 

@@ -135,10 +135,6 @@ async def require_admin_request(
         }
 
     token = extract_bearer_token_from_credentials(credentials)
-    settings = get_settings()
-    if token and token == getattr(settings, "supabase_service_role_key", None):
-        return {"auth_type": "service_role"}
-
     if token:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

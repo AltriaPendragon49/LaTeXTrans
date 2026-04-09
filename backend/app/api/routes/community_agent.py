@@ -67,12 +67,18 @@ class CommunityAgentRunResponse(BaseModel):
     result_url: Optional[str] = None
 
 
-def _ensure_conversation_authorized(current_user: Dict[str, Any], action: str) -> None:
+def _ensure_community_agent_authorized(
+    current_user: Dict[str, Any],
+    *,
+    resource: str,
+    action: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> None:
     decision = authorize(
         current_user,
-        "community_conversation",
+        resource,
         action,
-        {"owner_user_id": str(current_user.get("id") or "")},
+        context or {},
     )
     if decision.allowed:
         return
@@ -87,6 +93,12 @@ async def create_agent_run(
     request: CommunityAgentRunRequest,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_authorized(
+        current_user,
+        resource="community_run",
+        action="create",
+        context={"owner_user_id": str(current_user.get("id") or "")},
+    )
     if not request.input.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="input is required")
 
@@ -114,7 +126,12 @@ async def create_agent_run(
 async def list_agent_conversations(
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    _ensure_conversation_authorized(current_user, "read")
+    _ensure_community_agent_authorized(
+        current_user,
+        resource="community_conversation",
+        action="read",
+        context={"owner_user_id": str(current_user.get("id") or "")},
+    )
     return await community_agent_service.list_conversations(
         owner_user_id=str(current_user["id"]),
     )
@@ -126,7 +143,12 @@ async def upsert_agent_conversation(
     request: CommunityConversationRecordPayload,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    _ensure_conversation_authorized(current_user, "update")
+    _ensure_community_agent_authorized(
+        current_user,
+        resource="community_conversation",
+        action="update",
+        context={"owner_user_id": str(current_user.get("id") or "")},
+    )
     if request.id != conversation_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="conversation id mismatch")
 
@@ -141,7 +163,12 @@ async def delete_agent_conversation(
     conversation_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    _ensure_conversation_authorized(current_user, "delete")
+    _ensure_community_agent_authorized(
+        current_user,
+        resource="community_conversation",
+        action="delete",
+        context={"owner_user_id": str(current_user.get("id") or "")},
+    )
     return await community_agent_service.delete_conversation(
         owner_user_id=str(current_user["id"]),
         conversation_id=conversation_id,
@@ -153,6 +180,12 @@ async def get_agent_run(
     run_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_authorized(
+        current_user,
+        resource="community_run",
+        action="read",
+        context={"owner_user_id": str(current_user.get("id") or "")},
+    )
     try:
         return await community_agent_service.get_agent_run(
             run_id,
@@ -160,9 +193,8 @@ async def get_agent_run(
         )
     except PermissionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
-            headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
 
@@ -171,6 +203,12 @@ async def stream_agent_events(
     run_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_authorized(
+        current_user,
+        resource="community_run",
+        action="read",
+        context={"owner_user_id": str(current_user.get("id") or "")},
+    )
     owner_user_id = str(current_user["id"])
 
     async def _event_stream():

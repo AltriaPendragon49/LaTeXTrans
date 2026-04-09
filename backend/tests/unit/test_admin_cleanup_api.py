@@ -61,7 +61,7 @@ def test_require_admin_request_rejects_non_admin_user(monkeypatch: pytest.Monkey
     assert exc_info.value.status_code == 403
 
 
-def test_require_admin_request_accepts_service_role_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_require_admin_request_rejects_legacy_service_role_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         auth,
         "get_settings",
@@ -72,16 +72,17 @@ def test_require_admin_request_accepts_service_role_key(monkeypatch: pytest.Monk
         ),
     )
 
-    result = asyncio.run(
-        auth.require_admin_request(
-            HTTPAuthorizationCredentials(
-                scheme="Bearer",
-                credentials="service-role-secret",
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            auth.require_admin_request(
+                HTTPAuthorizationCredentials(
+                    scheme="Bearer",
+                    credentials="service-role-secret",
+                )
             )
         )
-    )
 
-    assert result["auth_type"] == "service_role"
+    assert exc_info.value.status_code == 403
 
 
 def test_require_admin_request_uses_central_authorization_for_local_user(

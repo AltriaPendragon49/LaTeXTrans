@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
 import hmac
 import json
@@ -837,31 +836,16 @@ def _copy_into_community_library(source_path: Path, destination_path: Path) -> P
     return destination_path
 
 
-def _decode_jwt_payload(token: str) -> Dict[str, Any]:
-    if token.count(".") != 2:
-        return {}
-
-    try:
-        payload_b64 = token.split(".")[1]
-        payload_b64 += "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")))
-        return payload if isinstance(payload, dict) else {}
-    except Exception:
-        return {}
-
-
 async def resolve_submitter_context(
-    credentials: Optional[HTTPAuthorizationCredentials],
+    current_user: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    if credentials is None:
+    if not isinstance(current_user, dict):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    payload = _decode_jwt_payload(credentials.credentials)
-    user_id = payload.get("sub")
+    user_id = current_user.get("id") or current_user.get("user_id") or current_user.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -2272,11 +2256,16 @@ async def submit_uploaded_paper(
     *,
     file: UploadFile,
     credentials: Optional[HTTPAuthorizationCredentials],
+    current_user: Optional[Dict[str, Any]] = None,
     source_language: str = "en",
     target_language: str = "zh",
 ) -> Dict[str, Any]:
-    context = await resolve_submitter_context(credentials)
-    upload_response = await upload_route.upload_file(file=file, credentials=credentials)
+    context = await resolve_submitter_context(current_user)
+    upload_response = await upload_route.upload_file(
+        file=file,
+        credentials=credentials,
+        current_user=current_user,
+    )
 
     community_status = (
         COMMUNITY_STATUS_OFFICIAL if context["is_admin"] else COMMUNITY_STATUS_USER_FALLBACK
@@ -2325,15 +2314,16 @@ async def submit_arxiv_paper(
     *,
     arxiv_id: str,
     credentials: Optional[HTTPAuthorizationCredentials],
+    current_user: Optional[Dict[str, Any]] = None,
     source_language: str = "en",
     target_language: str = "zh",
 ) -> Dict[str, Any]:
     del source_language, target_language
 
-    if credentials is None:
+    if current_user is None:
         context = {"user_id": None, "roles": [], "is_admin": False}
     else:
-        context = await resolve_submitter_context(credentials)
+        context = await resolve_submitter_context(current_user)
     admission = await resolve_community_admission(
         submitter_context=context,
         source_type="arxiv",
@@ -2354,6 +2344,7 @@ async def submit_arxiv_paper(
     arxiv_response = await arxiv_route.download_arxiv(
         request=arxiv_route.ArxivRequest(arxiv_id=arxiv_id),
         credentials=credentials,
+        current_user=current_user,
     )
     metadata = await _fetch_arxiv_metadata(arxiv_id)
 
@@ -2418,13 +2409,14 @@ async def start_paper_translation(
     request: translate_route.TranslateRequest,
     credentials: Optional[HTTPAuthorizationCredentials],
     submitter_user_id: Optional[str] = None,
+    current_user: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if submitter_user_id:
         context = await resolve_submitter_context_by_user_id(submitter_user_id)
-    elif credentials is None:
+    elif current_user is None:
         context = {"user_id": None, "roles": [], "is_admin": False}
     else:
-        context = await resolve_submitter_context(credentials)
+        context = await resolve_submitter_context(current_user)
     paper = await _ensure_public_paper(paper_id)
 
     active_task_id = paper.get("community_selected_task_id")

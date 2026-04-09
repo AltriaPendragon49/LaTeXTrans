@@ -194,3 +194,12 @@ def test_download_arxiv_ignores_unverified_bearer_token_for_task_owner(monkeypat
 
     assert response.task_id == "task-arxiv-1"
     assert captured["create_task"]["user_id"] is None
+
+
+def test_paper_submitter_resolution_rejects_missing_verified_user() -> None:
+    from backend.app.services import paper_service
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(paper_service.resolve_submitter_context(None))
+
+    assert exc_info.value.status_code == 401

@@ -11,7 +11,8 @@ from .task_policy import TaskPolicy
 
 
 _POLICY_REGISTRY: dict[str, BasePolicy] = {
-    "community_conversation": CommunityAgentPolicy(),
+    "community_conversation": CommunityAgentPolicy(resource_name="community_conversation"),
+    "community_run": CommunityAgentPolicy(resource_name="community_run"),
     "settings": SettingsPolicy(),
     "task": TaskPolicy(),
     "admin_cleanup": AdminPolicy(),

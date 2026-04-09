@@ -2,6 +2,8 @@
 
 This rollout note defines the local-first migration window, rollback triggers, and backup expectations for replacing Supabase runtime dependencies with NiuTrans-backed auth and MySQL persistence.
 
+Detailed importer execution and backout guidance for this change is maintained in `docs/supabase-import-rollout-backout.md`.
+
 ## Migration Window
 
 The rollout window for this change is the local validation phase only.

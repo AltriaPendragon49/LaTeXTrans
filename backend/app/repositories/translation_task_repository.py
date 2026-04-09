@@ -326,6 +326,18 @@ class TranslationTaskRepository:
             )
             return cursor.rowcount > 0
 
+    def delete_task(self, task_id: str) -> bool:
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "delete from translation_tasks "
+                    f"where task_id = {_placeholder(0)}"
+                ),
+                (task_id,),
+            )
+            return cursor.rowcount > 0
+
     def find_reusable_completed_task(
         self,
         config_hash: str,

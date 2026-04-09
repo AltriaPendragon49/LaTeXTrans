@@ -194,6 +194,7 @@ async def submit_paper(
         payload = await paper_service.submit_uploaded_paper(
             file=file,
             credentials=credentials,
+            current_user=current_user,
             source_language=source_language,
             target_language=target_language,
         )
@@ -211,6 +212,7 @@ async def submit_paper(
         payload = await paper_service.submit_arxiv_paper(
             arxiv_id=str(arxiv_id),
             credentials=credentials,
+            current_user=current_user,
             source_language=str(body.get("source_language") or "en"),
             target_language=str(body.get("target_language") or "zh"),
         )
@@ -296,11 +298,13 @@ async def translate_paper(
     paper_id: str,
     request: TranslateRequest,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
     return await paper_service.start_paper_translation(
         paper_id=paper_id,
         request=request,
         credentials=credentials,
+        current_user=current_user,
     )
 
 

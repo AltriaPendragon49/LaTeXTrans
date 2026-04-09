@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 import asyncio
-import hashlib
 import threading
 import time
 import uuid
@@ -9,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from backend.app.policies import authorize
 from backend.app.services.community_agent import run_agent
 from backend.app.repositories import CommunityAgentConversationRepository
 from backend.app.repositories.community_agent_repository import CommunityAgentRunRepository
@@ -25,7 +25,6 @@ class RunNotFoundError(KeyError):
 class _RunRecord:
     run_id: str
     owner_user_id: str | None
-    auth_token_hash: str | None
     conversation_id: str | None = None
     status: str = "queued"
     intent: str = "answer"
@@ -47,12 +46,6 @@ class _RunRecord:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
-def _hash_access_token(access_token: str | None) -> str | None:
-    if not access_token:
-        return None
-    return hashlib.sha256(access_token.encode("utf-8")).hexdigest()
-
-
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -68,6 +61,26 @@ def _default_provider_state() -> Dict[str, str]:
 
 def _should_persist_run(record: _RunRecord) -> bool:
     return bool(record.owner_user_id)
+
+
+def _authorize_run_access(
+    *,
+    actor_user_id: str | None,
+    owner_user_id: str | None,
+    action: str,
+) -> None:
+    actor = {"id": actor_user_id, "roles": []} if actor_user_id else None
+    context: Dict[str, Any] = {}
+    if owner_user_id:
+        context["owner_user_id"] = owner_user_id
+    decision = authorize(
+        actor,
+        "community_run",
+        action,
+        context,
+    )
+    if not decision.allowed:
+        raise PermissionError(decision.reason)
 
 
 def _save_run_to_repository(record: _RunRecord) -> None:
@@ -126,8 +139,11 @@ def _load_run_record_from_repository(
         return None
 
     expected_owner = str(row.get("user_id") or "").strip()
-    if not expected_owner or expected_owner != owner_user_id:
-        raise PermissionError("Authentication required")
+    _authorize_run_access(
+        actor_user_id=owner_user_id,
+        owner_user_id=expected_owner or None,
+        action="read",
+    )
 
     try:
         events = repository.list_events(run_id)
@@ -157,7 +173,6 @@ def _load_run_record_from_repository(
     return _RunRecord(
         run_id=str(row.get("run_id") or run_id),
         owner_user_id=expected_owner,
-        auth_token_hash=None,
         conversation_id=str(row.get("conversation_id") or "").strip() or None,
         status=status,
         intent=str(row.get("intent") or (snapshot or {}).get("intent") or "answer"),
@@ -234,6 +249,7 @@ def _require_run_record(
     owner_user_id: str | None = None,
     access_token: str | None = None,
 ) -> _RunRecord:
+    del access_token
     record = _RUNTIME_AGENT_RUNS.get(run_id)
     if record is None:
         record = _load_run_record_from_repository(
@@ -246,13 +262,11 @@ def _require_run_record(
 
     expected_owner_user_id = record.owner_user_id
     if expected_owner_user_id:
-        if owner_user_id != expected_owner_user_id:
-            raise PermissionError("Authentication required")
-        return record
-
-    expected_hash = record.auth_token_hash
-    if expected_hash and _hash_access_token(access_token) != expected_hash:
-        raise PermissionError("Authentication required")
+        _authorize_run_access(
+            actor_user_id=owner_user_id,
+            owner_user_id=expected_owner_user_id,
+            action="read",
+        )
     return record
 
 
@@ -344,6 +358,7 @@ async def create_agent_run(
     owner_user_id: str | None = None,
     access_token: str | None = None,
 ) -> Dict[str, Any]:
+    del access_token
     run_id = f"run-{uuid.uuid4().hex[:10]}"
     trusted_context = dict(context or {})
     if owner_user_id:
@@ -353,7 +368,6 @@ async def create_agent_run(
     record = _RunRecord(
         run_id=run_id,
         owner_user_id=owner_user_id,
-        auth_token_hash=_hash_access_token(access_token),
         conversation_id=conversation_id,
         mode=run_mode,
         provider_state={

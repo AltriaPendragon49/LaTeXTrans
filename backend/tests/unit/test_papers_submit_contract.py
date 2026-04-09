@@ -68,6 +68,7 @@ def test_admin_submit_arxiv_creates_official(monkeypatch):
         paper_service.submit_arxiv_paper(
             arxiv_id="2501.00001",
             credentials=SimpleNamespace(credentials=_jwt_for("admin-1")),
+            current_user={"id": "admin-1", "roles": ["admin"]},
         )
     )
 
@@ -131,6 +132,7 @@ def test_normal_user_submit_arxiv_without_existing_creates_fallback(monkeypatch)
         paper_service.submit_arxiv_paper(
             arxiv_id="2501.00002",
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -195,6 +197,7 @@ def test_normal_user_submit_arxiv_reuses_existing_official(monkeypatch):
         paper_service.submit_arxiv_paper(
             arxiv_id="2501.00003",
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -253,6 +256,7 @@ def test_normal_user_submit_arxiv_reuses_existing_fallback(monkeypatch):
         paper_service.submit_arxiv_paper(
             arxiv_id="2501.00004",
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -341,6 +345,7 @@ def test_normal_user_upload_creates_fallback(monkeypatch):
         paper_service.submit_uploaded_paper(
             file=upload,
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -393,3 +398,17 @@ def test_submit_returns_forbidden_when_paper_policy_denies(monkeypatch):
         raise AssertionError("expected policy failure")
     except Exception as exc:
         assert getattr(exc, "status_code", None) == 403
+
+
+def test_submit_uploaded_paper_ignores_forged_bearer_when_no_verified_user():
+    try:
+        asyncio.run(
+            paper_service.submit_uploaded_paper(
+                file=UploadFile(filename="paper.zip", file=BytesIO(b"zip-bytes")),
+                credentials=SimpleNamespace(credentials=_jwt_for("forged-user")),
+                current_user=None,
+            )
+        )
+        raise AssertionError("expected authentication failure")
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 401

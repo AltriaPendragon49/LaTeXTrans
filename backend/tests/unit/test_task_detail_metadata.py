@@ -123,3 +123,88 @@ def test_task_routes_expose_detail_fields(monkeypatch):
     update_payload = json.loads(update_line.removeprefix("data: "))
     assert update_payload["detail_code"] == "compile_complete"
     assert update_payload["stage"] == "done"
+
+
+def test_task_routes_expose_persist_failed_field(monkeypatch):
+    fake_task = {
+        "task_id": "task-route-persist-failed",
+        "status": "failed",
+        "progress": 100,
+        "stage": "done",
+        "message": "done",
+        "detail_code": None,
+        "detail_params": None,
+        "error": None,
+        "warnings": None,
+        "failure_reason_code": None,
+        "failure_class": None,
+        "guard_phase": None,
+        "replay_bundle_ref": None,
+        "evidence_chain_broken": False,
+        "source_available": True,
+        "created_at": "2026-03-16T00:00:00",
+        "completed_at": "2026-03-16T00:10:00",
+        "advanced_config": None,
+        "persist_failed": True,
+    }
+
+    class FakeTaskManager:
+        def get_task(self, task_id):
+            return fake_task if task_id == fake_task["task_id"] else None
+
+        def delete_task_full(self, task_id):
+            return {"deleted_dirs": [], "errors": []}
+
+    monkeypatch.setattr(task_route, "task_manager", FakeTaskManager())
+
+    payload = asyncio.run(
+        task_route.get_task_status(
+            fake_task["task_id"],
+            current_user=None,
+        )
+    ).model_dump()
+    assert payload["persist_failed"] is True
+
+
+def test_authenticated_task_requires_matching_owner(monkeypatch):
+    fake_task = {
+        "task_id": "task-auth-owned",
+        "status": "completed",
+        "progress": 100,
+        "stage": "done",
+        "message": "done",
+        "detail_code": None,
+        "detail_params": None,
+        "error": None,
+        "warnings": None,
+        "failure_reason_code": None,
+        "failure_class": None,
+        "guard_phase": None,
+        "replay_bundle_ref": None,
+        "evidence_chain_broken": False,
+        "source_available": True,
+        "created_at": "2026-03-16T00:00:00",
+        "completed_at": "2026-03-16T00:10:00",
+        "advanced_config": None,
+        "user_id": "owner-1",
+    }
+
+    class FakeTaskManager:
+        def get_task(self, task_id):
+            return fake_task if task_id == fake_task["task_id"] else None
+
+    monkeypatch.setattr(task_route, "task_manager", FakeTaskManager())
+
+    try:
+        asyncio.run(task_route.get_task_status(fake_task["task_id"], current_user=None))
+        raise AssertionError("expected unauthorized")
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 401
+
+    owned = asyncio.run(
+        task_route.get_task_status(
+            fake_task["task_id"],
+            current_user={"id": "owner-1", "roles": ["user"]},
+        )
+    )
+    assert owned.task_id == fake_task["task_id"]

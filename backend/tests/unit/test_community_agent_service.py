@@ -60,6 +60,42 @@ def test_create_agent_run_injects_verified_owner_user_id_into_context(
     assert observed_context["user_id"] == "user-123"
 
 
+def test_create_agent_run_does_not_store_runtime_access_token_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_agent(*, input_text, context, skill_toggles, run_mode, event_callback):  # type: ignore[no-untyped-def]
+        del input_text, context, skill_toggles, run_mode, event_callback
+        return {
+            "status": "completed",
+            "intent": "answer",
+            "message": "ok",
+            "summary": "ok",
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": {"internal_search": "enabled"},
+            "action": None,
+            "events": [],
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.run_agent",
+        fake_run_agent,
+    )
+
+    payload = asyncio.run(
+        community_agent_service.create_agent_run(
+            "hello",
+            {"source": "conversation"},
+            {"external_search": False},
+            owner_user_id="user-123",
+            access_token="header.payload.signature",
+        )
+    )
+
+    runtime_record = community_agent_service._RUNTIME_AGENT_RUNS[payload["run_id"]]
+    assert not hasattr(runtime_record, "auth_token_hash")
+
+
 def test_agent_run_requires_matching_owner_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_run_agent(*, input_text, context, skill_toggles, run_mode, event_callback):  # type: ignore[no-untyped-def]
         del input_text, context, skill_toggles, run_mode, event_callback
@@ -104,6 +140,74 @@ def test_agent_run_requires_matching_owner_user_id(monkeypatch: pytest.MonkeyPat
                 owner_user_id="user-456",
             )
         )
+
+
+def test_get_agent_run_uses_authorize_entrypoint_for_owner_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_calls: list[dict[str, object]] = []
+
+    class _Decision:
+        allowed = False
+        reason = "policy denied run access"
+
+    async def fake_run_agent(*, input_text, context, skill_toggles, run_mode, event_callback):  # type: ignore[no-untyped-def]
+        del input_text, context, skill_toggles, run_mode, event_callback
+        return {
+            "status": "completed",
+            "intent": "answer",
+            "message": "ok",
+            "summary": "ok",
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": {"internal_search": "enabled"},
+            "action": None,
+            "events": [],
+        }
+
+    def fake_authorize(user, resource, action, context=None):  # type: ignore[no-untyped-def]
+        authorize_calls.append(
+            {
+                "user": user,
+                "resource": resource,
+                "action": action,
+                "context": context,
+            }
+        )
+        return _Decision()
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.run_agent",
+        fake_run_agent,
+    )
+    monkeypatch.setattr(
+        community_agent_service,
+        "authorize",
+        fake_authorize,
+        raising=False,
+    )
+
+    created = asyncio.run(
+        community_agent_service.create_agent_run(
+            "hello",
+            {"source": "conversation"},
+            {"external_search": False},
+            owner_user_id="user-123",
+        )
+    )
+
+    with pytest.raises(PermissionError, match="policy denied run access"):
+        asyncio.run(
+            community_agent_service.get_agent_run(
+                created["run_id"],
+                owner_user_id="user-456",
+                strict=True,
+            )
+        )
+
+    assert authorize_calls
+    assert authorize_calls[0]["resource"] == "community_run"
+    assert authorize_calls[0]["action"] == "read"
 
 
 def test_get_agent_run_strict_raises_when_missing() -> None:

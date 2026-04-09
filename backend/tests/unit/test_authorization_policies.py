@@ -15,7 +15,7 @@ def test_guest_cannot_access_community_conversation():
     assert "guest" in result.reason.lower()
 
 
-def test_authenticated_user_can_view_their_task_but_not_delete():
+def test_authenticated_user_can_view_and_delete_their_own_task():
     user = _user()
     view = authorize(
         user=user,
@@ -32,8 +32,49 @@ def test_authenticated_user_can_view_their_task_but_not_delete():
         action="delete",
         context={"owner_user_id": "user-123"},
     )
+    assert delete_attempt.allowed
+
+
+def test_non_owner_cannot_delete_task():
+    delete_attempt = authorize(
+        user=_user(),
+        resource="task",
+        action="delete",
+        context={"owner_user_id": "other-user"},
+    )
     assert not delete_attempt.allowed
-    assert "admin" in delete_attempt.reason.lower()
+    assert "owner" in delete_attempt.reason.lower()
+
+
+def test_community_run_policy_requires_owner_or_admin():
+    guest = authorize(user=None, resource="community_run", action="read", context={"owner_user_id": "user-123"})
+    assert not guest.allowed
+    assert "authentication" in guest.reason.lower() or "guest" in guest.reason.lower()
+
+    owner = authorize(
+        user=_user(user_id="user-123"),
+        resource="community_run",
+        action="read",
+        context={"owner_user_id": "user-123"},
+    )
+    assert owner.allowed
+
+    outsider = authorize(
+        user=_user(user_id="user-999"),
+        resource="community_run",
+        action="read",
+        context={"owner_user_id": "user-123"},
+    )
+    assert not outsider.allowed
+    assert "owner" in outsider.reason.lower()
+
+    admin = authorize(
+        user=_user(roles=["admin"], user_id="admin-1"),
+        resource="community_run",
+        action="read",
+        context={"owner_user_id": "user-123"},
+    )
+    assert admin.allowed
 
 
 def test_settings_endpoint_requires_authenticated_user():

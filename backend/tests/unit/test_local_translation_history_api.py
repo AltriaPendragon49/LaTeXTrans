@@ -60,6 +60,12 @@ class _FakeTranslationTaskRepository:
         self.deleted_task_ids.append((user_id, task_id))
         return self.tasks.pop(task_id, None) is not None
 
+    def update_task(self, task_id: str, updates: dict) -> bool:
+        if task_id not in self.tasks:
+            return False
+        self.tasks[task_id].update(updates)
+        return True
+
 
 class _FakeTaskManager:
     def __init__(self) -> None:
@@ -107,3 +113,30 @@ def test_history_routes_use_local_current_user_and_repository(monkeypatch: pytes
     assert delete_response.json()["task_id"] == "task-local-1"
     assert fake_repo.deleted_task_ids == [("usr_local_1", "task-local-1")]
     assert fake_task_manager.deleted == ["task-local-1"]
+
+
+def test_task_detail_reconciles_non_terminal_local_status(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from backend.app.api.routes import history as history_route
+
+    fake_repo = _FakeTranslationTaskRepository()
+    fake_repo.tasks["task-local-1"]["status"] = "processing"
+    fake_repo.tasks["task-local-1"]["progress"] = 42
+
+    output_dir = tmp_path / "task-local-1"
+    output_dir.mkdir(parents=True)
+    (output_dir / "task_log.json").write_text('[{"event":"compilation_completed"}]', encoding="utf-8")
+    fake_repo.tasks["task-local-1"]["output_path"] = str(output_dir)
+
+    monkeypatch.setattr(history_route, "get_translation_task_repository", lambda: fake_repo)
+    app.dependency_overrides[history_route.require_current_user] = lambda: {"id": "usr_local_1", "roles": ["user"]}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/history/task-local-1")
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["progress"] == 100

@@ -183,6 +183,7 @@ def test_start_paper_translation_reuses_active_selected_task(monkeypatch):
             paper_id="paper-1",
             request=TranslateRequest(source_language="en", target_language="zh"),
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -281,6 +282,7 @@ def test_start_paper_translation_does_not_reuse_stale_intake_task(monkeypatch, t
             paper_id="paper-1",
             request=TranslateRequest(source_language="en", target_language="zh"),
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -371,6 +373,7 @@ def test_start_paper_translation_creates_task_from_latest_source_asset(monkeypat
             paper_id="paper-1",
             request=TranslateRequest(source_language="en", target_language="zh"),
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -415,6 +418,7 @@ def test_start_paper_translation_uses_arxiv_bridge_when_source_asset_missing(mon
             paper_id="paper-1",
             request=TranslateRequest(source_language="en", target_language="zh"),
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -471,6 +475,7 @@ def test_start_paper_translation_uses_arxiv_bridge_when_source_asset_path_is_mis
             paper_id="paper-1",
             request=TranslateRequest(source_language="en", target_language="zh"),
             credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
         )
     )
 
@@ -619,3 +624,79 @@ def test_detail_returns_public_asset_map_without_file_paths(monkeypatch):
     assert result["paper"]["latest_asset"]["asset_type"] == "preview_html"
     assert result["paper"]["assets"]["preview_html"]["file_name"] == "preview.html"
     assert "file_path" not in result["paper"]["assets"]["preview_html"]
+
+
+def test_start_paper_translation_ignores_unverified_bearer_token_without_verified_user(monkeypatch, tmp_path):
+    created = {}
+    source_dir = tmp_path / "source-paper"
+    source_dir.mkdir()
+    monkeypatch.setattr(paper_service.asyncio, "create_task", lambda coro: coro.close())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "source_archive": {
+                    "id": "asset-source",
+                    "paper_id": "paper-1",
+                    "task_id": None,
+                    "asset_type": "source_archive",
+                    "file_path": str(source_dir),
+                    "file_name": "source-paper",
+                    "mime_type": "application/x-tex",
+                    "created_at": "2026-03-18T00:00:00+00:00",
+                }
+            },
+        ),
+    )
+
+    class _TaskManager:
+        def create_task(self, **kwargs):
+            created["create_task"] = kwargs
+            return "task-guest"
+
+        def update_task(self, task_id, **kwargs):
+            created["update_task"] = (task_id, kwargs)
+
+        def persist_task_if_needed(self, task_id):
+            created["persist_task"] = task_id
+            return True
+
+        def get_task(self, task_id):
+            return {
+                "task_id": task_id,
+                "source_available": True,
+                "status": "pending",
+                "source_path": str(source_dir),
+                "arxiv_id": None,
+            }
+
+    monkeypatch.setattr(paper_service, "task_manager", _TaskManager())
+    monkeypatch.setattr(
+        paper_service,
+        "_enqueue_existing_task_translation",
+        lambda **kwargs: asyncio.sleep(0, result={"task_id": kwargs["task_id"], "status": "queued"}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_update_paper",
+        lambda paper_id, payload: asyncio.sleep(0, result=_paper(id=paper_id, **payload)),
+    )
+
+    result = asyncio.run(
+        paper_service.start_paper_translation(
+            paper_id="paper-1",
+            request=TranslateRequest(source_language="en", target_language="zh"),
+            credentials=SimpleNamespace(credentials=_jwt_for("forged-user")),
+            current_user=None,
+        )
+    )
+
+    assert created["create_task"]["user_id"] is None
+    assert result["task_id"] == "task-guest"
