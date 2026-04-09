@@ -20,9 +20,14 @@ _RUNTIME_AGENT_RUNS: Dict[str, "_RunRecord"] = {}
 _CONVERSATIONS_TABLE = "community_agent_conversations"
 
 
+class RunNotFoundError(KeyError):
+    """Raised when an agent run cannot be found."""
+
+
 @dataclass
 class _RunRecord:
     run_id: str
+    owner_user_id: str | None
     auth_token_hash: str | None
     status: str = "queued"
     intent: str = "answer"
@@ -104,10 +109,21 @@ def _set_status(record: _RunRecord, status: str, *, phase: str | None = None) ->
     _publish_stream_event(record, {"type": "status", "data": data})
 
 
-def _require_run_record(run_id: str, access_token: str | None = None) -> _RunRecord:
+def _require_run_record(
+    run_id: str,
+    *,
+    owner_user_id: str | None = None,
+    access_token: str | None = None,
+) -> _RunRecord:
     record = _RUNTIME_AGENT_RUNS.get(run_id)
     if record is None:
         raise KeyError(run_id)
+
+    expected_owner_user_id = record.owner_user_id
+    if expected_owner_user_id:
+        if owner_user_id != expected_owner_user_id:
+            raise PermissionError("Authentication required")
+        return record
 
     expected_hash = record.auth_token_hash
     if expected_hash and _hash_access_token(access_token) != expected_hash:
@@ -194,11 +210,17 @@ async def create_agent_run(
     *,
     execution_mode: str = "blocking",
     run_mode: str = "chat",
+    owner_user_id: str | None = None,
     access_token: str | None = None,
 ) -> Dict[str, Any]:
     run_id = f"run-{uuid.uuid4().hex[:10]}"
+    trusted_context = dict(context or {})
+    if owner_user_id:
+        trusted_context["user_id"] = owner_user_id
+
     record = _RunRecord(
         run_id=run_id,
+        owner_user_id=owner_user_id,
         auth_token_hash=_hash_access_token(access_token),
         mode=run_mode,
         provider_state={
@@ -219,7 +241,7 @@ async def create_agent_run(
         _start_background_run(
             record,
             input_text=input_text,
-            context=context,
+            context=trusted_context,
             skill_toggles=skill_toggles,
             run_mode=run_mode,
         )
@@ -228,17 +250,29 @@ async def create_agent_run(
     await _run_agent_once(
         record,
         input_text=input_text,
-        context=context,
+        context=trusted_context,
         skill_toggles=skill_toggles,
         run_mode=run_mode,
     )
     return _build_snapshot(record)
 
 
-async def get_agent_run(run_id: str, *, access_token: str | None = None) -> Dict[str, Any]:
+async def get_agent_run(
+    run_id: str,
+    *,
+    owner_user_id: str | None = None,
+    access_token: str | None = None,
+    strict: bool = False,
+) -> Dict[str, Any]:
     try:
-        record = _require_run_record(run_id, access_token)
+        record = _require_run_record(
+            run_id,
+            owner_user_id=owner_user_id,
+            access_token=access_token,
+        )
     except KeyError:
+        if strict:
+            raise RunNotFoundError(run_id)
         return {
             "run_id": run_id,
             "status": "failed",
@@ -256,8 +290,17 @@ async def get_agent_run(run_id: str, *, access_token: str | None = None) -> Dict
     return _build_snapshot(record)
 
 
-async def stream_agent_events(run_id: str, *, access_token: str | None = None) -> List[Dict[str, Any]]:
-    record = _require_run_record(run_id, access_token)
+async def stream_agent_events(
+    run_id: str,
+    *,
+    owner_user_id: str | None = None,
+    access_token: str | None = None,
+) -> List[Dict[str, Any]]:
+    record = _require_run_record(
+        run_id,
+        owner_user_id=owner_user_id,
+        access_token=access_token,
+    )
     with record.lock:
         return list(record.events)
 
@@ -266,10 +309,15 @@ async def wait_for_new_events(
     run_id: str,
     *,
     last_sequence: int,
+    owner_user_id: str | None = None,
     access_token: str | None = None,
     timeout: float = 15.0,
 ) -> List[Dict[str, Any]]:
-    record = _require_run_record(run_id, access_token)
+    record = _require_run_record(
+        run_id,
+        owner_user_id=owner_user_id,
+        access_token=access_token,
+    )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         with record.lock:

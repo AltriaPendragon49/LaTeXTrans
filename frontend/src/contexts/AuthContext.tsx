@@ -1,41 +1,36 @@
-/**
- * Authentication Context
- * 
- * Provides authentication state and methods throughout the application.
- * Supports guest mode when Supabase is not configured.
- */
-
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { User, AuthError, Session } from '@supabase/supabase-js'
-import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+
 import i18n from '@/i18n'
+import {
+    bootstrapLocalSession,
+    isSupabaseConfigured,
+    signInWithPassword,
+    signOutCurrentSession,
+} from '@/lib/supabase'
+import type { LocalAuthError, LocalAuthSession, LocalAuthUser } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { useStore } from '@/store/useStore'
 
-// Auth state interface
 interface AuthState {
-    user: User | null
-    session: Session | null
+    user: LocalAuthUser | null
+    session: LocalAuthSession | null
     loading: boolean
     error: string | null
     isAuthenticated: boolean
     isSupabaseAvailable: boolean
 }
 
-// Auth methods interface  
 interface AuthMethods {
-    signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
-    signUp: (email: string, password: string) => Promise<{ error: AuthError | null, needsEmailConfirmation?: boolean }>
-    verifyOtp: (email: string, token: string) => Promise<{ error: AuthError | null }>
+    signIn: (email: string, password: string) => Promise<{ error: LocalAuthError | null }>
+    signUp: (email: string, password: string) => Promise<{ error: LocalAuthError | null, needsEmailConfirmation?: boolean }>
+    verifyOtp: (email: string, token: string) => Promise<{ error: LocalAuthError | null }>
     signOut: () => Promise<void>
     clearError: () => void
 }
 
-// Combined context type
 type AuthContextType = AuthState & AuthMethods
 
-// Default context value
 const defaultContext: AuthContextType = {
     user: null,
     session: null,
@@ -50,65 +45,52 @@ const defaultContext: AuthContextType = {
     clearError: () => { },
 }
 
-// Create context
 const AuthContext = createContext<AuthContextType>(defaultContext)
 
-// Provider component
 interface AuthProviderProps {
     children: ReactNode
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-    const [user, setUser] = useState<User | null>(null)
-    const [session, setSession] = useState<Session | null>(null)
-    const [loading, setLoading] = useState(() => !!supabase)
+    const [user, setUser] = useState<LocalAuthUser | null>(null)
+    const [session, setSession] = useState<LocalAuthSession | null>(null)
+    const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
     const isSupabaseAvailable = isSupabaseConfigured()
     const isAuthenticated = !!user
 
-    // Initialize auth state
     useEffect(() => {
-        if (!supabase) {
-            return
-        }
+        let cancelled = false
 
-        // Get initial session
-        supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-            setSession(initialSession)
-            setUser(initialSession?.user ?? null)
+        void bootstrapLocalSession().then(({ session: restoredSession, user: restoredUser }) => {
+            if (cancelled) {
+                return
+            }
+
+            setSession(restoredSession)
+            setUser(restoredUser)
             setLoading(false)
         })
 
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (_event: string, newSession: Session | null) => {
-                setSession(newSession)
-                setUser(newSession?.user ?? null)
-            }
-        )
-
         return () => {
-            subscription.unsubscribe()
+            cancelled = true
         }
     }, [])
 
-    // Sign in with email/password
     const signIn = async (email: string, password: string) => {
-        if (!supabase) {
-            return { error: { message: i18n.t('auth.errors.serviceUnavailable') } as AuthError }
+        setError(null)
+        const { session: nextSession, error: signInError } = await signInWithPassword(email, password)
+
+        if (signInError) {
+            setError(signInError.message)
+            return { error: signInError }
         }
 
-        setError(null)
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        })
+        if (nextSession) {
+            setSession(nextSession)
+            setUser(nextSession.user)
 
-        if (error) {
-            setError(error.message)
-        } else {
-            // Login successful - trigger settings reload
             try {
                 useStore.getState().invalidateUserSettings()
                 await useStore.getState().loadUserSettings(true)
@@ -116,81 +98,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     description: i18n.t('auth.toast.settingsLoaded.description'),
                     duration: 4000,
                 })
-            } catch (e) {
-                console.warn('[Auth] Failed to load user settings after login:', e)
+            } catch (loadError) {
+                console.warn('[Auth] Failed to load user settings after login:', loadError)
             }
         }
 
-        return { error }
+        return { error: null }
     }
 
-    // Sign up with email/password
     const signUp = async (email: string, password: string) => {
-        if (!supabase) {
-            return { error: { message: i18n.t('auth.errors.serviceUnavailable') } as AuthError }
+        void email
+        void password
+        return {
+            error: { message: i18n.t('auth.errors.requestFailed') },
+            needsEmailConfirmation: false,
         }
-
-        setError(null)
-        const { error, data } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                emailRedirectTo: window.location.origin,
-            },
-        })
-
-        if (error) {
-            setError(error.message)
-            return { error }
-        }
-
-        // Check if email confirmation is needed
-        const needsEmailConfirmation = !data.session && !!data.user
-
-        return { error: null, needsEmailConfirmation }
     }
 
-    // Verify OTP for email confirmation
     const verifyOtp = async (email: string, token: string) => {
-        if (!supabase) {
-            return { error: { message: i18n.t('auth.errors.serviceUnavailable') } as AuthError }
-        }
-
-        setError(null)
-        const { error } = await supabase.auth.verifyOtp({
-            email,
-            token,
-            type: 'email',
-        })
-
-        if (error) {
-            setError(error.message)
-        } else {
-            // OTP verified - trigger settings reload
-            try {
-                useStore.getState().invalidateUserSettings()
-                await useStore.getState().loadUserSettings(true)
-                toast.success(i18n.t('auth.toast.signUpSuccess.title'), {
-                    description: i18n.t('auth.toast.signUpSuccess.description'),
-                    duration: 4000,
-                })
-            } catch (e) {
-                console.warn('[Auth] Failed to load user settings after OTP verification:', e)
-            }
-        }
-
-        return { error }
+        void email
+        void token
+        return { error: { message: i18n.t('auth.errors.requestFailed') } }
     }
 
-    // Sign out
     const signOut = async () => {
-        if (!supabase) return
-
         setError(null)
-        await supabase.auth.signOut()
+        await signOutCurrentSession(session?.access_token)
+        setSession(null)
+        setUser(null)
+        useStore.getState().invalidateUserSettings()
     }
 
-    // Clear error
     const clearError = () => {
         setError(null)
     }
@@ -216,7 +154,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     )
 }
 
-// Hook for using auth context
 export function useAuth(): AuthContextType {
     const context = useContext(AuthContext)
     if (!context) {

@@ -83,21 +83,23 @@ describe("remaining page i18n", () => {
     expect(screen.getByText("Sign in to save your translation history and settings")).toBeInTheDocument()
     expect(screen.getByLabelText("Email address")).toBeInTheDocument()
     expect(screen.getByLabelText("Password")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Manage your account information" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Continue in guest mode" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign up now" })).not.toBeInTheDocument()
   })
 
-  it("renders translated auth-unavailable copy on the login page", () => {
+  it("keeps the sign-in form available even when legacy Supabase flags are false", () => {
     authState.isSupabaseAvailable = false
-
     render(
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("Authentication service unavailable")).toBeInTheDocument()
-    expect(screen.getByText("Supabase authentication is not configured for this system, so sign-in is unavailable.")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Back to home (guest mode)" })).toBeInTheDocument()
+    expect(screen.getByText("Welcome back")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Manage your account information" })).toBeInTheDocument()
   })
 
   it("renders translated batch translation tabs", () => {

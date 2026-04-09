@@ -169,6 +169,7 @@ class LocalAuthService:
             "external_user_id": user["external_user_id"],
             "roles": list(user.get("roles") or ["user"]),
             "display_name": user.get("display_name"),
+            "email": user.get("email"),
         }
 
     def _encode_jwt(self, payload: dict[str, Any]) -> str:

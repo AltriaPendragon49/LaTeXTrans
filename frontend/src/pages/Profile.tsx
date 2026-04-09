@@ -19,6 +19,7 @@ export default function ProfilePage() {
     const { user, isAuthenticated, loading, signOut } = useAuth()
     const [isLoggingOut, setIsLoggingOut] = useState(false)
     const { t } = useTranslation()
+    const profileValue = user?.email || user?.display_name || user?.external_user_id || ''
 
     // Handle logout
     const handleLogout = async () => {
@@ -81,7 +82,7 @@ export default function ProfilePage() {
                             <Mail className="h-5 w-5 text-muted-foreground" />
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm text-muted-foreground">{t('auth.labels.emailAddress')}</p>
-                                <p className="font-medium truncate">{user?.email}</p>
+                                <p className="font-medium truncate">{profileValue}</p>
                             </div>
                         </div>
                     </div>

@@ -21,6 +21,7 @@ class LocalUserPayload(BaseModel):
     external_user_id: str
     roles: list[str]
     display_name: str | None = None
+    email: str | None = None
 
 
 class LoginResponse(BaseModel):

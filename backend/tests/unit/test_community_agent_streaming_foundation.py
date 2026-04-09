@@ -24,7 +24,7 @@ def _tool_call(name: str, arguments: str, *, call_id: str = "call-1") -> dict[st
 
 
 async def _wait_for_completed_run(run_id: str, access_token: str) -> dict[str, object]:
-    for _ in range(40):
+    for _ in range(200):
         payload = await community_agent_service.get_agent_run(run_id, access_token=access_token)
         if payload.get("status") in {"completed", "failed"}:
             return payload

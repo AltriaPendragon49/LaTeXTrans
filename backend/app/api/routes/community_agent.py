@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from supabase import Client
 
-from backend.app.core.auth import get_supabase_client_from_request
+from backend.app.core.auth import get_supabase_client_from_request, require_current_user
 from backend.app.services import community_agent_service
 
 router = APIRouter(prefix="/community-agent")
@@ -70,16 +70,10 @@ class CommunityAgentRunResponse(BaseModel):
 @router.post("/runs", response_model=CommunityAgentRunResponse)
 async def create_agent_run(
     request: CommunityAgentRunRequest,
-    supabase: Optional[Client] = Depends(get_supabase_client_from_request),
+    current_user: Dict[str, Any] = Depends(require_current_user),
 ):
     if not request.input.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="input is required")
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
     context = dict(request.context or {})
     if request.paper_id:
@@ -91,7 +85,7 @@ async def create_agent_run(
         skill_toggles=request.skill_toggles.model_dump() if request.skill_toggles else None,
         execution_mode=request.execution_mode,
         run_mode=request.mode,
-        access_token=getattr(supabase, "_access_token", None),
+        owner_user_id=str(current_user["id"]),
     )
     if request.execution_mode == "async":
         return JSONResponse(
@@ -157,18 +151,12 @@ async def delete_agent_conversation(
 @router.get("/runs/{run_id}", response_model=CommunityAgentRunResponse)
 async def get_agent_run(
     run_id: str,
-    supabase: Optional[Client] = Depends(get_supabase_client_from_request),
+    current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
     try:
         return await community_agent_service.get_agent_run(
             run_id,
-            access_token=getattr(supabase, "_access_token", None),
+            owner_user_id=str(current_user["id"]),
         )
     except PermissionError as exc:
         raise HTTPException(
@@ -181,16 +169,9 @@ async def get_agent_run(
 @router.get("/runs/{run_id}/events")
 async def stream_agent_events(
     run_id: str,
-    supabase: Optional[Client] = Depends(get_supabase_client_from_request),
+    current_user: Dict[str, Any] = Depends(require_current_user),
 ):
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    access_token = getattr(supabase, "_access_token", None)
+    owner_user_id = str(current_user["id"])
 
     async def _event_stream():
         last_sequence = 0
@@ -200,7 +181,7 @@ async def stream_agent_events(
                 events = await community_agent_service.wait_for_new_events(
                     run_id,
                     last_sequence=last_sequence,
-                    access_token=access_token,
+                    owner_user_id=owner_user_id,
                     timeout=heartbeat_interval,
                 )
                 if not events:
@@ -211,12 +192,12 @@ async def stream_agent_events(
 
                 snapshot = await community_agent_service.get_agent_run(
                     run_id,
-                    access_token=access_token,
+                    owner_user_id=owner_user_id,
                 )
                 if snapshot.get("status") in {"completed", "failed"}:
                     all_events = await community_agent_service.stream_agent_events(
                         run_id,
-                        access_token=access_token,
+                        owner_user_id=owner_user_id,
                     )
                     if last_sequence >= len(all_events):
                         break

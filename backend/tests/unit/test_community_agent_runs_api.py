@@ -20,13 +20,13 @@ def test_agent_run_route_passes_skill_toggles_to_service_and_returns_message(
 ) -> None:
     captured: Dict[str, Any] = {}
 
-    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, run_mode, access_token):  # type: ignore[no-untyped-def]
+    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, run_mode, owner_user_id):  # type: ignore[no-untyped-def]
         captured["input_text"] = input_text
         captured["context"] = context
         captured["skill_toggles"] = skill_toggles
         captured["execution_mode"] = execution_mode
         captured["run_mode"] = run_mode
-        captured["access_token"] = access_token
+        captured["owner_user_id"] = owner_user_id
         return {
             "run_id": "run-1",
             "status": "completed",
@@ -48,7 +48,7 @@ def test_agent_run_route_passes_skill_toggles_to_service_and_returns_message(
         "backend.app.services.community_agent_service.create_agent_run",
         fake_create_run,
     )
-    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: object()
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-123"}
 
     async def _call():
         async with _make_client() as client:
@@ -72,18 +72,19 @@ def test_agent_run_route_passes_skill_toggles_to_service_and_returns_message(
     assert captured["context"] == {"source": "conversation", "paper_id": "paper-1"}
     assert captured["skill_toggles"] == {"external_search": True}
     assert captured["run_mode"] == "chat"
+    assert captured["owner_user_id"] == "usr-123"
 
 
 def test_agent_run_route_accepts_omitted_skill_toggles(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: Dict[str, Any] = {}
 
-    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, run_mode, access_token):  # type: ignore[no-untyped-def]
+    async def fake_create_run(*, input_text, context, skill_toggles, execution_mode, run_mode, owner_user_id):  # type: ignore[no-untyped-def]
         captured["input_text"] = input_text
         captured["context"] = context
         captured["skill_toggles"] = skill_toggles
         captured["execution_mode"] = execution_mode
         captured["run_mode"] = run_mode
-        captured["access_token"] = access_token
+        captured["owner_user_id"] = owner_user_id
         return {
             "run_id": "run-2",
             "status": "completed",
@@ -100,7 +101,7 @@ def test_agent_run_route_accepts_omitted_skill_toggles(monkeypatch: pytest.Monke
         "backend.app.services.community_agent_service.create_agent_run",
         fake_create_run,
     )
-    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: object()
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-123"}
 
     async def _call():
         async with _make_client() as client:
@@ -115,15 +116,13 @@ def test_agent_run_route_accepts_omitted_skill_toggles(monkeypatch: pytest.Monke
     assert response.json()["message"] == "A direct assistant reply"
     assert captured["skill_toggles"] is None
     assert captured["run_mode"] == "chat"
+    assert captured["owner_user_id"] == "usr-123"
 
 
 def test_agent_run_route_supports_async_mode_and_returns_stream_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: Dict[str, Any] = {}
-
-    class FakeSupabaseClient:
-        _access_token = "header.payload.signature"
 
     async def fake_create_run(
         *,
@@ -132,14 +131,14 @@ def test_agent_run_route_supports_async_mode_and_returns_stream_urls(
         skill_toggles,
         execution_mode,
         run_mode,
-        access_token,
+        owner_user_id,
     ):  # type: ignore[no-untyped-def]
         captured["input_text"] = input_text
         captured["context"] = context
         captured["skill_toggles"] = skill_toggles
         captured["execution_mode"] = execution_mode
         captured["run_mode"] = run_mode
-        captured["access_token"] = access_token
+        captured["owner_user_id"] = owner_user_id
         return {
             "run_id": "run-async-1",
             "status": "accepted",
@@ -158,7 +157,7 @@ def test_agent_run_route_supports_async_mode_and_returns_stream_urls(
         "backend.app.services.community_agent_service.create_agent_run",
         fake_create_run,
     )
-    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: FakeSupabaseClient()
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-async"}
 
     async def _call():
         async with _make_client() as client:
@@ -180,16 +179,13 @@ def test_agent_run_route_supports_async_mode_and_returns_stream_urls(
     assert response.json()["result_url"].endswith("/api/community-agent/runs/run-async-1")
     assert captured["execution_mode"] == "async"
     assert captured["run_mode"] == "chat"
-    assert captured["access_token"] == "header.payload.signature"
+    assert captured["owner_user_id"] == "usr-async"
 
 
 def test_agent_run_route_forwards_deep_research_mode_to_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: Dict[str, Any] = {}
-
-    class FakeSupabaseClient:
-        _access_token = "header.payload.signature"
 
     async def fake_create_run(
         *,
@@ -198,14 +194,14 @@ def test_agent_run_route_forwards_deep_research_mode_to_service(
         skill_toggles,
         execution_mode,
         run_mode,
-        access_token,
+        owner_user_id,
     ):  # type: ignore[no-untyped-def]
         captured["input_text"] = input_text
         captured["context"] = context
         captured["skill_toggles"] = skill_toggles
         captured["execution_mode"] = execution_mode
         captured["run_mode"] = run_mode
-        captured["access_token"] = access_token
+        captured["owner_user_id"] = owner_user_id
         return {
             "run_id": "run-research-1",
             "status": "accepted",
@@ -226,7 +222,7 @@ def test_agent_run_route_forwards_deep_research_mode_to_service(
         "backend.app.services.community_agent_service.create_agent_run",
         fake_create_run,
     )
-    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: FakeSupabaseClient()
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-research"}
 
     async def _call():
         async with _make_client() as client:
@@ -246,6 +242,7 @@ def test_agent_run_route_forwards_deep_research_mode_to_service(
     assert response.status_code == 202
     assert response.json()["mode"] == "deep_research"
     assert captured["run_mode"] == "deep_research"
+    assert captured["owner_user_id"] == "usr-research"
 
 
 def test_agent_run_route_requires_authentication() -> None:
@@ -270,7 +267,7 @@ def test_agent_stream_route_requires_authentication() -> None:
 
 
 def test_agent_run_route_rejects_blank_input() -> None:
-    app.dependency_overrides[community_agent_route.get_supabase_client_from_request] = lambda: object()
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-blank"}
 
     async def _call():
         async with _make_client() as client:
@@ -282,6 +279,44 @@ def test_agent_run_route_rejects_blank_input() -> None:
     response = asyncio.run(_call())
     app.dependency_overrides.clear()
     assert response.status_code == 400
+
+
+def test_agent_run_result_route_uses_verified_current_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: Dict[str, Any] = {}
+
+    async def fake_get_agent_run(run_id: str, *, owner_user_id: str):  # type: ignore[no-untyped-def]
+        captured["run_id"] = run_id
+        captured["owner_user_id"] = owner_user_id
+        return {
+            "run_id": run_id,
+            "status": "completed",
+            "intent": "answer",
+            "mode": "chat",
+            "message": "done",
+            "summary": "done",
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": None,
+            "action": None,
+            "report": None,
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.get_agent_run",
+        fake_get_agent_run,
+    )
+    app.dependency_overrides[community_agent_route.require_current_user] = lambda: {"id": "usr-result"}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/community-agent/runs/run-42")
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run-42"
+    assert captured == {"run_id": "run-42", "owner_user_id": "usr-result"}
 
 
 def test_agent_conversation_routes_forward_authenticated_crud_calls(monkeypatch: pytest.MonkeyPatch) -> None:

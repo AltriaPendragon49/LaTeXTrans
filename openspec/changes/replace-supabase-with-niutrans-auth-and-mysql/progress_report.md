@@ -419,3 +419,75 @@ pytest backend/tests/unit/test_local_auth_api.py backend/tests/unit/test_local_a
 - `translation_tasks` guest-flow cleanup expectations in `3.3` are still pending beyond the verified-user boundary fix.
 - Batch persistence retry/cutover semantics in `3.4` still need to stop modeling Supabase-era retry assumptions.
 - Community paper / community-agent persistence migration remains pending.
+
+## 2026-04-09 Incremental Update 4
+
+- Completed the frontend local-auth cutover slice for the approved change.
+- Replaced the runtime Supabase session lifecycle in `frontend/src/contexts/AuthContext.tsx` with:
+  - local access-token persistence
+  - `/api/auth/login` sign-in
+  - `/api/auth/logout` sign-out
+  - `/api/auth/me` bootstrap
+- Reworked `frontend/src/lib/supabase.ts` into a compatibility shim for local bearer-token access so existing API helpers can keep reading `getAccessToken()` during the transition.
+- Updated `frontend/src/pages/Login.tsx` so:
+  - in-app login remains local
+  - local registration / OTP flow is removed from the runtime path
+  - registration and account-management actions redirect to NiuTrans-managed pages
+- Updated frontend profile/sidebar consumers to tolerate local-user payloads that may not always carry an email address.
+- Extended the local auth payload contract to surface optional `email` in backend auth responses when NiuTrans/user mapping data provides it.
+
+### Scope Completed In This Increment
+
+- Frontend auth/session state no longer depends on Supabase runtime auth APIs.
+- Existing frontend data-fetch paths that rely on `getAccessToken()` now receive the local bearer token without requiring broad call-site churn.
+- Login-page runtime UX now matches the approved OpenSpec direction for local sign-in plus external account management.
+
+### Verification Notes
+
+- `python -m py_compile backend/app/services/auth_service.py backend/app/api/routes/auth.py`
+- `node` + local `frontend/node_modules/typescript` transpile-only checks passed for:
+  - `src/lib/supabase.ts`
+  - `src/contexts/AuthContext.tsx`
+  - `src/pages/Login.tsx`
+  - `src/components/app-sidebar.tsx`
+  - `src/pages/Profile.tsx`
+  - `src/pages/remaining-pages-i18n.test.tsx`
+  - `src/contexts/AuthContext.local-auth.test.tsx`
+- `vitest` execution remains blocked in this environment by `spawn EPERM` during Vite/esbuild startup, so the new frontend tests could not be run end-to-end here.
+
+### Remaining Work After This Increment
+
+- Community-agent runtime auth/persistence is still on the Supabase-backed path (`4.2`).
+- Community authorization and paper write-side authorization remain ad hoc and still need the centralized policy slice (`1.4`, `4.3`).
+- Task-route authorization gaps remain and should be addressed as part of the next authorization hardening pass.
+
+## 2026-04-09 Incremental Update 5
+
+- Completed the community-agent run-auth cutover slice for the approved change.
+- Switched these endpoints from Supabase request auth to verified local user auth:
+  - `POST /api/community-agent/runs`
+  - `GET /api/community-agent/runs/{run_id}`
+  - `GET /api/community-agent/runs/{run_id}/events`
+- Updated runtime run ownership so in-memory community-agent runs prefer trusted local `user_id` ownership instead of depending only on hashed bearer-token state.
+- Added focused backend coverage for:
+  - forwarding verified local `owner_user_id` from the route layer into run creation
+  - enforcing owner-based access for run lookup
+  - preserving the existing async run contract and stream/result URLs under local auth
+
+### Scope Completed In This Increment
+
+- Community-agent run creation, result lookup, and SSE event streaming now use `require_current_user` rather than `get_supabase_client_from_request`.
+- The service layer now injects trusted local `user_id` into the agent context for run execution when a verified owner is present.
+- Existing conversation CRUD routes were intentionally left on the Supabase-backed persistence path for this increment so the auth cutover could land without introducing new MySQL schema/repository work in the same step.
+
+### Verification Notes
+
+- `python -m py_compile backend/app/api/routes/community_agent.py backend/app/services/community_agent_service.py backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_agent_service.py`
+- `python -m pytest backend/tests/unit/test_community_agent_runs_api.py -q`
+- `python -m pytest backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_agent_service.py -k "verified_owner_user_id or matching_owner_user_id or strict_raises_when_missing or skill_toggles_to_service or omitted_skill_toggles or async_mode_and_returns_stream_urls or deep_research_mode_to_service or requires_authentication or stream_route_requires_authentication or rejects_blank_input or result_route_uses_verified_current_user or conversation_routes_forward_authenticated_crud_calls" -q`
+
+### Remaining Work After This Increment
+
+- `4.2` remains open because conversation CRUD persistence still depends on Supabase-backed `community_agent_conversations`.
+- `4.3` remains open because community authorization is still incremental and not yet centralized behind a shared `authorize(...)` policy entrypoint.
+- `6.4` remains open because this increment verified run-auth cutover only; it did not complete MySQL-backed community-agent persistence or end-to-end local verification.

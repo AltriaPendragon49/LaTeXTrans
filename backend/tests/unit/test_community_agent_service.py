@@ -1,7 +1,5 @@
 import asyncio
-import base64
 import json
-
 import pytest
 from postgrest.exceptions import APIError
 
@@ -25,16 +23,13 @@ def _tool_call(name: str, arguments: str, *, call_id: str = "call-1") -> dict[st
     }
 
 
-def _jwt_for(user_id: str) -> str:
-    payload = base64.urlsafe_b64encode(json.dumps({"sub": user_id}).encode("utf-8")).decode("utf-8").rstrip("=")
-    return f"header.{payload}.sig"
-
-
-def test_create_agent_run_injects_user_id_from_access_token(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_agent_run_injects_verified_owner_user_id_into_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     observed_context: dict[str, object] = {}
 
-    async def fake_run_agent(*, input_text, context, skill_toggles, event_callback):  # type: ignore[no-untyped-def]
-        del input_text, skill_toggles, event_callback
+    async def fake_run_agent(*, input_text, context, skill_toggles, run_mode, event_callback):  # type: ignore[no-untyped-def]
+        del input_text, skill_toggles, run_mode, event_callback
         observed_context.update(context or {})
         return {
             "status": "completed",
@@ -58,12 +53,58 @@ def test_create_agent_run_injects_user_id_from_access_token(monkeypatch: pytest.
             "hello",
             {"source": "conversation"},
             {"external_search": False},
-            access_token=_jwt_for("user-123"),
+            owner_user_id="user-123",
         )
     )
 
     assert result["status"] == "completed"
     assert observed_context["user_id"] == "user-123"
+
+
+def test_agent_run_requires_matching_owner_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run_agent(*, input_text, context, skill_toggles, run_mode, event_callback):  # type: ignore[no-untyped-def]
+        del input_text, context, skill_toggles, run_mode, event_callback
+        return {
+            "status": "completed",
+            "intent": "answer",
+            "message": "ok",
+            "summary": "ok",
+            "tool_trace": [],
+            "citations": [],
+            "provider_state": {"internal_search": "enabled"},
+            "action": None,
+            "events": [],
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.community_agent_service.run_agent",
+        fake_run_agent,
+    )
+
+    created = asyncio.run(
+        community_agent_service.create_agent_run(
+            "hello",
+            {"source": "conversation"},
+            {"external_search": False},
+            owner_user_id="user-123",
+        )
+    )
+
+    payload = asyncio.run(
+        community_agent_service.get_agent_run(
+            created["run_id"],
+            owner_user_id="user-123",
+        )
+    )
+    assert payload["run_id"] == created["run_id"]
+
+    with pytest.raises(PermissionError):
+        asyncio.run(
+            community_agent_service.get_agent_run(
+                created["run_id"],
+                owner_user_id="user-456",
+            )
+        )
 
 
 def test_get_agent_run_strict_raises_when_missing() -> None:
@@ -150,8 +191,7 @@ def test_conversational_agent_executes_tool_calls_and_returns_grounded_reply(
         fake_call_chat_completion,
     )
     monkeypatch.setattr(
-        community_agent_service.paper_service,
-        "list_community_papers",
+        "backend.app.services.paper_service.list_community_papers",
         fake_list_community_papers,
     )
 

@@ -5,8 +5,8 @@
 - [x] 1.3 Add local JWT/session issuance and verification, plus `optional_current_user`, `require_current_user`, and `require_admin_user` dependencies.
 - [ ] 1.4 Introduce a centralized authorization entrypoint such as `authorize(user, resource, action, context)` and remove route-level ad hoc ownership logic.
 - [x] 1.5 Define local user mapping based on NiuTrans `userId` and seed an initial local admin strategy that does not depend on Supabase metadata or service-role behavior.
-- [ ] 1.6 Replace frontend Supabase auth state management with local token/session handling and authenticated session bootstrap.
-- [ ] 1.7 Update login/register/recovery UI so in-app login remains local, while registration and account-management entry points redirect to NiuTrans-managed pages.
+- [x] 1.6 Replace frontend Supabase auth state management with local token/session handling and authenticated session bootstrap.
+- [x] 1.7 Update login/register/recovery UI so in-app login remains local, while registration and account-management entry points redirect to NiuTrans-managed pages.
 
 ## 2. MySQL Persistence Foundation
 
@@ -71,3 +71,27 @@
   - upload/arxiv/start-translation guest-compatible entry paths stay guest when auth verification fails
   - batch translation rejects credentials that do not resolve to a verified local user
 - Pytest temp/runtime isolation is now pinned under `backend/tests`, and the root cache provider has been disabled to avoid workspace ACL noise during local verification.
+
+### 2026-04-09 Frontend Local Auth Cutover
+
+- Completed the frontend auth cutover slice for the approved change.
+- Replaced the runtime Supabase session bootstrap with local token storage plus `/api/auth/me` bootstrap.
+- Switched login/logout handling to the local auth endpoints and preserved the existing `useAuth()` consumer shape for downstream pages.
+- Updated the login UI so in-app sign-in stays local while registration and account-management entry points now redirect to NiuTrans-managed pages.
+- Added focused frontend coverage for:
+  - local auth bootstrap from a stored access token
+  - login-page rendering with external registration/account actions instead of local sign-up/OTP flow
+
+### 2026-04-09 Community-Agent Run Auth Cutover
+
+- `4.2` advanced, but is not complete yet.
+- Completed the run-auth slice for:
+  - `POST /api/community-agent/runs`
+  - `GET /api/community-agent/runs/{run_id}`
+  - `GET /api/community-agent/runs/{run_id}/events`
+- Those run endpoints now depend on verified local `require_current_user` state instead of `get_supabase_client_from_request`.
+- In-memory run ownership is now keyed by trusted local `user_id` when available, rather than only by hashed bearer-token state.
+- Remaining work inside `4.2` is now concentrated in:
+  - conversation CRUD persistence, which still uses the Supabase-backed `community_agent_conversations` path
+  - MySQL-backed community-agent repositories and schema for conversation/run/event persistence
+  - end-to-end local verification that community-agent persistence, not just run auth, is fully detached from Supabase
