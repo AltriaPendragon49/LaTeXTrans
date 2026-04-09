@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.app.core.config import get_settings
+from backend.app.db import DatabaseUnavailableError
 from backend.app.services import paper_service
 
 
@@ -188,3 +189,64 @@ def test_record_view_increments_local_database_when_supabase_client_unavailable(
 
     assert row is not None
     assert row[0] == 3
+
+
+def test_list_papers_uses_baseline_seed_without_supabase_runtime_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supabase_calls = {"count": 0}
+
+    class _UnavailableRepository:
+        def list_public_papers(self):
+            raise DatabaseUnavailableError("local database unavailable")
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _UnavailableRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_load_baseline_seed_rows",
+        lambda: [
+            {
+                "id": "paper-seed-1",
+                "source": "arxiv",
+                "arxiv_id": "2501.54321",
+                "title": "Seed fallback paper",
+                "authors": [],
+                "categories": [],
+                "abstract_raw": "Seed abstract",
+                "abstract_translated": None,
+                "visibility": "public",
+                "status": "published",
+                "community_status": "official",
+                "trans_status": "completed",
+                "trans_latest_task_id": None,
+                "trans_latest_asset_pdf_id": None,
+                "community_selected_task_id": None,
+                "community_selected_asset_id": None,
+                "like_count": 0,
+                "favorite_count": 0,
+                "comment_count": 0,
+                "view_count": 0,
+                "download_count": 0,
+                "official_published_at": "2026-04-09T10:00:00Z",
+                "created_at": "2026-04-09T09:00:00Z",
+                "updated_at": "2026-04-09T10:00:00Z",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "get_supabase_admin_client",
+        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+
+    result = asyncio.run(paper_service.list_community_papers(sort="latest"))
+
+    assert result["total"] == 1
+    assert result["source_mode"] == "baseline_seed"
+    assert result["items"][0]["id"] == "paper-seed-1"
+    assert supabase_calls["count"] == 0

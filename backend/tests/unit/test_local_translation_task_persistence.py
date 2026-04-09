@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from backend.app.core.config import get_settings
+from backend.app.repositories import AuthRepository
 from backend.app.services.task_manager import TaskManager
 
 
@@ -176,3 +177,72 @@ def test_task_manager_flush_updates_local_translation_task_rows(
         assert row["message"] == "Translating 55%"
     finally:
         database_path.unlink(missing_ok=True)
+
+
+def test_task_manager_terminal_email_notification_uses_local_auth_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent_payloads: list[tuple[str, str, str]] = []
+    supabase_calls = {"count": 0}
+
+    class _FakeTranslationTaskRepository:
+        def upsert_task(self, task_id: str, payload: dict):
+            return {"task_id": task_id, **payload}
+
+        def update_task(self, _task_id: str, _updates: dict) -> bool:
+            return True
+
+        def get_task(self, _task_id: str):
+            return None
+
+    class _FakeAuthRepository(AuthRepository):
+        def get_user_by_id(self, user_id: str):
+            return {
+                "id": user_id,
+                "email": "alice@example.com",
+                "roles": ["user"],
+            }
+
+    class _FakeEmailService:
+        def send_task_completed_email(self, *, to_email: str, task_id: str, status: str) -> None:
+            sent_payloads.append((to_email, task_id, status))
+
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: _FakeTranslationTaskRepository(),
+    )
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_auth_repository",
+        lambda: _FakeAuthRepository(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_supabase_admin_client",
+        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
+    )
+    monkeypatch.setattr(
+        "backend.app.services.email_service.get_email_service",
+        lambda: _FakeEmailService(),
+    )
+
+    task_manager = TaskManager()
+    task_id = task_manager.create_task(
+        source_type="upload",
+        user_id="usr_local_1",
+        persist_to_db=False,
+    )
+    task_manager.update_task(
+        task_id=task_id,
+        advanced_config={"email_notification": True},
+        user_id="usr_local_1",
+    )
+
+    assert task_manager.update_task(
+        task_id=task_id,
+        status="completed",
+        message="done",
+        user_id="usr_local_1",
+    ) is True
+
+    assert sent_payloads == [("alice@example.com", task_id, "completed")]
+    assert supabase_calls["count"] == 0

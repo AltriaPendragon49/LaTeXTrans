@@ -11,6 +11,7 @@ Run with:
     pytest backend/tests/unit/test_fix_task_status_sync.py -v
 """
 
+import asyncio
 import os
 import time
 from pathlib import Path
@@ -179,18 +180,18 @@ def test_update_task_terminal_status_does_not_invoke_db_delete(monkeypatch, fail
 
 
 # ---------------------------------------------------------------------------
-# Task 2: email_notification recovered from Supabase
+# Task 2: email_notification recovered from local translation storage
 # ---------------------------------------------------------------------------
 
-def test_recover_from_supabase_preserves_email_notification_true(monkeypatch):
+def test_recover_from_local_storage_preserves_email_notification_true(monkeypatch):
     """
-    When Supabase returns a db_task with email_notification=True,
+    When local translation-task storage returns email_notification=True,
     _recover_from_supabase must include email_notification: True in
     the restored task's advanced_config dict.
     """
     monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: _make_mock_supabase_client(email_notification=True),
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: _make_mock_translation_task_repository(email_notification=True),
     )
 
     tm = TaskManager()
@@ -203,14 +204,14 @@ def test_recover_from_supabase_preserves_email_notification_true(monkeypatch):
     )
 
 
-def test_recover_from_supabase_preserves_email_notification_false(monkeypatch):
+def test_recover_from_local_storage_preserves_email_notification_false(monkeypatch):
     """
-    When Supabase returns a db_task with email_notification=False (or missing),
+    When local translation-task storage returns email_notification=False,
     _recover_from_supabase must include email_notification: False.
     """
     monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: _make_mock_supabase_client(email_notification=False),
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: _make_mock_translation_task_repository(email_notification=False),
     )
 
     tm = TaskManager()
@@ -223,14 +224,14 @@ def test_recover_from_supabase_preserves_email_notification_false(monkeypatch):
     )
 
 
-def test_recover_from_supabase_preserves_email_notification_missing(monkeypatch):
+def test_recover_from_local_storage_preserves_email_notification_missing(monkeypatch):
     """
-    When Supabase returns a db_task with no email_notification field,
+    When local translation-task storage returns a db_task with no email_notification field,
     _recover_from_supabase must default email_notification to False.
     """
     monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: _make_mock_supabase_client(email_notification=None),  # field absent
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: _make_mock_translation_task_repository(email_notification=None),  # field absent
     )
 
     tm = TaskManager()
@@ -244,8 +245,8 @@ def test_recover_from_supabase_preserves_email_notification_missing(monkeypatch)
     )
 
 
-def _make_mock_supabase_client(email_notification):
-    """Build a minimal mock Supabase client that returns one task row."""
+def _make_mock_translation_task_repository(email_notification):
+    """Build a minimal mock translation-task repository that returns one task row."""
     db_task = {
         "task_id": "task-email-test",
         "status": "completed",
@@ -272,18 +273,30 @@ def _make_mock_supabase_client(email_notification):
         db_task["email_notification"] = email_notification
     # Leave field absent when email_notification is None (tests default=False)
 
-    class _MockResult:
-        data = [db_task]
+    class _MockRepository:
+        def get_task(self, _task_id):
+            return dict(db_task)
 
-    class _MockTable:
-        def select(self, *a): return self
-        def eq(self, *a): return self
-        def execute(self): return _MockResult()
+    return _MockRepository()
 
-    class _MockClient:
-        def table(self, name): return _MockTable()
 
-    return _MockClient()
+def test_persist_task_with_retry_does_not_register_authenticated_task_for_guest_cleanup(monkeypatch):
+    registered = []
+
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.guest_tracker",
+        SimpleNamespace(register=lambda task_id: registered.append(task_id)),
+    )
+
+    tm = TaskManager()
+    task_id = tm.create_task(source_type="upload", user_id="user-authenticated", persist_to_db=False)
+    monkeypatch.setattr(tm, "persist_task_if_needed", lambda _task_id: False)
+
+    result = asyncio.run(tm.persist_task_with_retry(task_id, retries=1, delay=0))
+
+    assert result is False
+    assert registered == []
+    assert tm._tasks[task_id]["persist_failed"] is True
 
 
 # ---------------------------------------------------------------------------

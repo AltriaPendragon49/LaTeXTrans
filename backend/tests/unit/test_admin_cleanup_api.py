@@ -50,30 +50,11 @@ def test_admin_cleanup_route_runs_when_admin_dependency_passes(
 
 
 def test_require_admin_request_rejects_non_admin_user(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeAuthClient:
-        def get_user(self, token):
-            return SimpleNamespace(
-                user=SimpleNamespace(
-                    id="user-1",
-                    email="user@example.com",
-                    app_metadata={"role": "authenticated"},
-                    user_metadata={},
-                )
-            )
-
-    monkeypatch.setattr(
-        auth,
-        "create_supabase_client_with_token",
-        lambda token: SimpleNamespace(auth=FakeAuthClient()),
-    )
-
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             auth.require_admin_request(
-                HTTPAuthorizationCredentials(
-                    scheme="Bearer",
-                    credentials="header.payload.signature",
-                )
+                current_user={"id": "user-1", "roles": ["user"]},
+                credentials=None,
             )
         )
 

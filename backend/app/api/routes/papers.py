@@ -8,20 +8,32 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from backend.app.api.routes.translate import TranslateRequest
-from backend.app.core.auth import optional_current_user
+from backend.app.core.auth import optional_current_user, require_current_user
+from backend.app.policies import authorize
 from backend.app.services import community_content_pool_service, paper_service
 
 router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
 
 
-def _require_authenticated_credentials(credentials: Optional[HTTPAuthorizationCredentials]) -> None:
-    if credentials is not None:
+def _ensure_paper_authorized(
+    current_user: Optional[Dict[str, Any]],
+    action: str,
+) -> None:
+    decision = authorize(current_user, "paper", action)
+    if decision.allowed:
         return
+
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH_SESSION_INVALID", "message": decision.reason},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required",
-        headers={"WWW-Authenticate": "Bearer"},
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "AUTH_FORBIDDEN", "message": decision.reason},
     )
 
 
@@ -159,11 +171,13 @@ class PaperImportResponse(BaseModel):
 async def submit_paper(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
-    if credentials is None:
+    _ensure_paper_authorized(current_user, "submit")
+    if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+            detail={"code": "AUTH_SESSION_INVALID", "message": "Session is invalid or expired."},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -239,9 +253,9 @@ async def list_papers(
 
 @router.get("/content-pool/readiness", response_model=ContentPoolReadinessResponse)
 async def get_content_pool_readiness(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
-    _require_authenticated_credentials(credentials)
+    _ensure_paper_authorized(current_user, "content_pool_read")
     return community_content_pool_service.get_content_pool_readiness_snapshot()
 
 
@@ -249,9 +263,9 @@ async def get_content_pool_readiness(
 async def get_content_pool_job_log(
     arxiv_id: Optional[str] = None,
     limit: int = Query(default=200, ge=1, le=1000),
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
-    _require_authenticated_credentials(credentials)
+    _ensure_paper_authorized(current_user, "content_pool_read")
     return community_content_pool_service.get_content_pool_job_log(arxiv_id=arxiv_id, limit=limit)
 
 

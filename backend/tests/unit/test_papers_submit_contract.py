@@ -6,6 +6,7 @@ from io import BytesIO
 from types import SimpleNamespace
 
 from fastapi import UploadFile
+from backend.app.policies.base import AuthorizationResult
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
@@ -355,8 +356,40 @@ def test_submit_requires_authentication():
             papers_route.submit_paper(
                 request=SimpleNamespace(headers={}),
                 credentials=None,
+                current_user=None,
             )
         )
         raise AssertionError("expected authentication failure")
     except Exception as exc:
         assert getattr(exc, "status_code", None) == 401
+
+
+def test_submit_returns_forbidden_when_paper_policy_denies(monkeypatch):
+    monkeypatch.setattr(
+        papers_route,
+        "authorize",
+        lambda *_args, **_kwargs: AuthorizationResult(
+            allowed=False,
+            reason="paper submit blocked by policy",
+            resource="paper",
+            action="submit",
+        ),
+    )
+
+    class _JsonRequest:
+        headers = {"content-type": "application/json"}
+
+        async def json(self):
+            return {"arxiv_id": "2501.12345"}
+
+    try:
+        asyncio.run(
+            papers_route.submit_paper(
+                request=_JsonRequest(),
+                credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+                current_user={"id": "user-1", "roles": ["user"]},
+            )
+        )
+        raise AssertionError("expected policy failure")
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 403

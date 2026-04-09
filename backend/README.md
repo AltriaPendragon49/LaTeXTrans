@@ -382,7 +382,7 @@ backend/
 │   ├── core/
 │   │   ├── config.py              # 配置管理
 │   │   ├── auth.py                # JWT 认证依赖（可选认证）
-│   │   ├── supabase_client.py     # Supabase 客户端配置
+│   │   ├── supabase_client.py     # 认证兼容层（迁移期保留）
 │   │   └── enums.py               # 枚举定义(TaskStatus等)
 │   ├── models/                    # 数据模型
 │   │   └── config_models.py       # 高级配置模型
@@ -396,7 +396,7 @@ backend/
 │   │       ├── settings.py        # 用户设置 CRUD（需JWT）
 │   │       └── history.py         # 翻译历史查询/删除（需JWT）
 │   └── services/
-│       ├── task_manager.py        # 任务管理器（双层存储：内存+Supabase）
+│       ├── task_manager.py        # 任务管理器（本地数据库持久化）
 │       ├── latex_validator.py     # LaTeX目录校验器
 │       ├── agents/                # 代理系统
 │       │   ├── coordinator_agent.py
@@ -433,11 +433,19 @@ export LLM_BASE_URL="https://aicanapi.com/v1/chat/completions"
 export LLM_MODEL="gpt-4.1-mini"
 export LLM_TIMEOUT="60"
 
-# Supabase 配置（多用户功能必需）
-export SUPABASE_URL="https://your-project.supabase.co"
-export SUPABASE_ANON_KEY="your-anon-key"       # 用于用户操作（RLS 生效）
-export SUPABASE_SERVICE_ROLE_KEY="your-key"     # 用于管理员操作（绕过 RLS）
+# Local Auth / MySQL（本地启动必需）
+export DATABASE_URL="mysql://root:password@127.0.0.1:3306/latextrans"
+export AUTH_PROVIDER_MODE="niutrans_local"
+export AUTH_JWT_KEYS="v1:change-me-local-dev-secret"
+export AUTH_JWT_ISSUER="latextrans-local"
+export AUTH_JWT_AUDIENCE="latextrans-api"
+export AUTH_ACCESS_TOKEN_TTL_SECONDS="28800"
+export NIUTRANS_AUTH_URL="https://niutrans.com/niutrans-auth/auth/login"
+export NIUTRANS_LOGIN_URL="https://niutrans.com/login?active=0"
+export NIUTRANS_REGISTER_URL="https://niutrans.com/login?active=3"
+export NIUTRANS_ACCOUNT_URL="https://niutrans.com/login?active=0"
 export ENCRYPTION_KEY="your-32-byte-key"        # 用于加密用户 API Key
+export ENABLE_SUPABASE_IMPORT_READONLY="false"  # 仅迁移期只读导入开关，可保持关闭
 
 # LaTeX工具路径(可选,如果不在PATH中)
 export LATEX_BIN_DIR="/usr/local/texlive/2024/bin/x86_64-linux"
@@ -446,7 +454,7 @@ export LATEX_BIN_DIR="/usr/local/texlive/2024/bin/x86_64-linux"
 export DATA_DIR="/path/to/data"
 ```
 
-> **注意**: 未配置 Supabase 环境变量时，系统仍可运行但多用户功能不可用（用户设置不持久化、无翻译历史记录）。
+> **注意**: 本地启动与验证不需要 Supabase runtime credentials。只需保证 MySQL 与本地认证变量可用即可。
 
 ### 配置文件
 

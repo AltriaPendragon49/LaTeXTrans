@@ -4,6 +4,7 @@ from typing import Any, Dict
 import httpx
 
 from backend.app.main import app
+from backend.app.api.routes import papers as papers_route
 
 
 def _make_client() -> httpx.AsyncClient:
@@ -48,11 +49,14 @@ def test_content_pool_readiness_route_returns_operator_snapshot(monkeypatch) -> 
         },
     )
 
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {"id": "admin-1", "roles": ["admin"]}
+
     async def _call():
         async with _make_client() as client:
             return await client.get("/api/papers/content-pool/readiness", headers=_auth_headers())
 
     response = asyncio.run(_call())
+    app.dependency_overrides.clear()
 
     assert response.status_code == 200
     payload = response.json()
@@ -96,6 +100,8 @@ def test_content_pool_job_log_route_forwards_filters(monkeypatch) -> None:
         fake_get_content_pool_job_log,
     )
 
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {"id": "admin-1", "roles": ["admin"]}
+
     async def _call():
         async with _make_client() as client:
             return await client.get(
@@ -105,9 +111,23 @@ def test_content_pool_job_log_route_forwards_filters(monkeypatch) -> None:
             )
 
     response = asyncio.run(_call())
+    app.dependency_overrides.clear()
 
     assert response.status_code == 200
     payload = response.json()
     assert observed == {"arxiv_id": "2503.01010", "limit": 50}
     assert payload[0]["stage"] == "promote"
     assert payload[0]["status"] == "completed"
+
+
+def test_content_pool_readiness_route_rejects_non_admin_user(monkeypatch) -> None:
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {"id": "user-1", "roles": ["user"]}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/papers/content-pool/readiness", headers=_auth_headers())
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403

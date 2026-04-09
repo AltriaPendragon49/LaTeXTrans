@@ -135,14 +135,14 @@ frontend/
 │   │   ├── Settings.tsx          # 系统设置页面
 │   │   └── History.tsx           # 翻译历史页面
 │   ├── contexts/            # React Context
-│   │   └── AuthContext.tsx       # 认证上下文（Supabase Auth）
+│   │   └── AuthContext.tsx       # 认证上下文（NiuTrans 本地会话）
 │   ├── store/               # 状态管理 (zustand)
 │   │   └── useStore.ts           # 全局状态（含用户配置加载）
 │   ├── types/               # TypeScript 类型定义
 │   │   └── config.ts             # 配置相关类型
 │   ├── lib/
 │   │   ├── api.ts                # API 调用封装（含可选JWT）
-│   │   ├── supabase.ts           # Supabase 客户端配置
+│   │   ├── supabase.ts           # 认证客户端封装（兼容文件名）
 │   │   └── utils.ts              # 工具函数
 │   ├── App.tsx              # 应用入口
 │   └── main.tsx             # Vite 入口
@@ -159,7 +159,7 @@ frontend/
 - **UI 组件**: shadcn/ui + Radix UI
 - **样式**: Tailwind CSS 4.x
 - **图标**: Lucide React
-- **认证**: Supabase Auth (@supabase/supabase-js)
+- **认证**: NiuTrans Local Auth（经后端 `/api/auth/*`）
 
 ## 🔗 API 集成
 
@@ -185,11 +185,12 @@ frontend/
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_NIUTRANS_LOGIN_URL=https://niutrans.com/login?active=0
+VITE_NIUTRANS_REGISTER_URL=https://niutrans.com/login?active=3
+VITE_NIUTRANS_ACCOUNT_URL=https://niutrans.com/login?active=0
 ```
 
-> **注意**: Supabase 环境变量为多用户功能必需。未配置时认证相关功能不可用。
+> **注意**: 本地开发与验证不需要 Supabase 凭据。`VITE_NIUTRANS_*` 仅用于覆盖默认跳转地址，可按需配置。
 
 ### 高级配置默认值
 
@@ -240,4 +241,4 @@ app.add_middleware(
 - **后端文档**: `backend/README.md`
 - **OpenSpec 变更记录**: `openspec/changes/archive/`
 - **UI 组件文档**: https://ui.shadcn.com/
-- **Supabase 文档**: https://supabase.com/docs
+- **NiuTrans 登录入口**: https://niutrans.com/login

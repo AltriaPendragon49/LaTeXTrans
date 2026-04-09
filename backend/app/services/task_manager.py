@@ -23,8 +23,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Union, List
 from backend.app.core.config import TaskStatus, CompilationStage, get_settings
-from backend.app.core.supabase_client import get_supabase_admin_client
-from backend.app.repositories import TranslationTaskRepository
+from backend.app.repositories import AuthRepository, TranslationTaskRepository
 from backend.app.core.timezone_utils import get_cst_now, get_cst_now_iso
 from backend.app.services.task_detail import (
     infer_task_detail,
@@ -40,6 +39,16 @@ _runtime_state_lock = threading.Lock()
 
 def get_translation_task_repository() -> TranslationTaskRepository:
     return TranslationTaskRepository()
+
+
+def get_auth_repository() -> AuthRepository:
+    return AuthRepository()
+
+
+def get_supabase_admin_client():
+    """Legacy compatibility hook kept so older tests can monkeypatch it."""
+
+    return None
 
 
 def set_runtime_shutting_down(value: bool) -> None:
@@ -812,22 +821,13 @@ class TaskManager:
             "missing_paths": sorted(set(missing_paths)),
         }
 
-    def _delete_failed_task_from_supabase(self, task_id: str) -> bool:
-        """Delete failed task row from Supabase translation_tasks table."""
-        try:
-            client = get_supabase_admin_client()
-            if not client:
-                logger.warning(
-                    f"[TaskManager] Supabase admin client unavailable, skip failed-task delete for {task_id}"
-                )
-                return False
-
-            client.table("translation_tasks").delete().eq("task_id", task_id).execute()
-            logger.info(f"[TaskManager] Deleted failed task {task_id} from Supabase translation_tasks")
-            return True
-        except Exception as e:
-            logger.error(f"[TaskManager] Failed deleting task {task_id} from Supabase: {e}", exc_info=True)
-            return False
+    def _delete_failed_task_from_supabase(self, task_id: str) -> bool:
+        """Legacy no-op kept for compatibility with older tests and call sites."""
+        logger.debug(
+            "[TaskManager] Legacy failed-task delete hook is disabled in local-db mode for %s",
+            task_id,
+        )
+        return False
 
     def _intercept_failed_task(
         self,
@@ -920,27 +920,14 @@ class TaskManager:
             if not uid:
                 return  # Guest users have no email address
 
-            # Fetch user email from Supabase auth admin API
-            client = get_supabase_admin_client()
-            if not client:
-                logger.warning(
-                    f"[EmailService] Cannot send notification for task {task_id}: "
-                    "Supabase admin client unavailable."
-                )
-                return
-
-            try:
-                user_resp = client.auth.admin.get_user_by_id(uid)
-                to_email = (
-                    user_resp.user.email
-                    if user_resp and user_resp.user
-                    else None
-                )
-            except Exception as e:
-                logger.warning(
-                    f"[EmailService] Failed to fetch email for user {uid}: {e}"
-                )
-                return
+            try:
+                user_row = get_auth_repository().get_user_by_id(str(uid))
+                to_email = str(user_row.get("email") or "").strip() if user_row else None
+            except Exception as e:
+                logger.warning(
+                    f"[EmailService] Failed to fetch email for user {uid} from local auth repository: {e}"
+                )
+                return
 
             if not to_email:
                 logger.warning(
@@ -1015,8 +1002,9 @@ class TaskManager:
         Async version of persist_task_if_needed with automatic retry.
 
         On all retries exhausted:
-        - Registers the task into guest_tracker for automatic TTL cleanup
-        - Sets persist_failed=True in memory so the frontend can show a warning
+        - Guest tasks may still be registered into guest_tracker for TTL cleanup
+        - Authenticated tasks remain local-only and are marked persist_failed=True
+          so the frontend can surface the degraded persistence state
 
         Args:
             task_id: Task ID to persist
@@ -1047,7 +1035,13 @@ class TaskManager:
             f"failed for task {task_id}. Registering as temporary task for auto-cleanup."
         )
         # Register into guest_tracker so periodic_cleanup will delete files later
-        guest_tracker.register(task_id)
+        task_user_id = None
+        with self._lock:
+            if task_id in self._tasks:
+                task_user_id = self._tasks[task_id].get("user_id")
+
+        if not task_user_id:
+            guest_tracker.register(task_id)
         # Set in-memory flag so frontend can detect and warn user
         with self._lock:
             if task_id in self._tasks:

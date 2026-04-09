@@ -308,54 +308,39 @@ def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp
         "task_ids": [],
     }
 
-    paper_rows = [
-        {
-            "id": "paper-1",
-            "trans_latest_task_id": "task-latest",
-            "community_selected_task_id": "task-community",
-            "visibility": "private",
-            "status": "draft",
-        }
-    ]
-    asset_rows = [
-        {"task_id": "task-latest"},
-        {"task_id": "task-source"},
-        {"task_id": None},
-    ]
-    comment_rows = [{"id": "comment-1"}]
-    report_rows = [{"id": "report-paper"}, {"id": "report-comment"}]
+    class _FakeCommunityRepository:
+        def list_purgeable_non_success_papers(self, _statuses):
+            return [
+                {
+                    "id": "paper-1",
+                    "trans_latest_task_id": "task-latest",
+                    "community_selected_task_id": "task-community",
+                    "visibility": "private",
+                    "status": "draft",
+                }
+            ]
 
-    def handler(query: _FakeQuery):
-        if query.table_name == "papers" and query.mode == "select":
-            if (
-                (
-                    "in",
-                    "trans_status",
-                    ("not_started", "queued", "processing", "failed", "failed_compilation", "structure_invalid"),
-                )
-                in query.filters
-            ):
-                return paper_rows
+        def list_asset_task_ids_for_papers(self, _paper_ids):
+            return ["task-source"]
 
-        if query.table_name == "paper_assets" and query.mode == "select":
-            return asset_rows
+        def list_comment_ids_for_papers(self, _paper_ids):
+            return ["comment-1"]
 
-        if query.table_name == "comments" and query.mode == "select":
-            return comment_rows
-
-        if query.table_name == "reports" and query.mode == "select":
-            return report_rows
-
-        if query.mode == "delete":
-            deleted["tables"].append(
-                (query.table_name, tuple(query.filters), query.payload)
-            )
-            return [{"ok": True}]
-
-        if query.mode == "update":
+        def list_report_ids_for_targets(self, *, target_type, target_ids):
+            if target_type == "paper" and list(target_ids) == ["paper-1"]:
+                return ["report-paper"]
+            if target_type == "comment" and list(target_ids) == ["comment-1"]:
+                return ["report-comment"]
             return []
 
-        return []
+        def delete_rows_by_ids(self, table_name, *, id_column, row_ids):
+            deleted["tables"].append((table_name, id_column, tuple(row_ids)))
+
+        def delete_rows_for_papers(self, table_name, paper_ids):
+            deleted["tables"].append((table_name, "paper_id", tuple(paper_ids)))
+
+        def delete_translation_tasks(self, task_ids):
+            deleted["tables"].append(("translation_tasks", "task_id", tuple(task_ids)))
 
     class _FakeTaskManager:
         def delete_task_full(self, task_id: str):
@@ -371,10 +356,7 @@ def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp
             community_papers_dir=community_root,
         ),
     )
-    monkeypatch.setattr(
-        "backend.app.core.supabase_client.create_supabase_admin_client",
-        lambda: _FakeSupabaseClient(handler),
-    )
+    monkeypatch.setattr(main_module, "get_community_paper_repository", lambda: _FakeCommunityRepository())
     monkeypatch.setattr(
         main_module,
         "get_task_manager",
@@ -384,7 +366,7 @@ def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp
 
     result = asyncio.run(main_module.reset_stale_community_tasks())
 
-    deleted_tables = [table for table, _filters, _payload in deleted["tables"]]
+    deleted_tables = [table for table, _column, _row_ids in deleted["tables"]]
     assert result["purged_records"] == 1
     assert set(deleted["task_ids"]) == {"task-community", "task-latest", "task-source"}
     assert not (community_root / "paper-1").exists()
@@ -516,38 +498,69 @@ def test_reset_stale_community_tasks_uses_local_repository_without_supabase(
     assert favorite_count == 0
 
 
+def test_reset_stale_community_tasks_skips_when_local_repository_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    community_root = tmp_path / "community_papers"
+    community_root.mkdir(parents=True, exist_ok=True)
+    supabase_calls = {"count": 0}
+
+    class _UnavailableCommunityRepository:
+        def list_purgeable_non_success_papers(self, _statuses):
+            raise main_module.DatabaseUnavailableError("local database unavailable")
+
+    monkeypatch.setenv("ENABLE_STALE_PAPER_PURGE", "true")
+    monkeypatch.setattr(main_module, "get_community_paper_repository", lambda: _UnavailableCommunityRepository())
+    monkeypatch.setattr(
+        "backend.app.core.supabase_client.create_supabase_admin_client",
+        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        SimpleNamespace(
+            supabase_service_role_key="service-role",
+            supabase_url="https://example.supabase.co",
+            community_papers_dir=community_root,
+        ),
+    )
+
+    result = asyncio.run(main_module.reset_stale_community_tasks())
+
+    assert result.get("purged_records", 0) == 0
+    assert result["errors"]
+    assert supabase_calls["count"] == 0
+
+
 def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(monkeypatch):
-    affected_papers = [{"id": "paper-1"}]
-    stale_papers = [{"id": "paper-2", "community_selected_task_id": "task-run"}]
-    updates = []
     deleted_task_ids = []
     fake_repo = _FakeTranslationTaskRepository(
         active_ids=["task-run", "task-download"],
         status_map={"task-run": "failed"},
     )
-
-    def handler(query: _FakeQuery):
-        if query.table_name == "papers" and query.mode == "select":
-            if query.columns == "id":
-                return affected_papers
-            if query.columns == "id, community_selected_task_id":
-                return stale_papers
-        if query.mode == "update":
-            updates.append((query.table_name, query.payload, tuple(query.filters)))
-            return [{"ok": True}]
-        return []
+    marked_task_ids = []
 
     class _FakeTaskManager:
         def delete_task_full(self, task_id: str):
             deleted_task_ids.append(task_id)
             return {"success": True, "deleted_dirs": [f"/tmp/{task_id}"], "errors": []}
 
-    monkeypatch.setattr(
-        "backend.app.core.supabase_client.create_supabase_admin_client",
-        lambda: _FakeSupabaseClient(handler),
-    )
+    class _FakeCommunityRepository:
+        def list_inflight_translation_papers(self):
+            return []
+
+    async def _fake_mark_paper_translation_failed_by_task(task_id: str):
+        marked_task_ids.append(task_id)
+        return 1
+
+    monkeypatch.setattr(main_module, "get_community_paper_repository", lambda: _FakeCommunityRepository())
     monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
     monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.mark_paper_translation_failed_by_task",
+        _fake_mark_paper_translation_failed_by_task,
+    )
     monkeypatch.setattr(
         main_module,
         "settings",
@@ -562,12 +575,12 @@ def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(mo
     assert result["failed_tasks"] == 2
     assert result["updated_papers"] == 2
     assert set(deleted_task_ids) == {"task-run", "task-download"}
+    assert marked_task_ids == ["task-run", "task-download"]
     assert fake_repo.updated_batches
     batch_task_ids, batch_payload = fake_repo.updated_batches[-1]
     assert set(batch_task_ids) == {"task-run", "task-download"}
     assert batch_payload["status"] == "failed"
     assert batch_payload["detail_code"] == "task_interrupted_restart"
-    assert any(table == "papers" for table, _payload, _filters in updates)
 
 
 def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(monkeypatch):

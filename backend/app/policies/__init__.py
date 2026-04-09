@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from .admin_policy import AdminPolicy
 from .base import AuthorizationResult, BasePolicy
 from .community_agent_policy import CommunityAgentPolicy
+from .paper_policy import PaperPolicy
 from .settings_policy import SettingsPolicy
 from .task_policy import TaskPolicy
 
@@ -14,6 +15,7 @@ _POLICY_REGISTRY: dict[str, BasePolicy] = {
     "settings": SettingsPolicy(),
     "task": TaskPolicy(),
     "admin_cleanup": AdminPolicy(),
+    "paper": PaperPolicy(),
 }
 
 

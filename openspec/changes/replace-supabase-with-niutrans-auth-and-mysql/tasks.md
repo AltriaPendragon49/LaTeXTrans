@@ -11,7 +11,7 @@
 ## 2. MySQL Persistence Foundation
 
 - [x] 2.1 Add MySQL connection, migration workflow, and repository/service helpers suitable for local development and later server rollout.
-- [ ] 2.2 Finalize MySQL DDL, indexes, unique constraints, and foreign-key strategy for users, auth/session support, translation tasks, user settings, community papers, paper assets, and currently used community-agent persistence records.
+- [x] 2.2 Finalize MySQL DDL, indexes, unique constraints, and foreign-key strategy for users, auth/session support, translation tasks, user settings, community papers, paper assets, and currently used community-agent persistence records.
 - [ ] 2.3 Replace runtime Supabase admin-client and user-client access paths with MySQL-backed repositories and app-layer authorization filters.
 
 ## 3. Translation Mainline Migration
@@ -24,7 +24,7 @@
 ## 4. Community Migration
 
 - [ ] 4.1 Move community paper metadata and paper-asset persistence from Supabase to MySQL while keeping local disk paths as the asset source of truth.
-- [ ] 4.2 Move community-agent conversation/run persistence from Supabase-backed auth context to MySQL-backed local user context.
+- [x] 4.2 Move community-agent conversation/run persistence from Supabase-backed auth context to MySQL-backed local user context.
 - [ ] 4.3 Replace community authorization assumptions that currently depend on RLS/service-role patterns with explicit app-layer ownership and admin checks.
 
 ## 5. Data Migration And Cleanup
@@ -35,7 +35,7 @@
 - [ ] 5.4 Write and maintain a rollout note covering migration window, data backup, and rollback triggers for the local-first cutover.
 - [ ] 5.5 Validate migrated file-path references against the local disk layout and emit actionable reports for missing assets without aborting all imports.
 - [ ] 5.6 Remove runtime Supabase SDK/config dependencies from local startup paths once MySQL-backed flows are complete.
-- [ ] 5.7 Update local setup documentation and env examples so local validation no longer requires Supabase runtime credentials.
+- [x] 5.7 Update local setup documentation and env examples so local validation no longer requires Supabase runtime credentials.
 
 ## 6. Local Verification
 
@@ -47,7 +47,6 @@
 - [x] 6.6 Run `openspec validate replace-supabase-with-niutrans-auth-and-mysql --strict --no-interactive` and collect local evidence before implementation sign-off.
 
 ## Progress Notes
-
 ### 2026-04-09
 
 - `3.1` advanced substantially but is not complete yet.
@@ -189,3 +188,16 @@
   - `4.1` still has other community-paper helper paths that retain Supabase fallbacks outside the covered write helpers
   - `5.6` advanced, but remains unchecked until the remaining startup/community runtime Supabase dependencies are removed more broadly
   - `6.4` now has stronger focused evidence for community write-path cutover and restart-failover behavior, but still lacks a broader end-to-end configured-MySQL verification pass
+
+### 2026-04-10 Translation Runtime Cleanup And Supabase Shim Removal
+
+- `2.3`, `3.4`, and `5.6` all advanced again, but remain incomplete overall.
+- Completed in this slice:
+  - replaced `backend/app/core/supabase_client.py` with a pure compatibility shim so local runtime import paths no longer require the Python Supabase SDK to be installed
+  - updated the stale output-reuse regression to assert the current local-repository lookup path rather than the removed Supabase-query path
+  - changed `persist_task_with_retry()` so authenticated tasks that exhaust persistence retries stay in local-only degraded mode instead of being silently registered into guest-task cleanup semantics
+  - rewrote the old task-recovery email-notification tests to validate current local `TranslationTaskRepository` recovery behavior instead of the removed Supabase client path
+- Remaining work impacted by this slice:
+  - `3.4` still needs broader batch-translation behavior review so all retry/degradation messaging and cleanup assumptions match the local-first persistence model end-to-end
+  - `5.6` still has compatibility naming and config residues (`supabase_*` env fields and legacy helper names) even though the last real backend SDK import path has been removed from local runtime use
+  - `2.3` still needs a wider audit of other legacy compatibility shims and route/service comments so the codebase no longer suggests runtime Supabase authority where none remains

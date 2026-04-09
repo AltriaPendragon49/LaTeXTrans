@@ -27,10 +27,6 @@ export default defineConfig({
             return 'reader'
           }
 
-          if (id.includes('@supabase')) {
-            return 'supabase'
-          }
-
           if (id.includes('i18next') || id.includes('react-i18next')) {
             return 'i18n'
           }

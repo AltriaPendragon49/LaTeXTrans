@@ -59,3 +59,36 @@ def test_unknown_resource_is_denied():
     result = authorize(user=None, resource="missing", action="noop")
     assert not result.allowed
     assert "unknown resource" in result.reason.lower()
+
+
+def test_paper_policy_allows_public_read_paths():
+    for action in (
+        "list",
+        "detail",
+        "view",
+        "translate",
+        "preview",
+        "download_session",
+        "download",
+        "import",
+    ):
+        decision = authorize(user=None, resource="paper", action=action)
+        assert decision.allowed
+
+
+def test_paper_policy_requires_authenticated_user_for_submit():
+    guest = authorize(user=None, resource="paper", action="submit")
+    assert not guest.allowed
+    assert "authentication" in guest.reason.lower()
+
+    member = authorize(user=_user(), resource="paper", action="submit")
+    assert member.allowed
+
+
+def test_paper_policy_restricts_content_pool_to_admin():
+    member = authorize(user=_user(), resource="paper", action="content_pool_read")
+    assert not member.allowed
+    assert "admin" in member.reason.lower()
+
+    admin = authorize(user=_user(roles=["admin"]), resource="paper", action="content_pool_read")
+    assert admin.allowed

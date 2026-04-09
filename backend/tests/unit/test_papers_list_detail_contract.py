@@ -1,46 +1,13 @@
 import asyncio
 import os
 
-import httpx
+from backend.app.db import DatabaseUnavailableError
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
 os.environ.setdefault("LLM_MODEL", "gpt-4o")
 
 from backend.app.services import paper_service
-
-
-class _Result:
-    def __init__(self, data):
-        self.data = data
-
-
-class _Query:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def select(self, *_args, **_kwargs):
-        return self
-
-    def eq(self, field, value):
-        self._rows = [row for row in self._rows if row.get(field) == value]
-        return self
-
-    def neq(self, field, value):
-        self._rows = [row for row in self._rows if row.get(field) != value]
-        return self
-
-    def execute(self):
-        return _Result(self._rows)
-
-
-class _Client:
-    def __init__(self, paper_rows):
-        self.paper_rows = paper_rows
-
-    def table(self, name):
-        assert name == "papers"
-        return _Query(list(self.paper_rows))
 
 
 def test_list_papers_orders_official_before_fallback(monkeypatch):
@@ -97,8 +64,11 @@ def test_list_papers_orders_official_before_fallback(monkeypatch):
         },
     ]
 
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: _Client(papers))
-    monkeypatch.setattr(paper_service, "run_db_blocking", lambda fn, **_kwargs: asyncio.sleep(0, result=fn()))
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return papers
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
     monkeypatch.setattr(
         paper_service,
         "_fetch_asset_maps_for_papers",
@@ -126,7 +96,7 @@ def test_list_papers_orders_official_before_fallback(monkeypatch):
     assert result["items"][1]["id"] == "paper-fallback"
 
 
-def test_list_papers_retries_transient_supabase_disconnect(monkeypatch):
+def test_list_papers_uses_baseline_seed_when_local_repository_is_unavailable(monkeypatch):
     papers = [
         {
             "id": "paper-official",
@@ -154,16 +124,20 @@ def test_list_papers_retries_transient_supabase_disconnect(monkeypatch):
             "official_published_at": "2026-03-18T04:00:00+00:00",
         },
     ]
-    attempts = {"count": 0}
 
-    async def _flaky_run_db_blocking(fn, **_kwargs):
-        attempts["count"] += 1
-        if attempts["count"] == 1:
-            raise httpx.RemoteProtocolError("Server disconnected")
-        return fn()
+    supabase_calls = {"count": 0}
 
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: _Client(papers))
-    monkeypatch.setattr(paper_service, "run_db_blocking", _flaky_run_db_blocking)
+    class _UnavailableCommunityRepository:
+        def list_public_papers(self):
+            raise DatabaseUnavailableError("local database unavailable")
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _UnavailableCommunityRepository())
+    monkeypatch.setattr(paper_service, "_load_baseline_seed_rows", lambda: list(papers))
+    monkeypatch.setattr(
+        paper_service,
+        "get_supabase_admin_client",
+        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
+    )
     monkeypatch.setattr(
         paper_service,
         "_fetch_asset_maps_for_papers",
@@ -172,7 +146,8 @@ def test_list_papers_retries_transient_supabase_disconnect(monkeypatch):
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
-    assert attempts["count"] == 2
+    assert supabase_calls["count"] == 0
+    assert result["source_mode"] == "baseline_seed"
     assert result["total"] == 1
     assert result["items"][0]["id"] == "paper-official"
 
@@ -212,8 +187,11 @@ def test_list_recovers_completed_state_when_source_asset_is_newer_than_preview(m
         }
     ]
 
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: _Client(papers))
-    monkeypatch.setattr(paper_service, "run_db_blocking", lambda fn, **_kwargs: asyncio.sleep(0, result=fn()))
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return papers
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
     monkeypatch.setattr(
         paper_service,
         "_fetch_asset_maps_for_papers",
