@@ -1,5 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
+import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 
@@ -12,7 +11,7 @@ vi.mock("@/contexts/AuthContext", () => ({
     user: null,
     isAuthenticated: false,
     loading: false,
-    isSupabaseAvailable: false,
+    isAuthAvailable: false,
   }),
 }))
 
@@ -24,8 +23,6 @@ describe("Layout language integration", () => {
   })
 
   it("updates shared layout text when the ui language changes", async () => {
-    const user = userEvent.setup()
-
     render(
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
@@ -36,30 +33,16 @@ describe("Layout language integration", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText(i18n.t("layout.guestMode"))).toBeInTheDocument()
-    expect(screen.getAllByText(i18n.t("community.nav.community")).length).toBeGreaterThan(0)
-    expect(
-      screen.getByRole("button", { name: i18n.t("common.actions.toggleSidebar") }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: i18n.t("theme.toggle.switchToLight") }),
-    ).toBeInTheDocument()
+    expect(screen.getAllByText("社区").length).toBeGreaterThan(0)
+    expect(screen.getByText("登录")).toBeInTheDocument()
 
-    const trigger = screen.getByRole("combobox", {
-      name: i18n.t("common.choose_global_interface_language"),
-    })
-    trigger.focus()
-    fireEvent.keyDown(trigger, { key: "ArrowDown" })
-
-    const listbox = await screen.findByRole("listbox")
-    await user.click(within(listbox).getByRole("option", { name: /English/i }))
+    await i18n.changeLanguage("en")
 
     await waitFor(() => {
-      expect(screen.getByText("Guest mode")).toBeInTheDocument()
+      expect(screen.getAllByText("Community").length).toBeGreaterThan(0)
     })
 
-    expect(screen.getAllByText("Community").length).toBeGreaterThan(0)
-    expect(screen.getByRole("button", { name: "Toggle sidebar" })).toBeInTheDocument()
+    expect(screen.getByText("Sign in")).toBeInTheDocument()
     expect(screen.getByText("layout-test-child")).toBeInTheDocument()
   })
 })

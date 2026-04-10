@@ -99,6 +99,27 @@ class NiuTransAuthClient:
                 message="NiuTrans authentication returned an invalid response.",
             ) from exc
 
+        if isinstance(payload, dict):
+            upstream_code = payload.get("code")
+            upstream_message = self._extract_first(
+                payload,
+                ("msg",),
+                ("message",),
+                ("error", "message"),
+            )
+            if upstream_code == 1006:
+                raise AuthServiceError(
+                    status_code=401,
+                    code="AUTH_INVALID_CREDENTIALS",
+                    message="NiuTrans did not accept these credentials.",
+                )
+            if isinstance(upstream_code, int) and upstream_code not in {0, 200}:
+                raise AuthServiceError(
+                    status_code=503,
+                    code="AUTH_UPSTREAM_UNAVAILABLE",
+                    message=upstream_message or "NiuTrans authentication is temporarily unavailable.",
+                )
+
         external_user_id = self._extract_first(
             payload,
             ("userId",),

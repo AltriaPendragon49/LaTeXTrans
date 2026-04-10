@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from backend.app.core.config import get_settings
+from backend.app.services import paper_service
 from backend.scripts.import_supabase_to_mysql import run_import
 
 
@@ -285,3 +287,56 @@ def test_run_import_is_repeatable_and_reports_updates(monkeypatch: pytest.Monkey
         connection.close()
 
     assert user_row["display_name"] == "Alice Updated"
+
+
+def test_imported_paper_rows_are_visible_through_service_read_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "service-read.db"
+    export_dir = tmp_path / "exports"
+    asset_file = tmp_path / "assets" / "paper_1.pdf"
+    asset_file.parent.mkdir(parents=True, exist_ok=True)
+    asset_file.write_bytes(b"%PDF-1.4")
+
+    payload = _payload(str(asset_file))
+    payload["papers"][0]["abstract_translated"] = "这是导入后的中文摘要"
+    payload["papers"][0]["community_status"] = "official"
+    payload["papers"][0]["trans_status"] = "completed"
+
+    _create_sqlite_schema(database_path)
+    _write_exports(export_dir, payload)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path}")
+    monkeypatch.setattr(paper_service.settings, "database_url", f"sqlite:///{database_path}")
+    monkeypatch.setattr(paper_service.settings, "community_baseline_seed_path", None)
+
+    report = run_import(input_dir=export_dir, dry_run=False, asset_root=tmp_path)
+    assert report["errors"] == []
+
+    async def _identity_paper(row, asset_map=None):
+        del asset_map
+        return row
+
+    async def _empty_viewer_state(_paper_ids, user_id=None):
+        del user_id
+        return {"paper_1": {"liked": False, "favorited": False}}
+
+    async def _no_source_html(_arxiv_id: str):
+        return None
+
+    monkeypatch.setattr(paper_service, "_hydrate_arxiv_metadata_if_needed", _identity_paper)
+    monkeypatch.setattr(paper_service, "_hydrate_translated_abstract_if_needed", _identity_paper)
+    monkeypatch.setattr(paper_service, "_fetch_viewer_state", _empty_viewer_state)
+    monkeypatch.setattr(paper_service, "_fetch_sanitized_arxiv_html", _no_source_html)
+
+    listing = asyncio.run(paper_service.list_community_papers(sort="latest"))
+    detail = asyncio.run(paper_service.get_community_paper_detail(paper_id="paper_1"))
+
+    assert listing["source_mode"] == "database"
+    assert listing["total"] == 1
+    assert listing["items"][0]["id"] == "paper_1"
+    assert detail["paper"]["id"] == "paper_1"
+    assert detail["paper"]["latest_asset"]["id"] == "asset_1"
+    assert detail["reader"]["translated"]["kind"] == "translated_pdf"

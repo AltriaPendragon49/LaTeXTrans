@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -95,7 +96,7 @@ async def _run_db_blocking_with_retry(
             if attempt >= retries:
                 raise
             logger.warning(
-                "Transient Supabase disconnect during %s; retrying (%s/%s)",
+                "Transient local database transport issue during %s; retrying (%s/%s)",
                 operation_name,
                 attempt + 1,
                 retries + 1,
@@ -489,7 +490,39 @@ def _resolve_storage_path(stored_path: Optional[str]) -> Path:
     if not stored_path:
         return Path("")
 
-    candidate = Path(stored_path)
+    raw_path = str(stored_path).strip()
+    if not raw_path:
+        return Path("")
+
+    candidate = Path(raw_path)
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
+
+    normalized = raw_path
+    if re.match(r"^[A-Za-z]:[\\/]", normalized):
+        normalized = normalized[3:]
+    normalized = normalized.replace("\\", "/")
+    path_parts = [part for part in normalized.split("/") if part]
+    lowered_parts = [part.lower() for part in path_parts]
+
+    if "backend" in lowered_parts:
+        backend_index = lowered_parts.index("backend")
+        remapped = settings.base_dir.joinpath(*path_parts[backend_index + 1 :])
+        if remapped.exists():
+            return remapped
+
+    if "data" in lowered_parts:
+        data_index = lowered_parts.index("data")
+        remapped = (settings.base_dir / "data").joinpath(*path_parts[data_index + 1 :])
+        if remapped.exists():
+            return remapped
+
+    if "community_papers" in lowered_parts:
+        papers_index = lowered_parts.index("community_papers")
+        remapped = settings.community_papers_dir.joinpath(*path_parts[papers_index + 1 :])
+        if remapped.exists():
+            return remapped
+
     if candidate.is_absolute():
         return candidate
     return settings.base_dir / candidate
@@ -700,7 +733,7 @@ def _load_preview_payload(
         "task_id": preview_asset.get("task_id") or paper.get("community_selected_task_id"),
         "asset": _serialize_public_asset(preview_asset),
         "html_content": html_content.replace("<script", "&lt;script"),
-        "generated_at": preview_asset.get("created_at"),
+        "generated_at": _serialize_timestamp_value(preview_asset.get("created_at")),
     }
     if cache_key:
         _preview_payload_cache[cache_key] = payload
@@ -931,13 +964,7 @@ async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
         local_row = None
     if local_row is not None:
         return _apply_runtime_paper_override(local_row)
-
-    return _apply_runtime_paper_override(
-        next(
-            (row for row in _load_baseline_seed_rows() if str(row.get("id") or "") == paper_id),
-            None,
-        )
-    )
+    return None
 
 
 async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
@@ -951,17 +978,7 @@ async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
         local_row = None
     if local_row is not None:
         return _apply_runtime_paper_override(local_row)
-
-    return _apply_runtime_paper_override(
-        next(
-            (
-                row
-                for row in _load_baseline_seed_rows()
-                if str(row.get("arxiv_id") or "").strip() == arxiv_id
-            ),
-            None,
-        )
-    )
+    return None
 
 
 async def _fetch_paper_by_title(*, title: str, source: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -977,17 +994,7 @@ async def _fetch_paper_by_title(*, title: str, source: Optional[str] = None) -> 
         local_row = None
     if local_row is not None:
         return local_row
-
-    return next(
-        (
-            row
-            for row in _load_baseline_seed_rows()
-            if str(row.get("title") or "") == title
-            and str(row.get("status") or "").strip() != "removed"
-            and (source is None or str(row.get("source") or "").strip() == source)
-        ),
-        None,
-    )
+    return None
 
 
 async def _insert_paper(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1152,7 +1159,7 @@ def _serialize_latest_asset(asset: Optional[Dict[str, Any]]) -> Optional[Dict[st
         "asset_type": asset.get("asset_type"),
         "file_name": asset.get("file_name"),
         "mime_type": asset.get("mime_type"),
-        "created_at": asset.get("created_at"),
+        "created_at": _serialize_timestamp_value(asset.get("created_at")),
     }
 
 
@@ -1810,11 +1817,19 @@ def _translated_rank(paper: Dict[str, Any]) -> int:
     return 0 if paper.get("trans_status") == "completed" else 1
 
 
-def _timestamp_key(value: Optional[str]) -> float:
+def _serialize_timestamp_value(value: Any) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def _timestamp_key(value: Any) -> float:
     if not value:
         return 0.0
+    if isinstance(value, datetime):
+        return value.timestamp()
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
     except Exception:
         return 0.0
 
@@ -2235,8 +2250,8 @@ def _paper_summary(
         "abstract_translated": paper.get("abstract_translated"),
         "community_status": paper.get("community_status"),
         "trans_status": paper.get("trans_status"),
-        "created_at": paper.get("created_at"),
-        "official_published_at": paper.get("official_published_at"),
+        "created_at": _serialize_timestamp_value(paper.get("created_at")),
+        "official_published_at": _serialize_timestamp_value(paper.get("official_published_at")),
         "community_selected_task_id": paper.get("community_selected_task_id"),
         "community_selected_asset_id": paper.get("community_selected_asset_id"),
         "visibility": paper.get("visibility"),
@@ -2642,14 +2657,8 @@ async def list_community_papers(
         papers = []
 
     if not papers:
-        baseline_rows = _load_baseline_seed_rows()
-        if baseline_rows:
-            papers = baseline_rows
-            source_mode = "baseline_seed"
-
-    if not papers:
         logger.warning(
-            "Local community repository unavailable and no baseline seed rows found; returning empty community list"
+            "Local community repository returned no readable public rows; returning empty community list"
         )
 
     papers = [_apply_runtime_paper_override(paper) or paper for paper in papers]
@@ -2786,22 +2795,6 @@ async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]
     if existing is not None:
         return {
             "paper_id": existing["id"],
-            "reused": True,
-            "imported": False,
-            "reader_state": "source_ready",
-        }
-
-    baseline_existing = next(
-        (
-            row
-            for row in _load_baseline_seed_rows()
-            if str(row.get("arxiv_id") or "").strip() == arxiv_id
-        ),
-        None,
-    )
-    if baseline_existing is not None:
-        return {
-            "paper_id": baseline_existing["id"],
             "reused": True,
             "imported": False,
             "reader_state": "source_ready",

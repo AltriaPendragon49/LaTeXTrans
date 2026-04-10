@@ -82,7 +82,7 @@ export default function Login() {
         )
     }
 
-    const authErrorMessage = error ? t('auth.errors.requestFailed') : null
+    const authErrorMessage = error || null
 
     return (
         <div className="container mx-auto max-w-md p-6 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in duration-500">

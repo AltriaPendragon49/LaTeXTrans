@@ -357,6 +357,97 @@ describe("PaperDetailPage", () => {
     expect(await screen.findByText("This translated PDF is not compilable yet.")).toBeInTheDocument()
   })
 
+  it("requests a signed translated pdf preview when the paper has a translated pdf asset but no selected task id", async () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        paper: {
+          ...basePaper,
+          community_selected_task_id: null,
+          community_selected_asset_id: "asset-pdf",
+          latest_asset: {
+            id: "asset-preview",
+            task_id: null,
+            asset_type: "preview_html",
+            file_name: "preview.html",
+            mime_type: "text/html",
+            created_at: "2026-03-18T02:00:00Z",
+          },
+          assets: {
+            ...basePaper.assets,
+            translated_pdf: {
+              id: "asset-pdf",
+              task_id: null,
+              asset_type: "translated_pdf",
+              file_name: "paper.pdf",
+              mime_type: "application/pdf",
+              created_at: "2026-03-18T02:00:00Z",
+            },
+          },
+        },
+      }),
+    )
+    createCommunityPaperDownloadSessionMock.mockResolvedValue({
+      paper_id: "paper-1",
+      asset_id: "asset-pdf",
+      download_url: "/api/papers/paper-1/download?token=preview-token",
+      expires_at: "2026-03-18T02:05:00Z",
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("Translated paragraph.")
+    await userEvent.click(screen.getByRole("button", { name: /pdf/i }))
+
+    await waitFor(() => {
+      expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
+    })
+
+    const pdfReader = await screen.findByTestId("paper-translated-pdf-reader")
+    expect(pdfReader).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/download?token=preview-token`,
+    )
+    expect(openMock).not.toHaveBeenCalled()
+  })
+
+  it("falls back to the arxiv pdf url when the source reader only exposes an external arxiv html page", async () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        paper: {
+          ...basePaper,
+          community_selected_task_id: null,
+        },
+        reader: {
+          ...translatedReader,
+          source: {
+            kind: "external_arxiv_html",
+            html_content: null,
+            url: "https://arxiv.org/html/2503.01010",
+          },
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "原文" }))
+
+    const pdfReader = await screen.findByTestId("paper-source-pdf-reader")
+    expect(pdfReader).toHaveAttribute("src", "https://arxiv.org/pdf/2503.01010.pdf")
+  })
+
   it("renders a not-found state", () => {
     usePaperDetailMock.mockReturnValue({
       paper: null,

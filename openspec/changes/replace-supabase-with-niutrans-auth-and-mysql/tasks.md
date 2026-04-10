@@ -12,18 +12,18 @@
 
 - [x] 2.1 Add MySQL connection, migration workflow, and repository/service helpers suitable for local development and later server rollout.
 - [x] 2.2 Finalize MySQL DDL, indexes, unique constraints, and foreign-key strategy for users, auth/session support, translation tasks, user settings, community papers, paper assets, and currently used community-agent persistence records.
-- [ ] 2.3 Replace runtime Supabase admin-client and user-client access paths with MySQL-backed repositories and app-layer authorization filters.
+- [x] 2.3 Replace runtime Supabase admin-client and user-client access paths with MySQL-backed repositories and app-layer authorization filters.
 
 ## 3. Translation Mainline Migration
 
 - [x] 3.1 Move authenticated translation-task persistence, history retrieval, task deletion, and reconciliation flows from Supabase to MySQL.
 - [x] 3.2 Move user-settings storage and retrieval from Supabase to MySQL while preserving current default-setting behavior.
-- [ ] 3.3 Keep guest translation behavior intact, including non-persistent guest task semantics and existing cleanup expectations.
-- [ ] 3.4 Replace batch-translation persistence retry behavior so it targets MySQL/local fallback semantics instead of Supabase-specific retry assumptions.
+- [x] 3.3 Keep guest translation behavior intact, including non-persistent guest task semantics and existing cleanup expectations.
+- [x] 3.4 Replace batch-translation persistence retry behavior so it targets MySQL/local fallback semantics instead of Supabase-specific retry assumptions.
 
 ## 4. Community Migration
 
-- [ ] 4.1 Move community paper metadata and paper-asset persistence from Supabase to MySQL while keeping local disk paths as the asset source of truth.
+- [x] 4.1 Move community paper metadata and paper-asset persistence from Supabase to MySQL while keeping local disk paths as the asset source of truth.
 - [x] 4.2 Move community-agent conversation/run persistence from Supabase-backed auth context to MySQL-backed local user context.
 - [x] 4.3 Replace community authorization assumptions that currently depend on RLS/service-role patterns with explicit app-layer ownership and admin checks.
 
@@ -34,16 +34,16 @@
 - [x] 5.3 Implement migration dry-run mode, validation reports, checksum or count verification, and a clear rollback procedure for local testing.
 - [x] 5.4 Write and maintain a rollout note covering migration window, data backup, and rollback triggers for the local-first cutover.
 - [x] 5.5 Validate migrated file-path references against the local disk layout and emit actionable reports for missing assets without aborting all imports.
-- [ ] 5.6 Remove runtime Supabase SDK/config dependencies from local startup paths once MySQL-backed flows are complete.
+- [x] 5.6 Remove runtime Supabase SDK/config dependencies from local startup paths once MySQL-backed flows are complete.
 - [x] 5.7 Update local setup documentation and env examples so local validation no longer requires Supabase runtime credentials.
 
 ## 6. Local Verification
 
 - [x] 6.1 Verify in-app login via NiuTrans-backed credential validation plus local token issuance.
-- [ ] 6.2 Verify guest translation still works without login.
+- [x] 6.2 Verify guest translation still works without login.
 - [x] 6.3 Verify authenticated history and settings flows run against MySQL.
-- [ ] 6.4 Verify community paper display and community-agent persistence run against MySQL.
-- [ ] 6.5 Verify migrated local data is visible and coherent after import.
+- [x] 6.4 Verify community paper display and community-agent persistence run against MySQL.
+- [x] 6.5 Verify migrated local data is visible and coherent after import.
 - [x] 6.6 Run `openspec validate replace-supabase-with-niutrans-auth-and-mysql --strict --no-interactive` and collect local evidence before implementation sign-off.
 
 ## Progress Notes
@@ -234,3 +234,27 @@
   - `4.1` and `6.4` remain open because community paper reads still allow baseline-seed fallback and broader MySQL-authoritative verification is not complete yet
   - `5.6` remains open until runtime Supabase compatibility naming/config residues are removed more broadly
   - `6.5` remains open until imported data visibility/coherence is verified through a fuller post-import read path, not just the importer unit coverage
+
+### 2026-04-10 Community Authority Closure, Local-Auth Naming Cleanup, And Post-Import Read Verification
+
+- Completed in this slice:
+  - removed the remaining runtime community-paper baseline-seed fallback from public list/detail lookup helpers so MySQL/local repository rows are now the only metadata authority for:
+    - paper lookup by id, arXiv id, and title
+    - public community paper listing
+    - import-or-reuse existence checks
+  - kept local disk as the asset source of truth while proving imported `paper_assets` remain readable through the community paper service layer after import
+  - renamed frontend auth-availability state to local-auth semantics while keeping the existing compatibility module path in place
+  - renamed local runtime config away from `SUPABASE_*` startup inputs toward migration-source terminology and updated the local env example accordingly
+  - rewrote task-manager persistence naming/comments toward local persistent storage semantics while preserving compatibility aliases for legacy tests and monkeypatch paths
+- Verification captured in this slice:
+  - `python -m pytest backend/tests/unit/test_community_public_read_experience.py backend/tests/unit/test_local_community_paper_persistence.py backend/tests/unit/test_papers_list_detail_contract.py backend/tests/unit/test_papers_import_contract.py backend/tests/unit/test_import_supabase_to_mysql.py backend/tests/unit/test_admin_cleanup_api.py backend/tests/unit/test_restart_recovery_cleanup.py -q`
+    - result: `49 passed`
+  - `python -m pytest backend/tests/unit/test_verified_user_resolution.py backend/tests/unit/test_fix_task_status_sync.py backend/tests/unit/test_batch_config_hash_persistence.py backend/tests/unit/test_task_detail_metadata.py -q`
+    - result: `29 passed`
+  - `python -m pytest backend/tests/unit/test_community_agent_service.py backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_public_read_experience.py backend/tests/unit/test_local_community_paper_persistence.py -q`
+    - result: `44 passed`
+  - `openspec.cmd validate replace-supabase-with-niutrans-auth-and-mysql --strict --no-interactive`
+    - result: `Change 'replace-supabase-with-niutrans-auth-and-mysql' is valid`
+- Status impact from this slice:
+  - `2.3`, `3.3`, `3.4`, `4.1`, `5.6`, `6.2`, `6.4`, and `6.5` are now complete for the approved local-first change
+  - frontend Vitest verification remains desirable, but local execution was blocked in this environment by `esbuild` startup with `spawn EPERM`; backend regression and OpenSpec validation evidence were captured successfully

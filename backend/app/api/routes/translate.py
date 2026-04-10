@@ -1078,7 +1078,7 @@ async def batch_translate(
             )
 
             # ✅ Persist to DB immediately (synchronous fast attempt).
-            # If Supabase is unreachable, silently retry in background (2x, 5s apart).
+            # If the local database is unreachable, silently retry in background (2x, 5s apart).
             # On total failure: task is registered for auto-cleanup and persist_failed=True
             # is set in memory so the frontend can warn the user.
             persisted = task_manager.persist_task_if_needed(task_id)

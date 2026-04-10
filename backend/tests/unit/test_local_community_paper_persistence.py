@@ -191,7 +191,7 @@ def test_record_view_increments_local_database_when_supabase_client_unavailable(
     assert row[0] == 3
 
 
-def test_list_papers_uses_baseline_seed_without_supabase_runtime_fallback(
+def test_list_papers_returns_empty_when_local_repository_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     supabase_calls = {"count": 0}
@@ -246,7 +246,7 @@ def test_list_papers_uses_baseline_seed_without_supabase_runtime_fallback(
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
-    assert result["total"] == 1
-    assert result["source_mode"] == "baseline_seed"
-    assert result["items"][0]["id"] == "paper-seed-1"
+    assert result["total"] == 0
+    assert result["source_mode"] == "database"
+    assert result["items"] == []
     assert supabase_calls["count"] == 0

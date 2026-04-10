@@ -351,8 +351,8 @@ def test_reset_stale_community_tasks_purges_all_related_records(monkeypatch, tmp
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="service-role",
-            supabase_url="https://example.supabase.co",
+            migration_source_service_role_key="service-role",
+            migration_source_url="https://example.import-source.local",
             community_papers_dir=community_root,
         ),
     )
@@ -421,8 +421,8 @@ def test_reset_stale_community_tasks_keeps_public_papers_even_if_non_success(mon
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="service-role",
-            supabase_url="https://example.supabase.co",
+            migration_source_service_role_key="service-role",
+            migration_source_url="https://example.import-source.local",
             community_papers_dir=community_root,
         ),
     )
@@ -463,8 +463,8 @@ def test_reset_stale_community_tasks_uses_local_repository_without_supabase(
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="",
-            supabase_url="",
+            migration_source_service_role_key="",
+            migration_source_url="",
             community_papers_dir=community_root,
         ),
     )
@@ -520,8 +520,8 @@ def test_reset_stale_community_tasks_skips_when_local_repository_is_unavailable(
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="service-role",
-            supabase_url="https://example.supabase.co",
+            migration_source_service_role_key="service-role",
+            migration_source_url="https://example.import-source.local",
             community_papers_dir=community_root,
         ),
     )
@@ -565,8 +565,8 @@ def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(mo
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="service-role",
-            supabase_url="https://example.supabase.co",
+            migration_source_service_role_key="service-role",
+            migration_source_url="https://example.import-source.local",
         ),
     )
 
@@ -607,8 +607,8 @@ def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(mo
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="",
-            supabase_url="",
+            migration_source_service_role_key="",
+            migration_source_url="",
         ),
     )
 
@@ -668,8 +668,8 @@ def test_fail_interrupted_translation_tasks_prefers_local_paper_reconciliation_e
         main_module,
         "settings",
         SimpleNamespace(
-            supabase_service_role_key="service-role",
-            supabase_url="https://example.supabase.co",
+            migration_source_service_role_key="service-role",
+            migration_source_url="https://example.import-source.local",
         ),
     )
 

@@ -107,12 +107,16 @@ def test_import_service_reuses_existing_arxiv_paper(monkeypatch: pytest.MonkeyPa
     }
 
 
-def test_import_service_reuses_baseline_seed_when_database_is_unavailable(
+def test_import_service_creates_new_paper_when_database_lookup_misses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_fetch(arxiv_id: str):
         assert arxiv_id == "2503.01010"
         return None
+
+    async def fake_submit(**kwargs: Any) -> Dict[str, Any]:
+        assert kwargs["arxiv_id"] == "2503.01010"
+        return {"paper": {"id": "paper-imported"}}
 
     monkeypatch.setattr(paper_service, "_fetch_paper_by_arxiv_id", fake_fetch)
     monkeypatch.setattr(
@@ -120,15 +124,16 @@ def test_import_service_reuses_baseline_seed_when_database_is_unavailable(
         "_load_baseline_seed_rows",
         lambda: [{"id": "paper-seed", "arxiv_id": "2503.01010"}],
     )
+    monkeypatch.setattr(paper_service, "submit_arxiv_paper", fake_submit)
 
     result = asyncio.run(
         paper_service.import_or_reuse_paper(source="arxiv", arxiv_id="2503.01010")
     )
 
     assert result == {
-        "paper_id": "paper-seed",
-        "reused": True,
-        "imported": False,
+        "paper_id": "paper-imported",
+        "reused": False,
+        "imported": True,
         "reader_state": "source_ready",
     }
 
@@ -148,8 +153,9 @@ def test_submit_arxiv_paper_allows_public_import_without_credentials(
             "existing_paper": None,
         }
 
-    async def fake_download_arxiv(*, request: Any, credentials: Any) -> Any:
+    async def fake_download_arxiv(*, request: Any, credentials: Any, current_user: Any = None) -> Any:
         assert credentials is None
+        assert current_user is None
         assert request.arxiv_id == "2509.09871"
         return type("ArxivResponse", (), {"task_id": "task-2509"})()
 

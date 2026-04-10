@@ -6,7 +6,7 @@ import i18n from '@/i18n'
 import type { TranslateRequest } from '@/lib/api'
 import type { TranslationConfig, AdvancedConfig, LatexValidation } from '@/types/config'
 import { DEFAULT_CONFIG } from '@/types/config'
-import { getAccessToken, isSupabaseConfigured } from '@/lib/supabase'
+import { getAccessToken, isLocalAuthConfigured } from '@/lib/supabase'
 
 type TaskDetailParams = Record<string, string | number | boolean | null> | null
 
@@ -194,7 +194,7 @@ export const useStore = create<TranslationState>((set, get) => ({
 
         try {
             // Skip if not configured or not authenticated
-            if (!isSupabaseConfigured()) {
+            if (!isLocalAuthConfigured()) {
                 set({ userSettingsLoaded: true })
                 return
             }

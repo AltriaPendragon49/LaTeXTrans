@@ -265,6 +265,51 @@ def test_resolve_paper_download_supports_relative_library_path(monkeypatch, tmp_
     assert increments == ["paper-1"]
 
 
+def test_resolve_paper_download_supports_windows_absolute_library_path(monkeypatch, tmp_path):
+    increments = []
+    base_dir = tmp_path / "backend"
+    pdf_path = base_dir / "data" / "community_papers" / "paper-1" / "translated" / "translated.pdf"
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path.write_bytes(b"%PDF-1.4\n%mock\n")
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "translated_pdf": {
+                    "id": "asset-pdf",
+                    "task_id": "task-1",
+                    "asset_type": "translated_pdf",
+                    "file_path": r"D:\future\antigravity\LaTexTrans\backend\data\community_papers\paper-1\translated\translated.pdf",
+                    "file_name": "translated.pdf",
+                    "mime_type": "application/pdf",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_increment_paper_download_count",
+        lambda paper_id: asyncio.sleep(0, result=increments.append(paper_id)),
+    )
+
+    session = asyncio.run(paper_service.create_paper_download_session(paper_id="paper-1"))
+    token = session["download_url"].split("token=", 1)[1]
+    result = asyncio.run(paper_service.resolve_paper_download(paper_id="paper-1", token=token))
+
+    assert Path(result["file_path"]) == pdf_path
+    assert increments == ["paper-1"]
+
+
 def test_resolve_paper_download_does_not_fail_when_download_count_increment_errors(monkeypatch, tmp_path):
     pdf_path = tmp_path / "translated.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n%mock\n")

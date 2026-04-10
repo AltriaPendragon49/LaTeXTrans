@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import i18n from '@/i18n'
 import {
     bootstrapLocalSession,
-    isSupabaseConfigured,
+    isLocalAuthConfigured,
     signInWithPassword,
     signOutCurrentSession,
 } from '@/lib/supabase'
@@ -18,7 +18,7 @@ interface AuthState {
     loading: boolean
     error: string | null
     isAuthenticated: boolean
-    isSupabaseAvailable: boolean
+    isAuthAvailable: boolean
 }
 
 interface AuthMethods {
@@ -37,7 +37,7 @@ const defaultContext: AuthContextType = {
     loading: true,
     error: null,
     isAuthenticated: false,
-    isSupabaseAvailable: false,
+    isAuthAvailable: false,
     signIn: async () => ({ error: null }),
     signUp: async () => ({ error: null }),
     verifyOtp: async () => ({ error: null }),
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const isSupabaseAvailable = isSupabaseConfigured()
+    const isAuthAvailable = isLocalAuthConfigured()
     const isAuthenticated = !!user
 
     useEffect(() => {
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         loading,
         error,
         isAuthenticated,
-        isSupabaseAvailable,
+        isAuthAvailable,
         signIn,
         signUp,
         verifyOtp,

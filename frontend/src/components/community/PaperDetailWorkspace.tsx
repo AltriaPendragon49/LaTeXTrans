@@ -90,6 +90,8 @@ interface PaperDetailWorkspaceProps {
   abstractText: string
   readerHighlight: boolean
   previewRef: RefObject<HTMLDivElement | null>
+  translatedPdfPreviewLoading: boolean
+  translatedPdfPreviewUrl: string | null
   canTranslate: boolean
   canViewProgress: boolean
   canDownload: boolean
@@ -135,6 +137,8 @@ export function PaperDetailWorkspace({
   abstractText,
   readerHighlight,
   previewRef,
+  translatedPdfPreviewLoading,
+  translatedPdfPreviewUrl,
   onDownload,
   agentTurns,
   agentInput,
@@ -255,17 +259,22 @@ export function PaperDetailWorkspace({
     (preferredMode === "translated" || preferredMode === "translated_pdf") && translatedResource?.kind === "translated_pdf"
       ? translatedResource
       : null
-  const translatedPdfFallbackUrl = translatedPdfFallback?.url ?? (
+  const translatedPdfFallbackUrl = translatedPdfPreviewUrl ?? translatedPdfFallback?.url ?? (
     paper.community_selected_task_id && paper.trans_status === "completed"
       ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/pdf`
       : null
+  )
+  const sourceReaderUsesExternalArxivHtml = reader?.source?.kind === "external_arxiv_html" || (
+    typeof reader?.source?.url === "string" && reader.source.url.includes("arxiv.org/html/")
   )
   const noteAnnotations = [...annotations].reverse()
   const sourceDocumentUrl =
     (preferredMode === "source")
       ? (paper.community_selected_task_id
         ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/source-pdf`
-        : (reader?.source?.url ?? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null)))
+        : (sourceReaderUsesExternalArxivHtml
+          ? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null)
+          : (reader?.source?.url ?? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null))))
       : null
 
 
@@ -432,6 +441,15 @@ export function PaperDetailWorkspace({
                   dangerouslySetInnerHTML={{ __html: translatedHtmlContent }}
                 />
               )
+            ) : preferredMode === "translated_pdf" && translatedPdfPreviewLoading ? (
+              <article
+                data-testid="paper-translated-pdf-loading"
+                className="flex h-full flex-col items-center justify-center gap-4 px-10 py-8 text-center"
+              >
+                <p className="max-w-2xl text-base leading-7 text-on-surface-variant">
+                  {t("community.reader.loading")}
+                </p>
+              </article>
             ) : (preferredMode === "translated_pdf" || preferredMode === "translated") && translatedPdfFallbackUrl ? (
               <iframe
                 data-testid="paper-translated-pdf-reader"

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 import httpx
 import pytest
@@ -140,3 +141,28 @@ def test_task_detail_reconciles_non_terminal_local_status(monkeypatch: pytest.Mo
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
     assert response.json()["progress"] == 100
+
+
+def test_history_routes_serialize_datetime_completed_at(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.api.routes import history as history_route
+
+    fake_repo = _FakeTranslationTaskRepository()
+    fake_repo.tasks["task-local-1"]["completed_at"] = datetime(2026, 4, 9, 0, 10, 0)
+
+    monkeypatch.setattr(history_route, "get_translation_task_repository", lambda: fake_repo)
+    app.dependency_overrides[history_route.require_current_user] = lambda: {"id": "usr_local_1", "roles": ["user"]}
+
+    async def _call():
+        async with _make_client() as client:
+            list_response = await client.get("/api/history?page=1&page_size=10")
+            detail_response = await client.get("/api/history/task-local-1")
+            return list_response, detail_response
+
+    list_response, detail_response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert list_response.status_code == 200
+    assert list_response.json()["tasks"][0]["completed_at"] == "2026-04-09 00:10:00"
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["completed_at"] == "2026-04-09 00:10:00"

@@ -112,6 +112,12 @@ def _reconcile_task_snapshot(task: Dict[str, Any]) -> tuple[str, int, Optional[s
     return effective_status, effective_progress, resolved_output_path, inferred_output_path
 
 
+def _serialize_optional_timestamp(value: Any) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
 class TaskHistoryItem(BaseModel):
     task_id: str
     source_type: str
@@ -203,7 +209,7 @@ async def get_user_history(
                     status=effective_status,
                     progress=effective_progress,
                     created_at=str(task["created_at"]),
-                    completed_at=task.get("completed_at"),
+                    completed_at=_serialize_optional_timestamp(task.get("completed_at")),
                     source_language=str(task.get("source_language") or "en"),
                     target_language=str(task.get("target_language") or "zh"),
                     compile_strategy=str(task.get("compile_strategy") or "auto"),
@@ -286,7 +292,7 @@ async def get_task_detail(
             source_path=task.get("source_path"),
             output_path=resolved_output_path,
             created_at=str(task["created_at"]),
-            completed_at=task.get("completed_at"),
+            completed_at=_serialize_optional_timestamp(task.get("completed_at")),
         )
     except HTTPException:
         raise

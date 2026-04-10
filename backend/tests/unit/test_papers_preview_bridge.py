@@ -1,5 +1,6 @@
 ﻿import asyncio
 import os
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -75,6 +76,42 @@ def test_get_paper_preview_reads_relative_library_path(monkeypatch, tmp_path):
     assert result["paper_id"] == "paper-1"
     assert result["asset"]["id"] == "asset-preview"
     assert "寮曡█" in result["html_content"]
+
+
+def test_get_paper_preview_serializes_datetime_generated_at(monkeypatch, tmp_path):
+    base_dir = tmp_path / "repo"
+    preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.write_text("<article><h2>寮曡█</h2></article>", encoding="utf-8")
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "preview_html": {
+                    "id": "asset-preview",
+                    "task_id": "task-1",
+                    "asset_type": "preview_html",
+                    "file_path": "data/community_papers/paper-1/preview/preview.html",
+                    "file_name": "preview.html",
+                    "mime_type": "text/html",
+                    "created_at": datetime(2026, 3, 18, 2, 0, 0),
+                }
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+
+    assert result["generated_at"] == "2026-03-18 02:00:00"
 
 
 def test_get_paper_preview_rejects_missing_relative_library_file(monkeypatch, tmp_path):

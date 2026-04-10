@@ -434,7 +434,7 @@ export LLM_MODEL="gpt-4.1-mini"
 export LLM_TIMEOUT="60"
 
 # Local Auth / MySQL（本地启动必需）
-export DATABASE_URL="mysql://root:password@127.0.0.1:3306/latextrans"
+export DATABASE_URL="mysql://root:password@host.docker.internal:3306/latextrans"
 export AUTH_PROVIDER_MODE="niutrans_local"
 export AUTH_JWT_KEYS="v1:change-me-local-dev-secret"
 export AUTH_JWT_ISSUER="latextrans-local"

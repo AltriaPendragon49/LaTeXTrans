@@ -492,6 +492,8 @@ export default function PaperDetailPage() {
   const [canLeaveHint, setCanLeaveHint] = useState<string | null>(null)
   const [softBanner, setSoftBanner] = useState<string | null>(null)
   const [readerHighlight, setReaderHighlight] = useState(false)
+  const [translatedPdfPreviewUrl, setTranslatedPdfPreviewUrl] = useState<string | null>(null)
+  const [translatedPdfPreviewLoading, setTranslatedPdfPreviewLoading] = useState(false)
   const [agentBusy, setAgentBusy] = useState(false)
   const [agentError, setAgentError] = useState<string | null>(null)
   const [agentTurns, setAgentTurns] = useState<CommunityConversationTurn[]>([])
@@ -1032,6 +1034,67 @@ export default function PaperDetailPage() {
       setSelectedMode("translated")
     }
   }, [resolvedStageKey])
+
+  useEffect(() => {
+    setTranslatedPdfPreviewUrl(null)
+    setTranslatedPdfPreviewLoading(false)
+  }, [paperId])
+
+  useEffect(() => {
+    if (selectedMode !== "translated_pdf") {
+      setTranslatedPdfPreviewLoading(false)
+      return
+    }
+
+    if (!paperId || translatedPdfPreviewUrl) {
+      return
+    }
+
+    const hasTranslatedPdfAsset = Boolean(
+      paper?.assets?.translated_pdf ||
+      reader?.translated?.kind === "translated_pdf" ||
+      paper?.latest_asset?.asset_type === "translated_pdf",
+    )
+    if (!hasTranslatedPdfAsset) {
+      return
+    }
+
+    let cancelled = false
+    setTranslatedPdfPreviewLoading(true)
+    setActionError(null)
+
+    void (async () => {
+      try {
+        const session = await createCommunityPaperDownloadSession(paperId)
+        if (cancelled) {
+          return
+        }
+        setTranslatedPdfPreviewUrl(
+          session.download_url.startsWith("http")
+            ? session.download_url
+            : `${API_BASE_URL}${session.download_url}`,
+        )
+      } catch (previewError) {
+        if (cancelled) {
+          return
+        }
+        const detail = extractActionErrorMessage(previewError)
+        setActionError(
+          detail?.includes("Translated PDF")
+            ? t("community.actions.downloadUnavailable")
+            : (detail ?? t("community.actions.downloadError")),
+        )
+      } finally {
+        if (!cancelled) {
+          setTranslatedPdfPreviewLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [paperId, paper, reader, selectedMode, t, translatedPdfPreviewUrl])
 
   if (loading) {
     return (
@@ -1592,6 +1655,8 @@ export default function PaperDetailPage() {
             abstractText={abstractText}
             readerHighlight={readerHighlight}
             previewRef={previewRef}
+            translatedPdfPreviewLoading={translatedPdfPreviewLoading}
+            translatedPdfPreviewUrl={translatedPdfPreviewUrl}
             canTranslate={canTranslate}
             canViewProgress={canViewProgress}
             canDownload={canDownload}

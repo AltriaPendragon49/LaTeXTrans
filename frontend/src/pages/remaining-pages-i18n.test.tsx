@@ -11,7 +11,7 @@ import ProfilePage from "@/pages/Profile"
 const authState = vi.hoisted(() => ({
   isAuthenticated: false,
   loading: false,
-  isSupabaseAvailable: true,
+  isAuthAvailable: true,
   user: null as null | { email?: string },
   error: null as null | string,
   signOut: vi.fn(),
@@ -36,7 +36,7 @@ describe("remaining page i18n", () => {
   beforeEach(async () => {
     authState.isAuthenticated = false
     authState.loading = false
-    authState.isSupabaseAvailable = true
+    authState.isAuthAvailable = true
     authState.user = null
     authState.error = null
     authState.signIn.mockReset()
@@ -55,8 +55,8 @@ describe("remaining page i18n", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("History")).toBeInTheDocument()
     expect(screen.getByText("Sign in to view translation history")).toBeInTheDocument()
+    expect(screen.getByText("Sign in to view and manage all translation task records")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Go to sign in" })).toBeInTheDocument()
   })
 
@@ -89,8 +89,8 @@ describe("remaining page i18n", () => {
     expect(screen.queryByRole("button", { name: "Sign up now" })).not.toBeInTheDocument()
   })
 
-  it("keeps the sign-in form available even when legacy Supabase flags are false", () => {
-    authState.isSupabaseAvailable = false
+  it("keeps the sign-in form available even when local auth availability flags are false", () => {
+    authState.isAuthAvailable = false
     render(
       <MemoryRouter>
         <LoginPage />

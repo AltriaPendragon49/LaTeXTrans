@@ -1,6 +1,6 @@
 # ============================================================
-# LaTeXTrans TeX Live Runtime Image
-# Role: Production Runtime (NO application source code)
+# LaTeXTrans TeX Live Base Runtime Image
+# Self-contained base image for server migration and clean rebuilds
 # ============================================================
 
 FROM python:3.10-slim-bookworm
@@ -71,39 +71,11 @@ RUN wget -qO- https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.g
     /usr/local/texlive/2025/texmf-dist/source
 
 # ------------------------------------------------------------
-# Python Dependencies (NO application code)
+# Base Runtime Contract
 # ------------------------------------------------------------
 WORKDIR /app
 
-COPY backend/requirements.txt /app/requirements.txt
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-# ------------------------------------------------------------
-# Runtime Contract
-# ------------------------------------------------------------
-# - Application code MUST be mounted to /app/backend
-# - .env MUST be injected at runtime
-# - backend/data/* must be writable
-# - This image NEVER contains business logic
-# ------------------------------------------------------------
-
-EXPOSE 9001
-
 LABEL maintainer="LaTeXTrans DevOps" \
-    role="texlive-runtime" \
+    role="texlive-base-runtime" \
     texlive.version="2025" \
     texlive.scheme="full"
-
-# NOTE:
-# Keep workers=1 in production until task runtime state is fully externalized.
-# Current TaskManager still maintains part of runtime state in process memory.
-CMD ["uvicorn", "backend.app.main:app", \
-    "--host", "0.0.0.0", \
-    "--port", "9001", \
-    "--workers", "1", \
-    "--proxy-headers", \
-    "--forwarded-allow-ips", "*", \
-    "--timeout-keep-alive", "120", \
-    "--log-level", "info"]

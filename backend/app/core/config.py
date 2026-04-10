@@ -70,20 +70,20 @@ class Settings(BaseSettings):
     target_language: str = "ch"
     source_language: str = "en"
     
-    # Supabase Configuration
-    supabase_url: Optional[str] = Field(
+    # Legacy import-source configuration
+    migration_source_url: Optional[str] = Field(
         default=None,
-        validation_alias="SUPABASE_URL"
+        validation_alias=AliasChoices("MIGRATION_SOURCE_URL", "IMPORT_SOURCE_URL"),
     )
-    supabase_anon_key: Optional[str] = Field(
+    migration_source_anon_key: Optional[str] = Field(
         default=None,
-        validation_alias="SUPABASE_ANON_KEY",
-        description="Anon key for user operations (RLS enforced)"
+        validation_alias=AliasChoices("MIGRATION_SOURCE_ANON_KEY", "IMPORT_SOURCE_ANON_KEY"),
+        description="Legacy import-source public key retained only for migration tooling.",
     )
-    supabase_service_role_key: Optional[str] = Field(
+    migration_source_service_role_key: Optional[str] = Field(
         default=None,
-        validation_alias="SUPABASE_SERVICE_ROLE_KEY",
-        description="Service Role Key for admin operations (bypasses RLS)"
+        validation_alias=AliasChoices("MIGRATION_SOURCE_SERVICE_ROLE_KEY", "IMPORT_SOURCE_SERVICE_ROLE_KEY"),
+        description="Legacy import-source privileged key retained only for migration tooling.",
     )
 
     # Local auth / MySQL configuration
@@ -133,9 +133,9 @@ class Settings(BaseSettings):
         default_factory=list,
         validation_alias="LOCAL_ADMIN_EXTERNAL_USER_IDS",
     )
-    enable_supabase_import_readonly: bool = Field(
+    enable_legacy_import_readonly: bool = Field(
         default=False,
-        validation_alias="ENABLE_SUPABASE_IMPORT_READONLY",
+        validation_alias=AliasChoices("ENABLE_LEGACY_IMPORT_READONLY", "ENABLE_IMPORT_SOURCE_READONLY"),
     )
     migration_dry_run: bool = Field(
         default=False,

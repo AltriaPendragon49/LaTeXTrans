@@ -2,10 +2,11 @@ import asyncio
 import sqlite3
 from pathlib import Path
 
+import httpx
 import pytest
 
 from backend.app.core.config import get_settings
-from backend.app.services.auth_service import LocalAuthService
+from backend.app.services.auth_service import AuthServiceError, LocalAuthService, NiuTransAuthClient
 
 
 def _create_sqlite_schema(database_path: Path) -> None:
@@ -98,3 +99,42 @@ def test_local_auth_service_roundtrip_with_sqlite(monkeypatch: pytest.MonkeyPatc
 
     with pytest.raises(Exception):
         asyncio.run(service.get_current_user_from_token(login_result["access_token"]))
+
+
+def test_niutrans_auth_client_maps_upstream_login_exception_to_invalid_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {"code": 1006, "msg": "登录异常", "data": None}
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, *args, **kwargs):
+            return _FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    client = NiuTransAuthClient()
+
+    with pytest.raises(AuthServiceError) as exc_info:
+        asyncio.run(
+            client.verify_credentials(
+                identifier="alice@example.com",
+                password="secret",
+            )
+        )
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.code == "AUTH_INVALID_CREDENTIALS"

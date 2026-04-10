@@ -6,7 +6,7 @@ Manages task state, progress updates, and status queries.
 
 Supports dual-layer storage:
 - In-memory cache for all tasks (guest + authenticated)
-- Supabase persistence for authenticated users only
+- Local persistent storage for authenticated users only
 """
 
 import uuid
@@ -67,21 +67,21 @@ def is_runtime_shutting_down() -> bool:
 # Runtime State Decoupling: Flush Throttle Configuration
 # ---------------------------------------------------------------------------
 
-#: Minimum seconds between time-throttled (non-semantic) Supabase flushes.
+#: Minimum seconds between time-throttled (non-semantic) persistent-store flushes.
 #: Semantic transitions (status / stage changes) always flush immediately.
 FLUSH_INTERVAL: float = 5.0
 
 #: Fields whose change constitutes a *semantic transition* and must always
-#: trigger an immediate Supabase flush.
+#: trigger an immediate persistent-store flush.
 _SEMANTIC_FLUSH_FIELDS = frozenset({"status", "stage"})
 
 
-class SupabaseFlusher:
+class PersistentStateFlusher:
     """
-    Non-blocking, thread-safe Supabase flush worker with **coalescing**.
+    Non-blocking, thread-safe persistent-state flush worker with **coalescing**.
 
     Workers call ``enqueue`` to submit ``(task_id, db_updates)`` pairs.
-    A background daemon thread drains the pending dict and writes to Supabase,
+    A background daemon thread drains the pending dict and writes to local persistent storage,
     ensuring the calling thread is never blocked by network I/O.
 
     Coalescing (last-write-wins per task_id)
@@ -90,7 +90,7 @@ class SupabaseFlusher:
     ``task_id -> merged db_updates``.  If the same task_id is enqueued
     multiple times before the worker wakes, the updates are merged
     field-by-field (later enqueue wins per field).  This eliminates
-    redundant Supabase writes under retry / error storms.
+    redundant persistent-store writes under retry / error storms.
 
     Thread-safety contract
     ----------------------
@@ -106,7 +106,7 @@ class SupabaseFlusher:
         ----------
         writer:
             Callable ``(task_id: str, updates: dict) -> None`` that performs
-            the actual Supabase write.  Injected from TaskManager so tests
+            the actual local persistence write. Injected from TaskManager so tests
             can monkeypatch ``TaskManager._persist_task_update``.
         """
         self._writer = writer
@@ -117,7 +117,7 @@ class SupabaseFlusher:
         self._stop = False
         self._thread = threading.Thread(
             target=self._run,
-            name="supabase-flusher",
+            name="persistent-state-flusher",
             daemon=True,
         )
         self._thread.start()
@@ -165,7 +165,7 @@ class SupabaseFlusher:
                     self._writer(task_id, updates)
                 except Exception as exc:  # pragma: no cover
                     logger.error(
-                        "[SupabaseFlusher] Failed to flush task %s: %s",
+                        "[PersistentStateFlusher] Failed to flush task %s: %s",
                         task_id, exc, exc_info=True,
                     )
 
@@ -177,6 +177,9 @@ class SupabaseFlusher:
         """Request graceful shutdown."""
         self._stop = True
         self._has_work.set()
+
+
+SupabaseFlusher = PersistentStateFlusher
 
 
 def _is_duplicate_task_insert_error(exc: Exception) -> bool:
@@ -196,10 +199,10 @@ class TaskManager:
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._cancelled_tasks: set = set()  # Track cancelled tasks
         self._lock = threading.Lock()
-        # SupabaseFlusher: background daemon thread that drains the flush queue.
+        # Background flusher that drains coalesced local-persistence updates.
         # We pass a lambda so that tests can monkeypatch `self._persist_task_update`
         # after construction and the flusher will pick up the patched version.
-        self._flusher = SupabaseFlusher(writer=lambda tid, upd: self._persist_task_update(tid, upd))
+        self._flusher = PersistentStateFlusher(writer=lambda tid, upd: self._persist_task_update(tid, upd))
     
     def create_task(
         self, 
@@ -271,7 +274,7 @@ class TaskManager:
                 "compile_pid": None,
                 "compile_engine": None,
                 "compile_started_at": None,
-                # Runtime flush tracking �?not exposed to API / Supabase
+                # Runtime flush tracking; never exposed to the API or persisted storage.
                 "_last_flush_time": time.monotonic(),
             }
         
@@ -279,7 +282,7 @@ class TaskManager:
         if not user_id:
             guest_tracker.register(task_id)
         
-        # 3. Persist to Supabase (only if persist_to_db=True and user is authenticated)
+        # 3. Persist to local storage (only if persist_to_db=True and user is authenticated)
         if persist_to_db and user_id:
             self._persist_task_create(task_id, user_id, source_type, arxiv_id, 
                                       source_language, target_language, advanced_config)
@@ -333,12 +336,12 @@ class TaskManager:
             advanced_config: Advanced config snapshot (optional)
             latex_validation: LaTeX validation result (optional)
             arxiv_id: arXiv paper ID (optional)
-            user_id: User ID - if provided, sync to Supabase (optional)
+            user_id: User ID; if provided, sync to local persistent storage (optional)
         
         Returns:
             True if task exists and was updated, False otherwise
         """
-        # Collect updates for Supabase sync
+        # Collect updates for local persistent sync
         db_updates = {}
         task_snapshot: Optional[Dict[str, Any]] = None
         
@@ -494,8 +497,8 @@ class TaskManager:
                 user_id = task.get("user_id")
             task_snapshot = task.copy()
 
-        # ── Throttled Supabase flush ─────────────────────────────────────
-        # Only authenticated tasks have a Supabase record to update.
+        # ── Throttled persistent-store flush ─────────────────────────────
+        # Only authenticated tasks have a persisted record to update.
         if user_id and db_updates:
             # A *semantic transition* means the VALUE actually changed,
             # not just that the key is present in db_updates.
@@ -878,8 +881,8 @@ class TaskManager:
             except Exception as exc:
                 logger.error(f"[TaskManager] Failed replay evidence rewrite for task {task_id}: {exc}", exc_info=True)
 
-        # NOTE: We intentionally do NOT delete the failed task from Supabase.
-        # Supabase is the sole authority for terminal states. Deleting the record
+        # NOTE: We intentionally do NOT delete the failed task from local persistence.
+        # The persisted task row is the terminal-state authority. Deleting the record
         # causes the history page to show a stale "Waiting" state permanently.
         # (fix-task-status-sync: Task 1)
 
@@ -901,7 +904,7 @@ class TaskManager:
     ):
         """
         If the task requested email notification AND the user is authenticated,
-        look up the user's email from Supabase auth.users and dispatch a
+        look up the user's email from local auth storage and dispatch a
         notification via EmailService.
 
         Runs synchronously (called from update_task) but all failures are
@@ -1054,8 +1057,8 @@ class TaskManager:
         Get task by ID
         
         First checks in-memory cache, then attempts recovery from:
-        1. Supabase database (for authenticated users' tasks)
-        2. Local filesystem (for guest tasks or when Supabase unavailable)
+        1. Local persistent storage (for authenticated users' tasks)
+        2. Local filesystem (for guest tasks or when the database is unavailable)
         
         Args:
             task_id: Task ID
@@ -1158,7 +1161,7 @@ class TaskManager:
         - Memory cache
         - Cancelled flag
         
-        Note: Supabase deletion should be handled by the API layer (RLS)
+        Note: persisted-row deletion should be handled by the API layer.
         
         Args:
             task_id: Task ID
@@ -1391,7 +1394,7 @@ class TaskManager:
     
     def _recover_task_from_storage(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
-        Attempt to recover a task from Supabase or local filesystem
+        Attempt to recover a task from persistent storage or local filesystem
         
         Args:
             task_id: Task ID to recover
@@ -1400,7 +1403,7 @@ class TaskManager:
             Task dictionary if found, None otherwise
         """
         # Try local database first
-        task = self._recover_from_supabase(task_id)
+        task = self._recover_from_persistent_store(task_id)
         if task:
             return task
         
@@ -1411,7 +1414,7 @@ class TaskManager:
         
         return None
     
-    def _recover_from_supabase(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def _recover_from_persistent_store(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
         Recover task from local translation-task storage.
         
@@ -1471,6 +1474,10 @@ class TaskManager:
             logger.warning(f"[TaskManager] Failed to recover task {task_id} from local translation storage: {e}")
 
         return None
+
+    def _recover_from_supabase(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Legacy alias kept for compatibility with older tests and call sites."""
+        return self._recover_from_persistent_store(task_id)
     
     def _recover_from_filesystem(self, task_id: str) -> Optional[Dict[str, Any]]:
         """

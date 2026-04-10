@@ -40,7 +40,7 @@ def _paper(**overrides):
     return base
 
 
-def test_list_papers_falls_back_to_operator_baseline_seed(monkeypatch, tmp_path):
+def test_list_papers_does_not_fall_back_to_operator_baseline_seed(monkeypatch, tmp_path):
     baseline_path = tmp_path / "community-baseline.json"
     baseline_path.write_text(
         json.dumps(
@@ -82,9 +82,35 @@ def test_list_papers_falls_back_to_operator_baseline_seed(monkeypatch, tmp_path)
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
-    assert result["total"] == 1
-    assert result["items"][0]["id"] == "paper-baseline"
-    assert result["source_mode"] == "baseline_seed"
+    assert result == {
+        "items": [],
+        "total": 0,
+        "source_mode": "database",
+    }
+
+
+def test_detail_does_not_resolve_from_operator_baseline_seed(monkeypatch, tmp_path):
+    baseline_path = tmp_path / "community-baseline.json"
+    baseline_path.write_text(
+        json.dumps({"items": [_paper(id="paper-baseline", title="Operator baseline paper")]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(paper_service.settings, "community_baseline_seed_path", baseline_path)
+    monkeypatch.setattr(
+        paper_service,
+        "get_community_paper_repository",
+        lambda: type(
+            "_UnavailableRepository",
+            (),
+            {"get_paper_by_id": staticmethod(lambda _paper_id: (_ for _ in ()).throw(RuntimeError("db offline")))},
+        )(),
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        asyncio.run(paper_service.get_community_paper_detail(paper_id="paper-baseline"))
+
+    assert excinfo.value.status_code == 404
 
 
 def test_list_papers_returns_empty_state_when_admin_and_seed_are_unavailable(monkeypatch):

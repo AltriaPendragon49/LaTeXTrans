@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 import os
 
 from backend.app.db import DatabaseUnavailableError
@@ -96,7 +97,7 @@ def test_list_papers_orders_official_before_fallback(monkeypatch):
     assert result["items"][1]["id"] == "paper-fallback"
 
 
-def test_list_papers_uses_baseline_seed_when_local_repository_is_unavailable(monkeypatch):
+def test_list_papers_returns_empty_when_local_repository_is_unavailable(monkeypatch):
     papers = [
         {
             "id": "paper-official",
@@ -147,9 +148,9 @@ def test_list_papers_uses_baseline_seed_when_local_repository_is_unavailable(mon
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
     assert supabase_calls["count"] == 0
-    assert result["source_mode"] == "baseline_seed"
-    assert result["total"] == 1
-    assert result["items"][0]["id"] == "paper-official"
+    assert result["source_mode"] == "database"
+    assert result["total"] == 0
+    assert result["items"] == []
 
 
 def test_list_recovers_completed_state_when_source_asset_is_newer_than_preview(monkeypatch, tmp_path):
@@ -227,6 +228,68 @@ def test_list_recovers_completed_state_when_source_asset_is_newer_than_preview(m
     assert result["total"] == 1
     assert result["items"][0]["trans_status"] == "completed"
     assert result["items"][0]["latest_asset"]["asset_type"] == "preview_html"
+
+
+def test_list_papers_serializes_datetime_fields_from_local_repository(monkeypatch):
+    papers = [
+        {
+            "id": "paper-datetime",
+            "source": "arxiv",
+            "arxiv_id": "2501.55555",
+            "title": "Datetime paper",
+            "authors": [],
+            "categories": [],
+            "visibility": "public",
+            "status": "published",
+            "trans_status": "completed",
+            "created_by": "admin-1",
+            "trans_latest_task_id": "task-datetime",
+            "trans_latest_asset_pdf_id": None,
+            "like_count": 0,
+            "favorite_count": 0,
+            "comment_count": 0,
+            "view_count": 0,
+            "download_count": 0,
+            "created_at": datetime(2026, 3, 18, 2, 0, 0),
+            "updated_at": datetime(2026, 3, 18, 2, 0, 0),
+            "community_status": "official",
+            "community_selected_task_id": "task-datetime",
+            "community_selected_asset_id": "asset-datetime",
+            "official_published_at": datetime(2026, 3, 18, 4, 0, 0),
+        }
+    ]
+
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return papers
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(
+            0,
+            result={
+                "paper-datetime": {
+                    "translated_pdf": {
+                        "id": "asset-datetime",
+                        "task_id": "task-datetime",
+                        "asset_type": "translated_pdf",
+                        "file_path": "/tmp/datetime.pdf",
+                        "file_name": "datetime.pdf",
+                        "mime_type": "application/pdf",
+                        "created_at": datetime(2026, 3, 18, 4, 0, 0),
+                    },
+                }
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.list_community_papers(sort="latest"))
+
+    assert result["items"][0]["created_at"] == "2026-03-18 02:00:00"
+    assert result["items"][0]["official_published_at"] == "2026-03-18 04:00:00"
+    assert result["items"][0]["latest_asset"]["created_at"] == "2026-03-18 04:00:00"
 
 
 def test_detail_returns_selected_version_and_viewer_state(monkeypatch):

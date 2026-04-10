@@ -1,19 +1,48 @@
-FROM latextrans-backend:latest
+# ============================================================
+# LaTeXTrans Backend Image
+# Layered backend build with configurable base image
+# ============================================================
+
+ARG BASE_IMAGE=latextrans-backend:latest
+FROM ${BASE_IMAGE}
 
 # ------------------------------------------------------------
-# Runtime Mode
+# Backend Python Dependencies
 # ------------------------------------------------------------
+WORKDIR /app
+
+COPY backend/requirements.txt /app/requirements.txt
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# ------------------------------------------------------------
+# Runtime Contract
+# ------------------------------------------------------------
+# - Application code MUST be mounted to /app/backend
+# - .env MUST be injected at runtime
+# - backend/data/* must be writable
+# - Default BASE_IMAGE points at the current local backend image for
+#   incremental hotfix rebuilds.
+# - For long-term/server builds, pass BASE_IMAGE=latextrans-texlive:2025
+#   after building Docker/Dockerfile.texlive-base.
+# ------------------------------------------------------------
+
 ENV LATEX_RUNTIME_MODE=host
 
-# ------------------------------------------------------------
-# Extra PDF & Font Dependencies
-# ------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    poppler-utils \
-    ghostscript \
-    fonts-noto-cjk \
-    fonts-noto-cjk-extra \
-    fonts-wqy-zenhei \
-    fonts-wqy-microhei \
-    && fc-cache -fv \
-    && rm -rf /var/lib/apt/lists/*
+EXPOSE 9001
+
+LABEL maintainer="LaTeXTrans DevOps" \
+    role="backend-runtime"
+
+# NOTE:
+# Keep workers=1 in production until task runtime state is fully externalized.
+# Current TaskManager still maintains part of runtime state in process memory.
+CMD ["uvicorn", "backend.app.main:app", \
+    "--host", "0.0.0.0", \
+    "--port", "9001", \
+    "--workers", "1", \
+    "--proxy-headers", \
+    "--forwarded-allow-ips", "*", \
+    "--timeout-keep-alive", "120", \
+    "--log-level", "info"]

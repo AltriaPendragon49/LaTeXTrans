@@ -12,6 +12,7 @@ langgraph==1.0.10
 tiktoken==0.5.1
 pydantic==2.12.5
 pydantic-settings==2.1.0
+typing_extensions
 
 # 数据库集成
 supabase==2.16.0
@@ -37,6 +38,8 @@ urllib3>=1.26.18,<3
 tqdm==4.66.1
 loguru==0.7.3
 toml==0.10.2
+PyYAML
+regex
 rarfile==4.2
 cryptography>=46.0.0
 python-dotenv==1.0.0

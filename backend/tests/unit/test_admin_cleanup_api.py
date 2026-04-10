@@ -66,9 +66,9 @@ def test_require_admin_request_rejects_legacy_service_role_key(monkeypatch: pyte
         auth,
         "get_settings",
         lambda: SimpleNamespace(
-            supabase_service_role_key="service-role-secret",
-            supabase_url="https://example.supabase.co",
-            supabase_anon_key="anon-key",
+            migration_source_service_role_key="service-role-secret",
+            migration_source_url="https://example.import-source.local",
+            migration_source_anon_key="anon-key",
         ),
     )
 
