@@ -18,7 +18,7 @@ export default function Login() {
     const { signIn, error, clearError, loading: authLoading } = useAuth()
     const { t } = useTranslation()
 
-    const [email, setEmail] = useState('')
+    const [identifier, setIdentifier] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [localError, setLocalError] = useState<string | null>(null)
@@ -30,13 +30,8 @@ export default function Login() {
     const validateForm = (): boolean => {
         setLocalError(null)
 
-        if (!email.trim()) {
-            setLocalError(t('auth.enter_your_email_address'))
-            return false
-        }
-
-        if (!email.includes('@')) {
-            setLocalError(t('auth.enter_a_valid_email_address'))
+        if (!identifier.trim()) {
+            setLocalError(t('auth.enter_your_email_or_phone_number'))
             return false
         }
 
@@ -65,7 +60,7 @@ export default function Login() {
 
         setLoading(true)
         try {
-            const { error: authError } = await signIn(email, password)
+            const { error: authError } = await signIn(identifier, password)
             if (!authError) {
                 navigate(from, { replace: true })
             }
@@ -102,17 +97,17 @@ export default function Login() {
                         )}
 
                         <div className="space-y-2">
-                            <Label htmlFor="email">{t('auth.labels.emailAddress')}</Label>
+                            <Label htmlFor="identifier">{t('auth.labels.emailOrPhoneNumber')}</Label>
                             <div className="relative">
                                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder={t('auth.enter_your_email_address')}
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
+                                    id="identifier"
+                                    type="text"
+                                    placeholder={t('auth.enter_your_email_or_phone_number')}
+                                    value={identifier}
+                                    onChange={(e) => setIdentifier(e.target.value)}
                                     className="pl-10"
-                                    autoComplete="email"
+                                    autoComplete="username"
                                     disabled={loading}
                                 />
                             </div>

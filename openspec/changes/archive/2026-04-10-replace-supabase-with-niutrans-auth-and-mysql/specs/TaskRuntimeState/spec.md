@@ -1,8 +1,3 @@
-## RENAMED Requirements
-
-- FROM: `### Requirement: Throttled Supabase Synchronization`
-- TO: `### Requirement: Throttled Persistent-State Synchronization`
-
 ## MODIFIED Requirements
 
 ### Requirement: State Layer Separation

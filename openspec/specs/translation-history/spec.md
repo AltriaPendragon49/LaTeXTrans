@@ -15,22 +15,17 @@ The system SHALL update the translation task metadata to reflect the actual util
 - **AND** ensure the history record displays the actual model name (e.g., `qwen/qwen3-235b-a22b`)
 
 ### Requirement: User Task Isolation
-系统 SHALL 确保用户只能访问自己的翻译任务。
+The system SHALL ensure that authenticated users can access only their own persisted translation tasks through application-layer ownership checks backed by the local database.
 
-#### Scenario: 查询任务列表
-- **WHEN** 用户请求 `GET /api/history`
-- **THEN** 系统只返回当前用户的任务列表
-- **AND** 结果按 created_at 降序排列
+#### Scenario: Query the current user's task list
+- **WHEN** an authenticated user requests `GET /api/history`
+- **THEN** the system SHALL return only rows owned by the current local user id
+- **AND** the results SHALL remain sorted by `created_at` descending.
 
-#### Scenario: 查询单个任务
-- **WHEN** 用户请求 `GET /api/task/{task_id}`
-- **AND** 该任务不属于当前用户
-- **THEN** 系统返回 HTTP 404 错误
-
-#### Scenario: 下载任务文件
-- **WHEN** 用户请求下载某任务的 PDF 或源文件
-- **AND** 该任务不属于当前用户
-- **THEN** 系统返回 HTTP 403 Forbidden 错误
+#### Scenario: Query another user's task
+- **WHEN** an authenticated user requests a task that is not owned by the current local user id
+- **THEN** the system SHALL return the existing access-denied or not-found behavior for that endpoint
+- **AND** it SHALL not depend on Supabase RLS to hide the row.
 
 ### Requirement: History Page Display
 The system SHALL provide a history page that shows translation tasks currently visible to the user.  
@@ -55,15 +50,14 @@ Failed tasks that were automatically quarantined and deleted from `translation_t
 - **AND** history retention behavior for cancelled tasks remains governed by existing policy
 
 ### Requirement: Task Deletion
-系统 SHALL 在删除任务时仅清理 outputs 和 terms 目录，保留 uploads 目录作为共享缓存。
+The system SHALL delete persisted task metadata from the local database while continuing to clean only `outputs` and `terms` directories and preserving shared `uploads` directories as reusable cache.
 
-#### Scenario: 单条删除已完成任务
-- **WHEN** 用户在历史记录页面点击某任务的删除按钮
-- **AND** 用户在确认弹窗中点击「确认删除」
-- **THEN** 系统删除 Supabase 中该任务记录
-- **AND** 系统删除本地 `outputs/{task_id}/`、`terms/{task_id}/` 目录
-- **AND** 系统 SHALL NOT 删除 uploads 目录
-- **AND** 前端显示「任务已删除」Toast 通知
+#### Scenario: Delete a completed task from history
+- **WHEN** an authenticated user confirms deletion for one of their history tasks
+- **THEN** the system SHALL delete the task's persisted row from the local database
+- **AND** it SHALL delete local `outputs/{task_id}/` and `terms/{task_id}/` directories
+- **AND** it SHALL NOT delete shared uploads directories
+- **AND** the frontend SHALL continue to show a success notification.
 
 ### Requirement: Task Cancellation Support
 系统 SHALL 支持取消正在执行的翻译任务。
@@ -97,43 +91,31 @@ The system SHALL store translation configuration signatures in the `translation_
 - **AND** the first successful persistence attempt, including a background retry after an initial failure, MUST write that `config_hash` into `translation_tasks`.
 
 ### Requirement: Deferred Task Persistence
-系统 SHALL 在翻译阶段才将任务持久化到数据库，上传/下载阶段仅创建内存任务。
+The system SHALL delay authenticated task persistence until translation start and SHALL persist those rows into the local database instead of Supabase.
 
-#### Scenario: 上传文件时不创建数据库记录
-- **WHEN** 用户通过 POST /upload 上传文件
-- **THEN** 系统仅创建内存任务（`persist_to_db=False`）
-- **AND** Supabase `translation_tasks` 表中 SHALL NOT 创建新记录
+#### Scenario: Upload does not create a persisted row yet
+- **WHEN** a user uploads source files before starting translation
+- **THEN** the system SHALL create only the in-memory task state
+- **AND** it SHALL NOT create a persisted translation-task row yet.
 
-#### Scenario: 下载 arXiv 时不创建数据库记录
-- **WHEN** 用户通过 POST /arxiv 下载论文
-- **THEN** 系统仅创建内存任务（`persist_to_db=False`）
-- **AND** Supabase `translation_tasks` 表中 SHALL NOT 创建新记录
+#### Scenario: Authenticated translation persists on first translation start
+- **WHEN** an authenticated user starts translation for a task that has not been persisted yet
+- **THEN** the system SHALL create the persisted task row in the local database
+- **AND** that row SHALL include the full task metadata needed for history and later recovery.
 
-#### Scenario: 翻译时首次持久化
-- **WHEN** 用户通过 POST /translate/{task_id} 启动翻译
-- **AND** 用户已登录（有 user_id）
-- **THEN** 系统调用 `persist_task_if_needed()` 首次创建数据库记录
-- **AND** 数据库记录包含完整的任务信息（source_type、arxiv_id、source_language 等）
-
-#### Scenario: Guest 用户任务不持久化
-- **WHEN** Guest 用户（无 user_id）启动翻译
-- **THEN** 系统跳过数据库持久化
-- **AND** 任务仅存在于内存中
-
-#### Scenario: 持久化失败时继续翻译
-- **WHEN** `persist_task_if_needed()` 抛出异常
-- **THEN** 系统记录警告日志
-- **AND** 翻译流程 SHALL 继续执行（不因持久化失败而中断）
+#### Scenario: Guest translation remains non-persistent
+- **WHEN** a guest user starts translation without a local authenticated identity
+- **THEN** the system SHALL skip authenticated-history persistence
+- **AND** the task SHALL remain guest-only runtime state.
 
 ### Requirement: Non-Terminal Task Status Reconciliation
-The system MUST reconcile the status of tasks that are in a non-terminal state (`pending`, `processing`, `queued`) during history retrieval to prevent users from seeing "Stuck" tasks due to server crashes.
+The system MUST reconcile non-terminal task rows against local task logs and SHOULD asynchronously repair the local database record when a terminal status can be inferred.
 
-#### Scenario: Reconcile Status from Local Log
-- **WHEN** a user requests their task history (`GET /history`)
-- **AND** a task in the database is in a non-terminal state
-- **AND** a local `task_log.json` exists for that task and contains terminal events (e.g., `compilation_completed`)
+#### Scenario: Reconcile status from local log
+- **WHEN** a user requests task history and a persisted task is still marked `pending`, `processing`, or `queued`
+- **AND** a local `task_log.json` contains a terminal event for that task
 - **THEN** the API response MUST return the inferred terminal status and 100% progress
-- **AND** the system SHOULD asynchronously update the Supabase database to match this corrected state.
+- **AND** the system SHOULD asynchronously update the local database row to match the inferred status.
 
 ### Requirement: Frontend Terminal Failure Display
 The frontend MUST correctly distinguish and display various terminal failure states without defaulting to generic error messages.

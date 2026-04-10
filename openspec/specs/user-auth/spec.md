@@ -4,75 +4,59 @@
 TBD - created by archiving change add-multi-user-support. Update Purpose after archive.
 ## Requirements
 ### Requirement: User Registration
+The system SHALL delegate account creation and account-recovery flows to NiuTrans-managed pages instead of implementing local registration or OTP verification flows inside the current application.
 
-系统 SHALL 支持新用户通过邮箱密码注册，并通过 8 位数字验证码（OTP）完成邮箱确认。
+#### Scenario: User chooses to register from the login page
+- **WHEN** an unauthenticated user clicks the registration entry in the current application's login UI
+- **THEN** the system SHALL open the configured NiuTrans registration page
+- **AND** the current application SHALL NOT attempt to create a local account directly.
 
-#### Scenario: 用户注册后收到 OTP 验证码邮件
-
-- **WHEN** 用户在注册页面提交邮箱和密码
-- **THEN** Supabase 发送包含 8 位数字验证码的邮件
-- **AND** 页面显示内嵌式 OTP 输入界面
-
-#### Scenario: 用户输入正确验证码完成注册
-
-- **WHEN** 用户在 OTP 输入框中输入正确的 8 位验证码
-- **THEN** 系统调用 verifyOtp 验证成功
-- **AND** 自动登录并跳转到首页
-
-#### Scenario: 用户输入错误验证码
-
-- **WHEN** 用户输入错误的验证码并提交
-- **THEN** 系统显示验证码错误或已过期的错误提示
-- **AND** 用户可以重新输入
-
-#### Scenario: 用户请求重发验证码
-
-- **WHEN** 用户点击重新发送验证码按钮
-- **THEN** 系统重新发送验证码邮件
-- **AND** 按钮显示 60 秒倒计时防止频繁请求
+#### Scenario: User needs account recovery
+- **WHEN** an unauthenticated user requests password recovery or similar account maintenance from the current application's auth UI
+- **THEN** the system SHALL redirect or link the user to the NiuTrans-managed account page
+- **AND** account recovery SHALL remain outside the local auth implementation scope.
 
 ### Requirement: Email Password Authentication
-系统 SHALL 支持已注册用户通过邮箱密码进行登录。
+The system SHALL provide an in-app login form that sends an email address or phone number identifier plus password to the local backend, delegates credential verification to the NiuTrans login API, and establishes a local project session after successful upstream verification.
 
-#### Scenario: 用户邮箱登录成功
-- **WHEN** 用户在登录页面输入有效的邮箱和密码
-- **AND** 点击登录按钮
-- **THEN** 系统完成 Supabase Auth 认证
-- **AND** 将 JWT token 存储在本地
-- **AND** 重定向到仪表盘页面
+#### Scenario: User logs in through the in-app form with email
+- **WHEN** the user submits a valid email address and password from the current application's login page
+- **THEN** the backend SHALL call the NiuTrans login API to verify the credentials
+- **AND** it SHALL map the returned NiuTrans `userId` into a local user record
+- **AND** it SHALL issue the project's own JWT or session token
+- **AND** the frontend SHALL use only that local token for subsequent authenticated API calls
 
-#### Scenario: 用户邮箱登录失败
-- **WHEN** 用户输入无效的邮箱或密码
-- **THEN** 系统显示认证失败错误信息
-- **AND** 保持在登录页面
+#### Scenario: User logs in through the in-app form with phone number
+- **WHEN** the user submits a valid phone number and password from the current application's login page
+- **THEN** the frontend SHALL allow that identifier without email-only validation failure
+- **AND** the backend SHALL send the phone number identifier through the same local auth contract used for email sign-in
+- **AND** the resulting authenticated session contract SHALL remain identical to email-based login
+
+#### Scenario: Upstream authentication fails
+- **WHEN** the user submits invalid credentials or the upstream login API rejects the login
+- **THEN** the current application SHALL surface a login failure message
+- **AND** it SHALL NOT create a local authenticated session
 
 ### Requirement: User Logout
-系统 SHALL 支持用户登出操作。
+The system SHALL support local logout by clearing the current application's own session state without depending on Supabase session revocation.
 
-#### Scenario: 用户登出
-- **WHEN** 已登录用户点击登出按钮
-- **THEN** 系统清除本地存储的 session
-- **AND** 返回到仪表盘页面（可继续使用临时任务）
+#### Scenario: User logs out
+- **WHEN** an authenticated user clicks logout in the current application
+- **THEN** the frontend SHALL clear the local auth token or session state
+- **AND** protected API calls using that cleared session SHALL no longer succeed.
 
 ### Requirement: Guest Mode (Temporary Tasks)
-系统 SHALL 支持未登录用户使用临时任务系统。
+The system SHALL continue to allow unauthenticated users to use the temporary translation workflow while limiting persistence and protected user features to authenticated users.
 
-#### Scenario: 未登录用户创建翻译任务
-- **WHEN** 未登录用户提交翻译请求（ArXiv 或上传）
-- **THEN** 系统创建临时任务（不绑定 user_id）
-- **AND** 任务仅存储在内存中
-- **AND** 用户可正常使用翻译功能
+#### Scenario: Guest user creates a temporary translation task
+- **WHEN** an unauthenticated user submits a basic translation request
+- **THEN** the system SHALL create a guest-capable task without requiring a local authenticated user
+- **AND** the task SHALL remain outside authenticated user history persistence semantics.
 
-#### Scenario: 未登录用户任务不持久化
-- **WHEN** 服务器重启或用户关闭浏览器
-- **THEN** 未登录用户的任务数据丢失
-- **AND** 历史记录页面不显示这些任务
-
-#### Scenario: 登录后任务持久化
-- **WHEN** 已登录用户创建翻译任务
-- **THEN** 系统将任务绑定到 user_id
-- **AND** 任务持久化存储在 Supabase
-- **AND** 可在历史记录页面查看
+#### Scenario: Authenticated user persists a new task
+- **WHEN** an authenticated user starts a translation task through the current application
+- **THEN** the system SHALL bind the persisted task to the local authenticated user id
+- **AND** the task SHALL become visible through authenticated history flows backed by the local database.
 
 ### Requirement: Protected Features
 系统 SHALL 保护需要认证的功能，但不阻止基本翻译。
@@ -93,21 +77,22 @@ TBD - created by archiving change add-multi-user-support. Update Purpose after a
 - **AND** 侧边栏显示"登录"按钮
 
 ### Requirement: Backend JWT Verification
-后端 API SHALL 支持可选认证，区分登录和未登录用户。
+The backend API SHALL verify only the project's own local auth token for authenticated routes, while guest-allowed routes continue to accept anonymous requests.
 
-#### Scenario: 有效 JWT token
-- **WHEN** API 请求携带有效的 Authorization Bearer token
-- **THEN** 系统提取 user_id 并将任务绑定到用户
+#### Scenario: Valid local auth token
+- **WHEN** an API request carries a valid local Authorization Bearer token issued by the current application
+- **THEN** the backend SHALL resolve the local current-user context from that token
+- **AND** authenticated routes SHALL use that local user identity for authorization and persistence.
 
-#### Scenario: 无 JWT token（访客模式）
-- **WHEN** API 请求不携带 Authorization header
-- **AND** 请求的是基本翻译功能（upload、arxiv、translate、task）
-- **THEN** 系统允许请求，创建临时任务
+#### Scenario: Missing auth token on guest-allowed route
+- **WHEN** a guest-capable API request omits the Authorization header
+- **THEN** the backend SHALL allow the request to proceed without an authenticated user context
+- **AND** it SHALL apply guest-mode behavior for persistence and feature limits.
 
-#### Scenario: 无 JWT token 访问受保护功能
-- **WHEN** API 请求不携带 Authorization header
-- **AND** 请求的是 history、settings 等受保护端点
-- **THEN** 系统返回 HTTP 401 Unauthorized 错误
+#### Scenario: Missing auth token on protected route
+- **WHEN** a protected API request omits the Authorization header
+- **THEN** the backend SHALL return HTTP 401 Unauthorized
+- **AND** it SHALL not attempt to infer identity from an upstream token or database RLS helper.
 
 ### Requirement: User Profile Page
 系统 SHALL 提供简单的用户资料页面。
@@ -116,19 +101,4 @@ TBD - created by archiving change add-multi-user-support. Update Purpose after a
 - **WHEN** 已登录用户访问 `/profile` 页面
 - **THEN** 系统显示用户邮箱地址
 - **AND** 显示登出按钮
-
-### Requirement: OTP Input UX
-
-OTP 输入界面 SHALL 提供流畅的验证码输入体验。
-
-#### Scenario: 输入与提交体验
-
-- **WHEN** OTP 输入界面显示时
-- **THEN** 验证码输入框自动获得焦点
-- **AND** 输入达到 8 位后，若用户按下回车键将触发验证
-
-#### Scenario: 粘贴验证码自动填充
-
-- **WHEN** 用户从邮件复制 8 位验证码并粘贴到输入框
-- **THEN** 系统自动填入并截断/过滤非数字字符
 

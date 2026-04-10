@@ -39,16 +39,16 @@ During translation initialization, the system SHALL attempt runtime config snaps
 - **AND** polling interval recommendation is 2 seconds
 
 ### Requirement: Translation Progress Reporting
-The system SHALL report granular progress updates during translation workflow stages, with optimized database I/O for download operations.
+The system SHALL report granular progress updates during translation workflow stages, with optimized database I/O for local persistent operations.
 
 #### Scenario: Async route DB calls do not pin event loop
-- **WHEN** async API routes perform Supabase operations
-- **THEN** blocking SDK calls SHALL execute through async-safe wrapper offload
-- **AND** event-loop responsiveness for `/health` and task status polling SHALL remain stable during compile load.
+- **WHEN** async API routes perform local database operations during task or persistence flows
+- **THEN** blocking DB work SHALL execute through async-safe wrapper offload
+- **AND** event-loop responsiveness for `/api/health` and task-status polling SHALL remain stable during compile load.
 
 #### Scenario: Behavior-level event-loop health gate
-- **WHEN** parser/validator phases run with simulated blocking work
-- **THEN** automated tests SHALL verify scheduler/tick latency stays under configured threshold
+- **WHEN** parser or validator phases run with simulated blocking work
+- **THEN** automated tests SHALL verify scheduler or tick latency stays under the configured threshold
 - **AND** concurrent task wall time SHALL indicate non-serialized behavior.
 
 ### Requirement: API Health Monitoring
@@ -280,13 +280,12 @@ The task management system SHALL support atomic progress message updates without
 - [x] Rate limit warning text includes performance suggestion
 
 ### Requirement: Persisted Task Recovery
+The task manager MUST recover task configurations from the local file system and local database without depending on Supabase fallback behavior.
 
-The task manager MUST recover task configurations from the local file system.
-
-#### Scenario: Task missing from Supabase DB
-- **WHEN** a task is not in Supabase
-- **THEN** the backend searches the local file system using the system's valid `outputs_dir` and `uploads_dir` settings
-- **AND** it retrieves metadata gracefully without raising internal setting attribute exceptions.
+#### Scenario: Task missing from local database
+- **WHEN** a task is not found in the local persistent store
+- **THEN** the backend SHALL search the local file system using the configured `outputs_dir` and `uploads_dir`
+- **AND** it SHALL retrieve metadata gracefully without requiring a Supabase fallback path.
 
 ### Requirement: Configurable CORS Origin Allowlist
 Backend SHALL support comma-separated CORS origin configuration via `CORS_ORIGINS`.
@@ -386,22 +385,22 @@ The community agent stream SHALL emit a stable event schema so clients can parse
 - **THEN** the stream SHALL emit a completion event containing final `message`, `citations`, `tool_trace`, `provider_state`, and `action`.
 
 ### Requirement: Admin API supports manual stale task cleanup
-The backend SHALL expose an administrative endpoint to manually trigger restart reconciliation for community-paper translation state without requiring a server restart.
+The backend SHALL expose an administrative endpoint to manually trigger restart reconciliation for community-paper translation state across the local database and local filesystem.
 
 #### Scenario: Admin triggers cleanup
-- **WHEN** an authenticated admin user calls `POST /api/admin/cleanup`
+- **WHEN** an authenticated local admin user calls `POST /api/admin/cleanup`
 - **THEN** the API SHALL mark interrupted in-flight translation tasks as failed and clean related local artifacts
-- **AND** it SHALL purge non-success community-paper artifacts (`not_started`, `queued`, `processing`, `failed`, `failed_compilation`, `structure_invalid`) across disk and Supabase
+- **AND** it SHALL purge eligible non-success community-paper artifacts across the local database and disk
 - **AND** it SHALL return a summary of the operations performed.
 
 ### Requirement: Backend automatically cleans up stale tasks on startup
-The backend SHALL automatically reconcile community-paper translation state during startup so interrupted work is deterministically failed/cleaned and eligible non-success artifacts are removed across the database and local filesystem before traffic is served.
+The backend SHALL automatically reconcile community-paper translation state during startup so interrupted work is deterministically failed or cleaned across the local database and filesystem before traffic is served.
 
 #### Scenario: Startup cleanup runs before serving traffic
 - **WHEN** the backend process starts with stale queued, processing, or failed community-paper tasks still present
-- **THEN** it SHALL mark active interrupted `translation_tasks` as `failed` and clean local task artifacts
-- **AND** it SHALL purge non-success community-paper records only for purge-eligible visibility/status scopes while keeping successful and public papers untouched
-- **AND** subsequent API traffic SHALL observe the cleaned state without requiring a manual restart or cleanup call.
+- **THEN** it SHALL mark active interrupted `translation_tasks` as failed and clean local task artifacts
+- **AND** it SHALL purge eligible non-success community-paper records in the local database while keeping successful and public papers untouched
+- **AND** later API traffic SHALL observe the cleaned state without requiring a manual cleanup call.
 
 #### Scenario: Startup purge is explicitly disabled
 - **WHEN** `ENABLE_STALE_PAPER_PURGE` is set to a disabled value
@@ -409,11 +408,11 @@ The backend SHALL automatically reconcile community-paper translation state duri
 - **AND** it SHALL continue to report cleanup execution status without deleting paper records.
 
 ### Requirement: Non-success community papers are deleted comprehensively
-The backend SHALL remove purge-eligible non-success community papers from all related paper-facing Supabase tables and local task artifacts, not only from the primary `papers` row.
+The backend SHALL remove purge-eligible non-success community papers from all related paper-facing local database tables and local task artifacts, not only from the primary `papers` row.
 
 #### Scenario: Purge-eligible non-success paper has related moderation and reaction data
 - **WHEN** a purge-eligible non-success community paper is purged during startup or admin cleanup
-- **THEN** the backend SHALL delete related `comments`, `reports`, `moderation_actions`, `paper_assets`, `paper_likes`, `paper_favorites`, related `translation_tasks`, and the `papers` row
+- **THEN** the backend SHALL delete related `comments`, `reports`, `moderation_actions`, `paper_assets`, `paper_likes`, `paper_favorites`, related `translation_tasks`, and the `papers` row from the local database
 - **AND** it SHALL also delete the corresponding local task artifact directories and `community_papers/<paper_id>` folder.
 
 #### Scenario: Public paper remains available after restart cleanup
@@ -464,15 +463,78 @@ The API SHALL accept and propagate structured highlighted-reader selection conte
 - **AND** the runtime SHALL retain that context for planner/final answer grounding without requiring user-visible prompt rewriting.
 
 ### Requirement: Community paper APIs retry transient database transport failures
-Community paper service-layer API paths SHALL retry transient Supabase transport failures before returning an error.
+Community paper service-layer API paths SHALL retry transient local database or driver-level transport failures before returning an error.
 
 #### Scenario: Transient timeout recovers within retry budget
-- **WHEN** a Supabase operation fails with transient network/timeout transport exceptions
+- **WHEN** a local database operation fails with transient transport or timeout exceptions
 - **THEN** the API layer SHALL retry with bounded backoff
 - **AND** it SHALL return success if a later retry succeeds within the configured retry budget.
 
 #### Scenario: Transient timeout persists beyond retry budget
-- **WHEN** retries are exhausted for transient network/timeout transport exceptions
+- **WHEN** retries are exhausted for transient transport or timeout exceptions
 - **THEN** the API layer SHALL surface the final failure
 - **AND** it SHALL not loop indefinitely.
+
+### Requirement: Authentication API issues local sessions after NiuTrans verification
+The backend SHALL expose authentication endpoints that verify credentials against the NiuTrans login API and then establish the current application's own authenticated session.
+
+#### Scenario: Local login succeeds through upstream verification
+- **WHEN** the client submits valid credentials to the current application's login endpoint
+- **THEN** the backend SHALL verify those credentials through the NiuTrans login API
+- **AND** it SHALL upsert the mapped local user record
+- **AND** it SHALL return a local authenticated session or JWT for subsequent project API calls.
+
+#### Scenario: Login response follows a stable auth contract
+- **WHEN** the backend returns a successful login response
+- **THEN** the payload SHALL include `access_token`, `token_type`, `expires_in`, and a normalized local `user` object
+- **AND** clients SHALL NOT need to inspect raw upstream NiuTrans token fields to bootstrap the session.
+
+#### Scenario: Session bootstrap returns the current local user
+- **WHEN** the client calls `GET /api/auth/me` with a valid local token
+- **THEN** the API SHALL return the normalized local authenticated user payload
+- **AND** it SHALL be the canonical frontend bootstrap endpoint for restoring auth state.
+
+#### Scenario: Local logout clears current application auth state
+- **WHEN** the client requests logout through the current application's auth API
+- **THEN** the backend and frontend SHALL clear the current application's local session state
+- **AND** later protected API calls SHALL require a fresh local login.
+
+#### Scenario: Auth failures use stable error codes
+- **WHEN** login or session validation fails
+- **THEN** the API SHALL return a machine-readable auth error code such as invalid credentials, invalid session, forbidden, or upstream unavailable
+- **AND** the response SHALL still include a user-facing message.
+
+### Requirement: Paper detail response exposes translated-PDF interaction metadata
+The API SHALL expose translated-PDF reader metadata required for interactive in-document operations in paper detail.
+
+#### Scenario: Paper detail payload includes embeddable translated-PDF metadata
+- **WHEN** a paper has translated PDF assets available
+- **THEN** the paper-detail response SHALL include a translated-PDF reader URL suitable for inline embedding
+- **AND** it SHALL include metadata required by the UI to attempt stable location mapping.
+
+#### Scenario: Translated-PDF locator metadata is unavailable
+- **WHEN** translated-PDF assets exist but locator metadata is not ready
+- **THEN** the API SHALL explicitly indicate locator unavailability
+- **AND** the response SHALL remain backward-compatible for non-interactive PDF viewing.
+
+### Requirement: Agent run context supports translated-PDF locator selection fields
+The API SHALL accept optional translated-PDF locator fields in `context.reader_selection` while preserving existing selection fields.
+
+#### Scenario: Paper-detail run includes translated-PDF locator context
+- **WHEN** the paper-detail client submits `context.reader_selection` from translated-PDF mode
+- **THEN** the API SHALL accept existing fields (`text`, optional `anchor_id`, optional `mode`) plus optional locator fields
+- **AND** runtime orchestration SHALL preserve these fields for planner/final answer grounding.
+
+#### Scenario: Legacy clients submit reader_selection without locator fields
+- **WHEN** clients only send current `reader_selection` fields
+- **THEN** the API SHALL process the request without contract breakage
+- **AND** behavior SHALL remain compatible with existing HTML-reader workflows.
+
+### Requirement: Citation-target metadata supports translated-PDF location resolution
+The API SHALL support citation/action metadata that can target translated-PDF positions for current-paper navigation.
+
+#### Scenario: Assistant references a translated-PDF location in current paper
+- **WHEN** an assistant run emits current-paper citation/action metadata for translated-PDF mode
+- **THEN** metadata SHALL be able to carry stable location identifiers usable by the UI
+- **AND** unresolved identifiers SHALL be distinguishable from successfully resolved targets.
 

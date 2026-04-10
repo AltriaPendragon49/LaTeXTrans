@@ -107,33 +107,28 @@
 - **AND** 翻译任务自动加入 `TaskQueue` 等待执行
 
 ### Requirement: Batch Translation Persistence Retry
-系统 SHALL 在 Supabase 写入失败时自动重试，并在全部失败时降级处理，确保用户得到明确提示。
+The system SHALL retry failed authenticated batch-task persistence against the local database and degrade gracefully if persistence still cannot be completed.
 
-#### Scenario: 持久化首次失败时后台重试
-- **WHEN** `batch_translate` 端点调用 `persist_task_if_needed()` 失败
-- **THEN** 系统通过 `asyncio.create_task()` 在后台启动 `persist_task_with_retry()`
-- **AND** 重试最多 2 次，每次间隔 5 秒
-- **AND** HTTP 响应不受影响，正常返回 `task_ids`
+#### Scenario: First persistence attempt fails and background retry starts
+- **WHEN** the batch translation flow calls `persist_task_if_needed()` and the local database write fails
+- **THEN** the system SHALL start a background retry flow for that persistence attempt
+- **AND** the HTTP response for accepted batch work SHALL remain non-blocking.
 
-#### Scenario: 重试成功后任务正常持久化
-- **WHEN** 后台重试期间 Supabase 网络恢复
-- **THEN** 任务成功写入数据库
-- **AND** 任务在历史记录中可见
+#### Scenario: Retry later succeeds
+- **WHEN** the background retry succeeds within the configured retry budget
+- **THEN** the task SHALL become visible in authenticated history
+- **AND** later history queries SHALL use the successfully persisted local row.
 
-#### Scenario: 全部重试失败后降级处理
-- **WHEN** `persist_task_with_retry()` 所有重试均失败
-- **THEN** 系统将该任务注册进 `GuestTaskTracker`（纳入 TTL 自动清理）
-- **AND** 在内存任务中设置 `persist_failed=True` 标志
-- **AND** 翻译任务仍正常执行，不受影响
+#### Scenario: All retries fail and task degrades gracefully
+- **WHEN** every bounded persistence retry attempt fails
+- **THEN** the system SHALL mark the task as persistence-failed in runtime state
+- **AND** translation execution SHALL continue instead of being aborted solely by persistence failure
+- **AND** the frontend SHALL warn the user that the task was not saved into authenticated history.
 
-#### Scenario: 前端检测到持久化失败并警告用户
-- **WHEN** `BatchTranslation.tsx` 的 `pollTask` 轮询到 `persist_failed=True`
-- **THEN** 前端 MUST 向用户显示该任务未保存到历史记录的明确警告
-
-#### Scenario: Batch persistence retry preserves config_hash for output reuse
-- **WHEN** an authenticated batch-created task has already computed `config_hash` before the initial Supabase insert succeeds
+#### Scenario: Deferred persistence keeps config hash for output reuse
+- **WHEN** an authenticated batch-created task computes its `config_hash` before the first successful local database insert
 - **THEN** the eventual successful persistence attempt MUST keep that `config_hash`
-- **AND** later matching single-task or batch-task requests MUST remain eligible for output reuse.
+- **AND** later matching requests MUST remain eligible for output reuse.
 
 ### Requirement: Dashboard Configuration Sharing
 Advanced Configuration SHALL 对所有翻译 Tab 均可见，配置在单论文翻译与批量翻译之间共享。

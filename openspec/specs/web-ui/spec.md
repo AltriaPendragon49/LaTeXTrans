@@ -279,14 +279,6 @@ Frontend MUST require `VITE_API_BASE_URL` for all API calls.
 - **THEN** API base URL MUST be loaded from a shared resolver bound to `VITE_API_BASE_URL`
 - **AND** missing value MUST throw an explicit configuration error
 
-### Requirement: Frontend Public Key Boundary
-Frontend env MUST include only publishable Supabase keys.
-
-#### Scenario: Frontend env excludes service-role key
-- **WHEN** frontend `.env*` files are used
-- **THEN** only public Supabase keys (URL + anon/publishable) MAY appear
-- **AND** service-role key MUST NOT appear in any `VITE_*` variable
-
 ### Requirement: User-visible static UI copy uses centralized i18n resources
 All non-diagnostic user-visible frontend copy MUST come from centralized i18n resources instead of hardcoded strings.
 
@@ -578,4 +570,100 @@ The web UI SHALL keep paper detail preview math readable when asynchronous previ
 - **WHEN** preview enhancement returns without producing KaTeX-rendered nodes while `.paper-preview__math-block` nodes still exist
 - **THEN** the UI SHALL perform fallback rendering for remaining unhydrated math blocks
 - **AND** the reader SHALL not expose raw math source as final visible output.
+
+### Requirement: Frontend Auth Environment Boundary
+Frontend runtime configuration MUST NOT depend on retired third-party public auth keys after local auth migration is complete.
+
+#### Scenario: Frontend env excludes retired runtime auth keys
+- **WHEN** frontend `.env*` files are prepared for the migrated local stack
+- **THEN** the current application SHALL NOT require any third-party public auth key variables for runtime auth behavior
+- **AND** frontend auth bootstrap SHALL depend only on the current application's own API configuration.
+
+### Requirement: Login UI uses local auth with NiuTrans account links
+The web UI SHALL use an in-app login form as the only formal sign-in flow, while exposing registration and account-management links that redirect users to NiuTrans-managed pages.
+
+#### Scenario: User logs in from the current application
+- **WHEN** a user submits credentials from the current application's login page
+- **THEN** the frontend SHALL call the local backend auth endpoint
+- **AND** it SHALL store only the local authenticated session or token returned by the current application
+- **AND** later protected API requests SHALL use that local token rather than any third-party session artifact.
+
+#### Scenario: Frontend restores auth state through session bootstrap
+- **WHEN** the frontend starts with a locally stored auth token
+- **THEN** it SHALL call the current application's auth bootstrap endpoint to resolve the current user
+- **AND** an invalid or expired session response SHALL transition the UI back to the logged-out state.
+
+#### Scenario: User chooses to register a new account
+- **WHEN** a user clicks the registration entry from the current application's auth UI
+- **THEN** the frontend SHALL redirect the user to the configured NiuTrans registration URL
+- **AND** it SHALL not display a retired third-party sign-up or OTP-verification flow.
+
+#### Scenario: Protected feature prompts still keep guest entry clear
+- **WHEN** an unauthenticated user attempts to access history, settings, or community-agent persistence features
+- **THEN** the frontend SHALL prompt for login using the current application's auth flow
+- **AND** guest-available translation entry points SHALL remain usable without sign-in.
+
+### Requirement: Paper detail translated-PDF mode supports interactive selection context
+The web UI SHALL provide translated-PDF reader interactions that support user text selection and copilot context grounding inside paper detail.
+
+#### Scenario: User selects translated-PDF text and sends Ask AI
+- **WHEN** the user is in translated-PDF mode and selects readable text
+- **THEN** the UI SHALL capture selection context and allow sending it to the paper-detail copilot as `reader_selection`
+- **AND** the right-pane conversation SHALL continue in-place without route changes.
+
+#### Scenario: Selection context remains visible until user clears it
+- **WHEN** translated-PDF selection context is active and the user focuses the copilot composer
+- **THEN** the selected location SHALL remain visibly marked in the reader
+- **AND** clearing selection context SHALL remove that visual mark.
+
+### Requirement: Paper detail translated-PDF mode supports highlight and notes parity
+The web UI SHALL support highlight create/remove and note association for translated-PDF selections with behavior aligned to paper-detail HTML mode.
+
+#### Scenario: User creates and removes translated-PDF highlight
+- **WHEN** the user applies a highlight color to a translated-PDF selection
+- **THEN** the UI SHALL create a stable highlight/note entry that can be removed later
+- **AND** removing the highlight SHALL immediately update both reader overlay and notes list.
+
+#### Scenario: Notes panel focuses translated-PDF location
+- **WHEN** the user clicks a translated-PDF note/highlight entry in `My Notes`
+- **THEN** the reader SHALL navigate to the linked translated-PDF location
+- **AND** the linked location SHALL receive visible focus feedback.
+
+### Requirement: Paper detail translated-PDF navigation degrades gracefully
+The web UI SHALL provide deterministic fallback behavior when translated-PDF locator resolution is unavailable.
+
+#### Scenario: Citation anchor cannot resolve to translated-PDF location
+- **WHEN** the user opens a citation targeting the current paper but no translated-PDF locator is resolvable
+- **THEN** the UI SHALL automatically switch to translated HTML mode for that paper detail session
+- **AND** it SHALL preserve current conversation state while navigating to the resolved anchor in translated HTML.
+
+### Requirement: Translated-PDF interaction parity is desktop-first in first release
+The web UI SHALL deliver translated-PDF interaction parity on desktop viewports first, with mobile-safe fallback behavior in the initial release.
+
+#### Scenario: Desktop viewport uses translated-PDF interactive parity
+- **WHEN** the user opens paper detail on a desktop-width viewport in translated-PDF mode
+- **THEN** the UI SHALL provide translated-PDF interactive selection, highlight, notes, and copilot grounding behavior as specified.
+
+#### Scenario: Mobile viewport uses initial fallback behavior
+- **WHEN** the user opens paper detail on a narrow/mobile viewport in translated-PDF mode during the first release
+- **THEN** the UI SHALL fall back to compatible non-parity behavior without breaking reading or copilot usage
+- **AND** it SHALL avoid claiming full translated-PDF interaction parity on mobile in that release.
+
+### Requirement: Processing page uses a fixed workbench layout
+The Processing page SHALL open as a fixed-height workbench that keeps the major task surfaces visible together on first render instead of letting the live log expand the page indefinitely.
+
+#### Scenario: Desktop processing view opens with the full workbench visible
+- **WHEN** the user opens the Processing page on a desktop-class viewport
+- **THEN** the page SHALL present the hero/status area, task-status timeline, completion-or-progress summary, and live-log panel inside one coordinated first-screen workbench
+- **AND** the page itself SHALL remain height-bounded rather than extending vertically with log growth
+
+#### Scenario: Live log scrolls only inside the dedicated log window
+- **WHEN** new log lines continue to arrive during processing or after completion
+- **THEN** the live-log panel SHALL keep a fixed window within the workbench
+- **AND** vertical overflow SHALL scroll only inside that log viewport instead of pushing the entire Processing page downward
+
+#### Scenario: Completion state remains visible without needing log-driven page scroll
+- **WHEN** the task transitions into `completed` or `completed_with_warnings`
+- **THEN** the completion heading and action controls SHALL remain part of the fixed workbench composition
+- **AND** the user SHALL not need to scroll past an overgrown log panel just to discover that the translation finished
 

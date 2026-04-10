@@ -150,15 +150,12 @@ class LatexParser:
             begin, end = result.span()
             pos = result.end()
             match = result.group(4)
-            inputfilepath = os.path.join(self.dir, match)
+            unresolved_path = os.path.join(self.dir, match)
+            inputfilepath = resolve_input_include_path(self.dir, match)
 
-            if os.path.exists(f'{inputfilepath}'):
-                inputfilepath = f'{inputfilepath}'
-            elif os.path.exists(f'{inputfilepath}.tex'):
-                inputfilepath = f'{inputfilepath}.tex'
-            else:
-                logger.warning(f"File not found: {inputfilepath}.tex or {inputfilepath}")
-                print(f"⚠️ Warning: File not found: {inputfilepath}.tex or {inputfilepath}")
+            if inputfilepath is None:
+                logger.warning(f"File not found: {unresolved_path}.tex or {unresolved_path}")
+                print(f"Warning: File not found: {unresolved_path}.tex or {unresolved_path}")
                 pos = result.end()
                 continue
 

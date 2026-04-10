@@ -1404,6 +1404,25 @@ def read_tex_file(path):
     return latex_code
 
 
+def resolve_input_include_path(base_dir, include_name):
+    """Resolve a \\input/\\include target to an existing file path, never a directory."""
+    raw = str(include_name or "").strip()
+    if not raw:
+        return None
+
+    candidate = os.path.join(base_dir, raw)
+    if os.path.isfile(candidate):
+        return candidate
+
+    root, ext = os.path.splitext(candidate)
+    if not ext:
+        with_tex = f"{candidate}.tex"
+        if os.path.isfile(with_tex):
+            return with_tex
+
+    return None
+
+
 def read_json_file(path):
     """Read JSON file"""
     with open(path, 'r', encoding='utf-8') as f:
@@ -2112,18 +2131,9 @@ def merge_tex_from_inputs(main_file_path):
             break
         begin, end = result.span()
         match = result.group(2)
-        inputfilepath = os.path.join(dirname, match)
-        
-        if match.endswith('.tex'):
-            if os.path.exists(f'{inputfilepath}'):
-                inputfilepath = f'{inputfilepath}'
-            else:
-                raise FileNotFoundError(f"File not found: {inputfilepath}")
-        else:
-            if os.path.exists(f'{inputfilepath}.tex'):
-                inputfilepath = f'{inputfilepath}.tex'
-            else:
-                raise FileNotFoundError(f"File not found: {inputfilepath}.tex")
+        inputfilepath = resolve_input_include_path(dirname, match)
+        if inputfilepath is None:
+            raise FileNotFoundError(f"File not found: {os.path.join(dirname, match)}.tex")
         
         input_tex = read_tex_file(inputfilepath)
         input_tex = remove_comments(input_tex)

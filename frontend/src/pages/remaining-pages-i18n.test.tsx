@@ -81,7 +81,7 @@ describe("remaining page i18n", () => {
 
     expect(screen.getByText("Welcome back")).toBeInTheDocument()
     expect(screen.getByText("Sign in to save your translation history and settings")).toBeInTheDocument()
-    expect(screen.getByLabelText("Email address")).toBeInTheDocument()
+    expect(screen.getByLabelText("Email or phone number")).toBeInTheDocument()
     expect(screen.getByLabelText("Password")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Manage your account information" })).toBeInTheDocument()

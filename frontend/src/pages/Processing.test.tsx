@@ -70,4 +70,46 @@ describe("ProcessingPage", () => {
     expect(screen.getByTestId("processing-summary-panel")).toBeInTheDocument()
     expect(screen.getByTestId("processing-log-panel")).toBeInTheDocument()
   })
+
+  it("locks the page into a single-screen workbench and keeps logs scrollable inside the log panel", () => {
+    storeState.logs = Array.from({ length: 40 }, (_, index) => `log line ${index + 1}`)
+
+    render(
+      <MemoryRouter initialEntries={["/processing?taskId=task-1"]}>
+        <Routes>
+          <Route path="/processing" element={<ProcessingPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("processing-shell").className).toContain("h-full")
+    expect(screen.getByTestId("processing-shell").className).toContain("overflow-hidden")
+    expect(screen.getByTestId("processing-workbench").className).toContain("min-h-0")
+    expect(screen.getByTestId("processing-log-panel").className).toContain("min-h-0")
+    expect(screen.getByTestId("processing-log-scroll-region").className).toContain("overflow-y-auto")
+    expect(screen.getByTestId("processing-log-scroll-region").className).toContain("h-full")
+    expect(screen.getByTestId("processing-hero-panel")).toBeInTheDocument()
+    expect(screen.getByTestId("processing-status-card")).toBeInTheDocument()
+    expect(screen.getByTestId("processing-summary-card")).toBeInTheDocument()
+  })
+
+  it("gives the task timeline more room and lets the status list scroll within its card", () => {
+    storeState.logs = Array.from({ length: 20 }, (_, index) => `log line ${index + 1}`)
+
+    render(
+      <MemoryRouter initialEntries={["/processing?taskId=task-1"]}>
+        <Routes>
+          <Route path="/processing" element={<ProcessingPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("processing-summary-panel").className).toContain(
+      "xl:grid-rows-[minmax(0,1.2fr)_minmax(176px,0.8fr)]",
+    )
+    expect(
+      screen.getByTestId("processing-status-card").querySelector(".overflow-y-auto"),
+    ).not.toBeNull()
+    expect(screen.getByTestId("processing-summary-card").textContent).toContain("2/4")
+  })
 })

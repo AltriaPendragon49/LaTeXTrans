@@ -4,51 +4,49 @@
 TBD - created by archiving change decouple-runtime-state. Update Purpose after archive.
 ## Requirements
 ### Requirement: State Layer Separation
-系统状态 MUST 拆分为 Runtime (TaskRuntimeState) 与 Persistent (database-backed task store)。
+The system state MUST remain split into Runtime (`TaskRuntimeState`) and Persistent (local database) layers after Supabase removal.
 
 #### Scenario: Compile runtime metadata remains in runtime layer
 - **WHEN** compilation starts or ends
-- **THEN** `compile_pid`, `compile_engine`, `compile_started_at` MUST be updated only in runtime memory state
-- **AND** MUST NOT be persisted to terminal history fields in the database-backed task store.
+- **THEN** `compile_pid`, `compile_engine`, and `compile_started_at` MUST remain runtime-only state
+- **AND** those fields MUST NOT be persisted into terminal history rows in the local database.
 
 ### Requirement: Throttled Persistent-State Synchronization
-系统 SHALL 限制持久化写入频率并保持 async 路径非阻塞。
+The system SHALL throttle persistent-state writes to the local database while keeping async task or status paths non-blocking.
 
 #### Scenario: Async DB wrapper strategy mode
-- **WHEN** async route/service path issues DB SDK calls
-- **THEN** execution SHALL use wrapper policy driven by `DB_EXECUTION_MODE`
-- **AND** default mode SHALL be `per_call_client` for safer threaded execution.
+- **WHEN** async route or service paths issue database operations
+- **THEN** execution SHALL use the configured async-safe database wrapper strategy
+- **AND** the default mode SHALL remain safe for threaded offload and local development stability.
 
 ### Requirement: API Read Strategy
-`/api/task/{task_id}` 查询接口 MUST 优先读取 Runtime 状态，以防止对持久化任务存储形成高频轮询压力。
+`/api/task/{task_id}` MUST prefer runtime task state before falling back to persisted local database state.
 
-#### Scenario: 前端轮询任务进度
-- **WHEN** 前端或客户端请求 `/api/task/{task_id}`
-- **THEN** 后端优先检查 `runtime_state_cache` 是否包含该 `task_id`
-- **AND** 如果命中，则直接返回 Runtime 状态
-- **AND** 如果未命中，才进行 `persistent_task_lookup(task_id)` 查询
+#### Scenario: Frontend polls task progress
+- **WHEN** the frontend or another client requests `/api/task/{task_id}`
+- **THEN** the backend SHALL first check runtime state for that task id
+- **AND** only if runtime state is unavailable MAY it fall back to persisted local database state.
 
-#### Scenario: 拒绝将持久化层作为实时数据源
-- **WHEN** 前端建立 WebSocket 或 SSE 连接以获取实时状态
-- **THEN** SSE 只能推送 `TaskRuntimeState` 的更新
-- **AND** 绝不允许直接推送持久化层的变更事件作为实时数据源
+#### Scenario: Runtime state remains the real-time source
+- **WHEN** the frontend consumes SSE or polling for live task updates
+- **THEN** the real-time source SHALL remain `TaskRuntimeState`
+- **AND** the system SHALL NOT reintroduce database change streams as the primary real-time source.
 
 ### Requirement: Task State Recovery
-System MUST remember user preferences even when tasks are recovered from the database after a restart.
+System MUST remember user preferences even when tasks are recovered from the local database after a restart.
 
-#### Scenario: Recover Task from Database Retains Email Preference
-- **WHEN** the backend restarts and recovers an active task from the persisted `translation_tasks` store
-- **THEN** it MUST correctly deserialize the `email_notification` boolean flag 
-- **AND** store it in the in-memory `advanced_config` dictionary so terminal email notifications successfully send.
+#### Scenario: Recover task from local persistence retains email preference
+- **WHEN** the backend restarts and recovers an active task from the local `translation_tasks` store
+- **THEN** it MUST correctly deserialize the `email_notification` flag
+- **AND** it MUST restore that value into in-memory task configuration so terminal notifications still work.
 
 ### Requirement: Task Status Synchronization
-Final task statuses MUST flush immediately.
+Final task statuses MUST flush immediately to the local persistent store.
 
-#### Scenario: Suppressed Flusher Race Condition on Terminal State
-- **WHEN** a task reaches a terminal state (`completed`, `failed`)
-- **AND** `update_task` enqueues the final status to the persistent-state flusher
-- **THEN** it MUST immediately dispatch the write to the persistent task store (semantic transition), bypassing the interval throttle
-- **AND** if an error occurs within `update_task` post-enqueue (such as an email notification timeout), it SHALL NOT prevent the enqueued status from being written to the database.
+#### Scenario: Terminal-state flush bypasses normal throttle
+- **WHEN** a task reaches a terminal state such as `completed` or `failed`
+- **THEN** the persistent-state flusher MUST dispatch the write immediately to the local database
+- **AND** later non-persistence exceptions in the same update flow SHALL NOT suppress that terminal-state write.
 
 ### Requirement: Single-Worker Runtime Safety Guardrail
 Until runtime task state is fully externalized, production runtime MUST operate with a single worker.

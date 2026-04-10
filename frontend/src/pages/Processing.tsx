@@ -111,9 +111,12 @@ export default function ProcessingPage() {
       : "text-indigo-600"
 
   return (
-    <div className="mx-auto flex w-full max-w-[1380px] flex-1 flex-col gap-6 px-6 py-8 xl:px-10">
+    <div
+      data-testid="processing-shell"
+      className="mx-auto flex h-full min-h-0 w-full max-w-[1480px] flex-1 flex-col gap-4 overflow-hidden px-4 py-4 sm:px-6 lg:px-8 xl:px-10 xl:py-6"
+    >
       {isGuest && (
-        <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+        <div className="flex shrink-0 items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
           <p className="flex-1 text-sm text-amber-300">
             <span className="font-semibold">{t("processing.guest_mode")}</span>
@@ -130,7 +133,7 @@ export default function ProcessingPage() {
       )}
 
       {taskWarnings && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+        <div className="flex shrink-0 items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <p className="flex-1 text-sm text-amber-300">
             <span className="font-semibold">{t("processing.formatting_note")}</span>
@@ -139,12 +142,15 @@ export default function ProcessingPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/20 px-6 py-6 shadow-[0_18px_45px_rgba(15,23,42,0.06)] lg:flex-row lg:items-center lg:justify-between">
+      <div
+        data-testid="processing-hero-panel"
+        className="flex shrink-0 flex-col gap-4 rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/20 px-5 py-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)] lg:flex-row lg:items-center lg:justify-between lg:px-6"
+      >
         <div className="max-w-2xl">
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
             {canPreview ? t("task.result.completed") : t("task.result.inProgress")}
           </h1>
-          <p className="mt-2 text-muted-foreground">
+          <p className="mt-1.5 text-sm text-muted-foreground lg:text-base">
             {t("processing.track_translation_task_status_in_real_time")}
           </p>
         </div>
@@ -178,16 +184,22 @@ export default function ProcessingPage() {
 
       <div
         data-testid="processing-workbench"
-        className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[minmax(380px,0.95fr)_minmax(0,1.25fr)]"
+        className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(380px,0.92fr)_minmax(480px,1.08fr)]"
       >
-        <div data-testid="processing-summary-panel" className="grid content-start gap-6">
-          <Card className="overflow-hidden border-border/60 bg-card/95 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
-            <CardHeader className="gap-2 border-b border-border/60 pb-5">
+        <div
+          data-testid="processing-summary-panel"
+          className="grid min-h-0 content-start gap-4 xl:grid-rows-[minmax(0,1.2fr)_minmax(176px,0.8fr)]"
+        >
+          <Card
+            data-testid="processing-status-card"
+            className="flex min-h-0 flex-col overflow-hidden border-border/60 bg-card/95 shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
+          >
+            <CardHeader className="gap-1.5 border-b border-border/60 pb-3">
               <CardTitle>{t("processing.task_status")}</CardTitle>
               <CardDescription>{currentDetail}</CardDescription>
             </CardHeader>
-            <CardContent className="px-6 pb-6 pt-5">
-              <div className="relative ml-3 space-y-7 border-l-2 border-slate-200 py-1 pl-6 dark:border-slate-800">
+            <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-4 pt-4">
+              <div className="relative ml-2 space-y-5 border-l-2 border-slate-200 py-1 pl-5 dark:border-slate-800">
                 {steps.map((step, index) => {
                   const isActive = !canPreview && !isFailed && index === currentStepIndex
                   const isFailedStep = isFailed && index === currentStepIndex
@@ -196,7 +208,7 @@ export default function ProcessingPage() {
                   return (
                     <div key={step.id} className="relative">
                       <span
-                        className={`absolute -left-[31px] flex h-6 w-6 items-center justify-center rounded-full border-2 bg-background ${
+                        className={`absolute -left-[23px] flex h-5 w-5 items-center justify-center rounded-full border-2 bg-background ${
                           isCompleted
                             ? "border-emerald-500 bg-emerald-500 text-white"
                             : isFailedStep
@@ -241,17 +253,18 @@ export default function ProcessingPage() {
           </Card>
 
           <Card
+            data-testid="processing-summary-card"
             className={`overflow-hidden border-border/60 shadow-[0_18px_45px_rgba(15,23,42,0.06)] ${summaryTone}`}
           >
-            <CardContent className="flex min-h-[220px] flex-col justify-between p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="rounded-2xl border border-background/70 bg-background/80 p-4 shadow-sm">
+            <CardContent className="flex h-full min-h-[176px] flex-col justify-between p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="rounded-2xl border border-background/70 bg-background/80 p-3 shadow-sm">
                   {canPreview ? (
-                    <CheckCircle2 className="h-14 w-14 text-emerald-500" />
+                    <CheckCircle2 className="h-12 w-12 text-emerald-500" />
                   ) : isFailed ? (
-                    <AlertTriangle className="h-14 w-14 text-red-500" />
+                    <AlertTriangle className="h-12 w-12 text-red-500" />
                   ) : (
-                    <RotateCw className="h-14 w-14 animate-spin text-indigo-500" />
+                    <RotateCw className="h-12 w-12 animate-spin text-indigo-500" />
                   )}
                 </div>
                 <div className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-sm font-semibold text-foreground shadow-sm">
@@ -260,32 +273,32 @@ export default function ProcessingPage() {
               </div>
 
               {canPreview ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <p className={`text-sm font-medium ${summaryAccent}`}>{copy.statusLabel}</p>
                   <div className="space-y-1">
-                    <p className="text-2xl font-semibold tracking-tight text-foreground">
+                    <p className="text-[1.75rem] font-semibold tracking-tight text-foreground">
                       {t("task.result.completed")}
                     </p>
                     <p className="text-sm text-muted-foreground">{currentDetail}</p>
                   </div>
                 </div>
               ) : isFailed ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <p className={`text-sm font-medium ${summaryAccent}`}>{copy.statusLabel}</p>
                   <div className="space-y-1">
-                    <p className="text-2xl font-semibold tracking-tight text-foreground">
+                    <p className="text-[1.75rem] font-semibold tracking-tight text-foreground">
                       {t("task.result.failed")}
                     </p>
                     <p className="text-sm text-muted-foreground">{failureText}</p>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <p className={`text-sm font-medium ${summaryAccent}`}>
                     {copy.stageLabel || copy.statusLabel}
                   </p>
                   <div className="space-y-1">
-                    <p className="text-2xl font-semibold tracking-tight text-foreground">
+                    <p className="text-[1.75rem] font-semibold tracking-tight text-foreground">
                       {currentDetail}
                     </p>
                     <p className="text-sm text-muted-foreground">{copy.statusLabel}</p>
@@ -304,9 +317,9 @@ export default function ProcessingPage() {
           </Card>
         </div>
 
-        <div data-testid="processing-log-panel" className="min-w-0">
-          <Card className="flex h-full min-h-[440px] flex-col overflow-hidden border-border/60 bg-card/95 shadow-[0_24px_55px_rgba(15,23,42,0.08)] lg:min-h-[620px]">
-            <CardHeader className="flex flex-col gap-3 border-b border-border/60 pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div data-testid="processing-log-panel" className="min-h-0 min-w-0">
+          <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/60 bg-card/95 shadow-[0_24px_55px_rgba(15,23,42,0.08)]">
+            <CardHeader className="flex shrink-0 flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
                 <CardTitle>{t("processing.live_logs")}</CardTitle>
                 <CardDescription>{currentDetail}</CardDescription>
@@ -317,10 +330,11 @@ export default function ProcessingPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="flex flex-1 px-6 pb-6 pt-5">
+            <CardContent className="flex min-h-0 flex-1 px-6 pb-6 pt-5">
               <LogViewer
+                data-testid="processing-log-scroll-region"
                 logs={logs}
-                className="h-full min-h-[360px] w-full rounded-2xl border-slate-900/80 bg-slate-950/95 px-4 py-4 text-[13px] leading-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] lg:min-h-[520px]"
+                className="h-full min-h-0 w-full flex-1 rounded-2xl border-slate-900/80 bg-slate-950/95 px-4 py-4 text-[13px] leading-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
               />
             </CardContent>
           </Card>

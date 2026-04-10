@@ -22,7 +22,7 @@ interface AuthState {
 }
 
 interface AuthMethods {
-    signIn: (email: string, password: string) => Promise<{ error: LocalAuthError | null }>
+    signIn: (identifier: string, password: string) => Promise<{ error: LocalAuthError | null }>
     signUp: (email: string, password: string) => Promise<{ error: LocalAuthError | null, needsEmailConfirmation?: boolean }>
     verifyOtp: (email: string, token: string) => Promise<{ error: LocalAuthError | null }>
     signOut: () => Promise<void>
@@ -78,9 +78,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
     }, [])
 
-    const signIn = async (email: string, password: string) => {
+    const signIn = async (identifier: string, password: string) => {
         setError(null)
-        const { session: nextSession, error: signInError } = await signInWithPassword(email, password)
+        const { session: nextSession, error: signInError } = await signInWithPassword(identifier, password)
 
         if (signInError) {
             setError(signInError.message)

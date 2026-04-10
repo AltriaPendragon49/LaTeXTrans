@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from backend.app.db import db_connection, get_database_dialect
@@ -64,6 +65,28 @@ def _decode_json_dict(value: Any) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_db_timestamp(value: Any) -> Any:
+    if get_database_dialect() == "sqlite":
+        return value
+    if value in (None, ""):
+        return value
+    if isinstance(value, datetime):
+        parsed = value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+        return parsed.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return candidate
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return candidate
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    return value
+
+
 class CommunityAgentConversationRepository:
     def _normalize_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         if row is None:
@@ -118,8 +141,8 @@ class CommunityAgentConversationRepository:
         payload = {
             "conversation_id": conversation_id,
             "title": str(record.get("title") or "New chat").strip() or "New chat",
-            "created_at": str(record.get("created_at") or ""),
-            "updated_at": str(record.get("updated_at") or ""),
+            "created_at": _normalize_db_timestamp(str(record.get("created_at") or "")),
+            "updated_at": _normalize_db_timestamp(str(record.get("updated_at") or "")),
             "turns": self._serialize_turns(record.get("turns") or []),
         }
 
@@ -237,9 +260,9 @@ class CommunityAgentRunRepository:
             "summary": record.get("summary"),
             "error": record.get("error"),
             "report": self._serialize_json_dict(record.get("report")),
-            "created_at": str(record.get("created_at") or ""),
-            "updated_at": str(record.get("updated_at") or ""),
-            "completed_at": str(record.get("completed_at") or "") or None,
+            "created_at": _normalize_db_timestamp(str(record.get("created_at") or "")),
+            "updated_at": _normalize_db_timestamp(str(record.get("updated_at") or "")),
+            "completed_at": _normalize_db_timestamp(str(record.get("completed_at") or "") or None),
         }
 
         existing = self.get_run(run_id)
@@ -319,7 +342,7 @@ class CommunityAgentRunRepository:
     def append_event(self, run_id: str, sequence_no: int, event: dict[str, Any]) -> None:
         payload = json.dumps(dict(event), ensure_ascii=False, separators=(",", ":"))
         event_type = str(event.get("type") or "status")
-        created_at = str(event.get("timestamp") or "")
+        created_at = _normalize_db_timestamp(str(event.get("timestamp") or ""))
 
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()

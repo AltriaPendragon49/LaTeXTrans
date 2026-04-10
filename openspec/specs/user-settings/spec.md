@@ -4,25 +4,25 @@
 TBD - created by archiving change add-multi-user-support. Update Purpose after archive.
 ## Requirements
 ### Requirement: User Settings Storage
-系统 SHALL 在 Supabase Postgres 中存储用户设置，包括默认排版配置。
+The system SHALL store user settings in MySQL and bind each settings record to the current application's local authenticated user identity instead of relying on Supabase Postgres and RLS.
 
-#### Scenario: 首次访问设置
-- **WHEN** 用户首次访问设置页面或 API
-- **AND** 该用户在 `user_settings` 表中无记录
-- **THEN** 系统自动创建默认设置记录
-- **AND** 默认语言为 en → zh
-- **AND** 默认排版配置 `default_formatting` 为 null（保持原样）
+#### Scenario: First authenticated access to settings
+- **WHEN** an authenticated user first visits the settings page or requests the settings API
+- **AND** no settings row exists yet for that local user id
+- **THEN** the system SHALL create or return the default settings state for that local user
+- **AND** the default language direction SHALL remain `en -> zh`
+- **AND** the default `default_formatting` value SHALL remain `null`.
 
-#### Scenario: 获取用户设置
-- **WHEN** 用户请求 `GET /api/settings`
-- **THEN** 系统返回当前用户的设置数据
-- **AND** 包含 `default_formatting` 排版默认值（可为 null）
+#### Scenario: Read user settings
+- **WHEN** an authenticated user requests `GET /api/settings`
+- **THEN** the system SHALL return the current local user's settings from MySQL
+- **AND** it SHALL include `default_formatting` when present.
 
-#### Scenario: 更新用户设置
-- **WHEN** 用户请求 `PUT /api/settings` 携带新设置
-- **THEN** 系统更新 Supabase 中的对应记录
-- **AND** 返回更新后的设置
-- **AND** `default_formatting` 字段以 JSONB 格式存储
+#### Scenario: Update user settings
+- **WHEN** an authenticated user requests `PUT /api/settings`
+- **THEN** the system SHALL update the current local user's settings in MySQL
+- **AND** it SHALL return the updated settings snapshot
+- **AND** `default_formatting` SHALL remain serializable as structured JSON data.
 
 ### Requirement: Settings Page UI
 前端 SHALL 提供系统设置页面供用户管理偏好。

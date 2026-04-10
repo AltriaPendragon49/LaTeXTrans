@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -122,3 +123,107 @@ def test_run_repository_upsert_get_and_event_replay(
     assert loaded["report"]["notes"] == "ok"
     assert [event["sequence"] for event in events] == [1, 2]
     assert events[1]["type"] == "complete"
+
+
+def test_run_repository_normalizes_mysql_datetime_inputs_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_calls: list[tuple[str, tuple[object, ...] | None]] = []
+
+    class FakeCursor:
+        rowcount = 1
+
+        def execute(self, sql: str, params=None) -> None:  # type: ignore[no-untyped-def]
+            normalized = tuple(params) if params is not None else None
+            recorded_calls.append((sql, normalized))
+
+        def fetchone(self):  # type: ignore[no-untyped-def]
+            return None
+
+    class FakeConnection:
+        def cursor(self) -> FakeCursor:
+            return FakeCursor()
+
+    @contextmanager
+    def fake_db_connection(*, commit: bool = False):  # type: ignore[no-untyped-def]
+        del commit
+        yield FakeConnection()
+
+    repository = CommunityAgentRunRepository()
+    load_count = {"value": 0}
+
+    def fake_get_run(run_id: str):  # type: ignore[no-untyped-def]
+        load_count["value"] += 1
+        if load_count["value"] == 1:
+            return None
+        return {
+            "run_id": run_id,
+            "user_id": "usr-1",
+            "conversation_id": "conversation-1",
+            "status": "completed",
+            "intent": "answer",
+            "mode": "chat",
+            "message": "done",
+            "summary": "done",
+            "error": None,
+            "report": {"notes": "ok"},
+            "created_at": "2026-04-09 10:00:00",
+            "updated_at": "2026-04-09 10:00:01",
+            "completed_at": "2026-04-09 10:00:02",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.repositories.community_agent_repository.get_database_dialect",
+        lambda: "mysql",
+    )
+    monkeypatch.setattr(
+        "backend.app.repositories.community_agent_repository.db_connection",
+        fake_db_connection,
+    )
+    monkeypatch.setattr(repository, "get_run", fake_get_run)
+
+    saved = repository.upsert_run(
+        {
+            "run_id": "run-1",
+            "user_id": "usr-1",
+            "conversation_id": "conversation-1",
+            "status": "completed",
+            "intent": "answer",
+            "mode": "chat",
+            "message": "done",
+            "summary": "done",
+            "error": None,
+            "report": {"notes": "ok"},
+            "created_at": "2026-04-09T10:00:00Z",
+            "updated_at": "2026-04-09T10:00:01.250Z",
+            "completed_at": "2026-04-09T10:00:02+00:00",
+        }
+    )
+
+    repository.append_event(
+        "run-1",
+        1,
+        {
+            "type": "status",
+            "run_id": "run-1",
+            "sequence": 1,
+            "timestamp": "2026-04-09T10:00:03.999Z",
+            "data": {"status": "completed"},
+        },
+    )
+
+    run_insert_calls = [params for sql, params in recorded_calls if sql.lower().startswith("insert into community_agent_runs")]
+    event_insert_calls = [params for sql, params in recorded_calls if sql.lower().startswith("insert into community_agent_events")]
+
+    assert run_insert_calls
+    assert run_insert_calls[0] is not None
+    assert run_insert_calls[0][10] == "2026-04-09 10:00:00"
+    assert run_insert_calls[0][11] == "2026-04-09 10:00:01"
+    assert run_insert_calls[0][12] == "2026-04-09 10:00:02"
+
+    assert event_insert_calls
+    assert event_insert_calls[0] is not None
+    assert event_insert_calls[0][4] == "2026-04-09 10:00:03"
+    assert saved["created_at"] == "2026-04-09 10:00:00"
+    assert saved["updated_at"] == "2026-04-09 10:00:01"
+    assert saved["completed_at"] == "2026-04-09 10:00:02"

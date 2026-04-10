@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -162,3 +163,73 @@ def test_repository_deletes_only_the_owned_conversation(
     assert deleted is True
     assert repository.get_conversation_for_user("usr-1", "conversation-1") is None
     assert repository.get_conversation_for_user("usr-2", "conversation-1") is not None
+
+
+def test_repository_normalizes_mysql_datetime_inputs_before_insert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_calls: list[tuple[str, tuple[object, ...] | None]] = []
+
+    class FakeCursor:
+        rowcount = 1
+
+        def execute(self, sql: str, params=None) -> None:  # type: ignore[no-untyped-def]
+            normalized = tuple(params) if params is not None else None
+            recorded_calls.append((sql, normalized))
+
+    class FakeConnection:
+        def cursor(self) -> FakeCursor:
+            return FakeCursor()
+
+    @contextmanager
+    def fake_db_connection(*, commit: bool = False):  # type: ignore[no-untyped-def]
+        del commit
+        yield FakeConnection()
+
+    repository = CommunityAgentConversationRepository()
+    load_count = {"value": 0}
+
+    def fake_get_conversation_for_user(user_id: str, conversation_id: str):  # type: ignore[no-untyped-def]
+        load_count["value"] += 1
+        if load_count["value"] == 1:
+            return None
+        return {
+            "id": conversation_id,
+            "title": "Grounded chat",
+            "created_at": "2026-04-09 10:00:00",
+            "updated_at": "2026-04-09 10:01:00",
+            "turns": [],
+        }
+
+    monkeypatch.setattr(
+        "backend.app.repositories.community_agent_repository.get_database_dialect",
+        lambda: "mysql",
+    )
+    monkeypatch.setattr(
+        "backend.app.repositories.community_agent_repository.db_connection",
+        fake_db_connection,
+    )
+    monkeypatch.setattr(
+        repository,
+        "get_conversation_for_user",
+        fake_get_conversation_for_user,
+    )
+
+    saved = repository.upsert_conversation_for_user(
+        "usr-1",
+        {
+            "id": "conversation-1",
+            "title": "Grounded chat",
+            "created_at": "2026-04-09T10:00:00Z",
+            "updated_at": "2026-04-09T10:01:00.500Z",
+            "turns": [],
+        },
+    )
+
+    insert_calls = [params for sql, params in recorded_calls if sql.lower().startswith("insert into community_agent_conversations")]
+    assert insert_calls
+    assert insert_calls[0] is not None
+    assert insert_calls[0][3] == "2026-04-09 10:00:00"
+    assert insert_calls[0][4] == "2026-04-09 10:01:00"
+    assert saved["created_at"] == "2026-04-09 10:00:00"
+    assert saved["updated_at"] == "2026-04-09 10:01:00"
