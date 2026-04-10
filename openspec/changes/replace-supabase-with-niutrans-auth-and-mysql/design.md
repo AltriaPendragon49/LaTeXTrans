@@ -516,7 +516,7 @@ This is the required rollback strategy for this phase; production cutover rollba
 The first change should still define minimal engineering controls:
 
 - `AUTH_PROVIDER_MODE=niutrans_local`
-- `ENABLE_SUPABASE_IMPORT_READONLY=true` for migration scripts only
+- `ENABLE_LEGACY_IMPORT_READONLY=true` for migration scripts only
 - `MIGRATION_DRY_RUN=true` for validation runs
 
 Runtime business flows should not depend on Supabase once the migration is complete, but migration tooling may still read from Supabase in a controlled read-only mode.

@@ -382,7 +382,6 @@ backend/
 │   ├── core/
 │   │   ├── config.py              # 配置管理
 │   │   ├── auth.py                # JWT 认证依赖（可选认证）
-│   │   ├── supabase_client.py     # 认证兼容层（迁移期保留）
 │   │   └── enums.py               # 枚举定义(TaskStatus等)
 │   ├── models/                    # 数据模型
 │   │   └── config_models.py       # 高级配置模型
@@ -445,7 +444,7 @@ export NIUTRANS_LOGIN_URL="https://niutrans.com/login?active=0"
 export NIUTRANS_REGISTER_URL="https://niutrans.com/login?active=3"
 export NIUTRANS_ACCOUNT_URL="https://niutrans.com/login?active=0"
 export ENCRYPTION_KEY="your-32-byte-key"        # 用于加密用户 API Key
-export ENABLE_SUPABASE_IMPORT_READONLY="false"  # 仅迁移期只读导入开关，可保持关闭
+export ENABLE_LEGACY_IMPORT_READONLY="false"  # 仅迁移期只读导入开关，可保持关闭
 
 # LaTeX工具路径(可选,如果不在PATH中)
 export LATEX_BIN_DIR="/usr/local/texlive/2024/bin/x86_64-linux"

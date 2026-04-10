@@ -1,10 +1,10 @@
 """
-Phase 1 Input-Layer Defense â€” TDD Tests
+Phase 1 Input-Layer Defense â€?TDD Tests
 =========================================
 Tests for:
-  1. isolate_inline_math   â€“ replace $...$ and \(...\) with <INLMATH_NN> placeholders
-  2. restore_inline_math   â€“ restore placeholders back to original math
-  3. preprocess_risky_tokens â€“ pre-escape bare _ outside math blocks to \_
+  1. isolate_inline_math   â€?replace $...$ and \(...\) with <INLMATH_NN> placeholders
+  2. restore_inline_math   â€?restore placeholders back to original math
+  3. preprocess_risky_tokens â€?pre-escape bare _ outside math blocks to \_
 
 These tests are written BEFORE the implementation (TDD red phase).
 """
@@ -95,7 +95,7 @@ class TestIsolateInlineMath:
         result, math_map = isolate_inline_math(text)
         # Multiline math should remain untouched for safety
         assert "$" in result  # still there
-        # map should be empty OR contain the span â€” implementation can decide;
+        # map should be empty OR contain the span â€?implementation can decide;
         # the key requirement is not to break multi-line display math
         # We only assert the text is not corrupted:
         assert "first" in result

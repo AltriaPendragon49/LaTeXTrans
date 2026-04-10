@@ -138,3 +138,61 @@ def test_niutrans_auth_client_maps_upstream_login_exception_to_invalid_credentia
 
     assert exc_info.value.status_code == 401
     assert exc_info.value.code == "AUTH_INVALID_CREDENTIALS"
+
+
+def test_niutrans_auth_client_posts_form_encoded_login_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {"code": 200, "msg": "成功", "data": {"userId": 458470}}
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            captured["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs):
+            captured["url"] = url
+            captured["data"] = kwargs.get("data")
+            captured["headers"] = kwargs.get("headers")
+            return _FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "niutrans_auth_url", "https://niutrans.com/niutrans-auth/auth/login")
+    monkeypatch.setattr(settings, "niutrans_login_url", "https://niutrans.com/login?active=0")
+
+    client = NiuTransAuthClient()
+    result = asyncio.run(
+        client.verify_credentials(
+            identifier="1593120349@qq.com",
+            password="secret",
+        )
+    )
+
+    assert result["external_user_id"] == "458470"
+    assert captured["url"] == "https://niutrans.com/niutrans-auth/auth/login"
+    assert captured["data"] == {
+        "identifier": "1593120349@qq.com",
+        "password": "secret",
+        "loginMode": "Password",
+        "isSubAccount": "0",
+    }
+    assert captured["headers"] == {
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://niutrans.com",
+        "Referer": "https://niutrans.com/login?active=0",
+        "User-Agent": "LaTexTrans-LocalAuth/1.0",
+    }

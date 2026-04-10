@@ -1,13 +1,13 @@
 """
 test_translation_repair_agent.py
-reduce-translation-fallbacks — Unit tests for context-aware repair enhancements
+reduce-translation-fallbacks �?Unit tests for context-aware repair enhancements
 
 Covers:
-  1. _count_math_delimiters — basic counting, $$ exclusion, \\( / \\) pairs
-  2. _math_delimiter_guard — complex-env bypass; mismatch detection
-  3. _build_repair_prompt — three branches (Total Erasure / Math Mismatch / General)
-  4. Token gate in _repair_one — source > 256 tokens skips LLM
-  5. Math guard integration — _repair_one returns None on delimiter mismatch
+  1. _count_math_delimiters �?basic counting, $$ exclusion, \\( / \\) pairs
+  2. _math_delimiter_guard �?complex-env bypass; mismatch detection
+  3. _build_repair_prompt �?three branches (Total Erasure / Math Mismatch / General)
+  4. Token gate in _repair_one �?source > 256 tokens skips LLM
+  5. Math guard integration �?_repair_one returns None on delimiter mismatch
   6. All four distinct warning tags are tested
 """
 import asyncio
@@ -85,7 +85,7 @@ class TestCountMathDelimiters:
         assert _count_math_delimiters("Plain text without math.") == 0
 
     def test_double_dollar_not_counted_alongside_lone(self):
-        # One pair of $$ and one lone $x$ → only 2 from $x$
+        # One pair of $$ and one lone $x$ �?only 2 from $x$
         text = r"Formula: $$\int_0^1$$. Also $\alpha$."
         assert _count_math_delimiters(text) == 2
 
@@ -98,16 +98,16 @@ class TestMathDelimiterGuard:
 
     def test_matching_counts_returns_true(self):
         src = r"Value $x$ and $y$."
-        rep = r"值 $x$ 和 $y$。"
+        rep = r"�?$x$ �?$y$�?
         assert _math_delimiter_guard(src, rep) is True
 
     def test_mismatch_returns_false(self):
         src = r"Formula $x$ here."
-        rep = r"公式 x 这里。"  # missing the $ delimiters
+        rep = r"公式 x 这里�?  # missing the $ delimiters
         assert _math_delimiter_guard(src, rep) is False
 
     def test_complex_env_skips_check(self):
-        # Source has align — guard must return True regardless of repaired content
+        # Source has align �?guard must return True regardless of repaired content
         src = r"\begin{align}a &= b\end{align}"
         rep = r"\begin{align}a = b\end{align} $extra$"
         assert _math_delimiter_guard(src, rep) is True
@@ -118,7 +118,7 @@ class TestMathDelimiterGuard:
         assert _math_delimiter_guard(src, rep) is True
 
     def test_no_math_both_empty_returns_true(self):
-        assert _math_delimiter_guard("plain text", "普通文本") is True
+        assert _math_delimiter_guard("plain text", "普通文�?) is True
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ class TestBuildRepairPrompt:
         agent = _make_agent()
         report = _make_report(
             fallback_kind="c1_structural_rollback",
-            translated_text="已翻译文本 $x 配对错了。",
+            translated_text="已翻译文�?$x 配对错了�?,
             root_cause="math_delimiter_mismatch",
             validation_evidence={"math_error": "math_delimiter_mismatch: count differs"},
         )
@@ -157,7 +157,7 @@ class TestBuildRepairPrompt:
         agent = _make_agent()
         report = _make_report(
             fallback_kind="c2_structural_collapse",
-            translated_text="有问题的翻译文本。",
+            translated_text="有问题的翻译文本�?,
             root_cause="c2_global_structure_collapse",
         )
         prompt = agent._build_repair_prompt(report, "Some source text.")
@@ -180,7 +180,7 @@ class TestBuildRepairPrompt:
 class TestTokenGate:
 
     def test_large_erasure_skips_llm(self):
-        """source_tokens > MAX_ERASURE_RECOVERY_TOKENS → no LLM call."""
+        """source_tokens > MAX_ERASURE_RECOVERY_TOKENS �?no LLM call."""
         agent = _make_agent()
         # Generate text that exceeds the token gate
         long_source = "word " * 300  # well over 256 tokens
@@ -200,7 +200,7 @@ class TestTokenGate:
         assert llm_called["count"] == 0, "LLM should not have been called"
 
     def test_small_erasure_calls_llm(self):
-        """source_tokens <= MAX_ERASURE_RECOVERY_TOKENS → LLM is called."""
+        """source_tokens <= MAX_ERASURE_RECOVERY_TOKENS �?LLM is called."""
         agent = _make_agent()
         short_source = "Short source text."  # well under 256 tokens
         report = _make_report(translated_text="", root_cause="total_erasure")
@@ -255,7 +255,7 @@ class TestMathGuardIntegration:
 
         async def fake_llm(prompt, text):
             # Return text with only 2 delimiters instead of 4
-            return r"值 $x$ 这里。"
+            return r"�?$x$ 这里�?
 
         agent._call_llm_repair = fake_llm
         result, reason = asyncio.run(agent._repair_one(report, source))
@@ -272,11 +272,11 @@ class TestMathGuardIntegration:
         )
 
         async def fake_llm(prompt, text):
-            return r"值 $x$ 这里。"  # also 2 delimiters
+            return r"�?$x$ 这里�?  # also 2 delimiters
 
         agent._call_llm_repair = fake_llm
         result, reason = asyncio.run(agent._repair_one(report, source))
-        assert result == r"值 $x$ 这里。"
+        assert result == r"�?$x$ 这里�?
         assert reason is None
 
 
@@ -292,7 +292,7 @@ class TestPlaceholderGuardIntegration:
         report = _make_report(translated_text=source, root_cause="bracket_mismatch")
 
         async def fake_llm(prompt, text):
-            return "详见详情。"  # placeholder stripped
+            return "详见详情�?  # placeholder stripped
 
         agent._call_llm_repair = fake_llm
         result, reason = asyncio.run(agent._repair_one(report, source))
@@ -305,7 +305,7 @@ class TestPlaceholderGuardIntegration:
         report = _make_report(translated_text=source, root_cause="bracket_mismatch")
 
         async def fake_llm(prompt, text):
-            return "详见 <PLACEHOLDER_ENV_1>。"
+            return "详见 <PLACEHOLDER_ENV_1>�?
 
         agent._call_llm_repair = fake_llm
         result, reason = asyncio.run(agent._repair_one(report, source))

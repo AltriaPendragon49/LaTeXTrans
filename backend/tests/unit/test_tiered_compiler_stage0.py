@@ -1,5 +1,5 @@
 """
-Task 4: Tiered Compilation â€” TDD Tests
+Task 4: Tiered Compilation â€?TDD Tests
 ========================================
 Tests verifying that compile_with_intelligent_fallback follows Stage 0/1/2
 tiered strategy where Stage 0 (pristine) attempts compilation without any

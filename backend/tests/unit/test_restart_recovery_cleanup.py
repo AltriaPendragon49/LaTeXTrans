@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
@@ -426,10 +426,6 @@ def test_reset_stale_community_tasks_keeps_public_papers_even_if_non_success(mon
             community_papers_dir=community_root,
         ),
     )
-    monkeypatch.setattr(
-        "backend.app.core.supabase_client.create_supabase_admin_client",
-        lambda: _FakeSupabaseClient(handler),
-    )
     monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
 
     result = asyncio.run(main_module.reset_stale_community_tasks())
@@ -439,7 +435,7 @@ def test_reset_stale_community_tasks_keeps_public_papers_even_if_non_success(mon
     assert not deleted["tables"]
 
 
-def test_reset_stale_community_tasks_uses_local_repository_without_supabase(
+def test_reset_stale_community_tasks_uses_local_repository_in_local_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -504,7 +500,7 @@ def test_reset_stale_community_tasks_skips_when_local_repository_is_unavailable(
 ) -> None:
     community_root = tmp_path / "community_papers"
     community_root.mkdir(parents=True, exist_ok=True)
-    supabase_calls = {"count": 0}
+    legacy_client_calls = {"count": 0}
 
     class _UnavailableCommunityRepository:
         def list_purgeable_non_success_papers(self, _statuses):
@@ -512,10 +508,6 @@ def test_reset_stale_community_tasks_skips_when_local_repository_is_unavailable(
 
     monkeypatch.setenv("ENABLE_STALE_PAPER_PURGE", "true")
     monkeypatch.setattr(main_module, "get_community_paper_repository", lambda: _UnavailableCommunityRepository())
-    monkeypatch.setattr(
-        "backend.app.core.supabase_client.create_supabase_admin_client",
-        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
-    )
     monkeypatch.setattr(
         main_module,
         "settings",
@@ -530,7 +522,7 @@ def test_reset_stale_community_tasks_skips_when_local_repository_is_unavailable(
 
     assert result.get("purged_records", 0) == 0
     assert result["errors"]
-    assert supabase_calls["count"] == 0
+    assert legacy_client_calls["count"] == 0
 
 
 def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(monkeypatch):
@@ -583,7 +575,7 @@ def test_fail_interrupted_translation_tasks_marks_failed_and_cleans_artifacts(mo
     assert batch_payload["detail_code"] == "task_interrupted_restart"
 
 
-def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(monkeypatch):
+def test_fail_interrupted_translation_tasks_marks_local_rows_in_local_mode(monkeypatch):
     deleted_task_ids = []
     fake_repo = _FakeTranslationTaskRepository(active_ids=["task-run"])
     marked_task_ids = []
@@ -623,7 +615,7 @@ def test_fail_interrupted_translation_tasks_marks_local_rows_without_supabase(mo
     assert fake_repo.updated_batches[-1][1]["status"] == "failed"
 
 
-def test_fail_interrupted_translation_tasks_prefers_local_paper_reconciliation_even_with_supabase_configured(
+def test_fail_interrupted_translation_tasks_prefers_local_paper_reconciliation_even_with_legacy_migration_env_present(
     monkeypatch,
 ):
     deleted_task_ids = []
@@ -650,8 +642,8 @@ def test_fail_interrupted_translation_tasks_prefers_local_paper_reconciliation_e
         marked_task_ids.append(task_id)
         return 1 if task_id in {"task-run", "task-stale"} else 0
 
-    def _unexpected_supabase_client():
-        raise AssertionError("Supabase admin client should not be used during local restart failover")
+    def _unexpected_legacy_admin_client():
+        raise AssertionError("Legacy admin client should not be used during local restart failover")
 
     monkeypatch.setattr(main_module, "get_task_manager", lambda: _FakeTaskManager(), raising=False)
     monkeypatch.setattr(main_module, "get_translation_task_repository", lambda: fake_repo)
@@ -659,10 +651,6 @@ def test_fail_interrupted_translation_tasks_prefers_local_paper_reconciliation_e
     monkeypatch.setattr(
         "backend.app.services.paper_service.mark_paper_translation_failed_by_task",
         _fake_mark_paper_translation_failed_by_task,
-    )
-    monkeypatch.setattr(
-        "backend.app.core.supabase_client.create_supabase_admin_client",
-        _unexpected_supabase_client,
     )
     monkeypatch.setattr(
         main_module,
@@ -968,3 +956,6 @@ def test_run_translation_terminal_failure_syncs_paper_status(
     ]
     assert terminal_updates, f"translation should persist {expected_task_status} status"
     assert marked_failed_tasks == ["task-terminal-failure"]
+
+
+

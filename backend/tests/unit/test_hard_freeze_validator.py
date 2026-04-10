@@ -1,9 +1,9 @@
 """
-Hard Freeze Validator — TDD tests
+Hard Freeze Validator �?TDD tests
 ==================================
 Tests for:
-  1. _validate_escaped_dollar_leak  — detects \\$ leakage (C1)
-  2. _revert_inputs tolerance        — unmatched end tag must NOT crash
+  1. _validate_escaped_dollar_leak  �?detects \\$ leakage (C1)
+  2. _revert_inputs tolerance        �?unmatched end tag must NOT crash
 """
 import pytest
 
@@ -38,14 +38,14 @@ class TestEscapedDollarLeak:
 
     def test_escaped_dollar_detected_as_c1(self):
         """
-        Original has no \\$; translated has extra \\$ → should be caught as C1.
-        This mimics the OmniTrack$_{E2E}$ → OmniTrack\\$_{E2E}\\$ failure.
+        Original has no \\$; translated has extra \\$ �?should be caught as C1.
+        This mimics the OmniTrack$_{E2E}$ �?OmniTrack\\$_{E2E}\\$ failure.
         """
         validator = _make_validator()
         part = {
             "section": "5",
             "content": r"Performance of OmniTrack$_{E2E}$ is shown in the table.",
-            "trans_content": r"表中显示了 OmniTrack\$_{E2E}\$ 的性能。",
+            "trans_content": r"表中显示�?OmniTrack\$_{E2E}\$ 的性能�?,
         }
         error = validator._validate_escaped_dollar_leak(part)
         assert error is not None, "Should detect the escaped dollar leak"
@@ -53,26 +53,26 @@ class TestEscapedDollarLeak:
 
     def test_no_false_positive_on_legit_escaped_dollar(self):
         """
-        Original already contains \\$; translated has the same amount → no error.
+        Original already contains \\$; translated has the same amount �?no error.
         """
         validator = _make_validator()
         part = {
             "section": "3",
             "content": r"Price is \$100 per unit.",
-            "trans_content": r"价格为每单位 \$100。",
+            "trans_content": r"价格为每单位 \$100�?,
         }
         error = validator._validate_escaped_dollar_leak(part)
         assert error is None, "Should not flag \\$ that was already in the original"
 
     def test_no_false_positive_when_no_dollar_in_trans(self):
         """
-        Translation contains no \\$ at all → fast-exit, no error.
+        Translation contains no \\$ at all �?fast-exit, no error.
         """
         validator = _make_validator()
         part = {
             "section": "1",
             "content": r"We prove $x > 0$.",
-            "trans_content": r"我们证明 x 大于 0。",
+            "trans_content": r"我们证明 x 大于 0�?,
         }
         error = validator._validate_escaped_dollar_leak(part)
         assert error is None
@@ -85,7 +85,7 @@ class TestEscapedDollarLeak:
         part = {
             "section": "5",
             "content": r"Value is $x + y$.",
-            "trans_content": r"値は \$x + y\$ です。",
+            "trans_content": r"値は \$x + y\$ です�?,
         }
         report = validator._validate(part)
         assert report is not None
@@ -94,13 +94,13 @@ class TestEscapedDollarLeak:
 
     def test_single_extra_escaped_dollar_flagged(self):
         """
-        Translation adds one extra \\$ (asymmetric count) → flagged.
+        Translation adds one extra \\$ (asymmetric count) �?flagged.
         """
         validator = _make_validator()
         part = {
             "section": "2",
             "content": r"Equation $E = mc^2$ is famous.",
-            "trans_content": r"方程式 E = mc\$^2 は有名です。",
+            "trans_content": r"方程�?E = mc\$^2 は有名です�?,
         }
         error = validator._validate_escaped_dollar_leak(part)
         assert error is not None
@@ -151,11 +151,11 @@ class TestRevertInputsTolerance:
             }
         ]
 
-        # tex has an orphaned end tag (begin tag missing — LLM ate it)
+        # tex has an orphaned end tag (begin tag missing �?LLM ate it)
         tex_with_orphan = (
             "仮の翻訳テキスト。\n"
-            "<PLACEHOLDER_sec_1_end>\n"   # orphaned — no matching begin
-            "後続テキスト。"
+            "<PLACEHOLDER_sec_1_end>\n"   # orphaned �?no matching begin
+            "後続テキスト�?
         )
 
         constructor = LatexConstructor(

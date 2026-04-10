@@ -56,7 +56,7 @@ def test_async_run_mode_emits_ordered_stream_events_and_final_snapshot(
     async def fake_stream_chat_completion(*, messages) -> AsyncGenerator[str, None]:  # type: ignore[no-untyped-def]
         assert messages
         yield "这篇论文"
-        yield "聚焦分子预测。"
+        yield "聚焦分子预测�?
 
     async def fake_list_community_papers(*, sort: str, q: str, limit: int):  # type: ignore[no-untyped-def]
         assert sort == "latest"
@@ -69,7 +69,7 @@ def test_async_run_mode_emits_ordered_stream_events_and_final_snapshot(
                     "title": "Graph Neural Networks for Molecular Property Prediction",
                     "arxiv_id": "2603.12345",
                     "abstract_raw": "A paper about graph neural network methods for molecules.",
-                    "abstract_translated": "一篇关于图神经网络分子预测的论文。",
+                    "abstract_translated": "一篇关于图神经网络分子预测的论文�?,
                 }
             ]
         }
@@ -107,7 +107,7 @@ def test_async_run_mode_emits_ordered_stream_events_and_final_snapshot(
         community_agent_service.stream_agent_events(accepted["run_id"], access_token=access_token)
     )
 
-    assert completed["message"] == "这篇论文聚焦分子预测。"
+    assert completed["message"] == "这篇论文聚焦分子预测�?
     assert completed["summary"] == completed["message"]
 
     sequences = [int(event["sequence"]) for event in events]
@@ -172,7 +172,7 @@ def test_translation_handoff_stays_non_blocking_and_returns_grounded_first_answe
 
     result = asyncio.run(
         community_agent_service.create_agent_run(
-            "请用中文解释这篇论文，并开始翻译。",
+            "请用中文解释这篇论文，并开始翻译�?,
             {"source": "conversation", "paper_id": "paper-1", "history": []},
             {"external_search": False},
             execution_mode="blocking",

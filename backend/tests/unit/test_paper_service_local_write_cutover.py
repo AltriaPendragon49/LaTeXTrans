@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -145,11 +145,6 @@ def test_resolve_submitter_context_by_user_id_reads_local_roles(
 
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
-    monkeypatch.setattr(
-        paper_service,
-        "get_supabase_admin_client",
-        lambda: (_ for _ in ()).throw(AssertionError("supabase admin should not be used")),
-    )
 
     result = asyncio.run(paper_service.resolve_submitter_context_by_user_id("usr-admin"))
 
@@ -158,32 +153,22 @@ def test_resolve_submitter_context_by_user_id_reads_local_roles(
     assert result["is_admin"] is True
 
 
-def test_resolve_submitter_context_by_user_id_without_database_does_not_call_supabase(
+def test_resolve_submitter_context_by_user_id_without_database_uses_local_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.setattr(
-        paper_service,
-        "get_supabase_admin_client",
-        lambda: (_ for _ in ()).throw(AssertionError("supabase admin should not be used")),
-    )
 
     result = asyncio.run(paper_service.resolve_submitter_context_by_user_id("usr-1"))
 
     assert result == {"user_id": "usr-1", "roles": [], "is_admin": False}
 
 
-def test_insert_paper_without_database_returns_service_unavailable_without_supabase_fallback(
+def test_insert_paper_without_database_returns_service_unavailable_without_local_database_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.setattr(
-        paper_service,
-        "get_supabase_admin_client",
-        lambda: (_ for _ in ()).throw(AssertionError("supabase admin should not be used")),
-    )
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -203,16 +188,11 @@ def test_insert_paper_without_database_returns_service_unavailable_without_supab
     assert exc_info.value.status_code == 503
 
 
-def test_update_paper_without_database_returns_service_unavailable_without_supabase_fallback(
+def test_update_paper_without_database_returns_service_unavailable_without_local_database_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.setattr(
-        paper_service,
-        "get_supabase_admin_client",
-        lambda: (_ for _ in ()).throw(AssertionError("supabase admin should not be used")),
-    )
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(paper_service._update_paper("paper-1", {"title": "Updated"}))
@@ -220,16 +200,11 @@ def test_update_paper_without_database_returns_service_unavailable_without_supab
     assert exc_info.value.status_code == 503
 
 
-def test_upsert_latest_asset_without_database_returns_service_unavailable_without_supabase_fallback(
+def test_upsert_latest_asset_without_database_returns_service_unavailable_without_local_database_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.setattr(
-        paper_service,
-        "get_supabase_admin_client",
-        lambda: (_ for _ in ()).throw(AssertionError("supabase admin should not be used")),
-    )
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -254,11 +229,6 @@ def test_update_and_asset_upsert_use_local_repository(
 
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
-    monkeypatch.setattr(
-        paper_service,
-        "get_supabase_admin_client",
-        lambda: (_ for _ in ()).throw(AssertionError("supabase admin should not be used")),
-    )
 
     updated = asyncio.run(paper_service._update_paper("paper-local-1", {"title": "Updated title"}))
     asset = asyncio.run(
@@ -274,3 +244,6 @@ def test_update_and_asset_upsert_use_local_repository(
     assert asset["paper_id"] == "paper-local-1"
     assert asset["asset_type"] == "preview_html"
     assert asset["is_latest"] is True
+
+
+

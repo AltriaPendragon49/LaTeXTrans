@@ -6,8 +6,8 @@ Tests for Phase 2 LLM structure repair.
 Design Spec:
   1. Repair prompt MUST explicitly forbid translation and semantic rewriting.
   2. Only ONE LLM call per repair attempt.
-  3. Single 429 â†’ exactly one wait-and-retry.
-  4. Second 429 â†’ RepairRateLimitExceededError (downgrade required).
+  3. Single 429 â†?exactly one wait-and-retry.
+  4. Second 429 â†?RepairRateLimitExceededError (downgrade required).
   5. Prompt must not be derived from Phase 1 prompt templates.
 """
 import asyncio
@@ -81,7 +81,7 @@ def _make_429_response():
 
 
 # ---------------------------------------------------------------------------
-# 1. Prompt safety guardrails (synchronous â€” no async needed)
+# 1. Prompt safety guardrails (synchronous â€?no async needed)
 # ---------------------------------------------------------------------------
 
 def test_repair_prompt_forbids_translation():
@@ -143,7 +143,7 @@ async def test_exactly_one_llm_call_on_success():
 
 
 # ---------------------------------------------------------------------------
-# 3. One wait-and-retry on 429; second 429 â†’ RepairRateLimitExceededError
+# 3. One wait-and-retry on 429; second 429 â†?RepairRateLimitExceededError
 # ---------------------------------------------------------------------------
 
 
@@ -235,7 +235,7 @@ def test_repair_agent_does_not_use_phase1_prompt_module():
     try:
         import backend.app.services.latex.prompts as phase1_mod
         assert id(phase1_mod) not in module_values, (
-            "ControlledRepairAgent imports Phase 1 prompt module â€” forbidden."
+            "ControlledRepairAgent imports Phase 1 prompt module â€?forbidden."
         )
     except ImportError:
         pass  # if phase1 prompts module unavailable, test is trivially satisfied

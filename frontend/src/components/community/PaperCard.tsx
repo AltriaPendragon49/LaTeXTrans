@@ -158,12 +158,14 @@ export function PaperCard({ paper }: PaperCardProps) {
     void preloadPaperPreviewEnhancer()
   }
 
-  const sourcePdfUrl = paper.community_selected_task_id
-    ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/source-pdf`
-    : null
+  const sourcePdfUrl =
+    paper.source === "arxiv" || Boolean(paper.assets?.source_archive) || Boolean(paper.community_selected_task_id)
+      ? `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`
+      : null
   const transPdfUrl =
-    paper.community_selected_task_id && paper.trans_status === "completed"
-      ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/pdf`
+    paper.trans_status === "completed" &&
+    (Boolean(paper.assets?.translated_pdf) || Boolean(paper.community_selected_task_id))
+      ? `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`
       : null
 
   const authorsLabel = useMemo(

@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -83,7 +83,6 @@ def test_quarantine_rewrites_replay_refs_in_scoped_domain(monkeypatch, tmp_path)
         "backend.app.services.task_manager.get_settings",
         lambda: SimpleNamespace(outputs_dir=outputs_dir, failed_tasks_dir=failed_dir),
     )
-    monkeypatch.setattr("backend.app.services.task_manager.get_supabase_admin_client", lambda: None)
 
     tm._intercept_failed_task(task_id, status_message="failed", status_error="failed")
 
@@ -171,7 +170,6 @@ def test_quarantine_non_target_paths_unchanged(monkeypatch, tmp_path):
         "backend.app.services.task_manager.get_settings",
         lambda: SimpleNamespace(outputs_dir=outputs_dir, failed_tasks_dir=failed_dir),
     )
-    monkeypatch.setattr("backend.app.services.task_manager.get_supabase_admin_client", lambda: None)
 
     tm._intercept_failed_task(task_id, status_message="failed", status_error="failed")
     rewritten = json.loads(Path(tm._tasks[task_id]["replay_bundle_ref"]).read_text(encoding="utf-8"))
@@ -202,7 +200,6 @@ def test_evidence_chain_broken_flag_warning_without_status_mutation(monkeypatch,
         "backend.app.services.task_manager.get_settings",
         lambda: SimpleNamespace(outputs_dir=outputs_dir, failed_tasks_dir=failed_dir),
     )
-    monkeypatch.setattr("backend.app.services.task_manager.get_supabase_admin_client", lambda: None)
 
     tm._intercept_failed_task(task_id, status_message="failed_compilation", status_error="compile failed")
 
@@ -213,3 +210,4 @@ def test_evidence_chain_broken_flag_warning_without_status_mutation(monkeypatch,
     task_log_path = Path(task["output_path"]) / "zh_paper" / "task_log.json"
     events = json.loads(task_log_path.read_text(encoding="utf-8"))
     assert any(e.get("event") == "evidence_chain_warning" for e in events)
+

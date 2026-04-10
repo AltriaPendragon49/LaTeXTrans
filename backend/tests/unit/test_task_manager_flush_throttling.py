@@ -1,4 +1,4 @@
-"""
+﻿"""
 TDD Tests: TaskManager Supabase Flush Throttling + Coalescing
 
 Design under test:
@@ -36,10 +36,6 @@ def _make_task_manager(monkeypatch) -> Tuple[TaskManager, List]:
     """Return a TaskManager with a recorder replacing _persist_task_update."""
     flush_calls: List[Tuple[str, dict]] = []
 
-    monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: None,
-    )
     tm = TaskManager()
     tm._persist_task_update = lambda task_id, updates: flush_calls.append(
         (task_id, dict(updates))
@@ -194,10 +190,6 @@ def test_terminal_status_always_flushes(monkeypatch, terminal_status):
 
 def test_update_task_does_not_block_on_slow_db(monkeypatch):
     """Slow DB writer must not block update_task (non-blocking guarantee)."""
-    monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: None,
-    )
     tm = TaskManager()
     tm._persist_task_update = lambda tid, upd: time.sleep(1.0)
     task_id = _create_auth_task(tm)
@@ -290,3 +282,4 @@ def test_drain_is_noop_when_idle(monkeypatch):
     tm._flusher.drain(timeout=0.5)
     elapsed = time.monotonic() - start
     assert elapsed < 0.1, f"drain() on idle flusher took {elapsed:.3f}s, expected instant"
+

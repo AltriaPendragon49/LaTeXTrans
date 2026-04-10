@@ -2,7 +2,7 @@
 
 This rollout note defines the local-first migration window, rollback triggers, and backup expectations for replacing Supabase runtime dependencies with NiuTrans-backed auth and MySQL persistence.
 
-Detailed importer execution and backout guidance for this change is maintained in `docs/supabase-import-rollout-backout.md`.
+Detailed importer execution and backout guidance for this change is maintained in `docs/import-source-rollout-backout.md`.
 
 ## Migration Window
 
@@ -28,7 +28,7 @@ Recommended local sequence:
 Backups are mandatory before write-mode migration.
 
 - create a MySQL dump or snapshot before each write-mode import attempt
-- preserve the source Supabase export used for the run
+- preserve the source export used for the run
 - preserve local file directories referenced by migrated rows, especially task outputs and community paper assets
 - store migration logs and validation reports alongside the backup set for that run
 

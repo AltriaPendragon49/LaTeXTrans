@@ -1,5 +1,5 @@
 """
-TDD Test Suite: Phase 2 â†’ Phase 3 Integration
+TDD Test Suite: Phase 2 â†?Phase 3 Integration
 ==================================================
 Verifies that:
   1. A Phase 2 failure (QueueTimeoutError / RepairRateLimitExceededError) MUST NOT
@@ -34,7 +34,7 @@ from backend.app.services.agents.controlled_repair_agent import (
 
 @pytest.mark.asyncio
 async def test_queue_timeout_produces_downgraded_env_not_fail_marker():
-    """QueueTimeoutError from scheduler â†’ deterministic_downgrade, not a fail_marker."""
+    """QueueTimeoutError from scheduler â†?deterministic_downgrade, not a fail_marker."""
     scheduler = TokenRepairScheduler(queue_timeout=0.01)
     lock_held = asyncio.Event()
 
@@ -49,7 +49,7 @@ async def test_queue_timeout_produces_downgraded_env_not_fail_marker():
     )
     await lock_held.wait()
 
-    # Second env times out â€” must get Phase 3 downgrade, NOT a fail_marker
+    # Second env times out â€?must get Phase 3 downgrade, NOT a fail_marker
     env_to_repair = {"content": "broken $", "placeholder": "<ENV_2>"}
     try:
         result = await scheduler.enqueue_repair("tok", env_to_repair, blocking_repair)
@@ -69,7 +69,7 @@ async def test_queue_timeout_produces_downgraded_env_not_fail_marker():
 
 @pytest.mark.asyncio
 async def test_rate_limit_exceeded_produces_downgraded_env_not_fail_marker():
-    """RepairRateLimitExceededError â†’ downgrade, not a re-try."""
+    """RepairRateLimitExceededError â†?downgrade, not a re-try."""
     env = {"content": "broken env", "placeholder": "<ENV_5>"}
     exc = RepairRateLimitExceededError("second 429")
     downgraded = deterministic_downgrade(env, exc)
@@ -90,7 +90,7 @@ def test_downgraded_env_is_not_marked_as_llm_failure():
     """
     env = {"content": "x", "placeholder": "<ENV_3>"}
     result = deterministic_downgrade(env, QueueTimeoutError("x"))
-    # downgrade is explicit â€” the env is "done" (not an LLM failure)
+    # downgrade is explicit â€?the env is "done" (not an LLM failure)
     assert result.get("translation_status") == DOWNGRADE_STATUS
     assert "downgrade_reason" in result
     # Must NOT mark as plain LLM api failure (which would trigger Maxtry re-queue)
@@ -102,7 +102,7 @@ def test_downgraded_env_has_non_empty_trans_content():
     """Phase 3 output must always produce non-None trans_content to prevent downstream crashes."""
     env_with_content = {"content": "original latex content"}
     result1 = deterministic_downgrade(env_with_content, QueueTimeoutError("x"))
-    assert result1["trans_content"]  # truthy â€” not empty
+    assert result1["trans_content"]  # truthy â€?not empty
 
     env_empty = {"content": ""}
     result2 = deterministic_downgrade(env_empty, RepairRateLimitExceededError("x"))
@@ -165,10 +165,10 @@ async def test_token_a_phase2_timeout_does_not_affect_token_b():
 def test_downgrade_source_passthrough_has_no_bare_structure_tokens():
     """
     The source passthrough content should not be 'more dangerous' than the original.
-    This is a sanity check â€” if the env already had broken content, at least we're
+    This is a sanity check â€?if the env already had broken content, at least we're
     returning exactly that (the old state).
     """
     env = {"content": "\\begin{broken $5 env", "placeholder": "<ENV_7>"}
     result = deterministic_downgrade(env, QueueTimeoutError("x"))
-    # Exactly the source â€” no transformation that could change safety level
+    # Exactly the source â€?no transformation that could change safety level
     assert result["trans_content"] == env["content"]

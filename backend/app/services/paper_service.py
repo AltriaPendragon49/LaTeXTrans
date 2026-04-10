@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import base64
@@ -63,12 +63,6 @@ def _utc_now_iso() -> str:
 
 def get_community_paper_repository() -> CommunityPaperRepository:
     return CommunityPaperRepository()
-
-
-def get_supabase_admin_client():
-    """Legacy compatibility hook kept so older tests can monkeypatch it."""
-
-    return None
 
 
 async def _run_local_repo(operation):
@@ -1561,7 +1555,7 @@ def _translated_pdf_reader_resource(*, paper_id: str, asset: Dict[str, Any]) -> 
     return {
         "kind": "translated_pdf",
         "html_content": None,
-        "url": f"/api/papers/{paper_id}/download-session",
+        "url": f"/api/papers/{paper_id}/translated-pdf",
         "asset_id": asset.get("id"),
     }
 
@@ -2610,6 +2604,75 @@ async def create_paper_download_session(*, paper_id: str) -> Dict[str, Any]:
     }
 
 
+async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
+    paper = await _ensure_public_paper(paper_id)
+    asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
+    translated_asset = await _ensure_translated_pdf_asset(paper=paper, asset_map=asset_map)
+    if not translated_asset:
+        raise HTTPException(status_code=404, detail="Translated PDF not available")
+
+    file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Translated PDF file not found")
+
+    return {
+        "paper_id": paper_id,
+        "asset": translated_asset,
+        "file_path": str(file_path),
+    }
+
+
+async def resolve_paper_source_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
+    paper = await _ensure_public_paper(paper_id)
+    asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
+    task_id = str(paper.get("community_selected_task_id") or paper.get("trans_latest_task_id") or "").strip()
+    preferred_arxiv_id = str(paper.get("arxiv_id") or "").strip() or None
+
+    source_asset = asset_map.get("source_archive")
+    if source_asset and source_asset.get("file_path"):
+        source_path = _resolve_storage_path(source_asset.get("file_path") or "")
+        if source_path.is_file() and source_path.suffix.lower() == ".pdf":
+            return {
+                "paper_id": paper_id,
+                "file_path": str(source_path),
+                "filename": source_path.name,
+            }
+
+    for source_dir in _candidate_source_directories_for_preview(
+        paper_id=paper_id,
+        task_id=task_id,
+        asset_map=asset_map,
+    ):
+        candidates = download_route._collect_original_pdf_candidates(source_dir)
+        if not candidates:
+            continue
+        selected = download_route._pick_best_source_pdf(
+            source_dir,
+            candidates,
+            preferred_stem=preferred_arxiv_id,
+        )
+        if selected and selected.exists():
+            return {
+                "paper_id": paper_id,
+                "file_path": str(selected),
+                "filename": selected.name,
+            }
+
+    if preferred_arxiv_id:
+        return {
+            "paper_id": paper_id,
+            "arxiv_id": preferred_arxiv_id,
+        }
+
+    if task_id:
+        return {
+            "paper_id": paper_id,
+            "legacy_task_id": task_id,
+        }
+
+    raise HTTPException(status_code=404, detail="Source PDF not available")
+
+
 async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]:
     payload = _decode_download_token(token)
     if payload.get("paper_id") != paper_id:
@@ -2788,9 +2851,9 @@ async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]
     Import an external paper into the community library, or reuse an existing one.
 
     This is a minimal bridge for the community agent / homepage agent to perform
-    “静默导入”. It prefers reusing existing papers when possible.
+    鈥滈潤榛樺鍏モ€? It prefers reusing existing papers when possible.
     """
-    # 如果已有对应 arxiv_id 的 paper，则直接复用
+    # 濡傛灉宸叉湁瀵瑰簲 arxiv_id 鐨?paper锛屽垯鐩存帴澶嶇敤
     existing = await _fetch_paper_by_arxiv_id(arxiv_id)
     if existing is not None:
         return {
@@ -2800,8 +2863,7 @@ async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]
             "reader_state": "source_ready",
         }
 
-    # 否则走现有提交流程创建一篇新论文。这里调用 submit_arxiv_paper，
-    # 并假定服务角色或匿名用户上下文在上层处理。
+    # Otherwise create a new paper through the existing submit flow.
     payload = await submit_arxiv_paper(
         arxiv_id=arxiv_id,
         credentials=None,
@@ -2832,3 +2894,7 @@ async def record_community_paper_view(*, paper_id: str) -> Dict[str, Any]:
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
         raise HTTPException(status_code=404, detail="Paper not found")
     return {"paper_id": paper_id, "view_count": int(paper.get("view_count") or 0)}
+
+
+
+

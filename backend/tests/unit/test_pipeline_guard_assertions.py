@@ -1,15 +1,15 @@
 """
 test_pipeline_guard_assertions.py
-Gate 4b-4：不可变守护测试套件（Guard Assertions）
+Gate 4b-4：不可变守护测试套件（Guard Assertions�?
 
-这些测试用例锁定 Phase 4b 的核心不变量：
-- 最大轮次硬性限制
-- 全局超时上下文拦截
-- JSONL 审计日志完整性
+这些测试用例锁定 Phase 4b 的核心不变量�?
+- 最大轮次硬性限�?
+- 全局超时上下文拦�?
+- JSONL 审计日志完整�?
 - Pydantic Schema 校验
-- 架构完整性（无 DiagnosticNode）
+- 架构完整性（�?DiagnosticNode�?
 
-全部测试遵循 TDD 策略（先写测试，后实现）。
+全部测试遵循 TDD 策略（先写测试，后实现）�?
 """
 import asyncio
 import json
@@ -49,12 +49,12 @@ def minimal_config():
 
 
 # ---------------------------------------------------------------------------
-# Test 1: Gate 4b-1 — PipelineInput 缺少必填字段时抛 ValidationError
+# Test 1: Gate 4b-1 �?PipelineInput 缺少必填字段时抛 ValidationError
 # ---------------------------------------------------------------------------
 
 
 def test_pydantic_input_rejects_invalid():
-    """PipelineInput 缺少必填字段时应抛 ValidationError。"""
+    """PipelineInput 缺少必填字段时应�?ValidationError�?""
     from backend.app.services.agents.pipeline_schema import PipelineInput
     from pydantic import ValidationError
 
@@ -63,7 +63,7 @@ def test_pydantic_input_rejects_invalid():
 
 
 def test_pydantic_input_accepts_valid(minimal_config, tmp_path):
-    """PipelineInput 提供全部必填字段时应正常构建。"""
+    """PipelineInput 提供全部必填字段时应正常构建�?""
     from backend.app.services.agents.pipeline_schema import PipelineInput
 
     obj = PipelineInput(
@@ -78,12 +78,12 @@ def test_pydantic_input_accepts_valid(minimal_config, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 3: Gate 4b-1 — audit.jsonl 存在且包含 task_id
+# Test 3: Gate 4b-1 �?audit.jsonl 存在且包�?task_id
 # ---------------------------------------------------------------------------
 
 
 def test_audit_log_contains_task_id(monkeypatch, tmp_path, minimal_config):
-    """audit.jsonl 中每条记录必须包含 task_id 字段。"""
+    """audit.jsonl 中每条记录必须包�?task_id 字段�?""
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     project_dir = tmp_path / "proj"
@@ -122,7 +122,7 @@ def test_audit_log_contains_task_id(monkeypatch, tmp_path, minimal_config):
     monkeypatch.setattr(orch, "ValidatorAgent", _FakeValidator)
     monkeypatch.setattr(orch, "GeneratorAgent", _FakeGenerator)
 
-    # 创建假 PDF
+    # 创建�?PDF
     (tmp_path / "out.pdf").write_bytes(b"%PDF-1.4")
 
     with patch("backend.app.services.latex.compiler.verify_pdf_ready", return_value=True):
@@ -136,19 +136,19 @@ def test_audit_log_contains_task_id(monkeypatch, tmp_path, minimal_config):
     assert audit_path.exists(), "audit.jsonl 应该存在"
 
     lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
-    assert len(lines) >= 1, "audit.jsonl 至少应有一条记录"
+    assert len(lines) >= 1, "audit.jsonl 至少应有一条记�?
     for line in lines:
         record = json.loads(line)
         assert "task_id" in record, f"缺少 task_id 字段：{record}"
 
 
 # ---------------------------------------------------------------------------
-# Test 4: Gate 4b-1 — 正常路径在 audit.jsonl 中写入 pipeline_start / pipeline_end
+# Test 4: Gate 4b-1 �?正常路径�?audit.jsonl 中写�?pipeline_start / pipeline_end
 # ---------------------------------------------------------------------------
 
 
 def test_audit_log_entries_on_happy_path(monkeypatch, tmp_path, minimal_config):
-    """正常路径应在 audit.jsonl 中写入 pipeline_start 与 pipeline_end 事件。"""
+    """正常路径应在 audit.jsonl 中写�?pipeline_start �?pipeline_end 事件�?""
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     project_dir = tmp_path / "proj"
@@ -204,12 +204,12 @@ def test_audit_log_entries_on_happy_path(monkeypatch, tmp_path, minimal_config):
 
 
 # ---------------------------------------------------------------------------
-# Test 5: Gate 4b-2 — 超时拦截
+# Test 5: Gate 4b-2 �?超时拦截
 # ---------------------------------------------------------------------------
 
 
 def test_pipeline_timeout_raises(monkeypatch, tmp_path, minimal_config):
-    """当 graph.ainvoke 超时，应引发 asyncio.TimeoutError。"""
+    """�?graph.ainvoke 超时，应引发 asyncio.TimeoutError�?""
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     project_dir = tmp_path / "proj"
@@ -217,7 +217,7 @@ def test_pipeline_timeout_raises(monkeypatch, tmp_path, minimal_config):
     output_dir = tmp_path / "out"
     output_dir.mkdir()
 
-    # 将超时设置为极小值触发
+    # 将超时设置为极小值触�?
     monkeypatch.setattr(orch, "MAX_PIPELINE_TIMEOUT_SEC", 0.001)
 
     class _SlowParser:
@@ -236,12 +236,12 @@ def test_pipeline_timeout_raises(monkeypatch, tmp_path, minimal_config):
 
 
 # ---------------------------------------------------------------------------
-# Test 6: Gate 4b-4 / Gate 4b-3 — 架构守护：由 feature flag 严格控制 DiagnosticNode
+# Test 6: Gate 4b-4 / Gate 4b-3 �?架构守护：由 feature flag 严格控制 DiagnosticNode
 # ---------------------------------------------------------------------------
 
 
 def test_diagnostic_node_controlled_by_feature_flag():
-    """架构编排必须由 feature flag 严格控制 diagnostic 节点的挂载。"""
+    """架构编排必须�?feature flag 严格控制 diagnostic 节点的挂载�?""
     from backend.app.services.agents.langgraph_orchestrator import build_pipeline_graph
 
     def get_nodes(graph):
@@ -257,10 +257,10 @@ def test_diagnostic_node_controlled_by_feature_flag():
     nodes_off = get_nodes(build_pipeline_graph(enable_diagnostics=False))
     diagnostic_nodes_off = [n for n in nodes_off if "diagnostic" in str(n).lower()]
     assert diagnostic_nodes_off == [], (
-        f"架构守护失败：feature flag 关闭时发现诊断节点 {diagnostic_nodes_off}"
+        f"架构守护失败：feature flag 关闭时发现诊断节�?{diagnostic_nodes_off}"
     )
 
-    # 显式开启时，必须包含
+    # 显式开启时，必须包�?
     nodes_on = get_nodes(build_pipeline_graph(enable_diagnostics=True))
     diagnostic_nodes_on = [n for n in nodes_on if "diagnostic" in str(n).lower()]
     assert diagnostic_nodes_on != [], "feature flag 开启时未能挂载诊断节点"

@@ -28,10 +28,17 @@ In this repository, prefer the following skills when they match the user's reque
 - `superpowers-openspec-bridge`
   Use when the user wants to brainstorm first, formalize later, follow the repo's preferred workflow, or combine Superpowers with OpenSpec.
 
+## Formal Record
+
+- Superpowers skills remain enabled in this repository as process tools for brainstorming, planning, debugging, verification, and review.
+- OpenSpec under `openspec/` is the only formal documentation carrier for active design, change, task, and migration records.
+- Do not create or update active workflow artifacts outside OpenSpec.
+- When a Superpowers skill would normally emit a design doc, plan, or similar formal artifact, write the result into the relevant `openspec/changes/<change-id>/...`, `openspec/specs/...`, or `openspec/changes/archive/...` location instead.
+
 ## Planning And Spec Work
 
 - `brainstorming`
-  Use before creative implementation work, new features, behavior changes, architecture decisions, or unclear requests that need design refinement.
+  Use before creative implementation work, new features, behavior changes, architecture decisions, or unclear requests that need design refinement. Preserve the brainstorming process, but formalize approved outputs into OpenSpec.
 - `planning-with-files`
   Use for complex multi-step work when persistent markdown planning files would help track progress or decisions.
 
@@ -52,7 +59,7 @@ When the request is a bug fix restoring intended behavior, a test-only change, a
 ## Execution Skills
 
 - `writing-plans`
-  Use after design approval or after an approved OpenSpec change when a detailed execution breakdown is still needed.
+  Use after design approval or after an approved OpenSpec change when a detailed execution breakdown is still needed. Any written plan artifact must live under OpenSpec.
 - `systematic-debugging`
   Use for bugs, regressions, flaky behavior, or unknown root-cause investigation.
 - `test-driven-development`
@@ -91,5 +98,5 @@ Preferred high-level workflow:
 1. `superpowers-openspec-bridge` for feature or architecture work
 2. `brainstorming` for refinement
 3. OpenSpec for formal proposal/spec/tasks
-4. `writing-plans` only after approval if deeper execution planning is useful
+4. `writing-plans` only after approval if deeper execution planning is useful, with output stored under OpenSpec
 5. Execution with debugging, TDD, verification, and review skills as needed

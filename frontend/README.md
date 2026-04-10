@@ -142,7 +142,7 @@ frontend/
 │   │   └── config.ts             # 配置相关类型
 │   ├── lib/
 │   │   ├── api.ts                # API 调用封装（含可选JWT）
-│   │   ├── supabase.ts           # 认证客户端封装（兼容文件名）
+│   │   ├── local-auth.ts         # 本地认证客户端封装
 │   │   └── utils.ts              # 工具函数
 │   ├── App.tsx              # 应用入口
 │   └── main.tsx             # Vite 入口

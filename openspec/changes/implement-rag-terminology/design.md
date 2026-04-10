@@ -291,7 +291,7 @@ async def _process_pending_terms():
         source_texts = [t["source_term"] for t in approved]
         embeddings = await embedding_svc.embed_batch(source_texts, input_type="passage")
         
-        client = get_supabase_admin_client()
+        client = get_glossary_store_client()
         for term, emb in zip(approved, embeddings):
             client.table("glossary_terms").insert({
                 "source_term": term["source_term"],

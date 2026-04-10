@@ -4,7 +4,7 @@ TDD Test Suite: Phase 3 Deterministic Downgrade
 Tests for the `deterministic_downgrade` function.
 
 Design spec (from design.md Â§1 Phase 3):
-  1. Phase 3 MUST NOT invoke any LLM â€” it is deterministic.
+  1. Phase 3 MUST NOT invoke any LLM â€?it is deterministic.
   2. Valid downgrade strategies (in priority order):
        a. Source passthrough (fallback_to_source)
        b. Placeholder + warning comment
@@ -86,12 +86,12 @@ class TestDeterministicDowngrade:
                 assert result[key] == val, f"Field '{key}' was unexpectedly changed"
 
     def test_never_calls_llm(self):
-        """No aiohttp or async calls should be made â€” function must be synchronous."""
+        """No aiohttp or async calls should be made â€?function must be synchronous."""
         import inspect
         from backend.app.services.translation import downgrade_handler
         func = getattr(downgrade_handler, "deterministic_downgrade")
         assert not inspect.iscoroutinefunction(func), (
-            "deterministic_downgrade must be a regular (sync) function â€” LLM calls are forbidden."
+            "deterministic_downgrade must be a regular (sync) function â€?LLM calls are forbidden."
         )
 
     def test_empty_content_gives_placeholder_comment(self):

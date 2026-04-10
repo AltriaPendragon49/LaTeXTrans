@@ -40,9 +40,9 @@ Frontend API calls SHALL use environment variable `VITE_API_BASE_URL` and MUST N
 - **THEN** request paths SHALL be formed as `${VITE_API_BASE_URL}/api/...`
 - **AND** callers MUST NOT bypass this contract with non-prefixed paths such as `/history`.
 
-### Requirement: Supabase Auth Redirect Configuration
+### Requirement: Auth Redirect Configuration
 
-Supabase Auth 确认邮件和重定向 SHALL 指向生产环境域名。
+认证邮件和重定向 SHALL 指向生产环境域名。
 
 #### Scenario: Email confirmation redirects to production domain
 
@@ -91,14 +91,14 @@ Production runtime SHALL default to a single worker until runtime-state is fully
 - **WHEN** runtime starts with default command
 - **THEN** `uvicorn` worker count MUST be `1`
 
-### Requirement: Service Role Secret Boundary and Rotation
-Service-role credentials MUST remain backend-only, and exposed keys MUST be rotated.
+### Requirement: Backend Secret Boundary and Rotation
+Backend-only credentials MUST remain server-only, and exposed secrets MUST be rotated.
 
 #### Scenario: Frontend env excludes service-role key
 - **WHEN** frontend env files are prepared
-- **THEN** `VITE_SUPABASE_SERVICE_ROLE_KEY` MUST NOT be present
+- **THEN** frontend env MUST NOT contain backend-only service-role, database, or admin secrets
 
 #### Scenario: Exposure remediation documented
 - **WHEN** deployment documentation is reviewed
-- **THEN** it MUST include a mandatory key-rotation notice for exposed service-role credentials
+- **THEN** it MUST include a mandatory secret-rotation notice for any previously exposed backend-only credentials
 

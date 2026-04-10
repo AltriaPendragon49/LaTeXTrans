@@ -1,7 +1,7 @@
 ## Centralized Authorization Design
 
 ### Context
-- `backend/app/core/auth.py` currently exposes helper dependencies like `require_current_user`, `require_admin_request`, and `get_supabase_client_from_request`, but individual routes still scatter ownership/admin checks, which makes future switches to a shared policy harder and leaves no single source of truth for allow/deny reasoning.
+- `backend/app/core/auth.py` currently exposes helper dependencies like `require_current_user`, `require_admin_request`, and `optional_current_user`, but individual routes still scatter ownership/admin checks, which makes future switches to a shared policy harder and leaves no single source of truth for allow/deny reasoning.
 - The new `authorization` slice has to provide one entry point (`authorize(user, resource, action, context=None)`) plus clear results so callers, tests, and future engineering can understand why something failed.
 
 ### Goals

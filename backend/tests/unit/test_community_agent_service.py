@@ -382,7 +382,7 @@ def test_conversational_agent_accepts_direct_assistant_reply(monkeypatch: pytest
         assert tools
         return {
             "role": "assistant",
-            "content": "我是 LaTeXTrans，一个可以对话并调用论文工具的研究助手。",
+            "content": "我是 LaTeXTrans，一个可以对话并调用论文工具的研究助手�?,
         }
 
     monkeypatch.setattr(
@@ -399,7 +399,7 @@ def test_conversational_agent_accepts_direct_assistant_reply(monkeypatch: pytest
     )
 
     assert result["intent"] == "answer"
-    assert result["message"] == "我是 LaTeXTrans，一个可以对话并调用论文工具的研究助手。"
+    assert result["message"] == "我是 LaTeXTrans，一个可以对话并调用论文工具的研究助手�?
     assert result["summary"] == result["message"]
     assert result["tool_trace"] == []
 
@@ -439,7 +439,7 @@ def test_conversational_agent_executes_tool_calls_and_returns_grounded_reply(
                     "title": "Graph Neural Networks for Molecular Property Prediction",
                     "arxiv_id": "2603.12345",
                     "abstract_raw": "A paper about graph neural network methods for molecules.",
-                    "abstract_translated": "一篇关于图神经网络分子性质预测的论文。",
+                    "abstract_translated": "一篇关于图神经网络分子性质预测的论文�?,
                 }
             ]
         }
@@ -786,7 +786,7 @@ def test_chinese_prompt_fallback_message_stays_in_chinese(monkeypatch: pytest.Mo
 
     result = asyncio.run(
         community_agent_service.create_agent_run(
-            "请解释一下 V-JEPA 2.1 这篇论文的主要贡献",
+            "请解释一�?V-JEPA 2.1 这篇论文的主要贡�?,
             {"source": "conversation", "history": []},
             {"external_search": False},
         )
@@ -816,7 +816,7 @@ def test_cjk_adjacent_arxiv_prompt_uses_import_fallback_path(
             "arxiv_id": "2602.24209",
             "translated_ready": True,
             "abstract_raw": "A paper about orchestrating research-paper assistance.",
-            "abstract_translated": "一篇关于科研论文辅助编排的论文。",
+            "abstract_translated": "一篇关于科研论文辅助编排的论文�?,
         }
 
     monkeypatch.setattr(
@@ -834,7 +834,7 @@ def test_cjk_adjacent_arxiv_prompt_uses_import_fallback_path(
 
     result = asyncio.run(
         community_agent_service.create_agent_run(
-            "2602.24209讲了什么",
+            "2602.24209讲了什�?,
             {"source": "conversation", "history": []},
             {"external_search": False},
         )
@@ -865,7 +865,7 @@ def test_nonexistent_community_paper_can_be_imported_and_auto_translation_starte
                 "role": "assistant",
                 "content": (
                     "《Attention Is All You Need》提出了 Transformer，并且我已经在后台启动默认翻译流程，"
-                    "你可以现在先开始阅读。"
+                    "你可以现在先开始阅读�?
                 ),
             },
         ]
@@ -921,7 +921,7 @@ def test_nonexistent_community_paper_can_be_imported_and_auto_translation_starte
 
     result = asyncio.run(
         community_agent_service.create_agent_run(
-            "请导入 arXiv 1706.03762，并启动默认翻译流程。",
+            "请导�?arXiv 1706.03762，并启动默认翻译流程�?,
             {"source": "conversation", "history": []},
             {"external_search": False},
         )

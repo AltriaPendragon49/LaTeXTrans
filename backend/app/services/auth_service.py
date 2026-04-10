@@ -62,13 +62,21 @@ class NiuTransAuthClient:
             "identifier": identifier,
             "password": password,
             "loginMode": "Password",
+            "isSubAccount": "0",
+        }
+        request_headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://niutrans.com",
+            "Referer": self._settings.niutrans_login_url,
+            "User-Agent": "LaTexTrans-LocalAuth/1.0",
         }
         timeout = httpx.Timeout(15.0, connect=10.0)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     self._settings.niutrans_auth_url,
-                    json=request_payload,
+                    data=request_payload,
+                    headers=request_headers,
                 )
         except httpx.HTTPError as exc:
             raise AuthServiceError(

@@ -15,7 +15,7 @@ import type { FormattingConfig } from '@/types/config'
 import { API_BASE_URL } from '@/api-base'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedLanguageOptions } from '@/i18n/config'
-import { getAccessToken } from '@/lib/supabase'
+import { getAccessToken } from '@/lib/local-auth'
 import { useStore } from '@/store/useStore'
 
 interface UserSettings {

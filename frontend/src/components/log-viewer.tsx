@@ -1,11 +1,14 @@
 import { useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 
+import { cn } from "@/lib/utils"
+
 interface LogViewerProps {
     logs: string[]
+    className?: string
 }
 
-export function LogViewer({ logs }: LogViewerProps) {
+export function LogViewer({ logs, className }: LogViewerProps) {
     const scrollRef = useRef<HTMLDivElement>(null)
     const { t } = useTranslation()
 
@@ -16,7 +19,13 @@ export function LogViewer({ logs }: LogViewerProps) {
     }, [logs])
 
     return (
-        <div className="rounded-md border bg-slate-950 text-slate-50 font-mono text-xs p-4 h-[300px] overflow-auto shadow-inner" ref={scrollRef}>
+        <div
+            className={cn(
+                "h-[300px] overflow-auto rounded-md border bg-slate-950 p-4 font-mono text-xs text-slate-50 shadow-inner",
+                className,
+            )}
+            ref={scrollRef}
+        >
             {logs.length === 0 && <div className="text-slate-500 italic">{t("logs.waiting_for_logs")}</div>}
             {logs.map((log, index) => (
                 <div key={index} className="whitespace-pre-wrap py-0.5 border-b border-slate-800/50 last:border-0 hover:bg-slate-900/50">

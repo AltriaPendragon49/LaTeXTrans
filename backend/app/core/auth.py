@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Optional
 
@@ -95,24 +95,6 @@ async def require_admin_user(
     return current_user
 
 
-def create_supabase_client_with_token(access_token: Optional[str] = None) -> None:
-    # Legacy compatibility shim retained for older tests and monkeypatch paths.
-    del access_token
-    return None
-
-
-def clone_supabase_client_with_same_auth(client: Any) -> None:
-    del client
-    return None
-
-
-async def get_supabase_client_from_request(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-) -> None:
-    del credentials
-    return None
-
-
 async def require_admin_request(
     current_user: Any = Depends(require_admin_user),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
@@ -146,3 +128,4 @@ async def require_admin_request(
         detail={"code": "AUTH_SESSION_INVALID", "message": "Session is invalid or expired."},
         headers={"WWW-Authenticate": "Bearer"},
     )
+

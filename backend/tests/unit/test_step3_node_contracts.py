@@ -1,9 +1,9 @@
 """
 test_step3_node_contracts.py
-Step 3：全量 agent node 结构化改造 — 节点 I/O 契约测试
+Step 3：全�?agent node 结构化改�?�?节点 I/O 契约测试
 
-验证每个 node 在 audit.jsonl 中都有对应的 node_enter / node_exit 条目，
-以及异常时的 status=error 记录和 elapsed_ms 字段必须存在。
+验证每个 node �?audit.jsonl 中都有对应的 node_enter / node_exit 条目�?
+以及异常时的 status=error 记录�?elapsed_ms 字段必须存在�?
 """
 import asyncio
 import json
@@ -43,7 +43,7 @@ def minimal_config():
 
 
 def _make_agents(tmp_path):
-    """返回一套正常 fake agent 类用于 mock。"""
+    """返回一套正�?fake agent 类用�?mock�?""
 
     class _FakeParser:
         def __init__(self, *a, **kw): pass
@@ -107,31 +107,31 @@ def _parse_audit(audit_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1: 正常路径，每个 node 都有 enter + exit 条目
+# Test 1: 正常路径，每�?node 都有 enter + exit 条目
 # ---------------------------------------------------------------------------
 
 
 def test_all_nodes_emit_audit_enter_exit(monkeypatch, tmp_path, minimal_config):
-    """正常路径：audit.jsonl 里每个核心节点必须有 node_enter 和 node_exit 事件。"""
+    """正常路径：audit.jsonl 里每个核心节点必须有 node_enter �?node_exit 事件�?""
     audit_path = _run_pipeline(monkeypatch, tmp_path, minimal_config)
-    assert audit_path.exists(), "audit.jsonl 不存在"
+    assert audit_path.exists(), "audit.jsonl 不存�?
 
     records = _parse_audit(audit_path)
     events = [r["event"] for r in records]
 
     expected_nodes = ["parse", "translate", "validate_and_retry", "generate", "finalize"]
     for node in expected_nodes:
-        assert f"node_enter:{node}" in events, f"缺少 node_enter:{node}，实际 events={events}"
-        assert f"node_exit:{node}" in events, f"缺少 node_exit:{node}，实际 events={events}"
+        assert f"node_enter:{node}" in events, f"缺少 node_enter:{node}，实�?events={events}"
+        assert f"node_exit:{node}" in events, f"缺少 node_exit:{node}，实�?events={events}"
 
 
 # ---------------------------------------------------------------------------
-# Test 2: parse 节点抛异常时，audit.jsonl 包含 status=error 的 node_exit:parse
+# Test 2: parse 节点抛异常时，audit.jsonl 包含 status=error �?node_exit:parse
 # ---------------------------------------------------------------------------
 
 
 def test_node_exit_on_error_has_status_error(monkeypatch, tmp_path, minimal_config):
-    """parse 节点抛异常时，audit.jsonl 里 node_exit:parse 的 payload.status 应为 error。"""
+    """parse 节点抛异常时，audit.jsonl �?node_exit:parse �?payload.status 应为 error�?""
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     class _BadParser:
@@ -158,22 +158,22 @@ def test_node_exit_on_error_has_status_error(monkeypatch, tmp_path, minimal_conf
         ))
 
     audit_path = output_dir / "zh_proj" / "audit.jsonl"
-    assert audit_path.exists(), "audit.jsonl 不存在"
+    assert audit_path.exists(), "audit.jsonl 不存�?
     records = _parse_audit(audit_path)
     exit_records = [r for r in records if r.get("event") == "node_exit:parse"]
     assert exit_records, "缺少 node_exit:parse 记录"
     assert exit_records[0].get("payload", {}).get("status") == "error", (
-        f"node_exit:parse 的 status 应为 error，实际：{exit_records[0]}"
+        f"node_exit:parse �?status 应为 error，实际：{exit_records[0]}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 3: 所有 node_exit 条目都有 elapsed_ms 字段且为正数
+# Test 3: 所�?node_exit 条目都有 elapsed_ms 字段且为正数
 # ---------------------------------------------------------------------------
 
 
 def test_node_elapsed_ms_present(monkeypatch, tmp_path, minimal_config):
-    """所有 node_exit 条目都必须包含 elapsed_ms 字段且为正数。"""
+    """所�?node_exit 条目都必须包�?elapsed_ms 字段且为正数�?""
     audit_path = _run_pipeline(monkeypatch, tmp_path, minimal_config)
     records = _parse_audit(audit_path)
     exit_records = [r for r in records if r.get("event", "").startswith("node_exit:")]
@@ -185,12 +185,12 @@ def test_node_elapsed_ms_present(monkeypatch, tmp_path, minimal_config):
 
 
 # ---------------------------------------------------------------------------
-# Test 4: Step 1 原有测试在 Step 3 改造后仍全部通过（回归保护）
+# Test 4: Step 1 原有测试�?Step 3 改造后仍全部通过（回归保护）
 # ---------------------------------------------------------------------------
 
 
 def test_full_regression_after_node_contracts(monkeypatch, tmp_path, minimal_config):
-    """Step 3 node 契约加入后，原有 StateGraph 正常路径行为不变（data flow 等价回归）。"""
+    """Step 3 node 契约加入后，原有 StateGraph 正常路径行为不变（data flow 等价回归）�?""
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     call_log = []

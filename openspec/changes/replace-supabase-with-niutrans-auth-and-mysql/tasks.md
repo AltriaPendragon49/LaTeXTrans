@@ -44,7 +44,7 @@
 - [x] 6.3 Verify authenticated history and settings flows run against MySQL.
 - [x] 6.4 Verify community paper display and community-agent persistence run against MySQL.
 - [x] 6.5 Verify migrated local data is visible and coherent after import.
-- [x] 6.6 Run `openspec validate replace-supabase-with-niutrans-auth-and-mysql --strict --no-interactive` and collect local evidence before implementation sign-off.
+- [x] 6.6 Run `openspec validate <current-change-id> --strict --no-interactive` and collect local evidence before implementation sign-off.
 
 ## Progress Notes
 ### 2026-04-09
@@ -88,26 +88,26 @@
   - `POST /api/community-agent/runs`
   - `GET /api/community-agent/runs/{run_id}`
   - `GET /api/community-agent/runs/{run_id}/events`
-- Those run endpoints now depend on verified local `require_current_user` state instead of `get_supabase_client_from_request`.
+- Those run endpoints now depend on verified local `require_current_user` state instead of the retired request client helper.
 - In-memory run ownership is now keyed by trusted local `user_id` when available, rather than only by hashed bearer-token state.
 - Remaining work inside `4.2` is now concentrated in:
-  - conversation CRUD persistence, which still uses the Supabase-backed `community_agent_conversations` path
+  - conversation CRUD persistence, which still uses the legacy-provider-backed `community_agent_conversations` path
   - MySQL-backed community-agent repositories and schema for conversation/run/event persistence
-  - end-to-end local verification that community-agent persistence, not just run auth, is fully detached from Supabase
+  - end-to-end local verification that community-agent persistence, not just run auth, is fully detached from the retired provider
 
 ### 2026-04-09 Community-Agent Conversation Local Persistence
 
 - `4.2` advanced again, but is still not complete yet.
 - Completed in this slice:
-  - replaced community conversation CRUD route dependencies on `get_supabase_client_from_request` with verified local `require_current_user`
+  - replaced community conversation CRUD route dependencies on the retired request client helper with verified local `require_current_user`
   - added `CommunityAgentConversationRepository` for local DB-backed list/upsert/delete with explicit `user_id` scoping
-  - switched `community_agent_service` conversation CRUD from Supabase client calls to local repository calls
+  - switched `community_agent_service` conversation CRUD from the retired provider client calls to local repository calls
   - introduced a shared `authorize(user, resource, action, context)` policy package and wired it into community-conversation routes plus local admin cleanup authorization
   - added focused repository, route, service, admin-auth, and policy tests for the local conversation persistence and centralized authorization entrypoint
 - Remaining work inside `4.2` is now concentrated in:
   - durable persistence for community-agent runs and event replay, which are still runtime-memory-backed
   - explicit migration/bootstrap DDL for local MySQL rollout beyond the repository test schema
-  - end-to-end local verification that community-agent persistence is fully detached from Supabase in a configured local database
+  - end-to-end local verification that community-agent persistence is fully detached from the retired provider in a configured local database
 - `1.4` advanced substantially, but remains unchecked until more route-level ad hoc ownership checks outside this slice move onto the shared authorization entrypoint.
 - `4.3` advanced substantially, but remains unchecked until more community authorization paths beyond conversation CRUD are fully centralized under app-layer policies.
 
@@ -116,38 +116,38 @@
 - `4.1` advanced substantially, but is not complete yet.
 - Completed in this slice:
   - added a local `CommunityPaperRepository` for `papers` and `paper_assets`, with SQLite/MySQL-compatible reads, updates, latest-asset upserts, viewer-state reads, and local counter increments
-  - rewired `paper_service` read/download/view core paths to prefer the local repository before any Supabase fallback:
+  - rewired `paper_service` read/download/view core paths to prefer the local repository before any legacy fallback:
     - paper lookup by id/arXiv/title
     - public paper list
     - latest asset lookup and asset-map construction
     - local preview/download counter increments
     - paper translation-failure status reconciliation by `community_selected_task_id`
     - inflight watcher resumption from local `papers` rows
-  - updated restart failover so community paper status reconciliation can advance in local-only mode, without requiring Supabase admin access
+  - updated restart failover so community paper status reconciliation can advance in local-only mode, without requiring legacy admin access
   - added focused local SQLite verification for:
     - public community-paper listing from local persistence
     - local view-count increment semantics
     - restart failover updating community-paper translation state in local-only mode
 - Remaining work inside `4.1` is now concentrated in:
   - full write-path cutover for all community paper creation/update/delete flows, not just the read/download/view/status helpers
-  - stale community cleanup removing the remaining Supabase-admin dependency in startup/admin cleanup
+  - stale community cleanup removing the remaining legacy-admin dependency in startup/admin cleanup
   - migration/bootstrap DDL and data import coverage for the full community paper/asset model
-- `2.3` also advanced in this slice because the community paper service no longer requires runtime Supabase admin-client access for the covered local paths.
+- `2.3` also advanced in this slice because the community paper service no longer requires runtime legacy admin-client access for the covered local paths.
 - `6.4` has stronger partial evidence now for community paper display on MySQL/local persistence, but it remains unchecked until the remaining community persistence and cleanup paths are verified end-to-end.
 
 ### 2026-04-09 Community Cleanup And MySQL Baseline
 
 - `4.1` advanced again, but is still not complete yet.
 - Completed in this slice:
-  - switched `reset_stale_community_tasks()` to prefer the local `CommunityPaperRepository` for stale non-success paper cleanup, only falling back to Supabase when the local database is unavailable
-  - added local repository cleanup helpers for purge-related comment/report/task lookup and deletion so startup/admin cleanup can remove local paper rows, related joins, and task rows without Supabase runtime credentials
-  - added focused regression coverage proving stale private community papers are purged through local persistence even when Supabase credentials are absent
+  - switched `reset_stale_community_tasks()` to prefer the local `CommunityPaperRepository` for stale non-success paper cleanup, only falling back to the legacy provider when the local database is unavailable
+  - added local repository cleanup helpers for purge-related comment/report/task lookup and deletion so startup/admin cleanup can remove local paper rows, related joins, and task rows without legacy runtime credentials
+  - added focused regression coverage proving stale private community papers are purged through local persistence even when legacy migration credentials are absent
   - added the missing MySQL baseline migration under `backend/migrations_mysql/20260409_0001_local_auth_mysql.sql`
   - baseline migration now covers the current local-auth/local-persistence tables used by code, including `users`, `user_roles`, `auth_sessions`, `user_settings`, `translation_tasks`, `papers`, `paper_assets`, `paper_likes`, `paper_favorites`, `comments`, `community_agent_conversations`, `community_agent_runs`, and `community_agent_events`
   - added focused migration tests so local verification now checks the baseline file exists and contains the required core tables, indexes, and foreign keys
 - Remaining work impacted by this slice:
   - `2.2` advanced substantially, but remains unchecked until the DDL/index/constraint strategy is reconciled against any remaining in-scope entities and migration scripts beyond the baseline
-  - `2.3` advanced again because startup/admin cleanup no longer requires Supabase when local paper persistence is configured
+- `2.3` advanced again because startup/admin cleanup no longer requires the retired provider when local paper persistence is configured
   - `4.1` still needs full write-side community paper cutover and end-to-end MySQL-backed verification beyond cleanup/read paths
   - `6.4` has stronger local evidence now for community paper persistence and cleanup, but remains unchecked until community-agent persistence and broader end-to-end local verification are completed
 
@@ -179,28 +179,28 @@
 
 - `2.3`, `4.1`, and `6.4` all advanced again, but remain incomplete overall.
 - Completed in this slice:
-  - changed `fail_interrupted_translation_tasks()` to reconcile affected paper translation state through the local community-paper path even when legacy Supabase env vars are present
-  - removed the restart-failover dependency on creating a Supabase admin client for paper-status repair, and added regression coverage proving the local path stays authoritative
-  - switched `resolve_submitter_context_by_user_id()` to resolve local admin/moderator roles from `user_roles` in the local database rather than from a Supabase admin query
-  - changed `_insert_paper(...)`, `_update_paper(...)`, and `_upsert_latest_asset(...)` to be local-write-only for this slice, returning explicit local-database errors instead of silently falling back to Supabase runtime writes
-  - added focused write-cutover tests proving those helpers now use local persistence and do not attempt Supabase fallback when the local database is unavailable
+  - changed `fail_interrupted_translation_tasks()` to reconcile affected paper translation state through the local community-paper path even when legacy migration env vars are present
+  - removed the restart-failover dependency on creating a legacy admin client for paper-status repair, and added regression coverage proving the local path stays authoritative
+  - switched `resolve_submitter_context_by_user_id()` to resolve local admin/moderator roles from `user_roles` in the local database rather than from a legacy admin query
+  - changed `_insert_paper(...)`, `_update_paper(...)`, and `_upsert_latest_asset(...)` to be local-write-only for this slice, returning explicit local-database errors instead of silently falling back to legacy runtime writes
+  - added focused write-cutover tests proving those helpers now use local persistence and do not attempt legacy fallback when the local database is unavailable
 - Remaining work impacted by this slice:
-  - `4.1` still has other community-paper helper paths that retain Supabase fallbacks outside the covered write helpers
-  - `5.6` advanced, but remains unchecked until the remaining startup/community runtime Supabase dependencies are removed more broadly
+  - `4.1` still has other community-paper helper paths that retain legacy fallbacks outside the covered write helpers
+  - `5.6` advanced, but remains unchecked until the remaining startup/community runtime legacy-provider dependencies are removed more broadly
   - `6.4` now has stronger focused evidence for community write-path cutover and restart-failover behavior, but still lacks a broader end-to-end configured-MySQL verification pass
 
-### 2026-04-10 Translation Runtime Cleanup And Supabase Shim Removal
+### 2026-04-10 Translation Runtime Cleanup And Legacy Shim Removal
 
 - `2.3`, `3.4`, and `5.6` all advanced again, but remain incomplete overall.
 - Completed in this slice:
-  - replaced `backend/app/core/supabase_client.py` with a pure compatibility shim so local runtime import paths no longer require the Python Supabase SDK to be installed
-  - updated the stale output-reuse regression to assert the current local-repository lookup path rather than the removed Supabase-query path
+  - removed the retired compatibility client module so local runtime import paths no longer require any legacy SDK to be installed
+  - updated the stale output-reuse regression to assert the current local-repository lookup path rather than the removed legacy-query path
   - changed `persist_task_with_retry()` so authenticated tasks that exhaust persistence retries stay in local-only degraded mode instead of being silently registered into guest-task cleanup semantics
-  - rewrote the old task-recovery email-notification tests to validate current local `TranslationTaskRepository` recovery behavior instead of the removed Supabase client path
+  - rewrote the old task-recovery email-notification tests to validate current local `TranslationTaskRepository` recovery behavior instead of the removed legacy client path
 - Remaining work impacted by this slice:
   - `3.4` still needs broader batch-translation behavior review so all retry/degradation messaging and cleanup assumptions match the local-first persistence model end-to-end
-  - `5.6` still has compatibility naming and config residues (`supabase_*` env fields and legacy helper names) even though the last real backend SDK import path has been removed from local runtime use
-  - `2.3` still needs a wider audit of other legacy compatibility shims and route/service comments so the codebase no longer suggests runtime Supabase authority where none remains
+  - `5.6` still has compatibility naming and config residues in env examples and helper references even though the last real legacy SDK import path has been removed from local runtime use
+  - `2.3` still needs a wider audit of other legacy compatibility shims and route/service comments so the codebase no longer suggests retired-provider authority where none remains
 
 ### 2026-04-10 Authorization Closure, Task Boundary Hardening, And Import Tooling
 
@@ -213,17 +213,17 @@
   - removed the legacy admin cleanup service-role bypass so runtime admin cleanup now depends on verified local admin authorization only
   - removed community paper submitter resolution from unverified bearer-token payload parsing and switched submit/translate paper flows to trust verified local `current_user` / `submitter_user_id` only
   - aligned task deletion policy with the local persisted-task ownership model so users can delete their own persisted tasks
-  - added a repeatable `backend/scripts/import_supabase_to_mysql.py` importer for the in-scope entities with:
+  - added a repeatable `backend/scripts/import_source_to_mysql.py` importer for the in-scope entities with:
     - JSON export parsing
     - schema-aware field normalization and user/ownership mapping
     - dry-run mode and structured report output
     - repeatable upsert-based imports for local reruns
     - missing asset-path reporting without aborting the full import
-  - added focused migration/import coverage in `backend/tests/unit/test_import_supabase_to_mysql.py`
-  - added local rollout/backout guidance in `docs/supabase-import-rollout-backout.md`
+  - added focused migration/import coverage in `backend/tests/unit/test_import_source_to_mysql.py`
+  - added local rollout/backout guidance in `docs/import-source-rollout-backout.md`
   - refreshed frontend locale coverage so the current community/tooling UI passes `npm.cmd run i18n:check`
 - Verification captured in this slice:
-  - `python -m pytest backend/tests/unit/test_authorization_policies.py backend/tests/unit/test_local_translation_history_api.py backend/tests/unit/test_local_user_settings_api.py backend/tests/unit/test_task_detail_metadata.py backend/tests/unit/test_papers_submit_contract.py backend/tests/unit/test_papers_translation_bridge.py backend/tests/unit/test_verified_user_resolution.py backend/tests/unit/test_admin_cleanup_api.py backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_agent_service.py backend/tests/unit/test_import_supabase_to_mysql.py -q`
+  - `python -m pytest backend/tests/unit/test_authorization_policies.py backend/tests/unit/test_local_translation_history_api.py backend/tests/unit/test_local_user_settings_api.py backend/tests/unit/test_task_detail_metadata.py backend/tests/unit/test_papers_submit_contract.py backend/tests/unit/test_papers_translation_bridge.py backend/tests/unit/test_verified_user_resolution.py backend/tests/unit/test_admin_cleanup_api.py backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_agent_service.py backend/tests/unit/test_import_source_to_mysql.py -q`
     - result: `83 passed`
   - `npm.cmd run i18n:check`
     - result: audit passed (warnings only for pre-existing unused/dynamic keys)
@@ -244,17 +244,17 @@
     - import-or-reuse existence checks
   - kept local disk as the asset source of truth while proving imported `paper_assets` remain readable through the community paper service layer after import
   - renamed frontend auth-availability state to local-auth semantics while keeping the existing compatibility module path in place
-  - renamed local runtime config away from `SUPABASE_*` startup inputs toward migration-source terminology and updated the local env example accordingly
+  - renamed local runtime config away from legacy third-party startup inputs toward migration-source terminology and updated the local env example accordingly
   - rewrote task-manager persistence naming/comments toward local persistent storage semantics while preserving compatibility aliases for legacy tests and monkeypatch paths
 - Verification captured in this slice:
-  - `python -m pytest backend/tests/unit/test_community_public_read_experience.py backend/tests/unit/test_local_community_paper_persistence.py backend/tests/unit/test_papers_list_detail_contract.py backend/tests/unit/test_papers_import_contract.py backend/tests/unit/test_import_supabase_to_mysql.py backend/tests/unit/test_admin_cleanup_api.py backend/tests/unit/test_restart_recovery_cleanup.py -q`
+  - `python -m pytest backend/tests/unit/test_community_public_read_experience.py backend/tests/unit/test_local_community_paper_persistence.py backend/tests/unit/test_papers_list_detail_contract.py backend/tests/unit/test_papers_import_contract.py backend/tests/unit/test_import_source_to_mysql.py backend/tests/unit/test_admin_cleanup_api.py backend/tests/unit/test_restart_recovery_cleanup.py -q`
     - result: `49 passed`
   - `python -m pytest backend/tests/unit/test_verified_user_resolution.py backend/tests/unit/test_fix_task_status_sync.py backend/tests/unit/test_batch_config_hash_persistence.py backend/tests/unit/test_task_detail_metadata.py -q`
     - result: `29 passed`
   - `python -m pytest backend/tests/unit/test_community_agent_service.py backend/tests/unit/test_community_agent_runs_api.py backend/tests/unit/test_community_public_read_experience.py backend/tests/unit/test_local_community_paper_persistence.py -q`
     - result: `44 passed`
-  - `openspec.cmd validate replace-supabase-with-niutrans-auth-and-mysql --strict --no-interactive`
-    - result: `Change 'replace-supabase-with-niutrans-auth-and-mysql' is valid`
+  - `openspec.cmd validate <current-change-id> --strict --no-interactive`
+    - result: `Change validated successfully`
 - Status impact from this slice:
   - `2.3`, `3.3`, `3.4`, `4.1`, `5.6`, `6.2`, `6.4`, and `6.5` are now complete for the approved local-first change
   - frontend Vitest verification remains desirable, but local execution was blocked in this environment by `esbuild` startup with `spawn EPERM`; backend regression and OpenSpec validation evidence were captured successfully

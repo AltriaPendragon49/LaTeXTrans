@@ -15,8 +15,8 @@ def test_restore_sectioning_command_structure_accepts_starred_sections():
         + "\n\n" + r"\section*{Funding}" + "\n\n" + "English funding."
     )
     translated = (
-        r"\section*{致谢}" + "\n\n" + "中文致谢。"
-        + "\n\n" + r"\section*{资助声明}" + "\n\n" + "未接受外部资助。"
+        r"\section*{致谢}" + "\n\n" + "中文致谢�?
+        + "\n\n" + r"\section*{资助声明}" + "\n\n" + "未接受外部资助�?
     )
 
     restored = restore_sectioning_command_structure(original, translated)
@@ -35,8 +35,8 @@ def test_reconstruct_preserves_starred_tail_sections_in_target_language():
                 + "\n\n" + r"\section*{Funding}" + "\n\n" + "English funding."
             ),
             "trans_content": (
-                r"\section*{致谢}" + "\n\n" + "中文致谢。"
-                + "\n\n" + r"\section*{资助声明}" + "\n\n" + "未接受外部资助。"
+                r"\section*{致谢}" + "\n\n" + "中文致谢�?
+                + "\n\n" + r"\section*{资助声明}" + "\n\n" + "未接受外部资助�?
             ),
             "translation_status": "translated",
         }

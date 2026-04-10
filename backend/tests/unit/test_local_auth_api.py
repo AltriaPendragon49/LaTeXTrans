@@ -32,6 +32,7 @@ class _FakeAuthService:
                 "external_user_id": "179017",
                 "roles": ["user"],
                 "display_name": "Alice",
+                "email": None,
             },
         }
 
@@ -44,6 +45,7 @@ class _FakeAuthService:
             "external_user_id": "179017",
             "roles": ["user"],
             "display_name": "Alice",
+            "email": None,
         }
 
     async def logout_current_session(self, token: str) -> None:
@@ -76,6 +78,7 @@ def test_auth_login_returns_local_session_contract(monkeypatch: pytest.MonkeyPat
             "external_user_id": "179017",
             "roles": ["user"],
             "display_name": "Alice",
+            "email": None,
         },
     }
 
@@ -114,6 +117,7 @@ def test_auth_me_returns_bootstrap_user_for_valid_local_token(monkeypatch: pytes
             "external_user_id": "179017",
             "roles": ["user"],
             "display_name": "Alice",
+            "email": None,
         }
     }
 

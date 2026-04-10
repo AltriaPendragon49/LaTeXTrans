@@ -24,7 +24,7 @@ def test_artifact_summary_flags_long_english_in_final_main_tex(tmp_path: Path):
             {
                 "section": "1",
                 "content": r"\section{Results} English source.",
-                "trans_content": r"\section{结果} 中文译文。",
+                "trans_content": r"\section{结果} 中文译文�?,
             }
         ],
     )

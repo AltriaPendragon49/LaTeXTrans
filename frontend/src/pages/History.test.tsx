@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
 import HistoryPage from "@/pages/History"
-import { getAccessToken } from "@/lib/supabase"
+import { getAccessToken } from "@/lib/local-auth"
 
 const authState = vi.hoisted(() => ({
   isAuthenticated: true,
@@ -23,7 +23,7 @@ vi.mock("@/store/useStore", () => ({
   }),
 }))
 
-vi.mock("@/lib/supabase", () => ({
+vi.mock("@/lib/local-auth", () => ({
   getAccessToken: vi.fn(),
 }))
 

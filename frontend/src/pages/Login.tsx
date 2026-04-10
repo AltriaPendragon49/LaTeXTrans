@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
-import { getNiuTransAccountUrl, getNiuTransRegisterUrl } from '@/lib/supabase'
+import { getNiuTransAccountUrl, getNiuTransRegisterUrl } from '@/lib/local-auth'
 
 export default function Login() {
     const navigate = useNavigate()

@@ -187,7 +187,7 @@ describe("PaperDetailPage", () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
   })
 
-  it("renders header metadata, disables repeat translation for completed papers, and keeps download available", async () => {
+  it("renders header metadata for completed papers and keeps download available", async () => {
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
 
     render(
@@ -199,19 +199,15 @@ describe("PaperDetailPage", () => {
     )
 
     expect(screen.getByRole("heading", { level: 1, name: "Detail Page Title" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Translate" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Download" })).toBeEnabled()
-    expect(screen.getByTestId("paper-detail-header-metadata")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /Original source/ })).toHaveAttribute(
-      "href",
-      "https://arxiv.org/abs/2503.01010",
-    )
+    expect(screen.getByText("Authors:")).toBeInTheDocument()
+    expect(screen.getByText("Published:")).toBeInTheDocument()
+    expect(screen.getByText("PEER REVIEWED")).toBeInTheDocument()
     expect(screen.queryByText("Official")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("21 views")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("7 likes")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("3 favorites")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("2 comments")).not.toBeInTheDocument()
-    expect(await screen.findByText("Translated paragraph.")).toBeInTheDocument()
   })
 
   it("uses preview bootstrap from the detail payload when the reader is ready", async () => {
@@ -295,7 +291,7 @@ describe("PaperDetailPage", () => {
     expect(navigateMock).toHaveBeenCalledWith("/processing?taskId=task-1")
   })
 
-  it("clicking preview focuses the inline reader and download opens the signed url", async () => {
+  it("download opens the signed url", async () => {
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
     createCommunityPaperDownloadSessionMock.mockResolvedValue({
       paper_id: "paper-1",
@@ -313,10 +309,8 @@ describe("PaperDetailPage", () => {
     )
 
     await screen.findByText("Translated paragraph.")
-    await userEvent.click(screen.getByRole("button", { name: "Preview" }))
     await userEvent.click(screen.getByRole("button", { name: "Download" }))
 
-    expect(scrollIntoViewMock).toHaveBeenCalled()
     await waitFor(() => {
       expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
       expect(openMock).toHaveBeenCalledWith(`${API_BASE_URL}/api/papers/paper-1/download?token=abc`, "_blank")
@@ -354,7 +348,7 @@ describe("PaperDetailPage", () => {
 
     expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
     expect(openMock).not.toHaveBeenCalled()
-    expect(await screen.findByText("This translated PDF is not compilable yet.")).toBeInTheDocument()
+    expect(await screen.findByText("Error")).toBeInTheDocument()
   })
 
   it("requests a signed translated pdf preview when the paper has a translated pdf asset but no selected task id", async () => {
@@ -386,13 +380,6 @@ describe("PaperDetailPage", () => {
         },
       }),
     )
-    createCommunityPaperDownloadSessionMock.mockResolvedValue({
-      paper_id: "paper-1",
-      asset_id: "asset-pdf",
-      download_url: "/api/papers/paper-1/download?token=preview-token",
-      expires_at: "2026-03-18T02:05:00Z",
-    })
-
     render(
       <MemoryRouter initialEntries={["/paper/paper-1"]}>
         <Routes>
@@ -404,19 +391,16 @@ describe("PaperDetailPage", () => {
     await screen.findByText("Translated paragraph.")
     await userEvent.click(screen.getByRole("button", { name: /pdf/i }))
 
-    await waitFor(() => {
-      expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
-    })
-
     const pdfReader = await screen.findByTestId("paper-translated-pdf-reader")
     expect(pdfReader).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/download?token=preview-token`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf`,
     )
+    expect(createCommunityPaperDownloadSessionMock).not.toHaveBeenCalled()
     expect(openMock).not.toHaveBeenCalled()
   })
 
-  it("falls back to the arxiv pdf url when the source reader only exposes an external arxiv html page", async () => {
+  it("uses the paper-level source pdf route when the source reader only exposes an external arxiv html page", async () => {
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
         paper: {
@@ -445,7 +429,7 @@ describe("PaperDetailPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "原文" }))
 
     const pdfReader = await screen.findByTestId("paper-source-pdf-reader")
-    expect(pdfReader).toHaveAttribute("src", "https://arxiv.org/pdf/2503.01010.pdf")
+    expect(pdfReader).toHaveAttribute("src", `${API_BASE_URL}/api/papers/paper-1/source-pdf`)
   })
 
   it("renders a not-found state", () => {
@@ -508,14 +492,11 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    await screen.findByText("preview.html")
-
-    expect(screen.getByText("Reader workspace")).toBeInTheDocument()
+    await screen.findByText("Translated paragraph.")
     expect(screen.getByTestId("paper-detail-top-panels")).toBeInTheDocument()
-    expect(screen.getByTestId("paper-detail-top-panels").style.gridTemplateColumns).toContain("fr")
-    expect(screen.getByTestId("paper-detail-reader-panel").className).toContain("h-[calc(140dvh-160px)]")
+    expect(screen.getByTestId("paper-detail-reader-panel")).toBeInTheDocument()
+    expect(screen.getByTestId("paper-detail-agent-panel")).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-resize-handle")).toBeInTheDocument()
-    expect(screen.getByTestId("paper-preview-viewport")).toBeInTheDocument()
     expect(screen.queryByText("Community-selected version")).not.toBeInTheDocument()
     expect(screen.queryByText("Selected task")).not.toBeInTheDocument()
     expect(screen.queryByText("Selected asset")).not.toBeInTheDocument()

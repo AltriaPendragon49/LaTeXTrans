@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from unittest.mock import MagicMock
 
 from backend.app.services.agents.validator_agent import ERROR_TYPE_C1, ERROR_TYPE_C2, ValidatorAgent

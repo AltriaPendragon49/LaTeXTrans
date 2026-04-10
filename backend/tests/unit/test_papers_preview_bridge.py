@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import os
 from datetime import datetime
 
@@ -21,7 +21,7 @@ def _paper(**overrides):
         "authors": [],
         "categories": [],
         "abstract_raw": "raw abstract",
-        "abstract_translated": "涓枃鎽樿",
+        "abstract_translated": "中文摘要",
         "community_status": "official",
         "trans_status": "completed",
         "created_at": "2026-03-18T00:00:00+00:00",
@@ -44,7 +44,7 @@ def test_get_paper_preview_reads_relative_library_path(monkeypatch, tmp_path):
     base_dir = tmp_path / "repo"
     preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
     preview_path.parent.mkdir(parents=True, exist_ok=True)
-    preview_path.write_text("<article><h2>寮曡█</h2></article>", encoding="utf-8")
+    preview_path.write_text("<article><h2>引言</h2></article>", encoding="utf-8")
 
     monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
     monkeypatch.setattr(
@@ -75,14 +75,14 @@ def test_get_paper_preview_reads_relative_library_path(monkeypatch, tmp_path):
 
     assert result["paper_id"] == "paper-1"
     assert result["asset"]["id"] == "asset-preview"
-    assert "寮曡█" in result["html_content"]
+    assert "引言" in result["html_content"]
 
 
 def test_get_paper_preview_serializes_datetime_generated_at(monkeypatch, tmp_path):
     base_dir = tmp_path / "repo"
     preview_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "preview.html"
     preview_path.parent.mkdir(parents=True, exist_ok=True)
-    preview_path.write_text("<article><h2>寮曡█</h2></article>", encoding="utf-8")
+    preview_path.write_text("<article><h2>引言</h2></article>", encoding="utf-8")
 
     monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
     monkeypatch.setattr(
@@ -357,7 +357,7 @@ def test_get_paper_preview_strips_legacy_table_cell_latex_source_tokens(monkeypa
 def test_preview_asset_refreshes_when_reader_version_mismatches(tmp_path):
     preview_path = tmp_path / "preview.html"
     preview_path.write_text(
-        '<article class="paper-preview" data-reader-version="reader-v5"><h2>寮曡█</h2><p>Readable content</p></article>',
+        '<article class="paper-preview" data-reader-version="reader-v5"><h2>引言</h2><p>Readable content</p></article>',
         encoding="utf-8",
     )
 
@@ -441,14 +441,14 @@ def test_get_paper_preview_refreshes_stale_preview_asset(monkeypatch, tmp_path):
 
     regenerated_path = base_dir / "data" / "community_papers" / "paper-1" / "preview" / "regenerated.html"
     regenerated_path.write_text(
-        f'<article class="paper-preview" data-reader-version="{paper_preview_service.PREVIEW_READER_VERSION}"><h2>寮曡█</h2><p>鍙鍐呭</p></article>',
+        f'<article class="paper-preview" data-reader-version="{paper_preview_service.PREVIEW_READER_VERSION}"><h2>引言</h2><p>可读内容</p></article>',
         encoding="utf-8",
     )
 
     result = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
 
     assert result["asset"]["id"] == "asset-preview-new"
-    assert "鍙鍐呭" in result["html_content"]
+    assert "可读内容" in result["html_content"]
 
 
 def test_get_paper_preview_recovers_from_task_output_when_preview_asset_missing(monkeypatch, tmp_path):
@@ -526,7 +526,7 @@ def test_get_paper_preview_recovers_from_outputs_dir_when_task_runtime_missing(m
     output_dir = base_dir / "data" / "outputs" / "task-translate" / "zh_demo"
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "sections_map.json").write_text(
-        '[{"section":"1","trans_content":"\\\\section{寮曡█}\\n\\n杩欐槸鍙槄璇绘鏂囥€?}]',
+        '[{"section":"1","trans_content":"\\\\section{引言}\\n\\n这是可阅读正文�?}]',
         encoding="utf-8",
     )
 
@@ -619,7 +619,7 @@ def test_detail_recovers_translated_abstract_when_task_output_path_is_stale(monk
     output_dir = base_dir / "data" / "outputs" / "task-translate" / "zh_paper"
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "main.tex").write_text(
-        "\\begin{abstract}杩欐槸鏂扮殑涓枃鎽樿銆俓\end{abstract}\\section{寮曡█}姝ｆ枃",
+        "\\begin{abstract}这是新的中文摘要。\\end{abstract}\\section{引言}正文",
         encoding="utf-8",
     )
 
@@ -689,7 +689,7 @@ def test_detail_recovers_translated_abstract_from_envs_map_when_main_tex_missing
     output_dir = base_dir / "data" / "outputs" / "task-translate" / "zh_paper"
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "envs_map.json").write_text(
-        '[{"env_name":"abstract","trans_content":"\\\\begin{abstract}杩欐槸 envs_map 涓殑涓枃鎽樿銆俓\\\end{abstract}"}]',
+        '[{"env_name":"abstract","trans_content":"\\\\begin{abstract}这是 envs_map 中的中文摘要。\\\\end{abstract}"}]',
         encoding="utf-8",
     )
 
@@ -758,7 +758,7 @@ def test_detail_recovers_translated_abstract_from_completed_output(monkeypatch, 
     output_dir = base_dir / "data" / "outputs" / "task-translate" / "zh_paper"
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "main.tex").write_text(
-        "\\begin{abstract}杩欐槸涓枃鎽樿銆俓\end{abstract}\\section{寮曡█}姝ｆ枃",
+        "\\begin{abstract}这是中文摘要。\\end{abstract}\\section{引言}正文",
         encoding="utf-8",
     )
 

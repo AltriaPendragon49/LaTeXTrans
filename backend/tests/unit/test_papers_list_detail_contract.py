@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from datetime import datetime
 import os
 
@@ -126,7 +126,7 @@ def test_list_papers_returns_empty_when_local_repository_is_unavailable(monkeypa
         },
     ]
 
-    supabase_calls = {"count": 0}
+    legacy_client_calls = {"count": 0}
 
     class _UnavailableCommunityRepository:
         def list_public_papers(self):
@@ -136,18 +136,13 @@ def test_list_papers_returns_empty_when_local_repository_is_unavailable(monkeypa
     monkeypatch.setattr(paper_service, "_load_baseline_seed_rows", lambda: list(papers))
     monkeypatch.setattr(
         paper_service,
-        "get_supabase_admin_client",
-        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
-    )
-    monkeypatch.setattr(
-        paper_service,
         "_fetch_asset_maps_for_papers",
         lambda _paper_ids: asyncio.sleep(0, result={}),
     )
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
-    assert supabase_calls["count"] == 0
+    assert legacy_client_calls["count"] == 0
     assert result["source_mode"] == "database"
     assert result["total"] == 0
     assert result["items"] == []
@@ -608,3 +603,6 @@ def test_reader_payload_exposes_anchor_metadata_for_source_and_translated_html()
     assert any(item.get("anchor_id") == "source-overview" for item in source_anchors)
     assert any(item.get("anchor_id") == "section-intro" for item in translated_anchors)
     assert any(item.get("anchor_id") == "section-intro-block-0" for item in translated_anchors)
+
+
+

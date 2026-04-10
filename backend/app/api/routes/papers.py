@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from backend.app.api.routes import download as download_route
 from backend.app.api.routes.translate import TranslateRequest
 from backend.app.core.auth import optional_current_user, require_current_user
 from backend.app.policies import authorize
@@ -313,6 +314,48 @@ async def preview_paper(paper_id: str, response: Response):
     payload = await paper_service.get_paper_preview(paper_id=paper_id)
     response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
     return payload
+
+
+@router.get("/{paper_id}/translated-pdf")
+async def preview_translated_paper_pdf(paper_id: str):
+    payload = await paper_service.resolve_paper_translated_pdf_preview(paper_id=paper_id)
+    asset = payload["asset"]
+    filename = asset.get("file_name") or f"{paper_id}.pdf"
+    return FileResponse(
+        path=payload["file_path"],
+        media_type=asset.get("mime_type") or "application/pdf",
+        headers={
+            "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+            "Content-Disposition": f"inline; filename=\"{filename}\"",
+        },
+    )
+
+
+@router.get("/{paper_id}/source-pdf")
+async def preview_source_paper_pdf(paper_id: str, request: Request):
+    payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
+
+    arxiv_id = str(payload.get("arxiv_id") or "").strip()
+    if arxiv_id:
+        return await download_route._proxy_arxiv_pdf(
+            arxiv_id,
+            f"source_{arxiv_id}.pdf",
+            request=request,
+        )
+
+    legacy_task_id = str(payload.get("legacy_task_id") or "").strip()
+    if legacy_task_id:
+        return await download_route.preview_source_pdf(legacy_task_id, request)
+
+    filename = str(payload.get("filename") or f"{paper_id}.pdf")
+    return FileResponse(
+        path=payload["file_path"],
+        media_type="application/pdf",
+        headers={
+            "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+            "Content-Disposition": f"inline; filename=\"{filename}\"",
+        },
+    )
 
 
 @router.post("/{paper_id}/download-session", response_model=PaperDownloadSessionResponse)

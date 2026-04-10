@@ -1,4 +1,4 @@
-import sqlite3
+﻿import sqlite3
 from pathlib import Path
 from uuid import uuid4
 
@@ -183,7 +183,7 @@ def test_task_manager_terminal_email_notification_uses_local_auth_repository(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sent_payloads: list[tuple[str, str, str]] = []
-    supabase_calls = {"count": 0}
+    legacy_client_calls = {"count": 0}
 
     class _FakeTranslationTaskRepository:
         def upsert_task(self, task_id: str, payload: dict):
@@ -217,10 +217,6 @@ def test_task_manager_terminal_email_notification_uses_local_auth_repository(
         raising=False,
     )
     monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
-    )
-    monkeypatch.setattr(
         "backend.app.services.email_service.get_email_service",
         lambda: _FakeEmailService(),
     )
@@ -245,4 +241,7 @@ def test_task_manager_terminal_email_notification_uses_local_auth_repository(
     ) is True
 
     assert sent_payloads == [("alice@example.com", task_id, "completed")]
-    assert supabase_calls["count"] == 0
+    assert legacy_client_calls["count"] == 0
+
+
+

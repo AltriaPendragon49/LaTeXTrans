@@ -6,7 +6,7 @@ import i18n from '@/i18n'
 import type { TranslateRequest } from '@/lib/api'
 import type { TranslationConfig, AdvancedConfig, LatexValidation } from '@/types/config'
 import { DEFAULT_CONFIG } from '@/types/config'
-import { getAccessToken, isLocalAuthConfigured } from '@/lib/supabase'
+import { getAccessToken, isLocalAuthConfigured } from '@/lib/local-auth'
 
 type TaskDetailParams = Record<string, string | number | boolean | null> | null
 

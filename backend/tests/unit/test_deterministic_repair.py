@@ -1,4 +1,4 @@
-ï»¿"""
+"""
 Phase 3 deterministic repair and pipeline tests.
 """
 
@@ -260,7 +260,7 @@ class TestTranslatorPhase13Completion:
         long_english = ("This section remains in English and should be translated properly. " * 20).strip()
         section = {"section": "11_2", "content": long_english, "previous_context": "ctx"}
 
-        responses = [long_english, "è¿™æ˜¯ä¿®æ­£åçš„ä¸­æ–‡è¯‘æ–‡ã€‚"]
+        responses = [long_english, "ÕâÊÇĞŞÕıºóµÄÖĞÎÄÒëÎÄ¡£"]
 
         async def fake_request(system_prompt, text, fail_part, type, session, previous_context=None):
             return responses.pop(0)
@@ -273,7 +273,7 @@ class TestTranslatorPhase13Completion:
         assert result["translation_status"] == agent.STATUS_TRANSLATED_AFTER_NOOP_RETRY
         assert result["translation_retry_count"] == 1
         assert "11_2" in agent.noop_sections
-        assert result["trans_content"] == "è¿™æ˜¯ä¿®æ­£åçš„ä¸­æ–‡è¯‘æ–‡ã€‚"
+        assert result["trans_content"] == "ÕâÊÇĞŞÕıºóµÄÖĞÎÄÒëÎÄ¡£"
 
     def test_llm_payload_pipeline_masks_math_and_env(self):
         agent = self._make_agent(trans_mode=0)
@@ -486,7 +486,7 @@ class TestOversizeSourcePassThrough:
 class TestTokenEstimatorDeterminism:
 
     def test_estimate_tokens_v1_repeatable(self):
-        text = "Deterministic ãƒ†ã‚¹ãƒˆ with UTF-8 payload " * 20
+        text = "Deterministic ¥Æ¥¹¥È with UTF-8 payload " * 20
         values = [estimate_tokens_v1(text) for _ in range(5)]
         assert len(set(values)) == 1
 

@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Code, Download, LogIn, RotateCw } from "lu
 
 import { API_BASE_URL } from "@/api-base"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LogViewer } from "@/components/log-viewer"
 import { useAuth } from "@/contexts/AuthContext"
 import { getTaskCopy } from "@/i18n/task-copy"
@@ -98,9 +98,20 @@ export default function ProcessingPage() {
   const activeTaskId = effectiveTaskId
   const currentDetail = copy.detailLabel || copy.stageLabel || copy.statusLabel
   const failureText = copy.failureLabel || copy.statusLabel
+  const summaryStepCount = canPreview ? steps.length : Math.min(currentStepIndex + 1, steps.length)
+  const summaryTone = canPreview
+    ? "border-emerald-500/20 bg-emerald-500/10"
+    : isFailed
+      ? "border-red-500/20 bg-red-500/10"
+      : "border-indigo-500/20 bg-indigo-500/10"
+  const summaryAccent = canPreview
+    ? "text-emerald-600"
+    : isFailed
+      ? "text-red-600"
+      : "text-indigo-600"
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto flex w-full max-w-[1380px] flex-1 flex-col gap-6 px-6 py-8 xl:px-10">
       {isGuest && (
         <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
@@ -128,18 +139,18 @@ export default function ProcessingPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-4 rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/20 px-6 py-6 shadow-[0_18px_45px_rgba(15,23,42,0.06)] lg:flex-row lg:items-center lg:justify-between">
+        <div className="max-w-2xl">
           <h1 className="text-3xl font-bold tracking-tight">
             {canPreview ? t("task.result.completed") : t("task.result.inProgress")}
           </h1>
-          <p className="text-muted-foreground">
+          <p className="mt-2 text-muted-foreground">
             {t("processing.track_translation_task_status_in_real_time")}
           </p>
         </div>
 
         {canPreview ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             <Button
               variant="outline"
               onClick={() => window.open(`${API_BASE_URL}/api/download/${activeTaskId}/source`, "_blank")}
@@ -165,14 +176,18 @@ export default function ProcessingPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="col-span-1 space-y-6">
-          <Card>
-            <CardHeader>
+      <div
+        data-testid="processing-workbench"
+        className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[minmax(380px,0.95fr)_minmax(0,1.25fr)]"
+      >
+        <div data-testid="processing-summary-panel" className="grid content-start gap-6">
+          <Card className="overflow-hidden border-border/60 bg-card/95 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+            <CardHeader className="gap-2 border-b border-border/60 pb-5">
               <CardTitle>{t("processing.task_status")}</CardTitle>
+              <CardDescription>{currentDetail}</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="relative ml-3 space-y-8 border-l-2 border-slate-200 py-2 pl-6 dark:border-slate-800">
+            <CardContent className="px-6 pb-6 pt-5">
+              <div className="relative ml-3 space-y-7 border-l-2 border-slate-200 py-1 pl-6 dark:border-slate-800">
                 {steps.map((step, index) => {
                   const isActive = !canPreview && !isFailed && index === currentStepIndex
                   const isFailedStep = isFailed && index === currentStepIndex
@@ -225,26 +240,58 @@ export default function ProcessingPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="flex min-h-[200px] items-center justify-center pt-6">
+          <Card
+            className={`overflow-hidden border-border/60 shadow-[0_18px_45px_rgba(15,23,42,0.06)] ${summaryTone}`}
+          >
+            <CardContent className="flex min-h-[220px] flex-col justify-between p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="rounded-2xl border border-background/70 bg-background/80 p-4 shadow-sm">
+                  {canPreview ? (
+                    <CheckCircle2 className="h-14 w-14 text-emerald-500" />
+                  ) : isFailed ? (
+                    <AlertTriangle className="h-14 w-14 text-red-500" />
+                  ) : (
+                    <RotateCw className="h-14 w-14 animate-spin text-indigo-500" />
+                  )}
+                </div>
+                <div className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-sm font-semibold text-foreground shadow-sm">
+                  {summaryStepCount}/{steps.length}
+                </div>
+              </div>
+
               {canPreview ? (
-                <div className="space-y-2 text-center">
-                  <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-500" />
-                  <p className="font-medium text-emerald-600">{t("task.result.completed")}</p>
+                <div className="space-y-3">
+                  <p className={`text-sm font-medium ${summaryAccent}`}>{copy.statusLabel}</p>
+                  <div className="space-y-1">
+                    <p className="text-2xl font-semibold tracking-tight text-foreground">
+                      {t("task.result.completed")}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{currentDetail}</p>
+                  </div>
                 </div>
               ) : isFailed ? (
-                <div className="space-y-2 text-center">
-                  <AlertTriangle className="mx-auto h-16 w-16 text-red-500" />
-                  <p className="font-medium text-red-600">{t("task.result.failed")}</p>
-                  <p className="text-xs text-slate-500">{failureText}</p>
+                <div className="space-y-3">
+                  <p className={`text-sm font-medium ${summaryAccent}`}>{copy.statusLabel}</p>
+                  <div className="space-y-1">
+                    <p className="text-2xl font-semibold tracking-tight text-foreground">
+                      {t("task.result.failed")}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{failureText}</p>
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-2 text-center">
-                  <RotateCw className="mx-auto h-16 w-16 animate-spin text-indigo-500" />
-                  <p className="text-sm font-medium text-foreground">{currentDetail}</p>
-                  <p className="text-xs capitalize text-slate-400">{copy.stageLabel || copy.statusLabel}</p>
+                <div className="space-y-3">
+                  <p className={`text-sm font-medium ${summaryAccent}`}>
+                    {copy.stageLabel || copy.statusLabel}
+                  </p>
+                  <div className="space-y-1">
+                    <p className="text-2xl font-semibold tracking-tight text-foreground">
+                      {currentDetail}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{copy.statusLabel}</p>
+                  </div>
                   {copy.isRateLimited && (
-                    <div className="mt-3 flex animate-pulse items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+                    <div className="flex animate-pulse items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
                       <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
                       <p className="text-left text-xs text-amber-500 dark:text-amber-400">
                         {copy.detailLabel}
@@ -257,18 +304,24 @@ export default function ProcessingPage() {
           </Card>
         </div>
 
-        <div className="lg:col-span-2">
-          <Card className="flex h-full flex-col">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{t("processing.live_logs")}</CardTitle>
-              <div className="flex gap-2">
+        <div data-testid="processing-log-panel" className="min-w-0">
+          <Card className="flex h-full min-h-[440px] flex-col overflow-hidden border-border/60 bg-card/95 shadow-[0_24px_55px_rgba(15,23,42,0.08)] lg:min-h-[620px]">
+            <CardHeader className="flex flex-col gap-3 border-b border-border/60 pb-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-2">
+                <CardTitle>{t("processing.live_logs")}</CardTitle>
+                <CardDescription>{currentDetail}</CardDescription>
+              </div>
+              <div className="flex gap-2 self-start sm:self-auto">
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                   <Code className="h-4 w-4" />
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="flex-1">
-              <LogViewer logs={logs} />
+            <CardContent className="flex flex-1 px-6 pb-6 pt-5">
+              <LogViewer
+                logs={logs}
+                className="h-full min-h-[360px] w-full rounded-2xl border-slate-900/80 bg-slate-950/95 px-4 py-4 text-[13px] leading-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] lg:min-h-[520px]"
+              />
             </CardContent>
           </Card>
         </div>

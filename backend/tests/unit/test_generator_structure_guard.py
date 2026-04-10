@@ -439,7 +439,7 @@ def test_post_compile_fallback_preserves_document_root_chunks(tmp_path):
             {
                 "section": "-1_chunk_1",
                 "content": "\\documentclass{article}\n\\usepackage{times}\n",
-                "trans_content": "根据要求，我会保留 LaTeX 结构并输出翻译结果。\n\\title{坏掉的标题}\n",
+                "trans_content": "根据要求，我会保�?LaTeX 结构并输出翻译结果。\n\\title{坏掉的标题}\n",
                 "translation_status": "structural_fallback_pending_compile",
                 "chunk_role": "document_root",
             },

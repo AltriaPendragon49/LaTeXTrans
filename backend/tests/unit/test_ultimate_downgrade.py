@@ -1,6 +1,6 @@
 """
 test_ultimate_downgrade.py
-eliminate-silent-fallback — Unit tests for ultimate_downgrade_segment
+eliminate-silent-fallback �?Unit tests for ultimate_downgrade_segment
 
 Tests:
   1. Document-boundary isolation: \begin{document} / \end{document} must be stripped.
@@ -57,7 +57,7 @@ class TestDocumentBoundaryIsolation:
         assert "item" in result
 
     def test_segment_doc_boundary_only_returns_comment(self):
-        """Chunk containing only document-boundary commands → safe comment."""
+        """Chunk containing only document-boundary commands �?safe comment."""
         chunk = r"\begin{document}\end{document}"
         result = ultimate_downgrade_segment(chunk)
         assert r"\begin{document}" not in result
@@ -100,17 +100,17 @@ class TestUltimateDowngradeBasic:
 
     def test_section_downgrade_preserves_section_wrapper_and_target_language_title(self):
         original = r"\subsection{Setup}" + "\n\n" + "For the purposes of this study, we consider ..."
-        translated = r"\subsection{实验设置}" + "\n\n" + "在本研究中，我们考虑太平洋上的一个矩形区域。"
+        translated = r"\subsection{实验设置}" + "\n\n" + "在本研究中，我们考虑太平洋上的一个矩形区域�?
 
         result = ultimate_downgrade_section_segment(original, translated)
 
         assert r"\subsection{实验设置}" in result
         assert "For the purposes of this study" not in result
-        assert "在本研究中，我们考虑太平洋上的一个矩形区域。" in result
+        assert "在本研究中，我们考虑太平洋上的一个矩形区域�? in result
 
     def test_section_downgrade_preserves_structure_shells(self):
         original = r"\section{Results}" + "\n\n" + "We begin by examining the left panel."
-        translated = r"\section{结果}" + "\n\n" + "我们首先考察左侧面板。"
+        translated = r"\section{结果}" + "\n\n" + "我们首先考察左侧面板�?
 
         result = ultimate_downgrade_section_segment(
             original,
@@ -139,14 +139,14 @@ class TestUltimateDowngradeBasic:
         translated = (
             r"\section{重要性声明}"
             + "\n\n"
-            + "中文前言。"
+            + "中文前言�?
             + " <PLACEHOLDER_ENV_3> "
             + r"\end{snugshade*}"
             + " "
             + r"\newpage"
             + " "
             + r"\noindent \lettrine[findent=2pt]{\fbox{\textbf{T}}}{ }"
-            + " 中文尾段。"
+            + " 中文尾段�?
         )
 
         result = ultimate_downgrade_section_segment(original, translated)
@@ -189,7 +189,7 @@ class TestUltimateDowngradeBasic:
         translated = (
             r"\section{引言}"
             + "\n\n"
-            + r"受 GPT-2~\citep{radford2019} 启发，我们使用 $d_{model}$。"
+            + r"�?GPT-2~\citep{radford2019} 启发，我们使�?$d_{model}$�?
             + "\n\n"
             + r"\footnote{见~\autoref{fig:test}。}"
         )
@@ -205,7 +205,7 @@ class TestUltimateDowngradeBasic:
 
     def test_section_downgrade_preserves_display_math_blocks(self):
         original = r"\section{Method}" + "\n\n" + r"Original $$\phi(A, B)=1$$ text."
-        translated = r"\section{方法}" + "\n\n" + r"我们定义 $$\phi(A, B)=1$$ 作为目标。"
+        translated = r"\section{方法}" + "\n\n" + r"我们定义 $$\phi(A, B)=1$$ 作为目标�?
 
         result = ultimate_downgrade_section_segment(original, translated)
 

@@ -2,12 +2,12 @@
 test_step4_diagnostic_node.py
 Step 4 TDD（RED 阶段）：Phase 4b CompilationDiagnosticNode 守卫测试
 
-6 个测试，分别验证：
-  1. feature flag 默认禁用时路由不激活诊断节点
-  2. 启用时 DiagnosticReport 符合 schema
-  3. 启用时无任何 .tex 文件被修改
-  4. 启用时 audit.jsonl 包含 node_enter / node_exit 事件
-  5. 所有 DiagnosticSuggestion.action_type 只允许白名单值
+6 个测试，分别验证�?
+  1. feature flag 默认禁用时路由不激活诊断节�?
+  2. 启用�?DiagnosticReport 符合 schema
+  3. 启用时无任何 .tex 文件被修�?
+  4. 启用�?audit.jsonl 包含 node_enter / node_exit 事件
+  5. 所�?DiagnosticSuggestion.action_type 只允许白名单�?
   6. build_pipeline_graph() 默认不含 compilation_diagnostic 节点
 """
 import asyncio
@@ -53,7 +53,7 @@ def enabled_config(base_config):
 
 
 def _fake_agents(tmp_path):
-    """返回一套正常 fake agent，编译结果为 failed_compilation（用于测试诊断节点激活）。"""
+    """返回一套正�?fake agent，编译结果为 failed_compilation（用于测试诊断节点激活）�?""
     class _FakeParser:
         def __init__(self, *a, **kw): pass
         async def execute(self): pass
@@ -76,7 +76,7 @@ def _fake_agents(tmp_path):
         def execute(self, *a, **kw): return []
 
     class _FailingGenerator:
-        """返回 failed_compilation 状态，触发诊断节点路由。"""
+        """返回 failed_compilation 状态，触发诊断节点路由�?""
         def __init__(self, *a, **kw): pass
         def execute(self):
             return {
@@ -89,7 +89,7 @@ def _fake_agents(tmp_path):
             }
 
     class _SuccessGenerator:
-        """返回 completed 状态，不触发诊断路由。"""
+        """返回 completed 状态，不触发诊断路由�?""
         def __init__(self, *a, **kw): pass
         def execute(self):
             return {
@@ -127,17 +127,17 @@ def _run_pipeline(monkeypatch, tmp_path, config, use_failing_generator=False):
 
 
 # ---------------------------------------------------------------------------
-# Test 1: feature flag 显式禁用时，诊断节点不激活
+# Test 1: feature flag 显式禁用时，诊断节点不激�?
 # ---------------------------------------------------------------------------
 
 
 def test_diagnostic_disabled_when_explicitly_disabled(monkeypatch, tmp_path, base_config):
-    """feature flag 显式关闭时，compilation_diagnostic 节点不被触发，
-    成功路径下 audit.jsonl 中不含任何 compilation_diagnostic 事件。"""
+    """feature flag 显式关闭时，compilation_diagnostic 节点不被触发�?
+    成功路径�?audit.jsonl 中不含任�?compilation_diagnostic 事件�?""
     result, trans_dir = _run_pipeline(monkeypatch, tmp_path, base_config, use_failing_generator=False)
 
     audit_path = trans_dir / "audit.jsonl"
-    assert audit_path.exists(), "audit.jsonl 不存在"
+    assert audit_path.exists(), "audit.jsonl 不存�?
     events = [json.loads(l)["event"] for l in audit_path.read_text().strip().splitlines()]
     diag_events = [e for e in events if "compilation_diagnostic" in e]
     assert diag_events == [], f"feature flag 关闭时不应有诊断事件，实际：{diag_events}"
@@ -149,8 +149,8 @@ def test_diagnostic_disabled_when_explicitly_disabled(monkeypatch, tmp_path, bas
 
 
 def test_diagnostic_report_schema_when_enabled(monkeypatch, tmp_path, enabled_config):
-    """启用 use_compilation_diagnostics=True 且编译失败时，
-    final_result 中包含有效格式的 diagnostic_report。"""
+    """启用 use_compilation_diagnostics=True 且编译失败时�?
+    final_result 中包含有效格式的 diagnostic_report�?""
     from backend.app.services.agents.compilation_diagnostic_node import (
         CompilationDiagnosticNode,
         DiagnosticReport,
@@ -174,24 +174,24 @@ def test_diagnostic_report_schema_when_enabled(monkeypatch, tmp_path, enabled_co
 
     result, trans_dir = _run_pipeline(monkeypatch, tmp_path, enabled_config, use_failing_generator=True)
 
-    assert "diagnostic_report" in result, "启用诊断时 final_result 中应含 diagnostic_report 字段"
+    assert "diagnostic_report" in result, "启用诊断�?final_result 中应�?diagnostic_report 字段"
     report = result["diagnostic_report"]
     assert isinstance(report, (dict, DiagnosticReport)), "diagnostic_report 类型不符"
 
 
 # ---------------------------------------------------------------------------
-# Test 3: 启用时无任何 .tex 文件被修改
+# Test 3: 启用时无任何 .tex 文件被修�?
 # ---------------------------------------------------------------------------
 
 
 def test_diagnostic_node_no_tex_mutation(monkeypatch, tmp_path, enabled_config):
-    """诊断节点执行后，project dir 中所有 .tex 文件内容与执行前完全一致。"""
+    """诊断节点执行后，project dir 中所�?.tex 文件内容与执行前完全一致�?""
     from backend.app.services.agents.compilation_diagnostic_node import (
         CompilationDiagnosticNode,
         DiagnosticReport,
     )
 
-    # 在 project dir 中写入一个 fake .tex 文件
+    # �?project dir 中写入一�?fake .tex 文件
     project_dir = tmp_path / "proj"
     project_dir.mkdir(exist_ok=True)
     tex_file = project_dir / "main.tex"
@@ -233,18 +233,18 @@ def test_diagnostic_node_no_tex_mutation(monkeypatch, tmp_path, enabled_config):
     # 验证 .tex 文件未被修改
     after_content = tex_file.read_text(encoding="utf-8")
     assert after_content == original_content, (
-        f"诊断节点修改了 .tex 文件！\n---Before---\n{original_content}\n---After---\n{after_content}"
+        f"诊断节点修改�?.tex 文件！\n---Before---\n{original_content}\n---After---\n{after_content}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 4: 启用时 audit.jsonl 包含诊断节点的 enter/exit 事件
+# Test 4: 启用�?audit.jsonl 包含诊断节点�?enter/exit 事件
 # ---------------------------------------------------------------------------
 
 
 def test_diagnostic_node_audit_logged(monkeypatch, tmp_path, enabled_config):
-    """诊断节点启用运行后，audit.jsonl 中必须包含
-    node_enter:compilation_diagnostic 和 node_exit:compilation_diagnostic。"""
+    """诊断节点启用运行后，audit.jsonl 中必须包�?
+    node_enter:compilation_diagnostic �?node_exit:compilation_diagnostic�?""
     from backend.app.services.agents.compilation_diagnostic_node import (
         CompilationDiagnosticNode,
         DiagnosticReport,
@@ -268,29 +268,29 @@ def test_diagnostic_node_audit_logged(monkeypatch, tmp_path, enabled_config):
     result, trans_dir = _run_pipeline(monkeypatch, tmp_path, enabled_config, use_failing_generator=True)
 
     audit_path = trans_dir / "audit.jsonl"
-    assert audit_path.exists(), "audit.jsonl 不存在"
+    assert audit_path.exists(), "audit.jsonl 不存�?
     events = [json.loads(l)["event"] for l in audit_path.read_text().strip().splitlines()]
     assert "node_enter:compilation_diagnostic" in events, (
-        f"缺少 node_enter:compilation_diagnostic，实际 events={events}"
+        f"缺少 node_enter:compilation_diagnostic，实�?events={events}"
     )
     assert "node_exit:compilation_diagnostic" in events, (
-        f"缺少 node_exit:compilation_diagnostic，实际 events={events}"
+        f"缺少 node_exit:compilation_diagnostic，实�?events={events}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 5: DiagnosticSuggestion.action_type 只允许白名单值
+# Test 5: DiagnosticSuggestion.action_type 只允许白名单�?
 # ---------------------------------------------------------------------------
 
 
 def test_diagnostic_suggestions_only_whitelisted_actions(tmp_path):
-    """DiagnosticSuggestion 的 action_type 必须是白名单枚举值；
-    传入非法值必须在 schema 层面被拒绝（ValidationError）。"""
+    """DiagnosticSuggestion �?action_type 必须是白名单枚举值；
+    传入非法值必须在 schema 层面被拒绝（ValidationError）�?""
     from pydantic import ValidationError
 
     from backend.app.services.agents.compilation_diagnostic_node import DiagnosticSuggestion
 
-    # 合法值应被接受
+    # 合法值应被接�?
     valid_suggestion = DiagnosticSuggestion(
         action_type="comment_package",
         target="axessibility",
@@ -318,22 +318,22 @@ def test_diagnostic_suggestions_only_whitelisted_actions(tmp_path):
 
 def test_diagnostic_node_in_graph_by_default():
     """调用 build_pipeline_graph()（无 config 参数，默认行为）
-    编译出的图中默认应包含名为 compilation_diagnostic 的节点（基于用户请求调整）。"""
+    编译出的图中默认应包含名�?compilation_diagnostic 的节点（基于用户请求调整）�?""
     from backend.app.services.agents.langgraph_orchestrator import build_pipeline_graph
 
     graph = build_pipeline_graph()
-    # LangGraph 编译图可通过 .nodes 或 .graph.nodes 访问节点名
+    # LangGraph 编译图可通过 .nodes �?.graph.nodes 访问节点�?
     node_names = set(graph.graph.nodes) if hasattr(graph, "graph") else set(getattr(graph, "nodes", {}).keys())
     assert "compilation_diagnostic" in node_names, (
-        f"默认图应当包含 compilation_diagnostic 节点，实际节点：{node_names}"
+        f"默认图应当包�?compilation_diagnostic 节点，实际节点：{node_names}"
     )
 
 def test_diagnostic_node_not_in_graph_when_disabled():
-    """显式传入配置关闭诊断节点时图中不再包含"""
+    """显式传入配置关闭诊断节点时图中不再包�?""
     from backend.app.services.agents.langgraph_orchestrator import build_pipeline_graph
 
     graph = build_pipeline_graph(enable_diagnostics=False)
     node_names = set(graph.graph.nodes) if hasattr(graph, "graph") else set(getattr(graph, "nodes", {}).keys())
     assert "compilation_diagnostic" not in node_names, (
-        f"显式关闭时不应包含 compilation_diagnostic 节点，实际节点：{node_names}"
+        f"显式关闭时不应包�?compilation_diagnostic 节点，实际节点：{node_names}"
     )

@@ -127,7 +127,7 @@ def test_post_compile_fallback_reconstruction_keeps_target_language_section_body
                 "content": r"\subsection{Setup}" + "\n\n"
                 + "For the purposes of this study, we consider a rectangular domain.",
                 "trans_content": r"\subsection{实验设置}" + "\n\n"
-                + "在本研究中，我们考虑一个矩形海域。",
+                + "在本研究中，我们考虑一个矩形海域�?,
                 "translation_status": "structural_fallback_pending_compile",
             },
             {
@@ -135,7 +135,7 @@ def test_post_compile_fallback_reconstruction_keeps_target_language_section_body
                 "content": r"\section{Results}" + "\n\n"
                 + "We begin by examining the left panel of Figure 1.",
                 "trans_content": r"\section{结果}" + "\n\n"
-                + "我们首先考察图1的左侧面板。",
+                + "我们首先考察�?的左侧面板�?,
                 "translation_status": "structural_fallback_pending_compile",
             },
             {
@@ -143,7 +143,7 @@ def test_post_compile_fallback_reconstruction_keeps_target_language_section_body
                 "content": r"\section{Discussion}" + "\n\n"
                 + "The Reef-building larvae show substantial variation.",
                 "trans_content": r"\section{讨论}" + "\n\n"
-                + "造礁珊瑚幼虫表现出显著的差异。",
+                + "造礁珊瑚幼虫表现出显著的差异�?,
                 "translation_status": "structural_fallback_pending_compile",
             },
         ],

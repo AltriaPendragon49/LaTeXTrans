@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -9,7 +9,7 @@ import pytest
 
 from backend.app.core.config import get_settings
 from backend.app.services import paper_service
-from backend.scripts.import_supabase_to_mysql import run_import
+from backend.scripts.import_source_to_mysql import run_import
 
 
 ENTITIES = (
@@ -300,7 +300,7 @@ def test_imported_paper_rows_are_visible_through_service_read_paths(
     asset_file.write_bytes(b"%PDF-1.4")
 
     payload = _payload(str(asset_file))
-    payload["papers"][0]["abstract_translated"] = "这是导入后的中文摘要"
+    payload["papers"][0]["abstract_translated"] = "杩欐槸瀵煎叆鍚庣殑涓枃鎽樿"
     payload["papers"][0]["community_status"] = "official"
     payload["papers"][0]["trans_status"] = "completed"
 
@@ -340,3 +340,5 @@ def test_imported_paper_rows_are_visible_through_service_read_paths(
     assert detail["paper"]["id"] == "paper_1"
     assert detail["paper"]["latest_asset"]["id"] == "asset_1"
     assert detail["reader"]["translated"]["kind"] == "translated_pdf"
+
+

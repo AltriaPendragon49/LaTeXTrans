@@ -7,8 +7,8 @@ import {
     isLocalAuthConfigured,
     signInWithPassword,
     signOutCurrentSession,
-} from '@/lib/supabase'
-import type { LocalAuthError, LocalAuthSession, LocalAuthUser } from '@/lib/supabase'
+} from '@/lib/local-auth'
+import type { LocalAuthError, LocalAuthSession, LocalAuthUser } from '@/lib/local-auth'
 import { toast } from 'sonner'
 import { useStore } from '@/store/useStore'
 

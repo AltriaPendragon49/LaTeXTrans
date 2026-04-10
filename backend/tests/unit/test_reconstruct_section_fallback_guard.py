@@ -11,9 +11,9 @@ from backend.app.services.latex.reconstruct import LatexConstructor
 def test_merge_sections_does_not_revert_fallback_section_to_source():
     original = r"\section{Discussion}" + "\n\n" + "The Reef-building larvae show substantial variation."
     translated = (
-        "% [LaTeX-Trans: ultimate downgrade applied — chunk: 4]\n"
+        "% [LaTeX-Trans: ultimate downgrade applied �?chunk: 4]\n"
         "讨论\n\n"
-        "造礁珊瑚幼虫表现出显著的差异。"
+        "造礁珊瑚幼虫表现出显著的差异�?
     )
     sections = [
         {
@@ -34,5 +34,5 @@ def test_merge_sections_does_not_revert_fallback_section_to_source():
     )._merge_sections()
 
     assert r"\section{讨论}" in merged
-    assert "造礁珊瑚幼虫表现出显著的差异。" in merged
+    assert "造礁珊瑚幼虫表现出显著的差异�? in merged
     assert "The Reef-building larvae show substantial variation." not in merged

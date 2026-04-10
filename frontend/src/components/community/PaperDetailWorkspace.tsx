@@ -259,22 +259,16 @@ export function PaperDetailWorkspace({
     (preferredMode === "translated" || preferredMode === "translated_pdf") && translatedResource?.kind === "translated_pdf"
       ? translatedResource
       : null
-  const translatedPdfFallbackUrl = translatedPdfPreviewUrl ?? translatedPdfFallback?.url ?? (
-    paper.community_selected_task_id && paper.trans_status === "completed"
-      ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/pdf`
-      : null
-  )
-  const sourceReaderUsesExternalArxivHtml = reader?.source?.kind === "external_arxiv_html" || (
-    typeof reader?.source?.url === "string" && reader.source.url.includes("arxiv.org/html/")
+  const hasTranslatedPdf =
+    paper.trans_status === "completed" &&
+    Boolean(paper.assets?.translated_pdf || translatedPdfFallback || paper.community_selected_task_id)
+  const translatedPdfFallbackUrl = translatedPdfPreviewUrl ?? (
+    hasTranslatedPdf ? `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf` : null
   )
   const noteAnnotations = [...annotations].reverse()
   const sourceDocumentUrl =
     (preferredMode === "source")
-      ? (paper.community_selected_task_id
-        ? `${API_BASE_URL}/api/preview/${paper.community_selected_task_id}/source-pdf`
-        : (sourceReaderUsesExternalArxivHtml
-          ? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null)
-          : (reader?.source?.url ?? (paper.arxiv_id ? `https://arxiv.org/pdf/${paper.arxiv_id}.pdf` : null))))
+      ? `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`
       : null
 
 

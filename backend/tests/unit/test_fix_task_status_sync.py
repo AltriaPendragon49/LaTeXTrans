@@ -3,9 +3,9 @@ TDD Tests: fix-task-status-sync
 OpenSpec change: fix-task-status-sync
 
 Covers:
-  Task 1 - Failed task must NOT be deleted from Supabase on interception
-  Task 2 - email_notification flag must be recovered from Supabase after restart
-  Task 4 - SupabaseFlusher shutdown drains terminal states
+  Task 1 - Failed task must NOT be deleted from persistent storage on interception
+  Task 2 - email_notification flag must be recovered from local persistent storage after restart
+  Task 4 - PersistentStateFlusher drain behavior for terminal states
 
 Run with:
     pytest backend/tests/unit/test_fix_task_status_sync.py -v
@@ -25,7 +25,7 @@ os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
 os.environ.setdefault("LLM_MODEL", "gpt-4o")
 
-from backend.app.services.task_manager import TaskManager, SupabaseFlusher
+from backend.app.services.task_manager import PersistentStateFlusher, TaskManager
 
 
 # ---------------------------------------------------------------------------
@@ -33,10 +33,6 @@ from backend.app.services.task_manager import TaskManager, SupabaseFlusher
 # ---------------------------------------------------------------------------
 
 def _make_tm(monkeypatch) -> TaskManager:
-    monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: None,
-    )
     return TaskManager()
 
 
@@ -74,15 +70,15 @@ def _seed_failed_task(tm: TaskManager, task_id: str, output_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task 1: Failed task must NOT be deleted from Supabase
+# Task 1: Failed task must NOT be deleted from persistent storage
 # ---------------------------------------------------------------------------
 
-def test_intercept_failed_task_does_not_delete_from_supabase(monkeypatch, tmp_path):
+def test_intercept_failed_task_does_not_delete_from_persistent_store(monkeypatch, tmp_path):
     """
     When _intercept_failed_task is called for a failed task,
-    it must NOT call _delete_failed_task_from_supabase.
+    it must NOT call _delete_failed_task_from_persistent_store.
 
-    Constraint alignment: Supabase is the sole authority for terminal states.
+    Constraint alignment: local persistent storage is the authority for terminal states.
     Deleting the record causes history page to show stale 'Waiting' state.
     """
     delete_called = []
@@ -90,7 +86,7 @@ def test_intercept_failed_task_does_not_delete_from_supabase(monkeypatch, tmp_pa
     tm = _make_tm(monkeypatch)
 
     # Patch delete method to track calls
-    tm._delete_failed_task_from_supabase = lambda task_id: delete_called.append(task_id)
+    tm._delete_failed_task_from_persistent_store = lambda task_id: delete_called.append(task_id)
 
     task_id = "task-no-delete-test"
     output_path = tmp_path / "outputs" / task_id
@@ -112,15 +108,15 @@ def test_intercept_failed_task_does_not_delete_from_supabase(monkeypatch, tmp_pa
     )
 
     assert delete_called == [], (
-        f"_delete_failed_task_from_supabase was called unexpectedly: {delete_called}. "
-        "Failed tasks must remain in Supabase so history page can display them."
+        f"_delete_failed_task_from_persistent_store was called unexpectedly: {delete_called}. "
+        "Failed tasks must remain in local persistent storage so history page can display them."
     )
 
 
 def test_intercept_failed_task_status_preserved_after_interception(monkeypatch, tmp_path):
     """
     After _intercept_failed_task, the task status must remain 'failed'
-    (not wiped or changed). Supabase is the authority; the in-memory
+    (not wiped or changed). Local persistent storage is the authority; the in-memory
     status must not be altered by the interception logic.
     """
     tm = _make_tm(monkeypatch)
@@ -152,20 +148,15 @@ def test_intercept_failed_task_status_preserved_after_interception(monkeypatch, 
 @pytest.mark.parametrize("fail_status", ["failed", "failed_compilation", "structure_invalid"])
 def test_update_task_terminal_status_does_not_invoke_db_delete(monkeypatch, fail_status):
     """
-    update_task() with a terminal fail status must NOT trigger any Supabase delete.
+    update_task() with a terminal fail status must NOT trigger any persistent-store delete.
     The delete call was previously inside _intercept_failed_task.
     """
     delete_calls = []
     flush_calls = []
 
-    monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: None,
-    )
-
     tm = TaskManager()
     tm._persist_task_update = lambda tid, upd: flush_calls.append((tid, upd))
-    tm._delete_failed_task_from_supabase = lambda tid: delete_calls.append(tid)
+    tm._delete_failed_task_from_persistent_store = lambda tid: delete_calls.append(tid)
 
     task_id = tm.create_task(source_type="upload", user_id="user-1")
 
@@ -174,7 +165,7 @@ def test_update_task_terminal_status_does_not_invoke_db_delete(monkeypatch, fail
     tm._flusher.drain(timeout=2.0)
 
     assert delete_calls == [], (
-        f"update_task(status='{fail_status}') must not call _delete_failed_task_from_supabase. "
+        f"update_task(status='{fail_status}') must not call _delete_failed_task_from_persistent_store. "
         f"Got: {delete_calls}"
     )
 
@@ -186,7 +177,7 @@ def test_update_task_terminal_status_does_not_invoke_db_delete(monkeypatch, fail
 def test_recover_from_local_storage_preserves_email_notification_true(monkeypatch):
     """
     When local translation-task storage returns email_notification=True,
-    _recover_from_supabase must include email_notification: True in
+    _recover_from_persistent_store must include email_notification: True in
     the restored task's advanced_config dict.
     """
     monkeypatch.setattr(
@@ -195,9 +186,9 @@ def test_recover_from_local_storage_preserves_email_notification_true(monkeypatc
     )
 
     tm = TaskManager()
-    result = tm._recover_from_supabase("task-email-true")
+    result = tm._recover_from_persistent_store("task-email-true")
 
-    assert result is not None, "_recover_from_supabase returned None unexpectedly"
+    assert result is not None, "_recover_from_persistent_store returned None unexpectedly"
     adv = result.get("advanced_config", {})
     assert adv.get("email_notification") is True, (
         f"advanced_config must preserve email_notification=True after recovery. Got: {adv}"
@@ -207,7 +198,7 @@ def test_recover_from_local_storage_preserves_email_notification_true(monkeypatc
 def test_recover_from_local_storage_preserves_email_notification_false(monkeypatch):
     """
     When local translation-task storage returns email_notification=False,
-    _recover_from_supabase must include email_notification: False.
+    _recover_from_persistent_store must include email_notification: False.
     """
     monkeypatch.setattr(
         "backend.app.services.task_manager.get_translation_task_repository",
@@ -215,7 +206,7 @@ def test_recover_from_local_storage_preserves_email_notification_false(monkeypat
     )
 
     tm = TaskManager()
-    result = tm._recover_from_supabase("task-email-false")
+    result = tm._recover_from_persistent_store("task-email-false")
 
     assert result is not None
     adv = result.get("advanced_config", {})
@@ -227,7 +218,7 @@ def test_recover_from_local_storage_preserves_email_notification_false(monkeypat
 def test_recover_from_local_storage_preserves_email_notification_missing(monkeypatch):
     """
     When local translation-task storage returns a db_task with no email_notification field,
-    _recover_from_supabase must default email_notification to False.
+    _recover_from_persistent_store must default email_notification to False.
     """
     monkeypatch.setattr(
         "backend.app.services.task_manager.get_translation_task_repository",
@@ -235,7 +226,7 @@ def test_recover_from_local_storage_preserves_email_notification_missing(monkeyp
     )
 
     tm = TaskManager()
-    result = tm._recover_from_supabase("task-email-missing")
+    result = tm._recover_from_persistent_store("task-email-missing")
 
     assert result is not None
     adv = result.get("advanced_config", {})
@@ -300,18 +291,18 @@ def test_persist_task_with_retry_does_not_register_authenticated_task_for_guest_
 
 
 # ---------------------------------------------------------------------------
-# Task 4: SupabaseFlusher shutdown drains terminal states
+# Task 4: PersistentStateFlusher drain behavior for terminal states
 # ---------------------------------------------------------------------------
 
 def test_flusher_drains_pending_before_any_shutdown(monkeypatch):
     """
-    When SupabaseFlusher has pending items and drain() is called,
+    When PersistentStateFlusher has pending items and drain() is called,
     all pending writes must be flushed before drain() returns.
     This mirrors the shutdown use-case where we need terminal writes to complete.
     """
     written: List[Tuple[str, dict]] = []
 
-    flusher = SupabaseFlusher(writer=lambda tid, upd: written.append((tid, dict(upd))))
+    flusher = PersistentStateFlusher(writer=lambda tid, upd: written.append((tid, dict(upd))))
 
     flusher.enqueue("task-terminal-A", {"status": "completed", "progress": 100})
     flusher.enqueue("task-terminal-B", {"status": "failed", "progress": 100})
@@ -330,9 +321,9 @@ def test_flusher_terminal_state_written_even_when_enqueued_late(monkeypatch):
     """
     written: List[Tuple[str, dict]] = []
 
-    flusher = SupabaseFlusher(writer=lambda tid, upd: written.append((tid, dict(upd))))
+    flusher = PersistentStateFlusher(writer=lambda tid, upd: written.append((tid, dict(upd))))
 
-    # Enqueue and immediately drain â€” should not lose the write
+    # Enqueue and immediately drain â€?should not lose the write
     flusher.enqueue("task-late-terminal", {"status": "completed"})
     flusher.drain(timeout=3.0)
 
@@ -359,7 +350,7 @@ def test_flusher_coalesces_terminal_with_earlier_progress(monkeypatch):
         written.append((tid, dict(upd)))
         first_call_done.set()
 
-    flusher = SupabaseFlusher(writer=_gated_writer)
+    flusher = PersistentStateFlusher(writer=_gated_writer)
 
     # Enqueue directly into _pending without waking the worker thread
     # This simulates multiple rapid enqueues before the thread wakes

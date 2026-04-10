@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -141,7 +141,7 @@ def _insert_public_paper(database_path: Path, *, view_count: int = 2) -> None:
         connection.close()
 
 
-def test_list_papers_reads_from_local_database_when_supabase_client_unavailable(
+def test_list_papers_reads_from_local_database_in_local_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -152,7 +152,6 @@ def test_list_papers_reads_from_local_database_when_supabase_client_unavailable(
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
     monkeypatch.setattr(paper_service.settings, "community_baseline_seed_path", None)
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: None)
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
@@ -162,7 +161,7 @@ def test_list_papers_reads_from_local_database_when_supabase_client_unavailable(
     assert result["items"][0]["latest_asset"]["asset_type"] == "preview_html"
 
 
-def test_record_view_increments_local_database_when_supabase_client_unavailable(
+def test_record_view_increments_local_database_in_local_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -172,7 +171,6 @@ def test_record_view_increments_local_database_when_supabase_client_unavailable(
 
     settings = get_settings()
     monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_path.resolve()}")
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: None)
 
     result = asyncio.run(paper_service.record_community_paper_view(paper_id="paper-local-1"))
 
@@ -194,7 +192,7 @@ def test_record_view_increments_local_database_when_supabase_client_unavailable(
 def test_list_papers_returns_empty_when_local_repository_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    supabase_calls = {"count": 0}
+    legacy_client_calls = {"count": 0}
 
     class _UnavailableRepository:
         def list_public_papers(self):
@@ -235,11 +233,6 @@ def test_list_papers_returns_empty_when_local_repository_is_unavailable(
     )
     monkeypatch.setattr(
         paper_service,
-        "get_supabase_admin_client",
-        lambda: supabase_calls.__setitem__("count", supabase_calls["count"] + 1),
-    )
-    monkeypatch.setattr(
-        paper_service,
         "_fetch_asset_maps_for_papers",
         lambda _paper_ids: asyncio.sleep(0, result={}),
     )
@@ -249,4 +242,7 @@ def test_list_papers_returns_empty_when_local_repository_is_unavailable(
     assert result["total"] == 0
     assert result["source_mode"] == "database"
     assert result["items"] == []
-    assert supabase_calls["count"] == 0
+    assert legacy_client_calls["count"] == 0
+
+
+

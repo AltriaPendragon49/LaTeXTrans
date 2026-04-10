@@ -71,7 +71,7 @@ def test_bootstrap_local_community_papers_registers_on_disk_assets(monkeypatch, 
     translated_dir.mkdir(parents=True)
 
     (source_dir / "main.tex").write_text("\\section{Demo}", encoding="utf-8")
-    (preview_dir / "preview.html").write_text("<html><body>这是一个中文预览，用于验证翻译内容。</body></html>", encoding="utf-8")
+    (preview_dir / "preview.html").write_text("<html><body>这是一个中文预览，用于验证翻译内容�?/body></html>", encoding="utf-8")
     (translated_dir / "2501.12345-zh.pdf").write_bytes(b"%PDF-1.4")
 
     database_path = tmp_path / "community.db"

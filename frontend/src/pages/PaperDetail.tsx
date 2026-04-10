@@ -1059,42 +1059,10 @@ export default function PaperDetailPage() {
       return
     }
 
-    let cancelled = false
-    setTranslatedPdfPreviewLoading(true)
     setActionError(null)
-
-    void (async () => {
-      try {
-        const session = await createCommunityPaperDownloadSession(paperId)
-        if (cancelled) {
-          return
-        }
-        setTranslatedPdfPreviewUrl(
-          session.download_url.startsWith("http")
-            ? session.download_url
-            : `${API_BASE_URL}${session.download_url}`,
-        )
-      } catch (previewError) {
-        if (cancelled) {
-          return
-        }
-        const detail = extractActionErrorMessage(previewError)
-        setActionError(
-          detail?.includes("Translated PDF")
-            ? t("community.actions.downloadUnavailable")
-            : (detail ?? t("community.actions.downloadError")),
-        )
-      } finally {
-        if (!cancelled) {
-          setTranslatedPdfPreviewLoading(false)
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [paperId, paper, reader, selectedMode, t, translatedPdfPreviewUrl])
+    setTranslatedPdfPreviewLoading(false)
+    setTranslatedPdfPreviewUrl(`${API_BASE_URL}/api/papers/${paperId}/translated-pdf`)
+  }, [paperId, paper, reader, selectedMode, translatedPdfPreviewUrl])
 
   if (loading) {
     return (

@@ -1,5 +1,5 @@
 """
-Task 2: Structure-Aware Chunking â€” TDD Tests (Brace-Depth Guard)
+Task 2: Structure-Aware Chunking â€?TDD Tests (Brace-Depth Guard)
 =================================================================
 Tests verifying that `_chunk_long_sections` never splits text
 at a point where the LaTeX brace depth is > 0.

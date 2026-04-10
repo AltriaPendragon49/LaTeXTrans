@@ -66,7 +66,7 @@ def test_paper_detail_includes_reader_and_experience_blocks(monkeypatch) -> None
             },
             "experience": {
                 "stage_label": "正在生成中文版本",
-                "can_leave_hint": "你可以先阅读，完成后会自动更新",
+                "can_leave_hint": "你可以先阅读，完成后会自动更�?,
                 "failure_type": None,
             },
         }
@@ -88,7 +88,7 @@ def test_paper_detail_includes_reader_and_experience_blocks(monkeypatch) -> None
     assert data["reader"]["state"] == "warming"
     assert data["reader"]["preferred_mode"] == "source"
     assert data["experience"]["stage_label"] == "正在生成中文版本"
-    assert data["experience"]["can_leave_hint"] == "你可以先阅读，完成后会自动更新"
+    assert data["experience"]["can_leave_hint"] == "你可以先阅读，完成后会自动更�?
 
 
 def test_route_preserves_service_reader_payload(monkeypatch) -> None:
@@ -142,7 +142,7 @@ def test_route_preserves_service_reader_payload(monkeypatch) -> None:
                 "state": "translated_ready",
             },
             "experience": {
-                "stage_label": "中文版已准备好",
+                "stage_label": "中文版已准备�?,
                 "can_leave_hint": None,
                 "failure_type": None,
             },
@@ -163,7 +163,7 @@ def test_route_preserves_service_reader_payload(monkeypatch) -> None:
     data = response.json()
     assert data["reader"]["preferred_mode"] == "translated"
     assert data["reader"]["translated"]["kind"] == "translated_pdf"
-    assert data["experience"]["stage_label"] == "中文版已准备好"
+    assert data["experience"]["stage_label"] == "中文版已准备�?
 
 
 def test_paper_detail_ignores_forged_viewer_sub_claim(monkeypatch) -> None:
@@ -328,7 +328,7 @@ def test_current_reader_version_marks_raw_latex_blocks_as_stale() -> None:
 
 
 def test_looks_untranslated_for_zh_ignores_tiny_cjk_noise_in_english_text() -> None:
-    text = "Large Language Models improve retrieval quality 例 子 but still require grounded citations."
+    text = "Large Language Models improve retrieval quality �?�?but still require grounded citations."
     assert paper_service._looks_untranslated_for_zh(text) is True
 
 

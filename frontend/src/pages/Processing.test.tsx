@@ -56,4 +56,18 @@ describe("ProcessingPage", () => {
     expect(screen.getAllByText("Translating (2/5)")[0]).toBeInTheDocument()
     expect(screen.getAllByText("Translating").length).toBeGreaterThan(0)
   })
+
+  it("renders the balanced processing workbench structure", () => {
+    render(
+      <MemoryRouter initialEntries={["/processing?taskId=task-1"]}>
+        <Routes>
+          <Route path="/processing" element={<ProcessingPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("processing-workbench")).toBeInTheDocument()
+    expect(screen.getByTestId("processing-summary-panel")).toBeInTheDocument()
+    expect(screen.getByTestId("processing-log-panel")).toBeInTheDocument()
+  })
 })

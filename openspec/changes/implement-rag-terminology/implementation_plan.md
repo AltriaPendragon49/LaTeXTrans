@@ -1,7 +1,7 @@
 # Implementation Plan: Adaptive Advanced RAG for Terminology Consistency
 
 ## Goal Description
-Implement the three-stage RAG pipeline ("Query → Hybrid Retrieval → Re-ranking") from task plan §3.1, using Supabase pgvector for dual-path retrieval, NVIDIA NIM for embeddings and Cross-Encoder re-ranking, applied across all translation modes. This transforms terminology management from "post-translation observation" to "in-translation active constraint".
+Implement the three-stage RAG pipeline ("Query → Hybrid Retrieval → Re-ranking") from task plan §3.1, using a vector-capable glossary store for dual-path retrieval, NVIDIA NIM for embeddings and Cross-Encoder re-ranking, applied across all translation modes. This transforms terminology management from "post-translation observation" to "in-translation active constraint".
 
 ## User Review Required
 
@@ -16,9 +16,9 @@ Implement the three-stage RAG pipeline ("Query → Hybrid Retrieval → Re-ranki
 
 ## Proposed Changes
 
-### Database Schema (Supabase pgvector)
+### Database Schema (Vector-Capable Glossary Store)
 
-#### [NEW] Supabase Migration: `create_glossary_terms_table`
+#### [NEW] Glossary-Store Migration: `create_glossary_terms_table`
 - Enable pgvector extension
 - Create `glossary_terms` table with columns: `id`, `source_term`, `target_term`, `domain`, `source`, `user_id`, `embedding` (vector 1024), `status`, `source_term_tsv` (tsvector)
 - Create HNSW index on embedding column for fast vector search
@@ -45,7 +45,7 @@ Implement the three-stage RAG pipeline ("Query → Hybrid Retrieval → Re-ranki
 - `hybrid_search(query_text: str, user_id: Optional[str]) -> List[TermCandidate]`:
   1. Extract keywords from query text
   2. Generate query embedding via `NvidiaEmbeddingService`
-  3. Execute vector search via Supabase RPC `match_terms()`
+  3. Execute vector search via glossary-store RPC `match_terms()`
   4. Execute keyword search via Supabase RPC `search_terms_keyword()`
   5. Merge and deduplicate results
   6. Return candidate list
@@ -97,7 +97,7 @@ Implement the three-stage RAG pipeline ("Query → Hybrid Retrieval → Re-ranki
 - Add `_process_pending_terms()` async function to `startup_event()`
 - Runs **after** orphaned-task cleanup completes
 - Reads `data/pending_terms.json`:
-  - `status == "approved"`: Generate embedding via NVIDIA NIM → insert into Supabase `glossary_terms` → remove from JSON
+  - `status == "approved"`: Generate embedding via NVIDIA NIM → insert into `glossary_terms` in the glossary store → remove from JSON
   - `status == "rejected"`: Remove from JSON
   - `status == "pending"`: Keep in JSON for next review cycle
 - If no decided entries → skip silently
@@ -114,7 +114,7 @@ Implement the three-stage RAG pipeline ("Query → Hybrid Retrieval → Re-ranki
 - Add `RAG_ENABLED=true` (feature flag for gradual rollout)
 
 #### [MODIFY] `backend/requirements.txt`
-- No new dependencies needed (already has `aiohttp`, `supabase`, existing Supabase client handles pgvector)
+- No new dependencies needed beyond `aiohttp` and the project's glossary-store access layer
 
 ---
 

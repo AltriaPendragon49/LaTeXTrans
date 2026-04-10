@@ -1,4 +1,4 @@
-ï»¿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import sys
@@ -47,7 +47,7 @@ def test_translate_with_final_fallback_returns_empty_without_config():
 
 
 def test_translate_with_final_fallback_success_path():
-    translated = "è¿™æ˜¯ç›®æ ‡è¯­è¨€è¯‘æ–‡ã€‚"
+    translated = "ÕâÊÇÄ¿±êÓïÑÔÒëÎÄ¡£"
 
     async def _fake_json():
         return {"choices": [{"message": {"content": translated}}]}

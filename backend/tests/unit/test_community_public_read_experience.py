@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 
@@ -76,7 +76,6 @@ def test_list_papers_does_not_fall_back_to_operator_baseline_seed(monkeypatch, t
             return _Query()
 
     monkeypatch.setattr(paper_service.settings, "community_baseline_seed_path", baseline_path)
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: _Client())
     monkeypatch.setattr(paper_service, "run_db_blocking", lambda fn, **_kwargs: asyncio.sleep(0, result=fn()))
     monkeypatch.setattr(paper_service, "_fetch_asset_maps_for_papers", lambda _paper_ids: asyncio.sleep(0, result={}))
 
@@ -115,7 +114,6 @@ def test_detail_does_not_resolve_from_operator_baseline_seed(monkeypatch, tmp_pa
 
 def test_list_papers_returns_empty_state_when_admin_and_seed_are_unavailable(monkeypatch):
     monkeypatch.setattr(paper_service.settings, "community_baseline_seed_path", None)
-    monkeypatch.setattr(paper_service, "get_supabase_admin_client", lambda: None)
 
     result = asyncio.run(paper_service.list_community_papers(sort="latest"))
 
@@ -544,3 +542,4 @@ def test_fetch_sanitized_arxiv_html_strips_outer_arxiv_chrome(monkeypatch):
     assert "Readable section" in result
     assert 'src="https://arxiv.org/html/2603.14482/figures/demo.png"' in result
     assert "latextrans-source-article" in result
+

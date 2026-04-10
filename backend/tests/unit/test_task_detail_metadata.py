@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import asyncio
 
@@ -13,10 +13,6 @@ from backend.app.services.task_manager import TaskManager
 
 
 def _make_task_manager(monkeypatch) -> TaskManager:
-    monkeypatch.setattr(
-        "backend.app.services.task_manager.get_supabase_admin_client",
-        lambda: None,
-    )
     return TaskManager()
 
 
@@ -208,3 +204,4 @@ def test_authenticated_task_requires_matching_owner(monkeypatch):
         )
     )
     assert owned.task_id == fake_task["task_id"]
+

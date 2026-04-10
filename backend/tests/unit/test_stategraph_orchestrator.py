@@ -1,10 +1,10 @@
 """
 TDD 测试: test_stategraph_orchestrator.py
-Phase 4a Step 1 — StateGraph 替换 Coordinator 编排层
+Phase 4a Step 1 �?StateGraph 替换 Coordinator 编排�?
 
-契约：
-  - 新 StateGraph 与旧 CoordinatorAgent 外部行为完全等价
-  - 各 agent 逻辑零修改，仅执行权迁移
+契约�?
+  - �?StateGraph 与旧 CoordinatorAgent 外部行为完全等价
+  - �?agent 逻辑零修改，仅执行权迁移
   - 所有失败语义与降级路径保持不变
 """
 import asyncio
@@ -68,7 +68,7 @@ class _FakeGeneratorAgent:
         self.called = True
         return {
             "status": "completed",
-            "pdf_path": None,      # 无 pdf_path → 走 failed_compilation 分支
+            "pdf_path": None,      # �?pdf_path �?�?failed_compilation 分支
             "error_summary": "no pdf in test",
             "warnings": None,
             "error_count": 0,
@@ -130,12 +130,12 @@ def _patch_agents(monkeypatch, orchestrator_module, generator_cls=_FakeGenerator
 
 
 # ===========================================================================
-# 测试用例 1：正常路径 — 节点调用顺序
+# 测试用例 1：正常路�?�?节点调用顺序
 # ===========================================================================
 
 
 def test_happy_path_node_call_sequence(monkeypatch, project_setup):
-    """parse→translate→validate→generate 全被调用一次（pdf_path 为 None → failed_compilation）。"""
+    """parse→translate→validate→generate 全被调用一次（pdf_path �?None �?failed_compilation）�?""
     project_dir, output_root = project_setup
 
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
@@ -151,7 +151,7 @@ def test_happy_path_node_call_sequence(monkeypatch, project_setup):
         )
     )
 
-    # pdf_path 为 None 时 coordinator 返回 failed_compilation
+    # pdf_path �?None �?coordinator 返回 failed_compilation
     assert result["status"] == "failed_compilation"
     assert result["pdf_path"] is None
 
@@ -162,7 +162,7 @@ def test_happy_path_node_call_sequence(monkeypatch, project_setup):
 
 
 def test_structure_invalid_short_circuits(monkeypatch, project_setup):
-    """generate 返回 structure_invalid 时，finalize 不执行，结果 status == structure_invalid。"""
+    """generate 返回 structure_invalid 时，finalize 不执行，结果 status == structure_invalid�?""
     project_dir, output_root = project_setup
 
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
@@ -183,7 +183,7 @@ def test_structure_invalid_short_circuits(monkeypatch, project_setup):
     assert result["guard_phase"] == "precompile"
     assert result["pdf_path"] is None
 
-    # 日志中必须有 structure_guard_failed_precompile 和 structure_invalid_aborted
+    # 日志中必须有 structure_guard_failed_precompile �?structure_invalid_aborted
     transed_dir = output_root / f"zh_{project_dir.name}"
     log_path = transed_dir / "task_log.json"
     assert log_path.exists()
@@ -194,12 +194,12 @@ def test_structure_invalid_short_circuits(monkeypatch, project_setup):
 
 
 # ===========================================================================
-# 测试用例 3：阶段失败向上传播
+# 测试用例 3：阶段失败向上传�?
 # ===========================================================================
 
 
 def test_stage_failure_propagates(monkeypatch, project_setup):
-    """parse 抛出异常时，run_pipeline 应将异常传播出来（不吞错误）。"""
+    """parse 抛出异常时，run_pipeline 应将异常传播出来（不吞错误）�?""
     project_dir, output_root = project_setup
 
     class _BrokenParser:
@@ -231,14 +231,14 @@ def test_stage_failure_propagates(monkeypatch, project_setup):
 
 
 def test_mode3_skips_repair(monkeypatch, project_setup):
-    """mode==3（quick scan）时，translator.execute 仅被调用一次（跳过 retry）。"""
+    """mode==3（quick scan）时，translator.execute 仅被调用一次（跳过 retry）�?""
     project_dir, output_root = project_setup
 
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
 
     _patch_agents(monkeypatch, orch_mod)
 
-    # 让 validator 返回一些错误，以证明 mode==3 不进入 repair 循环
+    # �?validator 返回一些错误，以证�?mode==3 不进�?repair 循环
     class _ValidatorWithErrors:
         def __init__(self, *args, **kwargs):
             self.code_like_filtered_bare_tokens = 0
@@ -248,7 +248,7 @@ def test_mode3_skips_repair(monkeypatch, project_setup):
 
     monkeypatch.setattr(orch_mod, "ValidatorAgent", _ValidatorWithErrors)
 
-    # 用一个可记录调用次数的 translator
+    # 用一个可记录调用次数�?translator
     call_log = []
 
     class _CountingTranslator(_FakeTranslatorAgent):
@@ -269,17 +269,17 @@ def test_mode3_skips_repair(monkeypatch, project_setup):
     )
 
     assert call_log.count("execute") == 1, (
-        f"mode==3 时 translator.execute 应只调用一次，实际调用 {call_log.count('execute')} 次"
+        f"mode==3 �?translator.execute 应只调用一次，实际调用 {call_log.count('execute')} �?
     )
 
 
 # ===========================================================================
-# 测试用例 5：正常路径写入关键日志事件
+# 测试用例 5：正常路径写入关键日志事�?
 # ===========================================================================
 
 
 def test_task_log_events_happy_path(monkeypatch, project_setup):
-    """正常路径下 task_log.json 包含 task_started / parsing_completed / translation_completed / validation_completed。"""
+    """正常路径�?task_log.json 包含 task_started / parsing_completed / translation_completed / validation_completed�?""
     project_dir, output_root = project_setup
 
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
@@ -301,16 +301,16 @@ def test_task_log_events_happy_path(monkeypatch, project_setup):
     events = [e["event"] for e in json.loads(log_path.read_text(encoding="utf-8"))]
 
     for expected_event in ("task_started", "parsing_completed", "translation_completed", "validation_completed"):
-        assert expected_event in events, f"日志中缺少事件 '{expected_event}'，实际: {events}"
+        assert expected_event in events, f"日志中缺少事�?'{expected_event}'，实�? {events}"
 
 
 # ===========================================================================
-# 测试用例 6：CoordinatorAgent 委托给 StateGraph（行为等价）
+# 测试用例 6：CoordinatorAgent 委托�?StateGraph（行为等价）
 # ===========================================================================
 
 
 def test_coordinator_delegates_to_stategraph(monkeypatch, project_setup):
-    """CoordinatorAgent.workflow_latextrans_async() 通过新 StateGraph 编排，行为与旧实现等价。"""
+    """CoordinatorAgent.workflow_latextrans_async() 通过�?StateGraph 编排，行为与旧实现等价�?""
     project_dir, output_root = project_setup
 
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
@@ -326,7 +326,7 @@ def test_coordinator_delegates_to_stategraph(monkeypatch, project_setup):
 
     result = asyncio.run(agent.workflow_latextrans_async())
 
-    # 行为等价：pdf_path=None 时返回 failed_compilation（与原实现路径一致）
+    # 行为等价：pdf_path=None 时返�?failed_compilation（与原实现路径一致）
     assert result["status"] == "failed_compilation"
     assert result["pdf_path"] is None
 
@@ -403,7 +403,7 @@ def test_post_compile_target_language_fallback_reconstructs_without_source_rever
         {
             "section": "1",
             "content": r"\section{Results}" + "\n\n" + "We begin by examining the left panel.",
-            "trans_content": r"\section{结果}" + "\n\n" + "我们首先考察左侧面板。",
+            "trans_content": r"\section{结果}" + "\n\n" + "我们首先考察左侧面板�?,
             "translation_status": "structural_fallback_pending_compile",
         }
     ]

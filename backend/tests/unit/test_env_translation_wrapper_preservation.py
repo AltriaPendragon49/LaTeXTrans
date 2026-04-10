@@ -52,7 +52,7 @@ def test_generic_text_env_preserves_source_wrapper(tmp_path: Path):
     assert result["translation_status"] == agent.STATUS_TRANSLATED
     assert result["trans_content"].startswith("\\begin{abstract}")
     assert result["trans_content"].endswith("\\end{abstract}\n")
-    assert "你好，世界。" in result["trans_content"]
+    assert "你好，世界�? in result["trans_content"]
 
 
 def test_generic_text_env_falls_back_to_source_body_when_env_tokens_leak(tmp_path: Path):
@@ -90,7 +90,7 @@ def test_generic_text_env_retries_after_env_token_leak(tmp_path: Path):
     assert result["translation_status"] == agent.STATUS_TRANSLATED
     assert result["trans_content"].startswith("\\begin{abstract}")
     assert result["trans_content"].endswith("\\end{abstract}\n")
-    assert "你好，世界。" in result["trans_content"]
+    assert "你好，世界�? in result["trans_content"]
     assert agent._request_env_translation.await_count == 2
 
 
@@ -112,7 +112,7 @@ def test_generic_text_env_uses_plain_text_recovery_after_repeated_env_token_leak
     assert result["translation_status"] == agent.STATUS_TRANSLATED
     assert result["trans_content"].startswith("\\begin{abstract}")
     assert result["trans_content"].endswith("\\end{abstract}\n")
-    assert "你好，世界。" in result["trans_content"]
+    assert "你好，世界�? in result["trans_content"]
     assert agent._request_env_translation.await_count == 2
     agent._request_llm_for_trans.assert_awaited()
 
@@ -137,7 +137,7 @@ def test_generic_text_env_uses_plain_text_recovery_after_api_source_fallback(tmp
 
     assert result["translation_status"] == agent.STATUS_TRANSLATED
     assert result["trans_content"].startswith("\\begin{abstract}\n")
-    assert "你好，世界。" in result["trans_content"]
+    assert "你好，世界�? in result["trans_content"]
     assert "Hello world." not in result["trans_content"]
     agent._request_llm_for_trans.assert_awaited()
 
@@ -167,8 +167,8 @@ def test_generic_text_env_uses_paragraph_rescue_after_plain_text_recovery_still_
     result = asyncio.run(agent._translate_env(env, MagicMock()))
 
     assert result["translation_status"] == agent.STATUS_TRANSLATED
-    assert "你好，世界。" in result["trans_content"]
-    assert "第二段。" in result["trans_content"]
+    assert "你好，世界�? in result["trans_content"]
+    assert "第二段�? in result["trans_content"]
     assert "Hello world." not in result["trans_content"]
     assert "Second paragraph." not in result["trans_content"]
     assert agent._request_llm_for_trans.await_count == 3

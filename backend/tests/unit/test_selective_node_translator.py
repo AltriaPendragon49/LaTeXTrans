@@ -33,7 +33,7 @@ async def failing_translator(text: str) -> str:
 
 
 async def structural_break_translator(text: str) -> str:
-    """A mock translator that returns text with unbalanced braces â€” triggers rollback."""
+    """A mock translator that returns text with unbalanced braces â€?triggers rollback."""
     return "broken { { text"
 
 
@@ -68,7 +68,7 @@ class TestTranslateSafeNodes:
         assert result == source, f"Non-whitelisted node must not be modified: {result}"
 
     def test_cite_structure_untouched(self):
-        """\\cite{key2024} must come out exactly the same â€” citation key must not change."""
+        """\\cite{key2024} must come out exactly the same â€?citation key must not change."""
         source = r"\cite{key2024}"
         result = asyncio.run(translate_safe_nodes(source, simple_translator))
         assert result == source, f"Citation must not be modified: {result}"
@@ -82,7 +82,7 @@ class TestTranslateSafeNodes:
         )
 
     def test_no_repair_queued_on_failure(self):
-        """translate_safe_nodes must have no side effects on failure â€” pure function."""
+        """translate_safe_nodes must have no side effects on failure â€?pure function."""
         # The function must complete normally (no exception propagating out)
         source = r"\text{Introduction}"
         try:

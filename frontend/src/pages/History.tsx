@@ -22,7 +22,7 @@ import { deleteTask, deleteTasksBatch } from '@/lib/api'
 import { API_BASE_URL } from '@/api-base'
 import { useTranslation } from 'react-i18next'
 import { getCompileStrategyLabel, getFormattingValueLabel, getTaskStatusLabel, getTranslationModeLabel } from '@/i18n/ui-text'
-import { getAccessToken } from '@/lib/supabase'
+import { getAccessToken } from '@/lib/local-auth'
 
 interface TaskHistoryItem {
     task_id: string

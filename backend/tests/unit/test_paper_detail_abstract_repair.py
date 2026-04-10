@@ -98,4 +98,4 @@ def test_detail_repairs_stale_english_translated_abstract_from_completed_output(
         )
     )
 
-    assert result["paper"]["abstract_translated"] == "这是修复后的中文摘要。"
+    assert result["paper"]["abstract_translated"] == "这是修复后的中文摘要�?

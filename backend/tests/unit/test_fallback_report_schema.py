@@ -1,6 +1,6 @@
-﻿"""
+"""
 test_fallback_report_schema.py
-eliminate-silent-fallback 鈥?Phase 1 Unit Tests
+eliminate-silent-fallback �?Phase 1 Unit Tests
 
 Verifies:
   1. FallbackReport schema construction for all three fallback_kind values.

@@ -10,7 +10,7 @@ Design principles:
 """
 import pytest
 
-# SUT â€” will live at: backend/app/services/translation/structure_checker.py
+# SUT â€?will live at: backend/app/services/translation/structure_checker.py
 from backend.app.services.translation.structure_checker import (
     detect_structure_invariant,
 )
@@ -46,8 +46,8 @@ class TestStructureInvariantDetection:
     def test_bare_dollar_is_unsafe(self):
         """A lone unescaped $ not forming a balanced pair is unsafe."""
         result = detect_structure_invariant({"content": "Price is $5 but cost is $10 extra"})
-        # Two balanced dollars â†’ safe; single lone dollar â†’ unsafe
-        # Note: `$5` and `$10` in text mode are bare dollars â€” unsafe in LaTeX
+        # Two balanced dollars â†?safe; single lone dollar â†?unsafe
+        # Note: `$5` and `$10` in text mode are bare dollars â€?unsafe in LaTeX
         assert result["is_structure_safe"] is False
 
     def test_leaked_begin_env_is_unsafe(self):
@@ -83,7 +83,7 @@ class TestStructureInvariantDetection:
         assert result["extra"] is True
 
     def test_does_not_raise_on_unexpected_types(self):
-        """Phase 0 must never crash â€” just return a safe default."""
+        """Phase 0 must never crash â€?just return a safe default."""
         weird_envs = [
             {"content": None},
             {"content": 12345},

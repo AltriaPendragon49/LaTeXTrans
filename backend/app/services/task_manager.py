@@ -1,4 +1,4 @@
-"""
+﻿"""
 Task Manager Service
 
 In-memory task status tracking with thread-safe operations.
@@ -44,11 +44,6 @@ def get_translation_task_repository() -> TranslationTaskRepository:
 def get_auth_repository() -> AuthRepository:
     return AuthRepository()
 
-
-def get_supabase_admin_client():
-    """Legacy compatibility hook kept so older tests can monkeypatch it."""
-
-    return None
 
 
 def set_runtime_shutting_down(value: bool) -> None:
@@ -179,7 +174,7 @@ class PersistentStateFlusher:
         self._has_work.set()
 
 
-SupabaseFlusher = PersistentStateFlusher
+
 
 
 def _is_duplicate_task_insert_error(exc: Exception) -> bool:
@@ -351,7 +346,7 @@ class TaskManager:
             
             task = self._tasks[task_id]
 
-            # ── Capture old semantic fields BEFORE mutation ──────────────
+            # 鈹€鈹€ Capture old semantic fields BEFORE mutation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
             _old_status = task.get("status")
             _old_stage = task.get("stage")
             
@@ -497,7 +492,7 @@ class TaskManager:
                 user_id = task.get("user_id")
             task_snapshot = task.copy()
 
-        # ── Throttled persistent-store flush ─────────────────────────────
+        # 鈹€鈹€ Throttled persistent-store flush 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         # Only authenticated tasks have a persisted record to update.
         if user_id and db_updates:
             # A *semantic transition* means the VALUE actually changed,
@@ -507,9 +502,9 @@ class TaskManager:
             is_semantic = status_changed or stage_changed
 
             if is_semantic:
-                # Semantic transition (status / stage VALUE changed) �?immediate flush
+                # Semantic transition (status / stage VALUE changed) 锟?immediate flush
                 logger.debug(
-                    "[FLUSH] task=%s SEMANTIC flush: status %s�?s, stage %s�?s",
+                    "[FLUSH] task=%s SEMANTIC flush: status %s锟?s, stage %s锟?s",
                     task_id, _old_status, db_updates.get("status"), _old_stage, db_updates.get("stage"),
                 )
                 self._flusher.enqueue(task_id, db_updates)
@@ -517,7 +512,7 @@ class TaskManager:
                     if task_id in self._tasks:
                         self._tasks[task_id]["_last_flush_time"] = time.monotonic()
             else:
-                # Value-only change (progress / message) �?time-throttled flush
+                # Value-only change (progress / message) 锟?time-throttled flush
                 with self._lock:
                     last = self._tasks.get(task_id, {}).get("_last_flush_time", 0.0)
                 elapsed = time.monotonic() - last
@@ -543,7 +538,7 @@ class TaskManager:
                 status_error=error,
             )
 
-        # ── Email notification on terminal state ──────────────────────────
+        # 鈹€鈹€ Email notification on terminal state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         # Fire-and-forget: errors are logged but never raised to the caller.
         final_statuses = {
             TaskStatus.COMPLETED.value,
@@ -600,7 +595,7 @@ class TaskManager:
             if not text:
                 continue
             lowered = str(text).lower()
-            if "cancelled" in lowered or "canceled" in lowered or "取消" in str(text):
+            if "cancelled" in lowered or "canceled" in lowered or "鍙栨秷" in str(text):
                 return True
 
         return False
@@ -824,14 +819,6 @@ class TaskManager:
             "missing_paths": sorted(set(missing_paths)),
         }
 
-    def _delete_failed_task_from_supabase(self, task_id: str) -> bool:
-        """Legacy no-op kept for compatibility with older tests and call sites."""
-        logger.debug(
-            "[TaskManager] Legacy failed-task delete hook is disabled in local-db mode for %s",
-            task_id,
-        )
-        return False
-
     def _intercept_failed_task(
         self,
         task_id: str,
@@ -957,8 +944,8 @@ class TaskManager:
     
     def persist_task_if_needed(self, task_id: str) -> bool:
         """
-        如果任务还未持久化到数据�?则首次持久化
-        用于延迟任务创建:上传/下载时只创建内存任务,翻译时才持久�?
+        濡傛灉浠诲姟杩樻湭鎸佷箙鍖栧埌鏁版嵁锟?鍒欓娆℃寔涔呭寲
+        鐢ㄤ簬寤惰繜浠诲姟鍒涘缓:涓婁紶/涓嬭浇鏃跺彧鍒涘缓鍐呭瓨浠诲姟,缈昏瘧鏃舵墠鎸佷箙锟?
         
         Args:
             task_id: Task ID
@@ -976,7 +963,7 @@ class TaskManager:
             # Guest task, no need to persist
             return True
         
-        # 调用持久化方�?会自动处理已存在的情�?
+        # 璋冪敤鎸佷箙鍖栨柟锟?浼氳嚜鍔ㄥ鐞嗗凡瀛樺湪鐨勬儏锟?
         try:
             persisted = self._persist_task_create(
                 task_id=task_id,
@@ -1032,7 +1019,7 @@ class TaskManager:
                 )
                 await asyncio.sleep(delay)
 
-        # All attempts exhausted �?degrade gracefully
+        # All attempts exhausted 锟?degrade gracefully
         logger.error(
             f"[TaskManager] persist_task_with_retry: all {retries + 1} attempts "
             f"failed for task {task_id}. Registering as temporary task for auto-cleanup."
@@ -1202,7 +1189,7 @@ class TaskManager:
                     logger.error(f"[TaskManager] {error_msg}")
 
         # Delete task_configs/{task_id}.json (runtime config snapshot)
-        # These files accumulate silently without cleanup �?remove them here.
+        # These files accumulate silently without cleanup 锟?remove them here.
         try:
             task_config_file = Path(settings.task_configs_dir) / f"{task_id}.json"
             if task_config_file.exists():
@@ -1474,10 +1461,6 @@ class TaskManager:
             logger.warning(f"[TaskManager] Failed to recover task {task_id} from local translation storage: {e}")
 
         return None
-
-    def _recover_from_supabase(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Legacy alias kept for compatibility with older tests and call sites."""
-        return self._recover_from_persistent_store(task_id)
     
     def _recover_from_filesystem(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -1674,9 +1657,9 @@ class TaskQueue:
     Architecture: Token-Isolated Multi-Bucket
     -----------------------------------------
     Each unique ``token_hash`` gets its own:
-      - ``asyncio.Queue``     �?FIFO lane, invisible to other tokens
-      - ``asyncio.Semaphore`` �?concurrency cap = ``max_concurrent``
-      - background ``_worker`` coroutine �?lazily created, NEVER exits
+      - ``asyncio.Queue``     锟?FIFO lane, invisible to other tokens
+      - ``asyncio.Semaphore`` 锟?concurrency cap = ``max_concurrent``
+      - background ``_worker`` coroutine 锟?lazily created, NEVER exits
 
     Worker lifecycle: lazy-create on first enqueue, persist forever.
     This eliminates the enqueue-vs-spawn race that occurs if idle workers exit.
@@ -1801,7 +1784,7 @@ class TaskQueue:
             logger.info(f"[TaskQueue] cancel_execution: cancelled running task {task_id}")
             return True
 
-        # Not running �?mark as skipped so the worker drops it when dequeued
+        # Not running 锟?mark as skipped so the worker drops it when dequeued
         self._skipped.add(task_id)
         logger.info(
             f"[TaskQueue] cancel_execution: task {task_id} not yet running, "
@@ -1835,7 +1818,7 @@ class TaskQueue:
 
         Lifecycle invariant: NEVER exits while the application is running.
         The ``while True`` loop ensures the worker persists even when the queue
-        empties �?eliminating the enqueue-vs-spawn race condition.
+        empties 锟?eliminating the enqueue-vs-spawn race condition.
         """
         logger.info(f"[TaskQueue] Worker started for token_hash={token_hash[:8]}...")
         while True:
@@ -1974,7 +1957,7 @@ class TaskQueue:
                         f"[TaskQueue] Worker({token_hash[:8]}...) got unexpected cancellation; respawned."
                     )
                     return
-                # The worker itself was cancelled (e.g. process shutdown) �?exit cleanly
+                # The worker itself was cancelled (e.g. process shutdown) 锟?exit cleanly
                 logger.info(
                     f"[TaskQueue] Worker for token_hash={token_hash[:8]}... cancelled"
                 )
@@ -1999,3 +1982,8 @@ def get_guest_tracker() -> GuestTaskTracker:
 def get_task_queue() -> Optional[TaskQueue]:
     """Get the global task queue instance."""
     return task_queue
+
+
+
+
+
