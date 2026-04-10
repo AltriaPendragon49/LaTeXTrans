@@ -1,30 +1,57 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
+import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
 import CommunityFeedPage from "@/pages/CommunityFeed"
 
 const useCommunityPapersMock = vi.fn()
+const useAuthMock = vi.fn()
+const deleteCommunityPaperMock = vi.fn()
 
 vi.mock("@/hooks/use-community-papers", () => ({
   useCommunityPapers: (...args: unknown[]) => useCommunityPapersMock(...args),
 }))
 
-function ConversationRouteSpy() {
-  const location = useLocation()
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => useAuthMock(),
+}))
 
-  return <pre data-testid="conversation-state">{JSON.stringify(location.state)}</pre>
-}
+vi.mock("@/lib/community-api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/community-api")>("@/lib/community-api")
+  return {
+    ...actual,
+    deleteCommunityPaper: (...args: unknown[]) => deleteCommunityPaperMock(...args),
+  }
+})
+
+vi.mock("@/components/community/PaperCard", () => ({
+  PaperCard: ({
+    paper,
+    onDelete,
+  }: {
+    paper: { title: string }
+    onDelete?: (paper: { title: string }) => void
+  }) => (
+    <div>
+      <span>{paper.title}</span>
+      {onDelete ? (
+        <button type="button" onClick={() => onDelete(paper)}>
+          Delete paper
+        </button>
+      ) : null}
+    </div>
+  ),
+}))
 
 describe("CommunityFeedPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
-  })
-
-  it("renders the feed shell and defaults to latest sort", () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+    })
     useCommunityPapersMock.mockReturnValue({
       items: [],
       total: 0,
@@ -32,7 +59,10 @@ describe("CommunityFeedPage", () => {
       error: null,
       refetch: vi.fn(),
     })
+    vi.stubGlobal("confirm", vi.fn(() => true))
+  })
 
+  it("renders the search-first feed shell and defaults to the latest sort", () => {
     render(
       <MemoryRouter>
         <CommunityFeedPage />
@@ -40,64 +70,80 @@ describe("CommunityFeedPage", () => {
     )
 
     expect(useCommunityPapersMock).toHaveBeenCalledWith("latest", "")
-    expect(screen.getByRole("heading", { name: i18n.t("community.feed.launchTitle") })).toBeInTheDocument()
-    expect(screen.getByText(i18n.t("community.agent.intent.search"))).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "Search community papers" })).toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "Ask the paper agent" })).not.toBeInTheDocument()
   })
 
-  it("renders loading placeholders while the feed is pending", () => {
-    useCommunityPapersMock.mockReturnValue({
-      items: [],
-      total: 0,
-      loading: true,
-      error: null,
-      refetch: vi.fn(),
-    })
-
-    render(
-      <MemoryRouter>
-        <CommunityFeedPage />
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByText("Exploring more papers")).toBeInTheDocument()
-  })
-
-  it("opens a seeded agent conversation with the selected prompt and tool toggles", async () => {
-    useCommunityPapersMock.mockReturnValue({
-      items: [],
-      total: 0,
-      loading: false,
-      error: null,
-      refetch: vi.fn(),
-    })
-
+  it("updates the queried feed when the search is submitted", async () => {
     const user = userEvent.setup()
 
     render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Routes>
-          <Route path="/" element={<CommunityFeedPage />} />
-          <Route path="/agent/:conversationId" element={<ConversationRouteSpy />} />
-        </Routes>
+      <MemoryRouter>
+        <CommunityFeedPage />
       </MemoryRouter>,
     )
 
-    await user.type(screen.getByRole("textbox", { name: i18n.t("community.agent.aria") }), "Explain this paper")
-    await user.click(screen.getByRole("button", { name: i18n.t("community.agent.externalSearch.label") }))
-    await user.click(screen.getByRole("button", { name: i18n.t("community.agent.run") }))
+    await user.type(screen.getByRole("textbox", { name: "Search community papers" }), "transformers")
+    await user.click(screen.getByRole("button", { name: "Community search" }))
 
-    expect(JSON.parse(screen.getByTestId("conversation-state").textContent ?? "{}")).toMatchObject({
-      seedInput: "Explain this paper",
-      seedSkillToggles: {
-        external_search: true,
-      },
-    })
+    expect(useCommunityPapersMock).toHaveBeenLastCalledWith("latest", "transformers")
   })
 
-  it("renders an empty state when no papers match the current view", () => {
+  it("shows admin-only delete affordances and calls the delete api", async () => {
+    const refetch = vi.fn()
+    const user = userEvent.setup()
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "user-1",
+        roles: ["admin"],
+      },
+    })
     useCommunityPapersMock.mockReturnValue({
-      items: [],
-      total: 0,
+      items: [
+        {
+          id: "paper-1",
+          title: "Admin paper",
+        },
+      ],
+      total: 1,
+      loading: false,
+      error: null,
+      refetch,
+    })
+    deleteCommunityPaperMock.mockResolvedValue({
+      job_id: "job-1",
+      paper_id: "paper-1",
+      status: "queued",
+    })
+
+    render(
+      <MemoryRouter>
+        <CommunityFeedPage />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Delete paper" }))
+
+    expect(deleteCommunityPaperMock).toHaveBeenCalledWith("paper-1")
+    expect(refetch).toHaveBeenCalled()
+  })
+
+  it("hides delete affordances from non-admin users", () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "user-1",
+        roles: ["user"],
+      },
+    })
+    useCommunityPapersMock.mockReturnValue({
+      items: [
+        {
+          id: "paper-1",
+          title: "Reader paper",
+        },
+      ],
+      total: 1,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -109,24 +155,6 @@ describe("CommunityFeedPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("No community papers match this view yet")).toBeInTheDocument()
-  })
-
-  it("renders an error state when the feed fails", () => {
-    useCommunityPapersMock.mockReturnValue({
-      items: [],
-      total: 0,
-      loading: false,
-      error: "boom",
-      refetch: vi.fn(),
-    })
-
-    render(
-      <MemoryRouter>
-        <CommunityFeedPage />
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByText("Unable to load the community feed")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Delete paper" })).not.toBeInTheDocument()
   })
 })

@@ -123,6 +123,7 @@ class PaperDetailResponse(BaseModel):
     reader_state: str = "unavailable"
     reader: Optional[Dict[str, Any]] = None
     experience: Optional[Dict[str, Any]] = None
+    structured_insights: Optional[Dict[str, Any]] = None
 
 
 class PaperViewResponse(BaseModel):
@@ -166,6 +167,44 @@ class PaperImportResponse(BaseModel):
     reused: bool
     imported: bool
     reader_state: str
+
+
+class AdminArxivCurationRequest(BaseModel):
+    arxiv_ids: List[str]
+    source_language: str = "en"
+    target_language: str = "zh"
+
+
+class AdminCurationBatchItemResponse(BaseModel):
+    job_id: str
+    paper_id: Optional[str] = None
+    source_type: str
+    arxiv_id: Optional[str] = None
+    original_filename: Optional[str] = None
+    status: str
+    error: Optional[str] = None
+
+
+class AdminCurationBatchResponse(BaseModel):
+    batch_id: str
+    status: str
+    items: List[AdminCurationBatchItemResponse]
+
+
+class AdminDeletePaperResponse(BaseModel):
+    job_id: str
+    paper_id: str
+    status: str
+
+
+def _ensure_local_admin(current_user: Optional[Dict[str, Any]]) -> None:
+    roles = {str(role or "").strip().lower() for role in (current_user or {}).get("roles", [])}
+    if "admin" in roles:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "AUTH_FORBIDDEN", "message": "Admin role required."},
+    )
 
 
 @router.post("/submit", response_model=PaperSubmitResponse)
@@ -270,6 +309,83 @@ async def get_content_pool_job_log(
 ):
     _ensure_paper_authorized(current_user, "content_pool_read")
     return community_content_pool_service.get_content_pool_job_log(arxiv_id=arxiv_id, limit=limit)
+
+
+@router.post(
+    "/admin/curation/arxiv",
+    response_model=AdminCurationBatchResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_admin_arxiv_curation_batch(
+    request: AdminArxivCurationRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    return await paper_service.submit_admin_arxiv_curation_batch(
+        arxiv_ids=request.arxiv_ids,
+        current_user=current_user,
+        source_language=request.source_language,
+        target_language=request.target_language,
+    )
+
+
+@router.get(
+    "/admin/curation/batches/{batch_id}",
+    response_model=AdminCurationBatchResponse,
+    response_model_exclude_none=True,
+)
+async def get_admin_curation_batch(
+    batch_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    return await paper_service.get_admin_curation_batch(batch_id=batch_id)
+
+
+@router.post(
+    "/admin/curation/uploads",
+    response_model=AdminCurationBatchResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_admin_upload_curation_batch(
+    request: Request,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    form = await request.form()
+    files = [
+        value
+        for _key, value in form.multi_items()
+        if hasattr(value, "filename") and hasattr(value, "file")
+    ]
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one upload file is required")
+    source_language = str(form.get("source_language") or "en")
+    target_language = str(form.get("target_language") or "zh")
+    return await paper_service.submit_admin_upload_curation_batch(
+        files=files,
+        current_user=current_user,
+        source_language=source_language,
+        target_language=target_language,
+    )
+
+
+@router.delete(
+    "/admin/{paper_id}",
+    response_model=AdminDeletePaperResponse,
+    response_model_exclude_none=True,
+)
+async def delete_admin_community_paper(
+    paper_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    return await paper_service.delete_community_paper_admin(
+        paper_id=paper_id,
+        current_user=current_user,
+    )
 
 
 @router.get("/{paper_id}", response_model=PaperDetailResponse)

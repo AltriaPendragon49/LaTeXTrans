@@ -10,16 +10,9 @@ import PaperDetailPage from "@/pages/PaperDetail"
 const usePaperDetailMock = vi.fn()
 const translateCommunityPaperMock = vi.fn()
 const createCommunityPaperDownloadSessionMock = vi.fn()
-const getCommunityPaperPreviewMock = vi.fn()
-const createCommunityAgentRunMock = vi.fn()
-const streamCommunityAgentRunMock = vi.fn()
-const importCommunityPaperMock = vi.fn()
-const loadUserSettingsMock = vi.fn()
+const navigateMock = vi.fn()
 const setTaskIdMock = vi.fn()
 const setArxivIdMock = vi.fn()
-const navigateMock = vi.fn()
-const katexRenderToStringMock = vi.fn((value: string, _options?: unknown) => `<span class="katex">${value}</span>`)
-const scrollIntoViewMock = vi.fn()
 const openMock = vi.fn()
 
 vi.mock("@/hooks/use-paper-detail", () => ({
@@ -27,12 +20,9 @@ vi.mock("@/hooks/use-paper-detail", () => ({
 }))
 
 vi.mock("@/lib/community-api", () => ({
-  getCommunityPaperPreview: (...args: unknown[]) => getCommunityPaperPreviewMock(...args),
   translateCommunityPaper: (...args: unknown[]) => translateCommunityPaperMock(...args),
-  createCommunityPaperDownloadSession: (...args: unknown[]) => createCommunityPaperDownloadSessionMock(...args),
-  createCommunityAgentRun: (...args: unknown[]) => createCommunityAgentRunMock(...args),
-  streamCommunityAgentRun: (...args: unknown[]) => streamCommunityAgentRunMock(...args),
-  importCommunityPaper: (...args: unknown[]) => importCommunityPaperMock(...args),
+  createCommunityPaperDownloadSession: (...args: unknown[]) =>
+    createCommunityPaperDownloadSessionMock(...args),
 }))
 
 vi.mock("@/store/useStore", () => ({
@@ -42,25 +32,20 @@ vi.mock("@/store/useStore", () => ({
       target_language: "zh",
       advanced_config: {},
     },
-    loadUserSettings: loadUserSettingsMock,
     setTaskId: setTaskIdMock,
     setArxivId: setArxivIdMock,
   }),
 }))
 
+vi.mock("@/components/community/PaperPreviewReader", () => ({
+  PaperPreviewReader: ({ initialPreview }: { initialPreview?: { html_content?: string | null } | null }) => (
+    <div data-testid="paper-preview-reader">{initialPreview?.html_content ?? "preview"}</div>
+  ),
+}))
+
 vi.mock("dompurify", () => ({
   default: {
     sanitize: (value: string) => value,
-  },
-}))
-
-vi.mock("katex/contrib/auto-render", () => ({
-  default: vi.fn(),
-}))
-
-vi.mock("katex", () => ({
-  default: {
-    renderToString: (value: string, options?: unknown) => katexRenderToStringMock(value, options),
   },
 }))
 
@@ -79,31 +64,16 @@ const basePaper = {
   title: "Detail Page Title",
   authors: ["Ada Lovelace"],
   categories: ["cs.AI"],
-  abstract_raw: "Abstract body for the detail shell.",
-  abstract_translated: "Translated abstract body.",
+  abstract_raw: "English abstract body.",
+  abstract_translated: "中文摘要。",
   community_status: "official" as const,
   trans_status: "completed" as const,
   created_at: "2026-03-18T00:00:00Z",
   official_published_at: "2026-03-18T02:00:00Z",
   community_selected_task_id: "task-1",
-  community_selected_asset_id: "asset-preview",
-  latest_asset: {
-    id: "asset-preview",
-    task_id: "task-1",
-    asset_type: "preview_html",
-    file_name: "preview.html",
-    mime_type: "text/html",
-    created_at: "2026-03-18T02:00:00Z",
-  },
+  community_selected_asset_id: "asset-1",
+  latest_asset: null,
   assets: {
-    preview_html: {
-      id: "asset-preview",
-      task_id: "task-1",
-      asset_type: "preview_html",
-      file_name: "preview.html",
-      mime_type: "text/html",
-      created_at: "2026-03-18T02:00:00Z",
-    },
     translated_pdf: {
       id: "asset-pdf",
       task_id: "task-1",
@@ -113,46 +83,64 @@ const basePaper = {
       created_at: "2026-03-18T02:00:00Z",
     },
   },
-  like_count: 7,
-  favorite_count: 3,
-  comment_count: 2,
-  view_count: 21,
-}
-
-const translatedPreview = {
-  paper_id: "paper-1",
-  task_id: "task-1",
-  asset: basePaper.latest_asset,
-  html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
-  generated_at: "2026-03-18T02:00:00Z",
-}
-
-const translatedReader = {
-  preferred_mode: "translated" as const,
-  available_modes: ["source", "translated"] as const,
-  source: {
-    kind: "source_pdf" as const,
-    html_content: null,
-    url: "https://arxiv.org/pdf/2503.01010.pdf",
-  },
-  translated: {
-    kind: "preview_html" as const,
-    html_content: translatedPreview.html_content,
-    url: null,
-  },
-  state: "translated_ready" as const,
+  like_count: 2,
+  favorite_count: 1,
+  comment_count: 0,
+  view_count: 10,
 }
 
 function buildDetailReturn(overrides?: Record<string, unknown>) {
   return {
     paper: basePaper,
-    preview: translatedPreview,
+    preview: {
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview",
+        task_id: "task-1",
+        asset_type: "preview_html",
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
+      generated_at: "2026-03-18T02:00:00Z",
+    },
     readerState: "ready",
-    reader: translatedReader,
+    reader: {
+      preferred_mode: "translated",
+      available_modes: ["source", "translated"],
+      source: {
+        kind: "source_html",
+        html_content: "<article><h2>Source section</h2><p>English paragraph.</p></article>",
+        url: "https://arxiv.org/html/2503.01010",
+      },
+      translated: {
+        kind: "preview_html",
+        html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
+        url: null,
+      },
+      state: "translated_ready",
+    },
     experience: {
-      stage_label: "中文版已准备好",
+      stage_label: "Translated reading ready",
       can_leave_hint: null,
       failure_type: null,
+    },
+    structuredInsights: {
+      state: "ready",
+      sections: [
+        {
+          section_key: "problem",
+          summary_en: "English problem summary",
+          summary_zh: "中文问题摘要",
+          bullets_en: ["English bullet"],
+          bullets_zh: ["中文要点"],
+          body_en: "English body",
+          body_zh: "中文正文",
+          updated_at: "2026-03-18T03:00:00Z",
+        },
+      ],
     },
     loading: false,
     error: null,
@@ -166,28 +154,13 @@ describe("PaperDetailPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
-    streamCommunityAgentRunMock.mockResolvedValue({
-      run_id: "run-1",
-      status: "completed",
-      intent: "answer",
-      mode: "chat",
-      message: "Streamed paper-detail answer",
-      summary: "Streamed paper-detail answer",
-      citations: [],
-      tool_trace: [],
-      action: null,
-    })
-    getCommunityPaperPreviewMock.mockResolvedValue(translatedPreview)
-    loadUserSettingsMock.mockResolvedValue(undefined)
     Object.defineProperty(window, "open", {
       configurable: true,
       value: openMock,
     })
-    Element.prototype.scrollIntoView = scrollIntoViewMock
-    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
   })
 
-  it("renders header metadata for completed papers and keeps download available", async () => {
+  it("renders the reader shell and structured insights for completed papers", async () => {
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
 
     render(
@@ -199,52 +172,31 @@ describe("PaperDetailPage", () => {
     )
 
     expect(screen.getByRole("heading", { level: 1, name: "Detail Page Title" })).toBeInTheDocument()
+    expect(screen.getByTestId("paper-detail-reader-panel")).toBeInTheDocument()
+    expect(screen.getByTestId("paper-detail-insights-panel")).toBeInTheDocument()
+    expect(screen.getByText("Structured insights")).toBeInTheDocument()
+    expect(screen.getByText("中文问题摘要")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Download" })).toBeEnabled()
-    expect(screen.getByText("Authors:")).toBeInTheDocument()
-    expect(screen.getByText("Published:")).toBeInTheDocument()
-    expect(screen.getByText("PEER REVIEWED")).toBeInTheDocument()
-    expect(screen.queryByText("Official")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("21 views")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("7 likes")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("3 favorites")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("2 comments")).not.toBeInTheDocument()
   })
 
-  it("uses preview bootstrap from the detail payload when the reader is ready", async () => {
-    usePaperDetailMock.mockReturnValue(buildDetailReturn())
-
-    render(
-      <MemoryRouter initialEntries={["/paper/paper-1"]}>
-        <Routes>
-          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    expect(await screen.findByText("Translated paragraph.")).toBeInTheDocument()
-    expect(getCommunityPaperPreviewMock).not.toHaveBeenCalled()
-  })
-
-  it("renders a warming state when the preview is not ready yet", async () => {
+  it("preserves source pdf, translated html, and translated pdf preview modes", async () => {
+    const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
-        preview: null,
-        readerState: "warming",
         reader: {
-          ...translatedReader,
-          available_modes: ["translated"],
-          source: null,
+          preferred_mode: "translated_html",
+          available_modes: ["source", "translated_html", "translated_pdf"],
+          source: {
+            kind: "source_pdf",
+            html_content: null,
+            url: "https://arxiv.org/pdf/2503.01010",
+          },
           translated: {
             kind: "preview_html",
-            html_content: null,
+            html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
             url: null,
           },
-          state: "warming",
-        },
-        experience: {
-          stage_label: "正在生成中文版本",
-          can_leave_hint: "You can keep reading while the Chinese version is prepared.",
-          failure_type: null,
+          state: "translated_ready",
         },
       }),
     )
@@ -257,16 +209,83 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText("Translated reader is warming up")).toBeInTheDocument()
-    expect(
-      await screen.findByText(
-        "The paper metadata is ready, and the reading view is being prepared in the background. Check back shortly.",
-      ),
-    ).toBeInTheDocument()
-    expect(getCommunityPaperPreviewMock).not.toHaveBeenCalled()
+    expect(screen.getAllByRole("button", { name: "English" })).toHaveLength(2)
+    expect(screen.getAllByRole("button", { name: "Chinese translation (HTML)" })).toHaveLength(2)
+    expect(screen.getAllByRole("button", { name: "Chinese translation (PDF)" })).toHaveLength(2)
+    expect(screen.getByTestId("paper-preview-reader")).toBeInTheDocument()
+
+    await user.click(screen.getAllByRole("button", { name: "English" })[0])
+    expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/source-pdf`,
+    )
+
+    await user.click(screen.getAllByRole("button", { name: "Chinese translation (PDF)" })[0])
+    expect(screen.getByTestId("paper-translated-pdf-reader")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf`,
+    )
   })
 
-  it("clicking view progress still routes to the processing page for active tasks", async () => {
+  it("starts translation and routes to the processing page", async () => {
+    const user = userEvent.setup()
+    translateCommunityPaperMock.mockResolvedValue({
+      paper_id: "paper-1",
+      task_id: "task-new",
+      status: "queued",
+      reused_existing_task: false,
+      processing_url: "/processing?taskId=task-new",
+    })
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        paper: {
+          ...basePaper,
+          trans_status: "not_started",
+          community_selected_task_id: null,
+          assets: {},
+        },
+        preview: null,
+        readerState: "ready",
+        reader: {
+          preferred_mode: "source",
+          available_modes: ["source"],
+          source: {
+            kind: "source_html",
+            html_content: "<article><p>English paragraph.</p></article>",
+            url: "https://arxiv.org/html/2503.01010",
+          },
+          translated: null,
+          state: "source_ready",
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Translate" }))
+
+    await waitFor(() => {
+      expect(translateCommunityPaperMock).toHaveBeenCalledWith(
+        "paper-1",
+        expect.objectContaining({
+          source_language: "en",
+          target_language: "zh",
+        }),
+      )
+    })
+    expect(setTaskIdMock).toHaveBeenCalledWith("task-new")
+    expect(setArxivIdMock).toHaveBeenCalledWith("2503.01010")
+    expect(navigateMock).toHaveBeenCalledWith("/processing?taskId=task-new")
+  })
+
+  it("clicking view progress routes to the processing page for active tasks", async () => {
+    const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
         paper: {
@@ -284,7 +303,7 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    await userEvent.click(screen.getByRole("button", { name: "View Progress" }))
+    await user.click(screen.getByRole("button", { name: "View Progress" }))
 
     expect(setTaskIdMock).toHaveBeenCalledWith("task-1")
     expect(setArxivIdMock).toHaveBeenCalledWith("2503.01010")
@@ -292,6 +311,7 @@ describe("PaperDetailPage", () => {
   })
 
   it("download opens the signed url", async () => {
+    const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
     createCommunityPaperDownloadSessionMock.mockResolvedValue({
       paper_id: "paper-1",
@@ -308,128 +328,12 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    await screen.findByText("Translated paragraph.")
-    await userEvent.click(screen.getByRole("button", { name: "Download" }))
+    await user.click(screen.getByRole("button", { name: "Download" }))
 
     await waitFor(() => {
       expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
       expect(openMock).toHaveBeenCalledWith(`${API_BASE_URL}/api/papers/paper-1/download?token=abc`, "_blank")
     })
-  })
-
-  it("shows a friendly message when the translated pdf is unavailable", async () => {
-    usePaperDetailMock.mockReturnValue(
-      buildDetailReturn({
-        preview: null,
-        reader: {
-          ...translatedReader,
-          available_modes: ["translated"],
-          source: null,
-          translated: {
-            kind: "translated_pdf",
-            html_content: null,
-            url: "/api/papers/paper-1/download-session",
-          },
-        },
-      }),
-    )
-    createCommunityPaperDownloadSessionMock.mockRejectedValue(new Error("Translated PDF not available"))
-
-    render(
-      <MemoryRouter initialEntries={["/paper/paper-1"]}>
-        <Routes>
-          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await screen.findByRole("heading", { level: 1, name: "Detail Page Title" })
-    await userEvent.click(screen.getAllByRole("button", { name: "Download" })[0])
-
-    expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
-    expect(openMock).not.toHaveBeenCalled()
-    expect(await screen.findByText("Error")).toBeInTheDocument()
-  })
-
-  it("requests a signed translated pdf preview when the paper has a translated pdf asset but no selected task id", async () => {
-    usePaperDetailMock.mockReturnValue(
-      buildDetailReturn({
-        paper: {
-          ...basePaper,
-          community_selected_task_id: null,
-          community_selected_asset_id: "asset-pdf",
-          latest_asset: {
-            id: "asset-preview",
-            task_id: null,
-            asset_type: "preview_html",
-            file_name: "preview.html",
-            mime_type: "text/html",
-            created_at: "2026-03-18T02:00:00Z",
-          },
-          assets: {
-            ...basePaper.assets,
-            translated_pdf: {
-              id: "asset-pdf",
-              task_id: null,
-              asset_type: "translated_pdf",
-              file_name: "paper.pdf",
-              mime_type: "application/pdf",
-              created_at: "2026-03-18T02:00:00Z",
-            },
-          },
-        },
-      }),
-    )
-    render(
-      <MemoryRouter initialEntries={["/paper/paper-1"]}>
-        <Routes>
-          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await screen.findByText("Translated paragraph.")
-    await userEvent.click(screen.getByRole("button", { name: /pdf/i }))
-
-    const pdfReader = await screen.findByTestId("paper-translated-pdf-reader")
-    expect(pdfReader).toHaveAttribute(
-      "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf`,
-    )
-    expect(createCommunityPaperDownloadSessionMock).not.toHaveBeenCalled()
-    expect(openMock).not.toHaveBeenCalled()
-  })
-
-  it("uses the paper-level source pdf route when the source reader only exposes an external arxiv html page", async () => {
-    usePaperDetailMock.mockReturnValue(
-      buildDetailReturn({
-        paper: {
-          ...basePaper,
-          community_selected_task_id: null,
-        },
-        reader: {
-          ...translatedReader,
-          source: {
-            kind: "external_arxiv_html",
-            html_content: null,
-            url: "https://arxiv.org/html/2503.01010",
-          },
-        },
-      }),
-    )
-
-    render(
-      <MemoryRouter initialEntries={["/paper/paper-1"]}>
-        <Routes>
-          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await userEvent.click(screen.getByRole("button", { name: "原文" }))
-
-    const pdfReader = await screen.findByTestId("paper-source-pdf-reader")
-    expect(pdfReader).toHaveAttribute("src", `${API_BASE_URL}/api/papers/paper-1/source-pdf`)
   })
 
   it("renders a not-found state", () => {
@@ -442,6 +346,7 @@ describe("PaperDetailPage", () => {
       readerState: "unavailable",
       reader: null,
       experience: null,
+      structuredInsights: null,
     })
 
     render(
@@ -465,6 +370,7 @@ describe("PaperDetailPage", () => {
       readerState: "unavailable",
       reader: null,
       experience: null,
+      structuredInsights: null,
     })
 
     render(
@@ -477,28 +383,5 @@ describe("PaperDetailPage", () => {
 
     expect(screen.getByText("Unable to load paper details")).toBeInTheDocument()
     expect(screen.getByText("boom")).toBeInTheDocument()
-  })
-
-  it("renders the split reader workspace layout and removes legacy community-selection details", async () => {
-    window.innerWidth = 1440
-    window.dispatchEvent(new Event("resize"))
-    usePaperDetailMock.mockReturnValue(buildDetailReturn())
-
-    render(
-      <MemoryRouter initialEntries={["/paper/paper-1"]}>
-        <Routes>
-          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await screen.findByText("Translated paragraph.")
-    expect(screen.getByTestId("paper-detail-top-panels")).toBeInTheDocument()
-    expect(screen.getByTestId("paper-detail-reader-panel")).toBeInTheDocument()
-    expect(screen.getByTestId("paper-detail-agent-panel")).toBeInTheDocument()
-    expect(screen.getByTestId("paper-detail-resize-handle")).toBeInTheDocument()
-    expect(screen.queryByText("Community-selected version")).not.toBeInTheDocument()
-    expect(screen.queryByText("Selected task")).not.toBeInTheDocument()
-    expect(screen.queryByText("Selected asset")).not.toBeInTheDocument()
   })
 })

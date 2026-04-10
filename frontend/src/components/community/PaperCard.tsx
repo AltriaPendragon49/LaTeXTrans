@@ -1,3 +1,4 @@
+import { Trash2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
@@ -27,6 +28,8 @@ const PDF_PREVIEW_OPTIONS_SOURCE = Object.freeze({
 
 interface PaperCardProps {
   paper: CommunityPaper
+  onDelete?: (paper: CommunityPaper) => void
+  deleting?: boolean
 }
 
 interface PdfPreviewFrameProps {
@@ -148,7 +151,7 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
-export function PaperCard({ paper }: PaperCardProps) {
+export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps) {
   const { t } = useTranslation()
   const [showTranslatedAbstract, setShowTranslatedAbstract] = useState(true)
 
@@ -173,6 +176,8 @@ export function PaperCard({ paper }: PaperCardProps) {
     [paper.authors, t],
   )
 
+  const titleLabel = showTranslatedAbstract ? t("community.detail.mode.source") : t("community.detail.mode.translated")
+
   return (
     <Link
       to={`/paper/${paper.id}`}
@@ -196,18 +201,37 @@ export function PaperCard({ paper }: PaperCardProps) {
                 </span>
               )}
             </div>
-            <span className="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">bookmark</span>
+
+            {onDelete ? (
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onDelete(paper)
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                aria-label={t("community.admin.deleteAction")}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            ) : (
+              <span className="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">bookmark</span>
+            )}
           </div>
+
           <h3 className="text-xl md:text-2xl font-bold text-on-surface leading-tight mb-4 md:mb-5 group-hover:text-primary transition-colors">
             {paper.title}
           </h3>
+
           <div className="mb-4 flex items-center justify-between">
             <PaperStatusBadge kind="translation" value={paper.trans_status} />
-            {paper.abstract_translated && (
+            {paper.abstract_translated ? (
               <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
                   setShowTranslatedAbstract(!showTranslatedAbstract)
                 }}
                 className={`text-xs font-semibold px-2.5 py-1 rounded transition-colors flex items-center gap-1 border ${
@@ -215,17 +239,18 @@ export function PaperCard({ paper }: PaperCardProps) {
                     ? "text-primary hover:text-primary bg-primary/10 hover:bg-primary/20 border-primary/20 dark:bg-primary/20 dark:text-primary/90"
                     : "text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 border-slate-200 dark:bg-surface-container-high dark:text-on-surface-variant dark:border-outline-variant/20 dark:hover:bg-surface-container-highest"
                 }`}
-                title={showTranslatedAbstract ? "Switch to English" : "Switch to Chinese"}
+                title={titleLabel}
               >
                 <span className="material-symbols-outlined text-[14px]">translate</span>
-                切换语言(switch)
+                {t("common.sections.languageSettings")}
               </button>
-            )}
+            ) : null}
           </div>
+
           <p className="text-on-surface-variant text-sm md:text-base mb-6 md:mb-8 leading-relaxed line-clamp-3">
             {showTranslatedAbstract && paper.abstract_translated
               ? paper.abstract_translated
-              : paper.abstract_raw || paper.abstract_translated || "No abstract available for this paper."}
+              : paper.abstract_raw || paper.abstract_translated || t("community.card.abstractPlaceholder")}
           </p>
         </div>
 

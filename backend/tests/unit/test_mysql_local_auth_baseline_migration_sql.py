@@ -38,6 +38,8 @@ def test_mysql_baseline_declares_required_tables() -> None:
 def test_mysql_baseline_declares_key_uniques_indexes_and_foreign_keys() -> None:
     sql = _normalized_sql()
     required_fragments = [
+        "trans_latest_asset_pdf_id varchar(255) null",
+        "community_selected_asset_id varchar(255) null",
         "unique key uq_users_provider_external (external_provider, external_user_id)",
         "key idx_auth_sessions_user_status (user_id, status)",
         "key idx_translation_tasks_user_created (user_id, created_at)",

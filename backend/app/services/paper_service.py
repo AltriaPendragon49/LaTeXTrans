@@ -30,7 +30,7 @@ from backend.app.api.routes import upload as upload_route
 from backend.app.core.config import TaskStatus, get_settings
 from backend.app.db import DatabaseUnavailableError, db_connection, get_database_dialect
 from backend.app.repositories import CommunityPaperRepository
-from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex
+from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_preview_service
 from backend.app.services.task_manager import get_task_manager, get_task_queue
@@ -55,10 +55,36 @@ _preview_recovery_inflight: set[str] = set()
 _detail_repair_inflight: set[str] = set()
 _preview_payload_cache: Dict[str, Dict[str, Any]] = {}
 _source_html_cache: Dict[str, str] = {}
+_curation_semaphore: Optional[asyncio.Semaphore] = None
+_delete_semaphore: Optional[asyncio.Semaphore] = None
+_curation_job_tasks: Dict[str, asyncio.Task] = {}
+_delete_job_tasks: Dict[str, asyncio.Task] = {}
+STRUCTURED_INSIGHT_SECTION_KEYS = (
+    "problem",
+    "method",
+    "key_idea",
+    "experiment",
+    "result",
+    "limitation",
+)
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_curation_semaphore() -> asyncio.Semaphore:
+    global _curation_semaphore
+    if _curation_semaphore is None:
+        _curation_semaphore = asyncio.Semaphore(max(1, int(getattr(settings, "community_curation_max_concurrent", 2))))
+    return _curation_semaphore
+
+
+def _get_delete_semaphore() -> asyncio.Semaphore:
+    global _delete_semaphore
+    if _delete_semaphore is None:
+        _delete_semaphore = asyncio.Semaphore(1)
+    return _delete_semaphore
 
 
 def get_community_paper_repository() -> CommunityPaperRepository:
@@ -961,6 +987,80 @@ async def _fetch_paper_by_id(paper_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _extract_plaintext_title_from_directory(directory: Path) -> Optional[str]:
+    if not directory.exists():
+        return None
+
+    main_tex = find_main_tex_file(directory)
+    if main_tex and Path(main_tex).exists():
+        try:
+            latex = Path(main_tex).read_text(encoding="utf-8")
+            title = extract_title(latex)
+            if title not in {"No title", "No abstract", ""}:
+                plain_text = _normalize_metadata_text(extract_text_from_tex(title))
+                if plain_text:
+                    return plain_text
+        except Exception:
+            pass
+
+    return None
+
+
+def _is_public_community_paper(paper: Optional[Dict[str, Any]]) -> bool:
+    if not paper:
+        return False
+    return (
+        str(paper.get("visibility") or "").strip() == "public"
+        and str(paper.get("status") or "").strip() == "published"
+        and str(paper.get("community_status") or "").strip() == COMMUNITY_STATUS_OFFICIAL
+        and str(paper.get("trans_status") or "").strip() == "completed"
+    )
+
+
+async def _fetch_structured_insight_sections(paper_id: str) -> List[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        return await _run_local_repo(lambda: repository.list_structured_insight_sections(paper_id))
+    except DatabaseUnavailableError:
+        return []
+    except Exception as exc:
+        logger.warning("Failed to fetch structured insight sections for paper %s: %s", paper_id, exc)
+        return []
+
+
+def _empty_structured_insight_section(section_key: str) -> Dict[str, Any]:
+    return {
+        "section_key": section_key,
+        "summary_en": None,
+        "summary_zh": None,
+        "bullets_en": [],
+        "bullets_zh": [],
+        "body_en": None,
+        "body_zh": None,
+        "status": "not_ready",
+        "updated_at": None,
+    }
+
+
+def _build_structured_insights_payload(
+    sections: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    section_map = {
+        str(section.get("section_key") or "").strip(): dict(section)
+        for section in sections
+        if str(section.get("section_key") or "").strip()
+    }
+    ordered_sections = [
+        section_map.get(section_key, _empty_structured_insight_section(section_key))
+        for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+    ]
+    state = "ready" if any(section.get("status") == "ready" for section in ordered_sections) else "not_ready"
+    return {
+        "state": state,
+        "sections": ordered_sections,
+    }
+
+
 async def _fetch_paper_by_arxiv_id(arxiv_id: str) -> Optional[Dict[str, Any]]:
     repository = get_community_paper_repository()
     try:
@@ -1369,7 +1469,7 @@ async def _increment_paper_download_count(paper_id: str) -> Dict[str, Any]:
         return {"paper_id": paper_id, "download_count": count}
 
     paper = await _fetch_paper_by_id(paper_id)
-    if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
+    if not _is_public_community_paper(paper):
         raise HTTPException(status_code=404, detail="Paper not found")
     return {"paper_id": paper_id, "download_count": int(paper.get("download_count") or 0)}
 
@@ -1741,11 +1841,13 @@ async def _enqueue_existing_task_translation(
     task_id: str,
     request: translate_route.TranslateRequest,
     credentials: Optional[HTTPAuthorizationCredentials],
+    current_user: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     response = await translate_route.start_translation(
         task_id=task_id,
         request=request,
         credentials=credentials,
+        current_user=current_user,
     )
     return {"task_id": response.task_id, "status": response.status}
 
@@ -2405,9 +2507,596 @@ async def submit_arxiv_paper(
     }
 
 
+def _normalize_curation_arxiv_ids(arxiv_ids: List[str]) -> List[str]:
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for raw_value in arxiv_ids:
+        value = str(raw_value or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
+def _serialize_curation_batch_status(items: List[Dict[str, Any]]) -> str:
+    statuses = {str(item.get("status") or "").strip() for item in items}
+    if not items:
+        return "queued"
+    if statuses == {"completed"}:
+        return "completed"
+    if statuses.issubset({"failed"}):
+        return "failed"
+    if "processing" in statuses or "translating" in statuses or "publishing" in statuses:
+        return "processing"
+    return "queued"
+
+
+def _curation_batch_payload(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    batch_id = str(items[0].get("batch_id") or "").strip() if items else ""
+    return {
+        "batch_id": batch_id,
+        "status": _serialize_curation_batch_status(items),
+        "items": [
+            {
+                "job_id": item.get("job_id"),
+                "paper_id": item.get("paper_id"),
+                "source_type": item.get("source_type"),
+                "arxiv_id": item.get("arxiv_id"),
+                "original_filename": item.get("original_filename"),
+                "status": item.get("status"),
+                "error": item.get("error"),
+            }
+            for item in items
+        ],
+    }
+
+
+async def get_admin_curation_batch(*, batch_id: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        items = await _run_local_repo(lambda: repository.list_curation_jobs_for_batch(batch_id))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Curation batch not found")
+    return _curation_batch_payload(items)
+
+
+async def _upsert_structured_insight_sections(
+    *,
+    paper_id: str,
+    sections: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    stored: List[Dict[str, Any]] = []
+    for section in sections:
+        payload = dict(section)
+        payload["paper_id"] = paper_id
+        stored.append(await _run_local_repo(lambda payload=payload: repository.upsert_structured_insight_section(payload)))
+    return stored
+
+
+def _build_structured_insight_text(
+    *,
+    section_key: str,
+    title: str,
+    abstract_en: str,
+    abstract_zh: str,
+) -> Dict[str, Any]:
+    english_summary = abstract_en or title or "Not ready yet."
+    chinese_summary = abstract_zh or "暂未生成。"
+    label_map = {
+        "problem": ("Problem framing", "问题定义"),
+        "method": ("Method overview", "方法概览"),
+        "key_idea": ("Key idea", "核心思想"),
+        "experiment": ("Experiment setup", "实验设置"),
+        "result": ("Main result", "主要结果"),
+        "limitation": ("Current limitation", "当前局限"),
+    }
+    label_en, label_zh = label_map.get(section_key, (section_key.replace("_", " "), section_key))
+    return {
+        "section_key": section_key,
+        "summary_en": english_summary,
+        "summary_zh": chinese_summary,
+        "bullets_en": [label_en, title] if title else [label_en],
+        "bullets_zh": [label_zh, title] if title else [label_zh],
+        "body_en": english_summary,
+        "body_zh": chinese_summary,
+        "status": "ready",
+        "updated_at": _utc_now_iso(),
+    }
+
+
+def _generate_structured_insight_sections(
+    *,
+    title: str,
+    abstract_en: Optional[str],
+    abstract_zh: Optional[str],
+) -> List[Dict[str, Any]]:
+    normalized_title = str(title or "").strip()
+    normalized_en = _normalize_metadata_text(abstract_en) or normalized_title
+    normalized_zh = _normalize_metadata_text(abstract_zh) or "暂未生成。"
+    return [
+        _build_structured_insight_text(
+            section_key=section_key,
+            title=normalized_title,
+            abstract_en=normalized_en,
+            abstract_zh=normalized_zh,
+        )
+        for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+    ]
+
+
+def _archive_metadata_from_source_path(source_path: Path, fallback_title: str) -> Dict[str, Any]:
+    scan_root = source_path.parent if source_path.is_file() else source_path
+    title = _extract_plaintext_title_from_directory(scan_root) or fallback_title
+    abstract_raw = _extract_plaintext_abstract_from_directory(scan_root)
+    inferred_arxiv = None
+    task_match = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", str(source_path))
+    if task_match:
+        inferred_arxiv = task_match.group(1)
+    return {
+        "title": title,
+        "abstract_raw": abstract_raw,
+        "arxiv_id": inferred_arxiv,
+        "authors": [],
+        "categories": [],
+    }
+
+
+async def _publish_admin_curation_job(
+    *,
+    job: Dict[str, Any],
+    metadata: Dict[str, Any],
+    translated_task_id: str,
+) -> Dict[str, Any]:
+    paper_id = str(job.get("paper_id") or "").strip()
+    existing = await _fetch_paper_by_id(paper_id) if paper_id else None
+    paper = existing
+    if paper is None:
+        payload = _paper_payload(
+            source=str(job.get("source_type") or "upload"),
+            arxiv_id=metadata.get("arxiv_id"),
+            title=metadata.get("title") or "Curated paper",
+            created_by=str(job.get("created_by") or ""),
+            community_status=COMMUNITY_STATUS_OFFICIAL,
+            authors=metadata.get("authors"),
+            categories=metadata.get("categories"),
+            abstract_raw=metadata.get("abstract_raw"),
+            abstract_translated=None,
+            task_id=None,
+            official_published_at=None,
+            trans_status="processing",
+        )
+        payload["id"] = paper_id
+        payload["visibility"] = "private"
+        payload["status"] = "curating"
+        paper = await _insert_paper(payload)
+
+    sync_result = await _sync_task_assets_for_paper(
+        paper_id=paper["id"],
+        task_id=translated_task_id,
+        promote_to_official=False,
+        paper=paper,
+    )
+    paper = sync_result.get("paper") or paper
+    abstract_translated = _extract_translated_abstract_from_task(translated_task_id) or paper.get("abstract_translated")
+    await _upsert_structured_insight_sections(
+        paper_id=paper["id"],
+        sections=_generate_structured_insight_sections(
+            title=str(metadata.get("title") or paper.get("title") or ""),
+            abstract_en=metadata.get("abstract_raw") or paper.get("abstract_raw"),
+            abstract_zh=abstract_translated,
+        ),
+    )
+    updated = await _update_paper(
+        paper["id"],
+        {
+            "arxiv_id": metadata.get("arxiv_id") or paper.get("arxiv_id"),
+            "title": metadata.get("title") or paper.get("title"),
+            "authors": metadata.get("authors") or paper.get("authors") or [],
+            "categories": metadata.get("categories") or paper.get("categories") or [],
+            "abstract_raw": metadata.get("abstract_raw") or paper.get("abstract_raw"),
+            "abstract_translated": abstract_translated,
+            "community_status": COMMUNITY_STATUS_OFFICIAL,
+            "trans_status": "completed",
+            "trans_latest_task_id": translated_task_id,
+            "community_selected_task_id": translated_task_id,
+            "visibility": "public",
+            "status": "published",
+            "official_published_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        },
+    )
+    return updated
+
+
+async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
+    for _ in range(600):
+        task = task_manager.get_task(task_id)
+        if task and task.get("status") in TERMINAL_TASK_STATUSES:
+            return task
+        await asyncio.sleep(1)
+    raise TimeoutError(f"Timed out waiting for task {task_id}")
+
+
+def _schedule_curation_job(job_id: str) -> None:
+    if job_id in _curation_job_tasks and not _curation_job_tasks[job_id].done():
+        return
+    task = asyncio.create_task(_run_curation_job(job_id))
+    _curation_job_tasks[job_id] = task
+
+
+async def _run_curation_job(job_id: str) -> None:
+    repository = get_community_paper_repository()
+    async with _get_curation_semaphore():
+        try:
+            job = await _run_local_repo(lambda: repository.get_curation_job(job_id))
+            if not job:
+                return
+            await _run_local_repo(
+                lambda: repository.update_curation_job(
+                    job_id,
+                    {"status": "processing", "error": None, "updated_at": _utc_now_iso()},
+                )
+            )
+            context = await resolve_submitter_context_by_user_id(str(job.get("created_by") or ""))
+            request = translate_route.TranslateRequest(
+                source_language=str(job.get("source_language") or "en"),
+                target_language=str(job.get("target_language") or "zh"),
+            )
+            metadata: Dict[str, Any]
+            translated_task_id: str
+            if str(job.get("source_type") or "") == "arxiv":
+                metadata = await _fetch_arxiv_metadata(str(job.get("arxiv_id") or ""))
+                await _run_local_repo(
+                    lambda: repository.update_curation_job(
+                        job_id,
+                        {"status": "translating", "updated_at": _utc_now_iso()},
+                    )
+                )
+                translation_result = await _start_arxiv_paper_translation(
+                    paper={"source": "arxiv", "arxiv_id": job.get("arxiv_id")},
+                    request=request,
+                    context=context,
+                )
+                translated_task_id = translation_result["task_id"]
+            else:
+                source_path = _resolve_storage_path(str(job.get("source_path") or ""))
+                metadata = _archive_metadata_from_source_path(
+                    source_path,
+                    fallback_title=str(job.get("original_filename") or "Uploaded paper"),
+                )
+                existing_task_id = str(job.get("task_id") or "").strip()
+                if not existing_task_id:
+                    raise RuntimeError("Missing source task for upload curation job")
+                await _run_local_repo(
+                    lambda: repository.update_curation_job(
+                        job_id,
+                        {"status": "translating", "updated_at": _utc_now_iso()},
+                    )
+                )
+                translation_result = await _enqueue_existing_task_translation(
+                    task_id=existing_task_id,
+                    request=request,
+                    credentials=None,
+                    current_user={"id": context["user_id"]},
+                )
+                translated_task_id = translation_result["task_id"]
+
+            await _run_local_repo(
+                lambda: repository.update_curation_job(
+                    job_id,
+                    {"task_id": translated_task_id, "status": "publishing", "updated_at": _utc_now_iso()},
+                )
+            )
+            task = await _wait_for_task_terminal_state(translated_task_id)
+            if task.get("status") not in {"completed", "completed_with_warnings"}:
+                await _run_local_repo(
+                    lambda: repository.update_curation_job(
+                        job_id,
+                        {
+                            "status": "failed",
+                            "error": str(task.get("error") or task.get("message") or "Curation translation failed"),
+                            "updated_at": _utc_now_iso(),
+                        },
+                    )
+                )
+                return
+
+            published = await _publish_admin_curation_job(
+                job=job,
+                metadata=metadata,
+                translated_task_id=translated_task_id,
+            )
+            await _run_local_repo(
+                lambda: repository.update_curation_job(
+                    job_id,
+                    {
+                        "paper_id": published.get("id"),
+                        "status": "completed",
+                        "error": None,
+                        "updated_at": _utc_now_iso(),
+                    },
+                )
+            )
+        except Exception as exc:
+            logger.warning("Admin curation job %s failed: %s", job_id, exc, exc_info=True)
+            try:
+                await _run_local_repo(
+                    lambda: repository.update_curation_job(
+                        job_id,
+                        {"status": "failed", "error": str(exc), "updated_at": _utc_now_iso()},
+                    )
+                )
+            except Exception:
+                logger.warning("Failed to persist curation job failure for %s", job_id, exc_info=True)
+
+
+async def submit_admin_arxiv_curation_batch(
+    *,
+    arxiv_ids: List[str],
+    current_user: Dict[str, Any],
+    source_language: str = "en",
+    target_language: str = "zh",
+) -> Dict[str, Any]:
+    normalized_ids = _normalize_curation_arxiv_ids(arxiv_ids)
+    if not normalized_ids:
+        raise HTTPException(status_code=400, detail="At least one arXiv ID is required")
+
+    repository = get_community_paper_repository()
+    batch_id = f"curation-batch-{uuid4().hex}"
+    created_at = _utc_now_iso()
+    items: List[Dict[str, Any]] = []
+    for arxiv_id in normalized_ids:
+        existing = await _fetch_paper_by_arxiv_id(arxiv_id)
+        paper_id = str(existing.get("id") or uuid4().hex) if existing else uuid4().hex
+        job_payload = {
+            "job_id": f"curation-job-{uuid4().hex}",
+            "batch_id": batch_id,
+            "paper_id": paper_id,
+            "source_type": "arxiv",
+            "arxiv_id": arxiv_id,
+            "original_filename": None,
+            "source_path": None,
+            "task_id": None,
+            "source_language": source_language,
+            "target_language": target_language,
+            "status": "queued",
+            "error": None,
+            "created_by": str(current_user.get("id") or ""),
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        stored = await _run_local_repo(lambda job_payload=job_payload: repository.insert_curation_job(job_payload))
+        items.append(stored)
+        _schedule_curation_job(str(stored.get("job_id") or ""))
+    return _curation_batch_payload(items)
+
+
+async def submit_admin_upload_curation_batch(
+    *,
+    files: List[UploadFile],
+    current_user: Dict[str, Any],
+    source_language: str = "en",
+    target_language: str = "zh",
+) -> Dict[str, Any]:
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one archive is required")
+
+    repository = get_community_paper_repository()
+    batch_id = f"curation-batch-{uuid4().hex}"
+    created_at = _utc_now_iso()
+    items: List[Dict[str, Any]] = []
+    for file in files:
+        upload_response = await upload_route.upload_file(
+            file=file,
+            credentials=None,
+            current_user=current_user,
+        )
+        source_path = _resolve_storage_path(upload_response.source_path)
+        metadata = _archive_metadata_from_source_path(
+            source_path,
+            fallback_title=Path(file.filename or "upload").stem or "Uploaded paper",
+        )
+        existing = None
+        if metadata.get("arxiv_id"):
+            existing = await _fetch_paper_by_arxiv_id(str(metadata["arxiv_id"]))
+        if existing is None and metadata.get("title"):
+            existing = await _fetch_paper_by_title(
+                title=str(metadata["title"]),
+                source="upload",
+            )
+        paper_id = str(existing.get("id") or uuid4().hex) if existing else uuid4().hex
+        job_payload = {
+            "job_id": f"curation-job-{uuid4().hex}",
+            "batch_id": batch_id,
+            "paper_id": paper_id,
+            "source_type": "upload",
+            "arxiv_id": metadata.get("arxiv_id"),
+            "original_filename": file.filename,
+            "source_path": upload_response.source_path,
+            "task_id": upload_response.task_id,
+            "source_language": source_language,
+            "target_language": target_language,
+            "status": "queued",
+            "error": None,
+            "created_by": str(current_user.get("id") or ""),
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        stored = await _run_local_repo(lambda job_payload=job_payload: repository.insert_curation_job(job_payload))
+        items.append(stored)
+        _schedule_curation_job(str(stored.get("job_id") or ""))
+    return _curation_batch_payload(items)
+
+
+def _delete_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "job_id": job.get("job_id"),
+        "paper_id": job.get("paper_id"),
+        "status": job.get("status"),
+    }
+
+
+def _schedule_delete_job(job_id: str) -> None:
+    if job_id in _delete_job_tasks and not _delete_job_tasks[job_id].done():
+        return
+    task = asyncio.create_task(_run_delete_job(job_id))
+    _delete_job_tasks[job_id] = task
+
+
+async def _run_delete_job(job_id: str) -> None:
+    repository = get_community_paper_repository()
+    async with _get_delete_semaphore():
+        try:
+            job = await _run_local_repo(lambda: repository.get_delete_job(job_id))
+            if not job:
+                return
+            attempt_count = int(job.get("attempt_count") or 0) + 1
+            await _run_local_repo(
+                lambda: repository.update_delete_job(
+                    job_id,
+                    {
+                        "status": "running",
+                        "attempt_count": attempt_count,
+                        "last_error": None,
+                        "updated_at": _utc_now_iso(),
+                    },
+                )
+            )
+            paper_id = str(job.get("paper_id") or "").strip()
+            if not paper_id:
+                raise RuntimeError("Delete job missing paper_id")
+
+            community_dir = settings.community_papers_dir / paper_id
+            if community_dir.exists():
+                shutil.rmtree(community_dir, ignore_errors=False)
+
+            asset_task_ids = await _run_local_repo(lambda: repository.list_asset_task_ids_for_papers([paper_id]))
+            comment_ids = await _run_local_repo(lambda: repository.list_comment_ids_for_papers([paper_id]))
+            report_ids = await _run_local_repo(
+                lambda: repository.list_report_ids_for_targets(target_type="paper", target_ids=[paper_id])
+            )
+            if comment_ids:
+                report_ids.extend(
+                    await _run_local_repo(
+                        lambda: repository.list_report_ids_for_targets(target_type="comment", target_ids=comment_ids)
+                    )
+                )
+            report_ids = [report_id for report_id in report_ids if str(report_id or "").strip()]
+            if report_ids:
+                await _run_local_repo(
+                    lambda: repository.delete_rows_by_ids("moderation_actions", id_column="report_id", row_ids=report_ids)
+                )
+                await _run_local_repo(
+                    lambda: repository.delete_rows_by_ids("reports", id_column="id", row_ids=report_ids)
+                )
+
+            for table_name in [
+                "comments",
+                "paper_assets",
+                "paper_likes",
+                "paper_favorites",
+                "community_structured_insights",
+            ]:
+                await _run_local_repo(lambda table_name=table_name: repository.delete_rows_for_papers(table_name, [paper_id]))
+
+            cleaned_task_ids = [str(task_id or "").strip() for task_id in asset_task_ids if str(task_id or "").strip()]
+            for task_id in cleaned_task_ids:
+                task_manager.delete_task_full(task_id)
+            if cleaned_task_ids:
+                await _run_local_repo(lambda: repository.delete_translation_tasks(cleaned_task_ids))
+
+            await _run_local_repo(lambda: repository.delete_rows_for_papers("papers", [paper_id]))
+            await _run_local_repo(
+                lambda: repository.update_delete_job(
+                    job_id,
+                    {"status": "completed", "last_error": None, "updated_at": _utc_now_iso()},
+                )
+            )
+        except Exception as exc:
+            logger.warning("Community delete job %s failed: %s", job_id, exc, exc_info=True)
+            try:
+                await _run_local_repo(
+                    lambda: repository.update_delete_job(
+                        job_id,
+                        {
+                            "status": "retry",
+                            "last_error": str(exc),
+                            "updated_at": _utc_now_iso(),
+                        },
+                    )
+                )
+            except Exception:
+                logger.warning("Failed to persist delete-job failure for %s", job_id, exc_info=True)
+
+
+async def delete_community_paper_admin(
+    *,
+    paper_id: str,
+    current_user: Dict[str, Any],
+) -> Dict[str, Any]:
+    paper = await _fetch_paper_by_id(paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+
+    repository = get_community_paper_repository()
+    existing_job = await _run_local_repo(lambda: repository.get_delete_job_by_paper_id(paper_id))
+    if existing_job and str(existing_job.get("status") or "") in {"queued", "running", "retry"}:
+        return _delete_job_payload(existing_job)
+
+    await _update_paper(
+        paper_id,
+        {
+            "visibility": "private",
+            "status": "deleting",
+            "updated_at": _utc_now_iso(),
+        },
+    )
+    job_payload = {
+        "job_id": f"delete-job-{uuid4().hex}",
+        "paper_id": paper_id,
+        "status": "queued",
+        "attempt_count": 0,
+        "last_error": None,
+        "created_by": str(current_user.get("id") or ""),
+        "created_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
+    }
+    stored = await _run_local_repo(lambda: repository.insert_delete_job(job_payload))
+    _schedule_delete_job(str(stored.get("job_id") or ""))
+    return _delete_job_payload(stored)
+
+
+async def resume_pending_admin_curation_jobs() -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        jobs = await _run_local_repo(repository.list_pending_curation_jobs)
+    except Exception as exc:
+        logger.warning("Failed to load pending admin curation jobs: %s", exc)
+        return {"resumed_curation_jobs": 0}
+    for job in jobs:
+        _schedule_curation_job(str(job.get("job_id") or ""))
+    return {"resumed_curation_jobs": len(jobs)}
+
+
+async def resume_pending_delete_jobs() -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        jobs = await _run_local_repo(repository.list_pending_delete_jobs)
+    except Exception as exc:
+        logger.warning("Failed to load pending delete jobs: %s", exc)
+        return {"resumed_delete_jobs": 0}
+    for job in jobs:
+        _schedule_delete_job(str(job.get("job_id") or ""))
+    return {"resumed_delete_jobs": len(jobs)}
+
+
 async def _ensure_public_paper(paper_id: str) -> Dict[str, Any]:
     paper = await _fetch_paper_by_id(paper_id)
-    if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
+    if not _is_public_community_paper(paper):
         raise HTTPException(status_code=404, detail="Paper not found")
     return paper
 
@@ -2725,6 +3414,7 @@ async def list_community_papers(
         )
 
     papers = [_apply_runtime_paper_override(paper) or paper for paper in papers]
+    papers = [paper for paper in papers if _is_public_community_paper(paper)]
     papers = [paper for paper in papers if _matches_paper_query(paper, q)]
     papers = _sort_papers(papers, sort)
     if limit is not None and limit > 0:
@@ -2749,7 +3439,7 @@ async def get_community_paper_detail(
     fast_path: bool = False,
 ) -> Dict[str, Any]:
     paper = await _fetch_paper_by_id(paper_id)
-    if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
+    if not _is_public_community_paper(paper):
         raise HTTPException(status_code=404, detail="Paper not found")
 
     asset_map: Optional[Dict[str, Dict[str, Any]]] = None
@@ -2779,6 +3469,9 @@ async def get_community_paper_detail(
     viewer_state = (await _fetch_viewer_state([paper_id], user_id=viewer_user_id)).get(
         paper_id,
         {"liked": False, "favorited": False},
+    )
+    structured_insights = _build_structured_insights_payload(
+        await _fetch_structured_insight_sections(paper_id)
     )
     resolved_asset_map: Dict[str, Dict[str, Any]] = dict(asset_map or {})
     preview_payload: Optional[Dict[str, Any]] = None
@@ -2843,6 +3536,7 @@ async def get_community_paper_detail(
         "reader_state": reader_payload["reader_state"],
         "reader": reader_payload["reader"],
         "experience": reader_payload["experience"],
+        "structured_insights": structured_insights,
     }
 
 

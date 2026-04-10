@@ -17,7 +17,7 @@ def _jwt_for(user_id: str) -> str:
     return f"header.{payload}.sig"
 
 
-def test_start_translation_schedules_community_publish_watch_for_authenticated_user(monkeypatch):
+def test_start_translation_does_not_schedule_community_publish_watch_for_authenticated_user(monkeypatch):
     scheduled = []
 
     class _TaskManager:
@@ -68,4 +68,4 @@ def test_start_translation_schedules_community_publish_watch_for_authenticated_u
     )
 
     assert response.task_id == "task-1"
-    assert scheduled == [("task-1", "user-1")]
+    assert scheduled == []

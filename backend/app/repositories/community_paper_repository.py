@@ -47,7 +47,51 @@ PAPER_ASSET_COLUMNS = (
     "created_at",
 )
 
+STRUCTURED_INSIGHT_COLUMNS = (
+    "paper_id",
+    "section_key",
+    "summary_en",
+    "summary_zh",
+    "bullets_en",
+    "bullets_zh",
+    "body_en",
+    "body_zh",
+    "status",
+    "updated_at",
+)
+
+CURATION_JOB_COLUMNS = (
+    "job_id",
+    "batch_id",
+    "paper_id",
+    "source_type",
+    "arxiv_id",
+    "original_filename",
+    "source_path",
+    "task_id",
+    "source_language",
+    "target_language",
+    "status",
+    "error",
+    "created_by",
+    "created_at",
+    "updated_at",
+)
+
+DELETE_JOB_COLUMNS = (
+    "job_id",
+    "paper_id",
+    "status",
+    "attempt_count",
+    "last_error",
+    "created_by",
+    "created_at",
+    "updated_at",
+)
+
 _PAPER_JSON_COLUMNS = {"authors", "categories"}
+_STRUCTURED_INSIGHT_JSON_COLUMNS = {"bullets_en", "bullets_zh"}
+_DELETE_JOB_INT_COLUMNS = {"attempt_count"}
 _PAPER_INT_COLUMNS = {
     "like_count",
     "favorite_count",
@@ -144,6 +188,59 @@ class CommunityPaperRepository:
                 continue
             if key == "is_latest" and value is not None:
                 serialized[key] = bool(value)
+            else:
+                serialized[key] = value
+        return serialized
+
+    def _normalize_structured_insight_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+
+        normalized = dict(row)
+        for column in STRUCTURED_INSIGHT_COLUMNS:
+            value = normalized.get(column)
+            if column in _STRUCTURED_INSIGHT_JSON_COLUMNS:
+                normalized[column] = _decode_json_list(value)
+            else:
+                normalized[column] = value
+        return normalized
+
+    def _serialize_structured_insight_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        serialized: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key not in STRUCTURED_INSIGHT_COLUMNS:
+                continue
+            if key in _STRUCTURED_INSIGHT_JSON_COLUMNS:
+                serialized[key] = json.dumps(list(value or []), ensure_ascii=False)
+            else:
+                serialized[key] = value
+        return serialized
+
+    def _normalize_curation_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        return dict(row) if row is not None else None
+
+    def _serialize_curation_job_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in payload.items() if key in CURATION_JOB_COLUMNS}
+
+    def _normalize_delete_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+        normalized = dict(row)
+        for column in DELETE_JOB_COLUMNS:
+            value = normalized.get(column)
+            if column in _DELETE_JOB_INT_COLUMNS and value is not None:
+                normalized[column] = int(value)
+            else:
+                normalized[column] = value
+        return normalized
+
+    def _serialize_delete_job_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        serialized: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key not in DELETE_JOB_COLUMNS:
+                continue
+            if key in _DELETE_JOB_INT_COLUMNS and value is not None:
+                serialized[key] = int(value)
             else:
                 serialized[key] = value
         return serialized
@@ -389,6 +486,263 @@ class CommunityPaperRepository:
             if str(row.get("asset_type") or "") == asset_type:
                 return row
         return payload
+
+    def list_structured_insight_sections(self, paper_id: str) -> list[dict[str, Any]]:
+        try:
+            with db_connection() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    (
+                        "select "
+                        + ", ".join(STRUCTURED_INSIGHT_COLUMNS)
+                        + " from community_structured_insights where paper_id = "
+                        + _placeholder(0)
+                        + " order by updated_at asc, section_key asc"
+                    ),
+                    (paper_id,),
+                )
+                return [
+                    normalized
+                    for normalized in (
+                        self._normalize_structured_insight_row(row) for row in _fetchall(cursor)
+                    )
+                    if normalized is not None
+                ]
+        except Exception:
+            return []
+
+    def upsert_structured_insight_section(self, payload: dict[str, Any]) -> dict[str, Any]:
+        serialized = self._serialize_structured_insight_updates(payload)
+        paper_id = str(serialized.get("paper_id") or "").strip()
+        section_key = str(serialized.get("section_key") or "").strip()
+        if not paper_id or not section_key:
+            raise ValueError("paper_id and section_key are required")
+
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "delete from community_structured_insights where paper_id = "
+                    + _placeholder(0)
+                    + " and section_key = "
+                    + _placeholder(1)
+                ),
+                (paper_id, section_key),
+            )
+            columns = tuple(column for column in STRUCTURED_INSIGHT_COLUMNS if column in serialized)
+            placeholders = ", ".join(_placeholder(index) for index in range(len(columns)))
+            cursor.execute(
+                (
+                    "insert into community_structured_insights ("
+                    + ", ".join(columns)
+                    + f") values ({placeholders})"
+                ),
+                tuple(serialized[column] for column in columns),
+            )
+
+        rows = self.list_structured_insight_sections(paper_id)
+        for row in rows:
+            if str(row.get("section_key") or "") == section_key:
+                return row
+        return payload
+
+    def insert_curation_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        serialized = self._serialize_curation_job_updates(payload)
+        job_id = str(serialized.get("job_id") or "").strip()
+        if not job_id:
+            raise ValueError("job_id is required")
+
+        columns = tuple(column for column in CURATION_JOB_COLUMNS if column in serialized)
+        placeholders = ", ".join(_placeholder(index) for index in range(len(columns)))
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "insert into community_curation_jobs ("
+                    + ", ".join(columns)
+                    + f") values ({placeholders})"
+                ),
+                tuple(serialized[column] for column in columns),
+            )
+        return self.get_curation_job(job_id) or dict(payload)
+
+    def get_curation_job(self, job_id: str) -> Optional[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(CURATION_JOB_COLUMNS)
+                    + " from community_curation_jobs where job_id = "
+                    + _placeholder(0)
+                    + " limit 1"
+                ),
+                (job_id,),
+            )
+            return self._normalize_curation_job_row(_fetchone(cursor))
+
+    def update_curation_job(self, job_id: str, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
+        serialized = self._serialize_curation_job_updates(updates)
+        if not serialized:
+            return self.get_curation_job(job_id)
+
+        assignments = ", ".join(
+            f"{column} = {_placeholder(index)}"
+            for index, column in enumerate(serialized.keys())
+        )
+        values = [serialized[column] for column in serialized.keys()]
+        values.append(job_id)
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    f"update community_curation_jobs set {assignments} "
+                    f"where job_id = {_placeholder(len(values) - 1)}"
+                ),
+                tuple(values),
+            )
+            if cursor.rowcount <= 0:
+                return None
+        return self.get_curation_job(job_id)
+
+    def list_curation_jobs_for_batch(self, batch_id: str) -> list[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(CURATION_JOB_COLUMNS)
+                    + " from community_curation_jobs where batch_id = "
+                    + _placeholder(0)
+                    + " order by created_at asc, job_id asc"
+                ),
+                (batch_id,),
+            )
+            return [
+                normalized
+                for normalized in (self._normalize_curation_job_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
+    def list_pending_curation_jobs(self) -> list[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(CURATION_JOB_COLUMNS)
+                    + " from community_curation_jobs where status in ("
+                    + _placeholder(0)
+                    + ", "
+                    + _placeholder(1)
+                    + ", "
+                    + _placeholder(2)
+                    + ") order by created_at asc"
+                ),
+                ("queued", "processing", "retry"),
+            )
+            return [
+                normalized
+                for normalized in (self._normalize_curation_job_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
+    def insert_delete_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        serialized = self._serialize_delete_job_updates(payload)
+        job_id = str(serialized.get("job_id") or "").strip()
+        if not job_id:
+            raise ValueError("job_id is required")
+
+        columns = tuple(column for column in DELETE_JOB_COLUMNS if column in serialized)
+        placeholders = ", ".join(_placeholder(index) for index in range(len(columns)))
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "insert into community_delete_jobs ("
+                    + ", ".join(columns)
+                    + f") values ({placeholders})"
+                ),
+                tuple(serialized[column] for column in columns),
+            )
+        return self.get_delete_job(job_id) or dict(payload)
+
+    def get_delete_job(self, job_id: str) -> Optional[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(DELETE_JOB_COLUMNS)
+                    + " from community_delete_jobs where job_id = "
+                    + _placeholder(0)
+                    + " limit 1"
+                ),
+                (job_id,),
+            )
+            return self._normalize_delete_job_row(_fetchone(cursor))
+
+    def get_delete_job_by_paper_id(self, paper_id: str) -> Optional[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(DELETE_JOB_COLUMNS)
+                    + " from community_delete_jobs where paper_id = "
+                    + _placeholder(0)
+                    + " order by created_at desc limit 1"
+                ),
+                (paper_id,),
+            )
+            return self._normalize_delete_job_row(_fetchone(cursor))
+
+    def update_delete_job(self, job_id: str, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
+        serialized = self._serialize_delete_job_updates(updates)
+        if not serialized:
+            return self.get_delete_job(job_id)
+
+        assignments = ", ".join(
+            f"{column} = {_placeholder(index)}"
+            for index, column in enumerate(serialized.keys())
+        )
+        values = [serialized[column] for column in serialized.keys()]
+        values.append(job_id)
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    f"update community_delete_jobs set {assignments} "
+                    f"where job_id = {_placeholder(len(values) - 1)}"
+                ),
+                tuple(values),
+            )
+            if cursor.rowcount <= 0:
+                return None
+        return self.get_delete_job(job_id)
+
+    def list_pending_delete_jobs(self) -> list[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(DELETE_JOB_COLUMNS)
+                    + " from community_delete_jobs where status in ("
+                    + _placeholder(0)
+                    + ", "
+                    + _placeholder(1)
+                    + ", "
+                    + _placeholder(2)
+                    + ") order by created_at asc"
+                ),
+                ("queued", "running", "retry"),
+            )
+            return [
+                normalized
+                for normalized in (self._normalize_delete_job_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
 
     def get_viewer_state(self, paper_ids: list[str], *, user_id: str) -> dict[str, dict[str, bool]]:
         normalized_ids = [str(paper_id or "").strip() for paper_id in paper_ids if str(paper_id or "").strip()]
@@ -638,6 +992,7 @@ class CommunityPaperRepository:
             "paper_assets",
             "paper_likes",
             "paper_favorites",
+            "community_structured_insights",
             "papers",
         }:
             raise ValueError(f"unsupported cleanup table: {table_name}")

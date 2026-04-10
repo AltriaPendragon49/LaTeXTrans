@@ -310,6 +310,13 @@ async def startup_event():
 
     await fail_interrupted_translation_tasks()
     await reset_stale_community_tasks()
+    try:
+        from backend.app.services import paper_service
+
+        await paper_service.resume_pending_admin_curation_jobs()
+        await paper_service.resume_pending_delete_jobs()
+    except Exception as exc:
+        logger.warning("[Startup] Failed to resume community admin jobs: %s", exc)
 
     # Orphaned task cleanup runs on startup and then periodically.
     from backend.app.services.task_manager import task_manager as _tm

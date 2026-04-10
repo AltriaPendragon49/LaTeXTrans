@@ -946,8 +946,6 @@ async def start_translation(
             )
         )
 
-    _schedule_community_publish_watch(task_id, user_id)
-
     return TranslateResponse(
         task_id=task_id,
         status="queued",

@@ -1,12 +1,21 @@
-import { Compass, MessageSquare, PenSquare, User, Settings } from "lucide-react"
+import { Compass, PenSquare, Shield, User, Settings } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
+
+function hasAdminRole(roles: string[] | null | undefined): boolean {
+  if (!roles?.length) {
+    return false
+  }
+  const adminRoles = new Set(["admin", "super_admin", "community_admin", "curation_admin"])
+  return roles.some((role) => adminRoles.has(String(role).trim().toLowerCase()))
+}
 
 export function AppSidebar() {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const isAdmin = hasAdminRole(user?.roles)
   const profileLabel = user?.display_name?.trim() || user?.email?.split('@')[0] || user?.external_user_id || "User"
   const profileInitial = profileLabel.charAt(0).toUpperCase()
 
@@ -28,20 +37,22 @@ export function AppSidebar() {
           </NavLink>
 
           <NavLink 
-            to="/agent" 
-            className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
-          >
-            <MessageSquare className="w-6 h-6 shrink-0" />
-            <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.conversation.title", "Conversation")}</span>
-          </NavLink>
-
-          <NavLink 
             to="/tools" 
             className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
           >
             <PenSquare className="w-6 h-6 shrink-0" />
             <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.nav.paperTools", "Tools")}</span>
           </NavLink>
+
+          {isAdmin ? (
+            <NavLink
+              to="/admin/curation"
+              className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
+            >
+              <Shield className="w-6 h-6 shrink-0" />
+              <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.admin.nav.curation", "Admin curation")}</span>
+            </NavLink>
+          ) : null}
         </div>
 
 

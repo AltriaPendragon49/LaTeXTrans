@@ -92,6 +92,36 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("DATABASE_URL", "MYSQL_DATABASE_URL"),
         description="Business database URL. MySQL is the target for runtime migration.",
     )
+    mysql_host: Optional[str] = Field(
+        default=None,
+        validation_alias="MYSQL_HOST",
+        description="Optional dedicated host-side MySQL host for migration scripts.",
+    )
+    mysql_port: int = Field(
+        default=3306,
+        validation_alias="MYSQL_PORT",
+        description="Optional dedicated host-side MySQL port for migration scripts.",
+    )
+    mysql_user: Optional[str] = Field(
+        default=None,
+        validation_alias="MYSQL_USER",
+        description="Optional dedicated host-side MySQL user for migration scripts.",
+    )
+    mysql_password: Optional[str] = Field(
+        default=None,
+        validation_alias="MYSQL_PASSWORD",
+        description="Optional dedicated host-side MySQL password for migration scripts.",
+    )
+    mysql_database: Optional[str] = Field(
+        default=None,
+        validation_alias="MYSQL_DATABASE",
+        description="Optional dedicated host-side MySQL database for migration scripts.",
+    )
+    mysql_connect_timeout: int = Field(
+        default=10,
+        validation_alias="MYSQL_CONNECT_TIMEOUT",
+        description="Optional dedicated host-side MySQL connect timeout in seconds for migration scripts.",
+    )
     auth_provider_mode: str = Field(
         default="niutrans_local",
         validation_alias="AUTH_PROVIDER_MODE",
@@ -168,6 +198,16 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="COMMUNITY_BASELINE_SEED_PATH",
         description="Optional JSON seed file used as a baseline public community feed when no public papers exist.",
+    )
+    community_agent_product_enabled: bool = Field(
+        default=False,
+        validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",
+        description="Whether the retained community-agent product routes are directly usable in the current product mode.",
+    )
+    community_curation_max_concurrent: int = Field(
+        default=2,
+        validation_alias="COMMUNITY_CURATION_MAX_CONCURRENT",
+        description="Maximum concurrent admin community curation jobs.",
     )
     
     # LaTeX Compiler Settings

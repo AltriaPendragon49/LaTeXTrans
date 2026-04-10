@@ -10,6 +10,7 @@ import type {
   CommunityPaperExperience,
   CommunityPaperPreviewResponse,
   CommunityPaperReader,
+  StructuredInsightsPayload,
 } from "@/types/community"
 
 export function usePaperDetail(paperId: string | undefined) {
@@ -30,6 +31,9 @@ export function usePaperDetail(paperId: string | undefined) {
   const [experience, setExperience] = useState<CommunityPaperExperience | null>(
     cachedDetail?.experience ?? null,
   )
+  const [structuredInsights, setStructuredInsights] = useState<StructuredInsightsPayload | null>(
+    cachedDetail?.structured_insights ?? null,
+  )
 
   useEffect(() => {
     let isCancelled = false
@@ -43,6 +47,7 @@ export function usePaperDetail(paperId: string | undefined) {
       setLoading(false)
       setError(null)
       setNotFound(true)
+      setStructuredInsights(null)
       return undefined
     }
 
@@ -53,6 +58,7 @@ export function usePaperDetail(paperId: string | undefined) {
       setReaderState(cachedDetail.reader_state ?? "unavailable")
       setReader(cachedDetail.reader ?? null)
       setExperience(cachedDetail.experience ?? null)
+      setStructuredInsights(cachedDetail.structured_insights ?? null)
       setLoading(false)
     }
     setError(null)
@@ -70,6 +76,7 @@ export function usePaperDetail(paperId: string | undefined) {
         setReaderState(response.reader_state ?? "unavailable")
         setReader(response.reader ?? null)
         setExperience(response.experience ?? null)
+        setStructuredInsights(response.structured_insights ?? null)
         setLoading(false)
 
         if (viewedPaperIdRef.current !== paperId) {
@@ -92,6 +99,7 @@ export function usePaperDetail(paperId: string | undefined) {
         setReaderState("unavailable")
         setReader(null)
         setExperience(null)
+        setStructuredInsights(null)
         setNotFound(/404/.test(message) || /not found/i.test(message))
       }
     }
@@ -112,6 +120,7 @@ export function usePaperDetail(paperId: string | undefined) {
     notFound,
     reader,
     experience,
+    structuredInsights,
     refetch: async () => {
       if (!paperId) {
         return
@@ -122,6 +131,7 @@ export function usePaperDetail(paperId: string | undefined) {
       setReaderState(response.reader_state ?? "unavailable")
       setReader(response.reader ?? null)
       setExperience(response.experience ?? null)
+      setStructuredInsights(response.structured_insights ?? null)
     },
   }
 }

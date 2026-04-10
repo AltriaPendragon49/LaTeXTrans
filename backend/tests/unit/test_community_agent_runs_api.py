@@ -15,6 +15,11 @@ def _make_client() -> httpx.AsyncClient:
     )
 
 
+@pytest.fixture(autouse=True)
+def _enable_community_agent_product(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(community_agent_route.settings, "community_agent_product_enabled", True)
+
+
 def test_agent_run_route_passes_skill_toggles_to_service_and_returns_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

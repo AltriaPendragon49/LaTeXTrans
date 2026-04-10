@@ -6,16 +6,27 @@ import { Outlet } from "react-router-dom"
 import i18n from "@/i18n"
 import App from "@/App"
 
+type MockAuthState = {
+  isAuthenticated: boolean
+  loading: boolean
+  user: {
+    roles: string[]
+  } | null
+}
+
+let mockAuthState: MockAuthState = {
+  isAuthenticated: false,
+  loading: false,
+  user: null,
+}
+
 vi.mock("@/contexts/AuthContext", () => ({
   AuthProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useAuth: () => mockAuthState,
 }))
 
 vi.mock("@/pages/CommunityFeed", () => ({
   default: () => <div>Community feed page</div>,
-}))
-
-vi.mock("@/pages/Dashboard", () => ({
-  default: () => <div>Dashboard page</div>,
 }))
 
 vi.mock("@/pages/PaperDetail", () => ({
@@ -34,8 +45,8 @@ vi.mock("@/pages/Login", () => ({
   default: () => <div>Login page</div>,
 }))
 
-vi.mock("@/pages/History", () => ({
-  default: () => <div>History page</div>,
+vi.mock("@/pages/ToolsHub", () => ({
+  default: () => <div>Tools page</div>,
 }))
 
 vi.mock("@/pages/Settings", () => ({
@@ -44,6 +55,10 @@ vi.mock("@/pages/Settings", () => ({
 
 vi.mock("@/pages/Profile", () => ({
   default: () => <div>Profile page</div>,
+}))
+
+vi.mock("@/pages/CommunityAdminCuration", () => ({
+  default: () => <div>Admin curation page</div>,
 }))
 
 vi.mock("@/layout", () => ({
@@ -58,6 +73,11 @@ vi.mock("@/layout", () => ({
 describe("App community routing", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en")
+    mockAuthState = {
+      isAuthenticated: false,
+      loading: false,
+      user: null,
+    }
   })
 
   it("routes the homepage to the community feed", async () => {
@@ -68,11 +88,65 @@ describe("App community routing", () => {
     expect(await screen.findByText("Community feed page")).toBeInTheDocument()
   })
 
-  it("keeps the translation workspace on /translate", async () => {
+  it("redirects /agent to the community feed", async () => {
+    window.history.pushState({}, "", "/agent")
+
+    render(<App />)
+
+    expect(await screen.findByText("Community feed page")).toBeInTheDocument()
+  })
+
+  it("redirects /agent/:conversationId to the community feed", async () => {
+    window.history.pushState({}, "", "/agent/conversation-123")
+
+    render(<App />)
+
+    expect(await screen.findByText("Community feed page")).toBeInTheDocument()
+  })
+
+  it("redirects unauthenticated users from /admin/curation to login", async () => {
+    window.history.pushState({}, "", "/admin/curation")
+
+    render(<App />)
+
+    expect(await screen.findByText("Login page")).toBeInTheDocument()
+    expect(screen.queryByText("Admin curation page")).not.toBeInTheDocument()
+  })
+
+  it("redirects authenticated non-admin users away from /admin/curation", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["user"] },
+    }
+
+    window.history.pushState({}, "", "/admin/curation")
+
+    render(<App />)
+
+    expect(await screen.findByText("Community feed page")).toBeInTheDocument()
+    expect(screen.queryByText("Admin curation page")).not.toBeInTheDocument()
+  })
+
+  it("allows admin users to access /admin/curation", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["admin"] },
+    }
+
+    window.history.pushState({}, "", "/admin/curation")
+
+    render(<App />)
+
+    expect(await screen.findByText("Admin curation page")).toBeInTheDocument()
+  })
+
+  it("keeps /translate routed through tools", async () => {
     window.history.pushState({}, "", "/translate")
 
     render(<App />)
 
-    expect(await screen.findByText("Dashboard page")).toBeInTheDocument()
+    expect(await screen.findByText("Tools page")).toBeInTheDocument()
   })
 })

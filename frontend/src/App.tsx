@@ -3,12 +3,13 @@ import { Loader2 } from "lucide-react"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ThemeProvider } from "@/theme/theme-provider"
+import { useAuth } from "@/contexts/AuthContext"
 
 import { AuthProvider } from "./contexts/AuthContext"
 
 const Layout = lazy(() => import("./layout"))
 const CommunityFeedPage = lazy(() => import("./pages/CommunityFeed"))
-const CommunityConversationPage = lazy(() => import("./pages/CommunityConversation"))
+const CommunityAdminCurationPage = lazy(() => import("./pages/CommunityAdminCuration"))
 const ProcessingPage = lazy(() => import("./pages/Processing"))
 const ComparisonsPage = lazy(() => import("./pages/Comparisons"))
 const Login = lazy(() => import("./pages/Login"))
@@ -32,15 +33,27 @@ function withSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>
 }
 
-function createConversationId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID()
+function hasAdminRole(roles: string[] | null | undefined): boolean {
+  if (!roles?.length) {
+    return false
   }
-  return `conversation-${Date.now()}`
+  const adminRoles = new Set(["admin", "super_admin", "community_admin", "curation_admin"])
+  return roles.some((role) => adminRoles.has(String(role).trim().toLowerCase()))
 }
 
-function AgentRedirect() {
-  return <Navigate to={`/agent/${createConversationId()}`} replace />
+function AdminRoute({ children }: { children: ReactNode }) {
+  const { user, loading, isAuthenticated } = useAuth()
+
+  if (loading) {
+    return <RouteLoading />
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  if (!hasAdminRole(user?.roles)) {
+    return <Navigate to="/" replace />
+  }
+  return <>{children}</>
 }
 
 function App() {
@@ -52,8 +65,16 @@ function App() {
             <Route path="/login" element={withSuspense(<Login />)} />
             <Route path="/" element={withSuspense(<Layout />)}>
               <Route index element={withSuspense(<CommunityFeedPage />)} />
-              <Route path="agent" element={<AgentRedirect />} />
-              <Route path="agent/:conversationId" element={withSuspense(<CommunityConversationPage />)} />
+              <Route path="agent" element={<Navigate to="/" replace />} />
+              <Route path="agent/:conversationId" element={<Navigate to="/" replace />} />
+              <Route
+                path="admin/curation"
+                element={
+                  <AdminRoute>
+                    {withSuspense(<CommunityAdminCurationPage />)}
+                  </AdminRoute>
+                }
+              />
               <Route path="tools" element={withSuspense(<ToolsHubPage />)} />
               <Route path="translate" element={<Navigate to="/tools?panel=translate" replace />} />
               <Route path="paper/:paperId" element={withSuspense(<PaperDetailPage />)} />

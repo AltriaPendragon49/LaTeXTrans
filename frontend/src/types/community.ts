@@ -251,12 +251,30 @@ export interface PaperAnnotationOverlayRect {
   height: number
 }
 
+export interface StructuredInsightSection {
+  section_key: string
+  summary_en?: string | null
+  summary_zh?: string | null
+  bullets_en?: string[] | null
+  bullets_zh?: string[] | null
+  body_en?: string | null
+  body_zh?: string | null
+  status?: string | null
+  updated_at?: string | null
+}
+
+export interface StructuredInsightsPayload {
+  state: string
+  sections: StructuredInsightSection[]
+}
+
 export interface CommunityPaperDetailResponse {
   paper: CommunityPaper
   preview?: CommunityPaperPreviewResponse | null
   reader_state?: "ready" | "warming" | "unavailable"
   reader?: CommunityPaperReader | null
   experience?: CommunityPaperExperience | null
+  structured_insights?: StructuredInsightsPayload | null
 }
 
 export interface CommunityPaperSubmitResponse {
@@ -289,6 +307,28 @@ export interface CommunityPaperDownloadSessionResponse {
   asset_id: string
   download_url: string
   expires_at: string
+}
+
+export interface AdminCurationBatchItem {
+  job_id: string
+  paper_id?: string | null
+  source_type: string
+  arxiv_id?: string | null
+  original_filename?: string | null
+  status: string
+  error?: string | null
+}
+
+export interface AdminCurationBatchResponse {
+  batch_id: string
+  status: string
+  items: AdminCurationBatchItem[]
+}
+
+export interface AdminDeletePaperResponse {
+  job_id: string
+  paper_id: string
+  status: string
 }
 
 export interface CommunityPaperImportRequest {

@@ -9,10 +9,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_current_user
+from backend.app.core.config import get_settings
 from backend.app.policies import authorize
 from backend.app.services import community_agent_service
 
 router = APIRouter(prefix="/community-agent")
+settings = get_settings()
 
 
 class CommunityAgentSkillToggles(BaseModel):
@@ -88,11 +90,21 @@ def _ensure_community_agent_authorized(
     )
 
 
+def _ensure_community_agent_product_enabled() -> None:
+    if settings.community_agent_product_enabled:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Community agent product mode is currently hidden.",
+    )
+
+
 @router.post("/runs", response_model=CommunityAgentRunResponse)
 async def create_agent_run(
     request: CommunityAgentRunRequest,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
         resource="community_run",
@@ -126,6 +138,7 @@ async def create_agent_run(
 async def list_agent_conversations(
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
         resource="community_conversation",
@@ -143,6 +156,7 @@ async def upsert_agent_conversation(
     request: CommunityConversationRecordPayload,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
         resource="community_conversation",
@@ -163,6 +177,7 @@ async def delete_agent_conversation(
     conversation_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
         resource="community_conversation",
@@ -180,6 +195,7 @@ async def get_agent_run(
     run_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
         resource="community_run",
@@ -203,6 +219,7 @@ async def stream_agent_events(
     run_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
         resource="community_run",

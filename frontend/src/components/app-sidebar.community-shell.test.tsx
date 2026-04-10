@@ -1,13 +1,39 @@
 import { render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
 
+type MockAuthState = {
+  isAuthenticated: boolean
+  user: {
+    roles?: string[]
+    display_name?: string | null
+    email?: string | null
+    external_user_id?: string | null
+  } | null
+}
+
+let mockAuthState: MockAuthState = {
+  isAuthenticated: false,
+  user: null,
+}
+
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => mockAuthState,
+}))
+
 describe("AppSidebar community shell", () => {
-  it("prioritizes community and exposes a tools entry", async () => {
+  beforeEach(() => {
+    mockAuthState = {
+      isAuthenticated: false,
+      user: null,
+    }
+  })
+
+  it("shows community and tools links but hides conversation/admin links for non-admin users", async () => {
     await i18n.changeLanguage("en")
 
     render(
@@ -20,14 +46,23 @@ describe("AppSidebar community shell", () => {
 
     expect(screen.getByRole("link", { name: "Community" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Paper tools" })).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "History" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /Conversation/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /Admin curation/i })).not.toBeInTheDocument()
   })
 
-  it("applies the custom sidebar width on the desktop shell wrapper", async () => {
+  it("shows the admin curation link for admin users", async () => {
     await i18n.changeLanguage("en")
+    mockAuthState = {
+      isAuthenticated: true,
+      user: {
+        roles: ["community_admin"],
+        display_name: "Admin",
+        email: "admin@example.com",
+        external_user_id: "admin-1",
+      },
+    }
 
-    const { container } = render(
+    render(
       <MemoryRouter initialEntries={["/"]}>
         <SidebarProvider>
           <AppSidebar />
@@ -35,11 +70,6 @@ describe("AppSidebar community shell", () => {
       </MemoryRouter>,
     )
 
-    const desktopSidebar = container.querySelector("[data-variant='floating'][data-side='left']")
-    expect(desktopSidebar).toHaveStyle({
-      "--sidebar-width": "13.5rem",
-      "--sidebar-width-icon": "3.75rem",
-      "--sidebar-gap-offset": "0.75rem",
-    })
+    expect(screen.getByRole("link", { name: /Admin curation/i })).toBeInTheDocument()
   })
 })

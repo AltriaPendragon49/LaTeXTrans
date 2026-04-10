@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import { API_BASE_URL } from "@/api-base"
-import i18n from "@/i18n"
 import { PaperCard } from "@/components/community/PaperCard"
+import i18n from "@/i18n"
 import type { CommunityPaper } from "@/types/community"
 
 const prefetchCommunityPaperDetailMock = vi.fn()
@@ -43,7 +43,7 @@ const paper: CommunityPaper = {
   authors: ["Ada Lovelace", "Alan Turing"],
   categories: ["cs.AI", "cs.CL"],
   abstract_raw: "A compact abstract for testing the paper card render path.",
-  abstract_translated: null,
+  abstract_translated: "用于验证社区卡片的中文摘要。",
   community_status: "official",
   trans_status: "completed",
   created_at: "2026-03-18T00:00:00Z",
@@ -88,7 +88,7 @@ describe("PaperCard", () => {
     await i18n.changeLanguage("en")
   })
 
-  it("renders paper metadata and detail navigation", () => {
+  it("renders paper metadata, reader statuses, and detail navigation", () => {
     render(
       <MemoryRouter>
         <PaperCard paper={paper} />
@@ -96,9 +96,9 @@ describe("PaperCard", () => {
     )
 
     expect(screen.getByText("Attention Residuals for Community Discovery")).toBeInTheDocument()
-    expect(screen.queryByText("Official")).not.toBeInTheDocument()
     expect(screen.getByText("Completed")).toBeInTheDocument()
-    expect(screen.getByRole("link")).toHaveAttribute("href", "/paper/paper-1")
+    expect(screen.getByText("Ada Lovelace, Alan Turing")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /attention residuals/i })).toHaveAttribute("href", "/paper/paper-1")
     expect(screen.getAllByTestId("pdf-document")).toHaveLength(2)
   })
 
@@ -118,6 +118,27 @@ describe("PaperCard", () => {
     expect(preloadPaperDetailRouteMock).toHaveBeenCalled()
     expect(prefetchCommunityPaperDetailMock).toHaveBeenCalledWith("paper-1")
     expect(preloadPaperPreviewEnhancerMock).toHaveBeenCalled()
+  })
+
+  it("renders the admin delete affordance only when an action is provided", () => {
+    const onDelete = vi.fn()
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <PaperCard paper={paper} onDelete={onDelete} />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete paper" }))
+    expect(onDelete).toHaveBeenCalledWith(paper)
+
+    rerender(
+      <MemoryRouter>
+        <PaperCard paper={paper} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByRole("button", { name: "Delete paper" })).not.toBeInTheDocument()
   })
 
   it("uses paper-level preview routes even when the selected task id is missing", () => {

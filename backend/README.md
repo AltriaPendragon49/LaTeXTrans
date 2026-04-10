@@ -434,6 +434,13 @@ export LLM_TIMEOUT="60"
 
 # Local Auth / MySQL（本地启动必需）
 export DATABASE_URL="mysql://root:password@host.docker.internal:3306/latextrans"
+# Optional dedicated host-side MySQL env for backend/scripts/apply_mysql_migrations.py
+export MYSQL_HOST="127.0.0.1"
+export MYSQL_PORT="3306"
+export MYSQL_USER="root"
+export MYSQL_PASSWORD="password"
+export MYSQL_DATABASE="latextrans"
+export MYSQL_CONNECT_TIMEOUT="10"
 export AUTH_PROVIDER_MODE="niutrans_local"
 export AUTH_JWT_KEYS="v1:change-me-local-dev-secret"
 export AUTH_JWT_ISSUER="latextrans-local"
@@ -452,6 +459,22 @@ export LATEX_BIN_DIR="/usr/local/texlive/2024/bin/x86_64-linux"
 # 数据目录(可选)
 export DATA_DIR="/path/to/data"
 ```
+
+Apply the MySQL migration bundle:
+
+```bash
+python backend/scripts/apply_mysql_migrations.py
+```
+
+When `MYSQL_HOST`, `MYSQL_USER`, and `MYSQL_DATABASE` are set, the migration script prefers that dedicated MySQL connection. Otherwise it falls back to `DATABASE_URL`.
+
+Grant a persistent local admin role after the user has signed in once:
+
+```bash
+python backend/scripts/grant_local_admin.py --external-user-id 458470
+```
+
+`LOCAL_ADMIN_EXTERNAL_USER_IDS` can still be used as a bootstrap safety net, but the durable source of truth remains the `user_roles` table in MySQL.
 
 > **注意**: 本地启动与验证不需要 Supabase runtime credentials。只需保证 MySQL 与本地认证变量可用即可。
 
