@@ -11,28 +11,6 @@ The system SHALL persist community-readable paper assets under a dedicated commu
 - **THEN** the system SHALL copy `source_archive`, `translated_pdf`, and `preview_html` into a paper-owned community library directory
 - **AND** the corresponding `paper_assets.file_path` values SHALL be stored as relative paths.
 
-### Requirement: Completed authenticated translation tasks auto-publish to the community library
-The system SHALL let successful authenticated translation tasks become community papers without requiring a separate manual publish step.
-
-#### Scenario: Publish a completed task as a fallback community paper
-- **WHEN** an authenticated translation task completes successfully
-- **AND** no stronger official community paper already owns the same paper identity
-- **THEN** the system SHALL create or reuse a community paper record
-- **AND** it SHALL sync the task outputs into that paper's community library assets.
-
-#### Scenario: Reuse an existing community paper for the same arXiv identity
-- **WHEN** a completed authenticated task has an `arxiv_id`
-- **AND** a community paper already exists for that `arxiv_id`
-- **THEN** the system SHALL reuse that existing paper record rather than creating a duplicate row.
-
-### Requirement: Normal translation start schedules community publish watching
-The system SHALL watch authenticated task-based translations for successful community publishing after the task enters the normal translation engine.
-
-#### Scenario: Start a normal authenticated translation
-- **WHEN** an authenticated user starts `POST /translate/{task_id}`
-- **THEN** the system SHALL schedule a background community publish watch for that task
-- **AND** it SHALL NOT block the normal task processing flow.
-
 ### Requirement: Community preview and download resolve library-relative paths
 The system SHALL resolve public preview and download reads from stored relative community library paths.
 
@@ -45,4 +23,20 @@ The system SHALL resolve public preview and download reads from stored relative 
 - **WHEN** a community paper translated PDF asset stores a relative `file_path`
 - **THEN** the signed community download gateway SHALL resolve and stream the file successfully
 - **AND** successful downloads SHALL still increment `download_count`.
+
+### Requirement: Completed admin curation runs publish into the community library
+The system SHALL let successful admin curation runs become community-library papers only after the full curation pipeline succeeds.
+
+#### Scenario: Publish a fully successful admin curation run
+- **WHEN** an admin curation run completes intake, metadata preparation, translation, and structured insight generation successfully
+- **THEN** the system SHALL create or reuse the canonical community paper record
+- **AND** it SHALL copy the selected community assets into that paper's community library directory.
+
+### Requirement: Community hard delete removes library assets completely
+The system SHALL remove a hard-deleted community paper from both local database records and local community-library storage.
+
+#### Scenario: Admin hard deletes a community paper
+- **WHEN** an authorized admin performs a hard delete for a community paper
+- **THEN** the system SHALL delete the paper's local `community_papers/<paper_id>` directory and related stored asset rows
+- **AND** the corresponding paper SHALL no longer resolve through normal community preview, detail, or download flows.
 

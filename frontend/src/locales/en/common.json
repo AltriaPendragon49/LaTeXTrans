@@ -592,5 +592,15 @@
   "community.detail.insights.section.innovation": "论文的关键创新点有哪些，相比已有方法，本质区别在哪里？",
   "community.detail.insights.section.experiment": "论文如何验证方法有效性，主要结论是什么？",
   "community.detail.insights.section.future": "这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？",
-  "community.detail.insights.section.fallback": "Insight section"
+  "community.detail.insights.section.fallback": "Insight section",
+  "community.detail.mode.bilingualCompare": "Bilingual compare",
+  "community.detail.tab.insights": "Insights",
+  "community.detail.tab.similar": "Similar",
+  "community.detail.similar.loading": "Loading similar papers...",
+  "community.detail.similar.emptyTitle": "No similar papers yet",
+  "community.detail.similar.emptyDescription": "No related arXiv recommendations are available for this paper right now.",
+  "community.detail.similar.errorTitle": "Unable to load similar papers",
+  "community.detail.similar.errorDescription": "Try opening the Similar tab again in a moment.",
+  "community.detail.similar.openInCommunity": "Open in community",
+  "community.detail.similar.openInArxiv": "Open in arXiv"
 }

@@ -117,6 +117,17 @@ function hasTranslatedPdfResource(
   )
 }
 
+function hasSourcePdfResource(
+  paper: {
+    arxiv_id?: string | null
+  } | null | undefined,
+  reader: {
+    source?: { kind?: string | null } | null
+  } | null | undefined,
+) {
+  return Boolean(reader?.source?.kind === "source_pdf" || paper?.arxiv_id)
+}
+
 function resolveAvailableModes(
   paper: {
     trans_status?: string | null
@@ -146,6 +157,9 @@ function resolveAvailableModes(
   if (allowTranslatedPdf) {
     modes.push("translated_pdf")
   }
+  if (allowTranslatedPdf && hasSourcePdfResource(paper, reader)) {
+    modes.push("bilingual_compare")
+  }
 
   return modes
 }
@@ -154,20 +168,17 @@ function resolvePreferredMode(
   preferredMode: CommunityPaperReaderMode | undefined,
   availableModes: CommunityPaperReaderMode[],
 ): CommunityPaperReaderMode {
-  if (preferredMode && availableModes.includes(preferredMode)) {
-    return preferredMode
-  }
-  if (preferredMode === "translated" && availableModes.includes("translated_html")) {
-    return "translated_html"
-  }
   if (preferredMode === "translated" && availableModes.includes("translated_pdf")) {
     return "translated_pdf"
   }
-  if (availableModes.includes("translated_html")) {
-    return "translated_html"
-  }
   if (availableModes.includes("translated_pdf")) {
     return "translated_pdf"
+  }
+  if (preferredMode && availableModes.includes(preferredMode)) {
+    return preferredMode
+  }
+  if (availableModes.includes("translated_html")) {
+    return "translated_html"
   }
   return "source"
 }
@@ -229,7 +240,8 @@ export default function PaperDetailPage() {
 
   const activePaper = paper
   const authorsLabel = formatAuthors(activePaper.authors, t("community.card.authorsUnavailable"))
-  const hasTranslatedMode = availableModes.includes("translated")
+  const hasTranslatedMode =
+    availableModes.includes("translated_html") || availableModes.includes("translated_pdf")
   const stageLabel = resolveStageLabel(activePaper.trans_status, readerState, hasTranslatedMode, t)
   const canTranslate = activePaper.trans_status === "not_started" || activePaper.trans_status === "failed"
   const canViewProgress =
@@ -315,6 +327,7 @@ export default function PaperDetailPage() {
             <div className="flex bg-surface-container-low rounded-xl p-1 border border-outline-variant/30 shadow-sm overflow-hidden">
               <button
                 type="button"
+                data-testid="paper-detail-mode-source"
                 onClick={() => setSelectedMode("source")}
                 className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
                   selectedMode === "source"
@@ -326,6 +339,20 @@ export default function PaperDetailPage() {
               </button>
               <button
                 type="button"
+                data-testid="paper-detail-mode-translated-pdf"
+                disabled={!availableModes.includes("translated_pdf")}
+                onClick={() => setSelectedMode("translated_pdf")}
+                className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
+                  selectedMode === "translated_pdf"
+                    ? "bg-surface-container-highest text-on-surface shadow-sm border border-outline-variant/30"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                }`}
+              >
+                {t("community.detail.mode.translatedPdf")}
+              </button>
+              <button
+                type="button"
+                data-testid="paper-detail-mode-translated-html"
                 disabled={!availableModes.includes("translated_html")}
                 onClick={() => setSelectedMode("translated_html")}
                 className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
@@ -338,15 +365,16 @@ export default function PaperDetailPage() {
               </button>
               <button
                 type="button"
-                disabled={!availableModes.includes("translated_pdf")}
-                onClick={() => setSelectedMode("translated_pdf")}
+                data-testid="paper-detail-mode-bilingual-compare"
+                disabled={!availableModes.includes("bilingual_compare")}
+                onClick={() => setSelectedMode("bilingual_compare")}
                 className={`px-4 py-1.5 text-xs font-bold tracking-wider rounded-lg transition-all ${
-                  selectedMode === "translated_pdf"
+                  selectedMode === "bilingual_compare"
                     ? "bg-surface-container-highest text-on-surface shadow-sm border border-outline-variant/30"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/50 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
                 }`}
               >
-                {t("community.detail.mode.translatedPdf")}
+                {t("community.detail.mode.bilingualCompare")}
               </button>
             </div>
 
@@ -461,14 +489,11 @@ export default function PaperDetailPage() {
           readerState={readerState}
           reader={reader}
           preferredMode={selectedMode}
-          availableModes={availableModes}
-          stageLabel={stageLabel}
           structuredInsights={structuredInsights}
           originalSourceUrl={originalSourceUrl}
           abstractText={abstractText}
           canDownload={canDownload}
           actionError={actionError}
-          onModeChange={setSelectedMode}
         />
       </div>
     </div>

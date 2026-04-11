@@ -15,6 +15,7 @@ vi.mock("@/hooks/use-paper-detail", () => ({
 vi.mock("@/lib/community-api", () => ({
   translateCommunityPaper: vi.fn(),
   createCommunityPaperDownloadSession: vi.fn(),
+  getCommunityPaperSimilar: vi.fn(() => Promise.resolve({ items: [] })),
 }))
 
 vi.mock("@/store/useStore", () => ({
@@ -31,7 +32,10 @@ vi.mock("@/store/useStore", () => ({
 
 vi.mock("@/components/community/PaperPreviewReader", () => ({
   PaperPreviewReader: ({ initialPreview }: { initialPreview?: { html_content?: string | null } | null }) => (
-    <div data-testid="paper-preview-reader">{initialPreview?.html_content ?? "preview"}</div>
+    <div
+      data-testid="paper-preview-reader"
+      dangerouslySetInnerHTML={{ __html: initialPreview?.html_content ?? "preview" }}
+    />
   ),
 }))
 
@@ -143,10 +147,11 @@ describe("PaperDetailPage reader-first", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText(zhGuideContent)).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.solution"))).toBeInTheDocument()
+    expect(screen.queryByText(zhGuideContent)).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId("paper-detail-mode-source"))
+    await user.click(screen.getByText(i18n.t("community.detail.insights.section.solution")))
 
     expect(screen.getByText(zhGuideContent)).toBeInTheDocument()
     expect(screen.getByTestId("paper-source-pdf-reader")).toBeInTheDocument()

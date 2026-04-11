@@ -3,24 +3,6 @@
 ## Purpose
 TBD - created by archiving change refactor-community-agent-first-shell. Update Purpose after archive.
 ## Requirements
-### Requirement: Community homepage uses an agent-first research entry
-The community homepage SHALL prioritize a single centered agent-style input that infers user intent for paper search, paper explanation, or translation requests and acts as the primary first-screen surface.
-
-#### Scenario: Homepage input infers paper search intent
-- **WHEN** a user enters text that looks like a paper title, topic, keyword, or research area
-- **THEN** the system SHALL treat the input as a paper discovery request by default
-- **AND** the page SHALL NOT require the user to choose an explicit mode before searching in normal cases.
-
-#### Scenario: Homepage input infers question intent
-- **WHEN** a user enters text that looks like a question about a paper or topic
-- **THEN** the system SHALL treat the input as an explanation request by default
-- **AND** the resulting answer SHALL remain connected to discoverable paper sources rather than behaving like a detached generic chatbot.
-
-#### Scenario: Homepage input infers translation intent
-- **WHEN** a user enters an arXiv identifier, arXiv URL, or a translation-like instruction
-- **THEN** the system SHALL treat the input as a translation-oriented request by default
-- **AND** the user SHALL NOT need to navigate to the legacy translation workspace first.
-
 ### Requirement: Agent conversations continue in a dedicated workspace
 The community agent SHALL move long-lived interaction into a dedicated conversation workspace after the first submit rather than overloading the homepage with transcript state.
 
@@ -259,4 +241,13 @@ The community agent SHALL normalize persisted conversation, run, and event times
 - **WHEN** an authenticated community agent run or event payload includes ISO 8601 timestamps with timezone information
 - **THEN** backend persistence SHALL normalize `created_at`, `updated_at`, `completed_at`, and event timestamp fields before writing local rows
 - **AND** saved conversations and runs SHALL remain readable through the authenticated community workspace after the write completes
+
+### Requirement: Community agent runtime can stay retained while product UI entry points are hidden
+The community agent runtime SHALL remain restorable from retained code assets even when the product hides its public homepage, sidebar, and paper-detail entry points and disables direct product access to those agent flows.
+
+#### Scenario: Product hides public agent UI entry points
+- **WHEN** the current product configuration hides the homepage agent composer, sidebar agent affordances, and paper-detail public copilot pane
+- **THEN** the retained backend runtime code and underlying tool-calling services SHALL remain present in the codebase
+- **AND** ordinary users and admins SHALL NOT be able to use those product agent flows directly in the current hidden mode
+- **AND** later recovery of those UI entry points SHALL not require reintroducing deleted runtime code.
 

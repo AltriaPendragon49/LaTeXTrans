@@ -4,17 +4,20 @@
 TBD - created by archiving change add-community-day-03-feed-and-paper-detail-shell. Update Purpose after archive.
 ## Requirements
 ### Requirement: Community feed homepage route
-The community homepage SHALL act as a low-friction launch surface for paper search, question answering, and translation entry instead of behaving as the long-lived transcript workspace itself, adopting the new Stitch Compact Layout principles.
+The community homepage SHALL prioritize internal community-paper search and feed browsing instead of exposing a public agent-first entry surface, while preserving the current overall layout silhouette for the page.
 
-#### Scenario: Homepage remains a launch surface
+#### Scenario: Homepage uses internal community search as the top interaction
 - **WHEN** a user lands on the community homepage
-- **THEN** the page SHALL emphasize a centered agent-first entry surface
-- **AND** detailed transcript interaction SHALL continue in a dedicated conversation workspace after submission utilizing the Stitch Refined Layout structure.
+- **THEN** the page SHALL present a search-first surface for internal community paper lookup
+- **AND** that search surface SHALL match community papers by `arXiv ID`, title, author, and abstract fields
+- **AND** it SHALL only search formal public community papers
+- **AND** it SHALL exclude ordinary tool results, incomplete curation items, and deleting or deleted papers
+- **AND** it SHALL NOT expose the public homepage agent composer as the default first-screen action.
 
-#### Scenario: Homepage removes status-heavy summary clutter
-- **WHEN** the homepage renders its first-screen launch surface
-- **THEN** tracked / official-style summary bookkeeping SHALL NOT dominate the primary viewport
-- **AND** the agent entry SHALL remain the first obvious action, preserving the minimalist intent of the Compact Layout design.
+#### Scenario: Homepage keeps its established overall shell
+- **WHEN** the homepage renders after this change
+- **THEN** the page SHALL keep the existing overall feed layout direction intact
+- **AND** the change SHALL focus on replacing the top interaction behavior rather than redesigning the entire page architecture.
 
 ### Requirement: Feed sort and browse shell
 The community homepage SHALL provide the MVP browse controls needed to inspect official-first community content.
@@ -39,12 +42,12 @@ Each Feed result SHALL render as a dense paper discovery card that helps the vie
 - **AND** official papers SHALL be visually distinguishable from user fallback papers.
 
 ### Requirement: Paper detail shell contract
-The community paper detail page SHALL keep reading dominant while providing a persistent same-screen AI copilot workspace that behaves as a coordinated dual-pane study surface.
+The community paper detail page SHALL keep reading dominant while providing a persistent right-side reading-support workspace that behaves as a coordinated dual-pane study surface.
 
 #### Scenario: Reader remains the dominant surface
 - **WHEN** the paper detail shell renders
 - **THEN** the reader SHALL occupy the primary visual area
-- **AND** the AI copilot pane SHALL remain persistent but secondary to reading.
+- **AND** the right-side workspace SHALL remain persistent but secondary to reading.
 
 #### Scenario: Discovery cards focus on reading entry
 - **WHEN** community papers are shown in discovery results or conversation answer cards
@@ -53,8 +56,13 @@ The community paper detail page SHALL keep reading dominant while providing a pe
 
 #### Scenario: Detail page behaves as a dual-pane reading workspace
 - **WHEN** the user opens a paper detail page
-- **THEN** the page SHALL keep the reader and copilot visible in a coordinated dual-pane layout
-- **AND** the user SHALL not need to leave the paper detail route to continue the same paper-scoped reading conversation.
+- **THEN** the page SHALL keep the reader and right-side support pane visible in a coordinated dual-pane layout
+- **AND** the user SHALL not need to leave the paper detail route to continue the same paper-scoped reading workflow.
+
+#### Scenario: Right pane focuses on insights and similar reading support
+- **WHEN** the paper detail page renders after this change
+- **THEN** the right-side pane SHALL expose only `Insights` and `Similar` tabs
+- **AND** it SHALL not expose `Notes` or `Comments` in this version.
 
 ### Requirement: Disabled action-slot contract
 The Day 3 detail page SHALL visually reserve the future action positions needed by later changes without exposing active controls yet.
@@ -66,28 +74,45 @@ The Day 3 detail page SHALL visually reserve the future action positions needed 
 - **AND** the UI SHALL explain that those actions are coming in later changes.
 
 ### Requirement: Translation workspace relocation compatibility
-The discovery UI SHALL remain compatible with a secondary tools hub that preserves the direct translation workflow.
+The discovery UI SHALL keep the direct translation workflow in the tools hub and SHALL keep ordinary tool translations separate from community publication.
 
-#### Scenario: Community and tools stay separated
+#### Scenario: User needs the explicit direct translation workflow
 - **WHEN** the user needs the explicit direct translation workflow
 - **THEN** the UI SHALL provide that workflow through the tools hub
-- **AND** the community homepage SHALL not be forced to carry that explicit workflow as its primary surface.
+- **AND** the community homepage SHALL not be forced to carry that workflow as its primary surface.
 
-### Requirement: Dual-pane reader supports anchored copilot references
-The paper detail workspace SHALL let the AI copilot reference concrete paper locations and drive the reader to those locations through anchor-aware interactions.
+#### Scenario: Ordinary tool translation does not publish community content
+- **WHEN** a normal user completes a translation through the tools workflow
+- **THEN** that result SHALL remain outside the public community library by default
+- **AND** only the dedicated admin curation path SHALL publish new community papers.
 
-#### Scenario: User clicks an assistant citation
-- **WHEN** the copilot answer includes a citation or reference tied to the current paper
-- **THEN** clicking that reference SHALL scroll the reader to the corresponding location
-- **AND** the reader SHALL highlight that location without leaving the current paper detail route.
+### Requirement: Admin-only community controls appear inside the existing community shell
+The community UI SHALL expose admin-only curation and deletion controls without revealing those controls to ordinary users.
 
-#### Scenario: Reader upgrades softly when translated mode becomes ready
-- **WHEN** translated HTML becomes ready while the user is already reading the paper detail page
-- **THEN** the workspace SHALL surface a lightweight upgrade cue
-- **AND** switching to translated reading SHALL preserve the same dual-pane shell instead of forcing a hard page replacement.
+#### Scenario: Admin sees the curation entry in the shared sidebar
+- **WHEN** an authenticated admin user renders the community shell
+- **THEN** the sidebar SHALL include an entry for the admin-only community curation page
+- **AND** that entry SHALL remain hidden for non-admin users.
 
-#### Scenario: Highlighted reader text is available to the in-pane copilot thread
-- **WHEN** the user highlights text in the reader pane and asks a question in the paper-detail copilot panel
-- **THEN** the same in-pane copilot thread SHALL submit the highlight as structured context
-- **AND** the response SHALL appear in the continuous paper-detail conversation without falling back to one-shot shortcut mode.
+#### Scenario: Admin sees a delete affordance on community paper cards
+- **WHEN** an authenticated admin user views community paper cards on the homepage feed
+- **THEN** each card SHALL expose an admin-only delete affordance
+- **AND** ordinary users SHALL not see that affordance.
+
+### Requirement: Insights pane defaults to compact collapsed reading support
+The paper-detail insights pane SHALL prioritize direct module reading over explanatory chrome.
+
+#### Scenario: Insights tab opens
+- **WHEN** the user views the `Insights` tab
+- **THEN** the pane SHALL render the five prepared insight modules without an extra introductory summary card above them
+- **AND** every module SHALL be collapsed by default until the user expands one.
+
+### Requirement: Similar pane provides recommendation cards without changing the page layout
+The paper-detail side pane SHALL provide similar-paper recommendations inside the existing sidebar region.
+
+#### Scenario: Similar recommendations are available
+- **WHEN** the user opens the `Similar` tab and recommendation results exist
+- **THEN** the pane SHALL render compact recommendation cards that show the paper identifier, title, and abstract
+- **AND** the cards SHALL reflect the backend's merged BM25 reranking across station-local and arXiv candidates rather than forcing a source-specific priority
+- **AND** the sidebar SHALL keep the existing overall theme and layout structure outside those local content substitutions.
 

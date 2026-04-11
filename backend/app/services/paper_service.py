@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import mimetypes
 import re
 import shutil
@@ -234,6 +235,13 @@ def _normalize_metadata_text(value: Optional[str]) -> Optional[str]:
     return normalized or None
 
 
+def _normalize_arxiv_identifier(value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_metadata_text(value)
+    if not normalized:
+        return None
+    return re.sub(r"v\d+$", "", normalized)
+
+
 def _resolve_chat_completions_url(raw_url: Optional[str]) -> Optional[str]:
     normalized = str(raw_url or "").strip().rstrip("/")
     if not normalized:
@@ -445,6 +453,556 @@ def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
         "categories": categories,
         "abstract_raw": abstract_raw,
     }
+
+
+_SIMILARITY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "being",
+    "between",
+    "by",
+    "despite",
+    "existing",
+    "for",
+    "from",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "modern",
+    "of",
+    "on",
+    "or",
+    "over",
+    "paper",
+    "progress",
+    "propose",
+    "proposed",
+    "proposes",
+    "recent",
+    "remarkable",
+    "show",
+    "showing",
+    "shows",
+    "study",
+    "that",
+    "the",
+    "their",
+    "them",
+    "these",
+    "they",
+    "this",
+    "those",
+    "through",
+    "to",
+    "toward",
+    "towards",
+    "under",
+    "use",
+    "used",
+    "using",
+    "via",
+    "we",
+    "with",
+    "within",
+    "without",
+    "based",
+}
+
+
+def _tokenize_similarity_text(value: Optional[str]) -> List[str]:
+    normalized = _normalize_search_text(value)
+    if not normalized:
+        return []
+    tokens = re.findall(r"[a-z][a-z0-9\-]{1,}|[\u4e00-\u9fff]{2,}", normalized)
+    return [token for token in tokens if token not in _SIMILARITY_STOPWORDS]
+
+
+def _build_similarity_query_terms(*, title: Optional[str], abstract: Optional[str], limit: int = 12) -> List[str]:
+    selected: List[str] = []
+    seen: set[str] = set()
+    for raw_text in (title or "", abstract or ""):
+        for token in _tokenize_similarity_text(raw_text):
+            if token in seen:
+                continue
+            seen.add(token)
+            selected.append(token)
+            if len(selected) >= limit:
+                return selected
+    return selected
+
+
+def _build_similarity_document_tokens(paper: Dict[str, Any]) -> List[str]:
+    parts = [
+        paper.get("title"),
+        paper.get("abstract_raw"),
+        paper.get("abstract_translated"),
+        paper.get("arxiv_id"),
+        " ".join(str(category) for category in (paper.get("categories") or [])),
+        " ".join(
+            str(author.get("name") if isinstance(author, dict) else author)
+            for author in (paper.get("authors") or [])
+        ),
+    ]
+    return _tokenize_similarity_text(" ".join(str(part) for part in parts if part))
+
+
+def _collect_similarity_overlap_terms(query_terms: List[str], document_tokens: List[str]) -> List[str]:
+    document_token_set = set(document_tokens)
+    return [token for token in query_terms if token in document_token_set]
+
+
+def _build_similarity_candidate_document_tokens(candidate: Dict[str, Any]) -> List[str]:
+    parts = [
+        candidate.get("title"),
+        candidate.get("abstract"),
+        candidate.get("arxiv_id"),
+        " ".join(str(category) for category in (candidate.get("_categories") or [])),
+    ]
+    return _tokenize_similarity_text(" ".join(str(part) for part in parts if part))
+
+
+def _merge_similarity_candidates(
+    *,
+    existing: Optional[Dict[str, Any]],
+    incoming: Dict[str, Any],
+) -> Dict[str, Any]:
+    if existing is None:
+        merged = dict(incoming)
+        merged["_categories"] = list(dict.fromkeys(incoming.get("_categories") or []))
+        return merged
+
+    merged = dict(existing)
+    if incoming.get("community_paper_id") and not merged.get("community_paper_id"):
+        merged["community_paper_id"] = incoming.get("community_paper_id")
+        merged["link_type"] = "community"
+
+    if not merged.get("title") and incoming.get("title"):
+        merged["title"] = incoming.get("title")
+    if len(str(incoming.get("abstract") or "")) > len(str(merged.get("abstract") or "")):
+        merged["abstract"] = incoming.get("abstract")
+    if not merged.get("arxiv_url") and incoming.get("arxiv_url"):
+        merged["arxiv_url"] = incoming.get("arxiv_url")
+
+    merged_categories = list(dict.fromkeys((merged.get("_categories") or []) + (incoming.get("_categories") or [])))
+    merged["_categories"] = merged_categories
+    return merged
+
+
+async def _normalize_similarity_candidate(
+    *,
+    candidate: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    candidate_arxiv_id = _normalize_arxiv_identifier(candidate.get("arxiv_id")) or ""
+    candidate_title = _normalize_metadata_text(candidate.get("title")) or ""
+    candidate_abstract = _normalize_metadata_text(candidate.get("abstract")) or ""
+    if not candidate_title or not candidate_abstract:
+        return None
+
+    community_paper_id = str(candidate.get("community_paper_id") or "").strip() or None
+    categories = [
+        _normalize_metadata_text(item) or ""
+        for item in (candidate.get("_categories") if isinstance(candidate.get("_categories"), list) else [])
+    ]
+    categories = [item for item in categories if item]
+
+    if candidate_arxiv_id and not community_paper_id:
+        community_paper = await _fetch_paper_by_arxiv_id(candidate_arxiv_id)
+        if community_paper and _is_public_community_paper(community_paper):
+            community_paper_id = str(community_paper.get("id") or "").strip() or None
+            categories = categories or [
+                _normalize_metadata_text(item) or ""
+                for item in (
+                    community_paper.get("categories") if isinstance(community_paper.get("categories"), list) else []
+                )
+            ]
+            categories = [item for item in categories if item]
+
+    return {
+        "arxiv_id": candidate_arxiv_id,
+        "title": candidate_title,
+        "abstract": candidate_abstract,
+        "arxiv_url": str(candidate.get("arxiv_url") or (f"https://arxiv.org/abs/{candidate_arxiv_id}" if candidate_arxiv_id else "")).strip(),
+        "community_paper_id": community_paper_id,
+        "link_type": "community" if community_paper_id else "arxiv",
+        "_categories": categories,
+    }
+
+
+def _score_similarity_result_candidate(
+    *,
+    query_terms: List[str],
+    document_tokens: List[str],
+    candidate: Dict[str, Any],
+    bm25_score: float,
+    current_categories: List[str],
+) -> Optional[float]:
+    document_overlap_terms = _collect_similarity_overlap_terms(query_terms, document_tokens)
+    title_tokens = set(_tokenize_similarity_text(candidate.get("title")))
+    title_overlap_terms = [token for token in document_overlap_terms if token in title_tokens]
+    category_overlap = len(set(current_categories).intersection(candidate.get("_categories") or []))
+    if len(document_overlap_terms) < 2 and len(title_overlap_terms) < 2 and not (title_overlap_terms and category_overlap > 0):
+        return None
+
+    final_score = _score_local_similarity_candidate(
+        query_terms=query_terms,
+        paper={
+            "title": candidate.get("title"),
+            "categories": candidate.get("_categories") or [],
+        },
+        bm25_score=bm25_score,
+        current_categories=current_categories,
+    )
+    return final_score if final_score > 0 else None
+
+
+def _compute_bm25_scores(query_terms: List[str], documents: List[List[str]]) -> List[float]:
+    if not query_terms or not documents:
+        return [0.0 for _ in documents]
+
+    document_frequencies: Dict[str, int] = {}
+    for document in documents:
+        for token in set(document):
+            document_frequencies[token] = document_frequencies.get(token, 0) + 1
+
+    avgdl = sum(len(document) for document in documents) / max(len(documents), 1)
+    avgdl = avgdl or 1.0
+    total_documents = len(documents)
+    k1 = 1.5
+    b = 0.75
+    scores: List[float] = []
+    unique_query_terms = list(dict.fromkeys(query_terms))
+    for document in documents:
+        if not document:
+            scores.append(0.0)
+            continue
+        term_counts: Dict[str, int] = {}
+        for token in document:
+            term_counts[token] = term_counts.get(token, 0) + 1
+        doc_length = len(document)
+        score = 0.0
+        for term in unique_query_terms:
+            frequency = term_counts.get(term, 0)
+            if frequency <= 0:
+                continue
+            df = document_frequencies.get(term, 0)
+            idf = math.log(1 + ((total_documents - df + 0.5) / (df + 0.5)))
+            numerator = frequency * (k1 + 1)
+            denominator = frequency + k1 * (1 - b + b * (doc_length / avgdl))
+            score += idf * (numerator / denominator)
+        scores.append(score)
+    return scores
+
+
+def _score_local_similarity_candidate(
+    *,
+    query_terms: List[str],
+    paper: Dict[str, Any],
+    bm25_score: float,
+    current_categories: List[str],
+) -> float:
+    title_tokens = set(_tokenize_similarity_text(paper.get("title")))
+    category_overlap = len(set(current_categories).intersection(paper.get("categories") or []))
+    title_overlap = sum(1 for token in query_terms if token in title_tokens)
+    return bm25_score + (title_overlap * 0.8) + (category_overlap * 1.5)
+
+
+def _select_arxiv_similarity_terms(*, title: Optional[str], abstract: Optional[str], limit: int = 6) -> List[str]:
+    selected: List[str] = []
+    seen: set[str] = set()
+
+    for raw_text in (title or "", abstract or ""):
+        candidates = re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", raw_text)
+        for candidate in candidates:
+            normalized = candidate.lower()
+            if normalized in _SIMILARITY_STOPWORDS:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            selected.append(candidate)
+            if len(selected) >= limit:
+                return selected
+    return selected
+
+
+async def _fetch_local_bm25_similar_candidates(
+    *,
+    paper: Dict[str, Any],
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        candidates = await _run_local_repo(repository.list_public_papers)
+    except DatabaseUnavailableError:
+        candidates = []
+    except Exception as exc:
+        logger.warning("Failed to list local public papers for BM25 similarity on %s: %s", paper.get("id"), exc)
+        candidates = []
+
+    candidates = [_apply_runtime_paper_override(candidate) or candidate for candidate in candidates]
+    current_paper_id = str(paper.get("id") or "").strip()
+    current_arxiv_id = _normalize_arxiv_identifier(paper.get("arxiv_id")) or ""
+    filtered_candidates = []
+    for candidate in candidates:
+        if not _is_public_community_paper(candidate):
+            continue
+        candidate_id = str(candidate.get("id") or "").strip()
+        candidate_arxiv_id = _normalize_arxiv_identifier(candidate.get("arxiv_id")) or ""
+        if candidate_id == current_paper_id:
+            continue
+        if current_arxiv_id and candidate_arxiv_id == current_arxiv_id:
+            continue
+        filtered_candidates.append(candidate)
+
+    query_terms = _build_similarity_query_terms(
+        title=paper.get("title"),
+        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
+    )
+    if not query_terms or not filtered_candidates:
+        return []
+
+    documents = [_build_similarity_document_tokens(candidate) for candidate in filtered_candidates]
+    bm25_scores = _compute_bm25_scores(query_terms, documents)
+    current_categories = [
+        _normalize_metadata_text(item) or ""
+        for item in (paper.get("categories") if isinstance(paper.get("categories"), list) else [])
+    ]
+    current_categories = [item for item in current_categories if item]
+
+    ranked_candidates: List[Dict[str, Any]] = []
+    for candidate, document_tokens, bm25_score in zip(filtered_candidates, documents, bm25_scores):
+        document_overlap_terms = _collect_similarity_overlap_terms(query_terms, document_tokens)
+        title_tokens = set(_tokenize_similarity_text(candidate.get("title")))
+        title_overlap_terms = [token for token in document_overlap_terms if token in title_tokens]
+        category_overlap = len(set(current_categories).intersection(candidate.get("categories") or []))
+        if len(document_overlap_terms) < 2 and not (title_overlap_terms and category_overlap > 0):
+            continue
+
+        final_score = _score_local_similarity_candidate(
+            query_terms=query_terms,
+            paper=candidate,
+            bm25_score=bm25_score,
+            current_categories=current_categories,
+        )
+        if final_score <= 0:
+            continue
+        candidate_arxiv_id = _normalize_arxiv_identifier(candidate.get("arxiv_id")) or ""
+        ranked_candidates.append(
+            {
+                "arxiv_id": candidate_arxiv_id,
+                "title": _normalize_metadata_text(candidate.get("title")) or "",
+                "abstract": _normalize_metadata_text(
+                    candidate.get("abstract_raw") or candidate.get("abstract_translated")
+                )
+                or "",
+                "arxiv_url": f"https://arxiv.org/abs/{candidate_arxiv_id}" if candidate_arxiv_id else "",
+                "community_paper_id": str(candidate.get("id") or "").strip() or None,
+                "link_type": "community",
+                "_categories": candidate.get("categories") if isinstance(candidate.get("categories"), list) else [],
+                "_score": final_score,
+            }
+        )
+
+    ranked_candidates.sort(key=lambda item: (-float(item["_score"]), item["title"]))
+    return [
+        {
+            "arxiv_id": item["arxiv_id"],
+            "title": item["title"],
+            "abstract": item["abstract"],
+            "arxiv_url": item["arxiv_url"],
+            "community_paper_id": item["community_paper_id"],
+            "link_type": "community",
+            "_categories": item.get("_categories") or [],
+        }
+        for item in ranked_candidates[:limit]
+    ]
+
+
+def _build_arxiv_similarity_queries(
+    *,
+    query_terms: List[str],
+    categories: Optional[List[str]],
+) -> List[str]:
+    if not query_terms:
+        return []
+
+    groups: List[List[str]] = []
+    groups.append(query_terms)
+    if len(query_terms) > 1:
+        groups.append(query_terms[1:])
+    if len(query_terms) > 2:
+        groups.append(query_terms[:2])
+
+    primary_category = _normalize_metadata_text((categories or [None])[0])
+    queries: List[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        if not group:
+            continue
+        joined = " OR ".join(f'all:"{term}"' for term in group)
+        candidates = []
+        if primary_category:
+            candidates.append(f"(cat:{primary_category}) AND ({joined})")
+        candidates.append(joined)
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            queries.append(candidate)
+    if primary_category and f"cat:{primary_category}" not in seen:
+        queries.append(f"cat:{primary_category}")
+    return queries
+
+
+def _score_arxiv_similarity_candidate(
+    *,
+    query_terms: List[str],
+    current_categories: Optional[List[str]],
+    candidate_title: str,
+    candidate_abstract: str,
+    candidate_categories: List[str],
+) -> int:
+    normalized_title = (candidate_title or "").lower()
+    normalized_abstract = (candidate_abstract or "").lower()
+    score = 0
+    for term in query_terms:
+        normalized_term = term.lower()
+        if normalized_term in normalized_title:
+            score += 4
+        elif normalized_term in normalized_abstract:
+            score += 2
+    if current_categories and set(current_categories).intersection(candidate_categories):
+        score += 3
+    return score
+
+
+def _fetch_arxiv_similar_candidates_sync(
+    *,
+    arxiv_id: Optional[str],
+    title: Optional[str],
+    abstract: Optional[str],
+    categories: Optional[List[str]] = None,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    query_terms = _select_arxiv_similarity_terms(title=title, abstract=abstract)
+    if not query_terms:
+        return []
+
+    current_arxiv_id = _normalize_arxiv_identifier(arxiv_id) or ""
+    current_title = _normalize_metadata_text(title) or ""
+    current_categories = [_normalize_metadata_text(item) or "" for item in (categories or [])]
+    current_categories = [item for item in current_categories if item]
+    namespace = {"atom": "http://www.w3.org/2005/Atom"}
+    best_items: Dict[str, Dict[str, Any]] = {}
+    ordered_ids: List[str] = []
+
+    for search_query in _build_arxiv_similarity_queries(query_terms=query_terms, categories=current_categories):
+        response = requests.get(
+            "https://export.arxiv.org/api/query",
+            params={
+                "search_query": search_query,
+                "start": 0,
+                "max_results": max(limit * 4, 20),
+                "sortBy": "relevance",
+                "sortOrder": "descending",
+            },
+            headers={"User-Agent": "LaTexTrans/CommunitySimilar"},
+            timeout=15,
+        )
+        response.raise_for_status()
+
+        root = ET.fromstring(response.text)
+        query_found_new_item = False
+        for entry in root.findall("atom:entry", namespace):
+            entry_id = _normalize_metadata_text(entry.findtext("atom:id", default="", namespaces=namespace)) or ""
+            candidate_arxiv_id = _normalize_arxiv_identifier(entry_id.rsplit("/", 1)[-1])
+            candidate_title = _normalize_metadata_text(
+                entry.findtext("atom:title", default="", namespaces=namespace)
+            )
+            candidate_abstract = _normalize_metadata_text(
+                entry.findtext("atom:summary", default="", namespaces=namespace)
+            )
+            candidate_categories = [
+                _normalize_metadata_text(category.attrib.get("term"))
+                for category in entry.findall("atom:category", namespace)
+            ]
+            candidate_categories = [item for item in candidate_categories if item]
+            if not candidate_arxiv_id or not candidate_title or not candidate_abstract:
+                continue
+            if current_arxiv_id and candidate_arxiv_id == current_arxiv_id:
+                continue
+            if current_title and candidate_title == current_title:
+                continue
+
+            scored_item = {
+                "arxiv_id": candidate_arxiv_id,
+                "title": candidate_title,
+                "abstract": candidate_abstract,
+                "arxiv_url": f"https://arxiv.org/abs/{candidate_arxiv_id}",
+                "_categories": candidate_categories,
+                "_score": _score_arxiv_similarity_candidate(
+                    query_terms=query_terms,
+                    current_categories=current_categories,
+                    candidate_title=candidate_title,
+                    candidate_abstract=candidate_abstract,
+                    candidate_categories=candidate_categories,
+                ),
+            }
+            previous = best_items.get(candidate_arxiv_id)
+            if previous is None:
+                ordered_ids.append(candidate_arxiv_id)
+                best_items[candidate_arxiv_id] = scored_item
+                query_found_new_item = True
+            elif scored_item["_score"] > previous["_score"]:
+                best_items[candidate_arxiv_id] = scored_item
+
+        if query_found_new_item and len(best_items) >= limit:
+            break
+
+    ranked_items = sorted(
+        (best_items[item_id] for item_id in ordered_ids if item_id in best_items),
+        key=lambda item: (-int(item.get("_score") or 0), item["title"]),
+    )
+    return [
+        {
+            "arxiv_id": item["arxiv_id"],
+            "title": item["title"],
+            "abstract": item["abstract"],
+            "arxiv_url": item["arxiv_url"],
+            "_categories": item.get("_categories") or [],
+        }
+        for item in ranked_items[:limit]
+    ]
+
+
+async def _fetch_arxiv_similar_candidates(
+    *,
+    arxiv_id: Optional[str],
+    title: Optional[str],
+    abstract: Optional[str],
+    categories: Optional[List[str]] = None,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    try:
+        return await asyncio.to_thread(
+            _fetch_arxiv_similar_candidates_sync,
+            arxiv_id=arxiv_id,
+            title=title,
+            abstract=abstract,
+            categories=categories,
+            limit=limit,
+        )
+    except Exception as exc:
+        logger.warning("Failed to fetch arXiv similar candidates for %s: %s", arxiv_id or title or "paper", exc)
+        return []
 
 
 async def _fetch_arxiv_metadata(arxiv_id: str) -> Dict[str, Any]:
@@ -4077,6 +4635,90 @@ async def get_community_paper_detail(
         "reader": reader_payload["reader"],
         "experience": reader_payload["experience"],
         "structured_insights": structured_insights,
+    }
+
+
+async def get_community_paper_similar(*, paper_id: str) -> Dict[str, Any]:
+    paper = await _ensure_public_paper(paper_id)
+    current_arxiv_id = _normalize_arxiv_identifier(paper.get("arxiv_id")) or ""
+    current_title = _normalize_metadata_text(paper.get("title")) or ""
+    query_terms = _build_similarity_query_terms(
+        title=paper.get("title"),
+        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
+    )
+    if not query_terms:
+        return {"items": []}
+
+    current_categories = [
+        _normalize_metadata_text(item) or ""
+        for item in (paper.get("categories") if isinstance(paper.get("categories"), list) else [])
+    ]
+    current_categories = [item for item in current_categories if item]
+
+    local_items = await _fetch_local_bm25_similar_candidates(paper=paper, limit=20)
+    arxiv_candidates = await _fetch_arxiv_similar_candidates(
+        arxiv_id=current_arxiv_id or None,
+        title=paper.get("title"),
+        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
+        categories=paper.get("categories") if isinstance(paper.get("categories"), list) else None,
+        limit=20,
+    )
+
+    merged_candidates: Dict[str, Dict[str, Any]] = {}
+    for raw_candidate in [*local_items, *arxiv_candidates]:
+        candidate = await _normalize_similarity_candidate(candidate=raw_candidate)
+        if candidate is None:
+            continue
+        candidate_arxiv_id = candidate.get("arxiv_id") or ""
+        candidate_title = candidate.get("title") or ""
+        if candidate_arxiv_id and current_arxiv_id and candidate_arxiv_id == current_arxiv_id:
+            continue
+        if candidate_title and current_title and candidate_title == current_title:
+            continue
+        candidate_key = candidate_arxiv_id or candidate_title.lower()
+        merged_candidates[candidate_key] = _merge_similarity_candidates(
+            existing=merged_candidates.get(candidate_key),
+            incoming=candidate,
+        )
+
+    if not merged_candidates:
+        return {"items": []}
+
+    merged_items = list(merged_candidates.values())
+    documents = [_build_similarity_candidate_document_tokens(candidate) for candidate in merged_items]
+    bm25_scores = _compute_bm25_scores(query_terms, documents)
+
+    ranked_items: List[Dict[str, Any]] = []
+    for candidate, document_tokens, bm25_score in zip(merged_items, documents, bm25_scores):
+        final_score = _score_similarity_result_candidate(
+            query_terms=query_terms,
+            document_tokens=document_tokens,
+            candidate=candidate,
+            bm25_score=bm25_score,
+            current_categories=current_categories,
+        )
+        if final_score is None:
+            continue
+        ranked_items.append(
+            {
+                **candidate,
+                "_score": final_score,
+            }
+        )
+
+    ranked_items.sort(key=lambda item: (-float(item["_score"]), item["title"]))
+    return {
+        "items": [
+            {
+                "arxiv_id": item["arxiv_id"],
+                "title": item["title"],
+                "abstract": item["abstract"],
+                "arxiv_url": item["arxiv_url"],
+                "community_paper_id": item["community_paper_id"],
+                "link_type": item["link_type"],
+            }
+            for item in ranked_items[:10]
+        ]
     }
 
 

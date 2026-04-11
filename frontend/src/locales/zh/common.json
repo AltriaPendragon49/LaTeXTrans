@@ -592,5 +592,15 @@
   "community.detail.insights.section.innovation": "论文的关键创新点有哪些，相比已有方法，本质区别在哪里？",
   "community.detail.insights.section.experiment": "论文如何验证方法有效性，主要结论是什么？",
   "community.detail.insights.section.future": "这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？",
-  "community.detail.insights.section.fallback": "分析模块"
+  "community.detail.insights.section.fallback": "分析模块",
+  "community.detail.mode.bilingualCompare": "中英双栏对照",
+  "community.detail.tab.insights": "Insights",
+  "community.detail.tab.similar": "Similar",
+  "community.detail.similar.loading": "正在加载相关论文...",
+  "community.detail.similar.emptyTitle": "暂无相关推荐",
+  "community.detail.similar.emptyDescription": "当前这篇论文暂无可展示的 arXiv 相关推荐。",
+  "community.detail.similar.errorTitle": "加载相关推荐失败",
+  "community.detail.similar.errorDescription": "请稍后重新打开 Similar 标签再试。",
+  "community.detail.similar.openInCommunity": "社区内打开",
+  "community.detail.similar.openInArxiv": "前往 arXiv"
 }

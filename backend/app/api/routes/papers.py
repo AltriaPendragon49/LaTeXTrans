@@ -126,6 +126,19 @@ class PaperDetailResponse(BaseModel):
     structured_insights: Optional[Dict[str, Any]] = None
 
 
+class SimilarPaperItemResponse(BaseModel):
+    arxiv_id: str
+    title: str
+    abstract: str
+    arxiv_url: str
+    community_paper_id: Optional[str] = None
+    link_type: str
+
+
+class SimilarPaperListResponse(BaseModel):
+    items: List[SimilarPaperItemResponse]
+
+
 class PaperViewResponse(BaseModel):
     paper_id: str
     view_count: int
@@ -402,6 +415,22 @@ async def get_paper_detail(
     )
     response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=120"
     response.headers["X-Reader-State"] = payload.get("reader_state", "unavailable")
+    return payload
+
+
+@router.get(
+    "/{paper_id}/similar",
+    response_model=SimilarPaperListResponse,
+    response_model_exclude_none=True,
+)
+async def get_paper_similar(
+    paper_id: str,
+    response: Response,
+    current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
+):
+    _ = current_user
+    payload = await paper_service.get_community_paper_similar(paper_id=paper_id)
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
     return payload
 
 

@@ -538,3 +538,89 @@ The API SHALL support citation/action metadata that can target translated-PDF po
 - **THEN** metadata SHALL be able to carry stable location identifiers usable by the UI
 - **AND** unresolved identifiers SHALL be distinguishable from successfully resolved targets.
 
+### Requirement: Admin curation API supports single and batch community intake
+The backend SHALL expose admin-only API contracts for community curation intake via both `arXiv ID` submission and archive upload, including batch submission support and per-item status tracking.
+
+#### Scenario: Admin submits one or more arXiv ids for community curation
+- **WHEN** an authenticated local admin submits one or more `arXiv ID`s to the admin curation API
+- **THEN** the API SHALL accept the submission as a tracked curation job or batch
+- **AND** it SHALL return enough per-item identifiers or status metadata for the admin UI to monitor progress.
+
+#### Scenario: Admin uploads one or more archives for community curation
+- **WHEN** an authenticated local admin uploads one or more TeX-containing archives to the admin curation API
+- **THEN** the API SHALL accept the upload as a tracked curation job or batch
+- **AND** it SHALL preserve per-item status reporting across metadata extraction, translation, structured insight generation, and publication.
+
+### Requirement: Admin curation APIs require local admin role
+The backend SHALL require the current local admin role for community curation write actions.
+
+#### Scenario: Non-admin requests admin curation write API
+- **WHEN** an authenticated non-admin user calls an admin curation write endpoint
+- **THEN** the API SHALL reject the request with a forbidden response
+- **AND** it SHALL not start the curation pipeline.
+
+### Requirement: Admin paper deletion API hard-deletes community papers
+The backend SHALL expose an admin-only community-paper deletion API that immediately removes the paper from public product surfaces and then completes a persistent asynchronous hard delete across local database rows, local filesystem assets, caches, and search/index artifacts.
+
+#### Scenario: Admin deletes a community paper
+- **WHEN** an authenticated local admin calls the community-paper delete API for an existing paper
+- **THEN** the backend SHALL make that paper immediately unavailable to homepage feed, search, and detail reads
+- **AND** it SHALL persist a background delete job that removes the paper row, related paper-facing local rows, structured insights, corresponding community asset directories, derived preview/translation/source artifacts, and related cache/index entries
+- **AND** subsequent community reads for that paper SHALL fail as a missing paper.
+
+#### Scenario: A hard-delete cleanup step fails
+- **WHEN** a persisted community-paper hard-delete job encounters a cleanup failure
+- **THEN** the system SHALL keep retrying that delete job automatically until cleanup completes
+- **AND** it SHALL not restore the paper to public visibility while retries continue.
+
+#### Scenario: Service restarts during hard delete
+- **WHEN** the service restarts while a community-paper hard-delete job is unfinished
+- **THEN** startup reconciliation SHALL resume the persisted delete job
+- **AND** retries SHALL continue until the hard delete completes.
+
+### Requirement: Hidden community-agent mode blocks direct product access
+The backend SHALL reject direct product access to community-agent routes while the current product mode keeps the public agent surface hidden.
+
+#### Scenario: Authenticated user calls community-agent run APIs in hidden mode
+- **WHEN** an authenticated user, including an admin, calls the community-agent product APIs while hidden mode is active
+- **THEN** the API SHALL reject the request instead of starting a visible product agent run
+- **AND** the hidden-mode contract SHALL still preserve the underlying code assets for future restoration.
+
+### Requirement: Paper detail API exposes similar-paper recommendations for public community papers
+The backend SHALL expose a public paper-detail recommendation API for similar papers under `/api/papers/{paper_id}/similar`.
+
+#### Scenario: Similar recommendations rerank merged community and arXiv candidates
+- **WHEN** a client requests similar papers for a public community paper
+- **THEN** the backend SHALL retrieve normalized candidates from both the local public community library and arXiv official search/query results
+- **AND** it SHALL rerank the merged candidate pool with a shared BM25-based scoring pass before returning the final results.
+
+#### Scenario: Local BM25 recommendations exclude weak stopword-only or category-only collisions
+- **WHEN** a local candidate only overlaps the current paper through stopwords or a bare category match without meaningful lexical overlap
+- **THEN** the backend SHALL exclude that candidate from the local recommendation response
+- **AND** it SHALL continue evaluating other local candidates before deciding whether to fall back to arXiv.
+
+#### Scenario: Similar recommendations are ordered by score rather than source priority
+- **WHEN** both community and arXiv candidates survive filtering in the merged candidate pool
+- **THEN** the backend SHALL order the final recommendation list by reranked score
+- **AND** it SHALL not force community items ahead of higher-scoring arXiv items solely because of their source.
+
+#### Scenario: Similar recommendations return at most ten results from the reranked pool
+- **WHEN** the merged candidate pool contains more than ten usable recommendation items
+- **THEN** the backend SHALL return only the highest-scoring ten results
+- **AND** it SHALL exclude the current paper from the returned results.
+
+#### Scenario: Duplicate community and arXiv candidates are merged before final ranking
+- **WHEN** the same paper is discovered through both the community library and the arXiv candidate set
+- **THEN** the backend SHALL merge them into one recommendation item before final ranking
+- **AND** it SHALL include the `community_paper_id` so the client can deep-link into the in-product detail page.
+
+#### Scenario: Recommendation item matches an existing community paper
+- **WHEN** a returned similar-paper candidate has an `arxiv_id` that already exists in the local public community library
+- **THEN** the API SHALL include the matching local `community_paper_id`
+- **AND** the client SHALL be able to route the user to the in-product paper detail page instead of only the external arXiv page.
+
+#### Scenario: Recommendation item has no existing community match
+- **WHEN** a returned similar-paper candidate does not exist in the local public community library
+- **THEN** the API SHALL still return the candidate's `arxiv_id`, title, abstract, and official `arxiv_url`
+- **AND** the response SHALL remain usable for an external arXiv jump.
+

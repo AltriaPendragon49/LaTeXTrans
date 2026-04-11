@@ -182,7 +182,12 @@ export interface CommunityConversationRecord {
   turns: CommunityConversationTurn[]
 }
 
-export type CommunityPaperReaderMode = "source" | "translated" | "translated_html" | "translated_pdf"
+export type CommunityPaperReaderMode =
+  | "source"
+  | "translated"
+  | "translated_html"
+  | "translated_pdf"
+  | "bilingual_compare"
 export type CommunityPaperReaderState =
   | "source_ready"
   | "translated_ready"
@@ -280,6 +285,19 @@ export interface CommunityPaperDetailResponse {
   reader?: CommunityPaperReader | null
   experience?: CommunityPaperExperience | null
   structured_insights?: StructuredInsightsPayload | null
+}
+
+export interface CommunityPaperSimilarItem {
+  arxiv_id: string
+  title: string
+  abstract: string
+  arxiv_url: string
+  community_paper_id?: string | null
+  link_type: "community" | "arxiv" | string
+}
+
+export interface CommunityPaperSimilarResponse {
+  items: CommunityPaperSimilarItem[]
 }
 
 export interface CommunityPaperSubmitResponse {
