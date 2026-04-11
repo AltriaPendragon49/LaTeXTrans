@@ -41,7 +41,7 @@ The admin curation page SHALL support multi-item submission while using bounded 
 The admin curation workflow SHALL only publish a paper into the community feed after all required curation stages have succeeded.
 
 #### Scenario: Paper reaches complete curated state
-- **WHEN** curation finishes metadata preparation, translation, and structured insight generation successfully
+- **WHEN** curation finishes metadata preparation, translation, structured insight generation, and persisted similar-recommendation generation successfully
 - **THEN** the paper SHALL become visible in the community feed
 - **AND** it SHALL appear as a complete curated paper rather than a processing placeholder.
 

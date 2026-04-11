@@ -4,6 +4,7 @@ from pathlib import Path
 CURATION_MIGRATION = Path("backend/migrations_mysql/20260411_0002_community_admin_curation_flow.sql")
 ASSET_ID_EXPANSION_MIGRATION = Path("backend/migrations_mysql/20260411_0003_expand_paper_asset_id_columns.sql")
 CONTENT_BACKFILL_MIGRATION = Path("backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql")
+SIMILAR_RECOMMENDATIONS_MIGRATION = Path("backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql")
 
 
 def _normalized_sql(path: Path) -> str:
@@ -42,3 +43,14 @@ def test_mysql_structured_insight_content_backfill_migration_exists_and_is_idemp
     assert "table_name = 'community_structured_insights'" in sql
     assert "column_name = 'content'" in sql
     assert "alter table community_structured_insights add column content mediumtext null after section_key" in sql
+
+
+def test_mysql_similar_recommendations_migration_exists_and_declares_required_columns() -> None:
+    assert SIMILAR_RECOMMENDATIONS_MIGRATION.exists()
+    sql = _normalized_sql(SIMILAR_RECOMMENDATIONS_MIGRATION)
+    assert "create table if not exists community_similar_recommendations" in sql
+    assert "paper_id varchar(64) not null" in sql
+    assert "position int not null" in sql
+    assert "abstract mediumtext not null" in sql
+    assert "community_paper_id varchar(64) null" in sql
+    assert "foreign key (paper_id) references papers(id)" in sql

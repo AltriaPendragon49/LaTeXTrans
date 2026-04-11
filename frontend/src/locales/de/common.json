@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "Versuchen Sie gleich noch einmal, die Registerkarte „Ähnlich“ zu öffnen.",
   "community.detail.similar.openInCommunity": "In der Community öffnen",
   "community.detail.similar.openInArxiv": "In arXiv öffnen",
+  "community.detail.similar.expandAbstract": "Abstract anzeigen",
+  "community.detail.similar.collapseAbstract": "Abstract ausblenden",
   "brand.name": "PaperX",
   "common.labels.user": "Benutzer",
   "glossary.managementComingSoon": "Verwaltungsschnittstelle in Kürze verfügbar."

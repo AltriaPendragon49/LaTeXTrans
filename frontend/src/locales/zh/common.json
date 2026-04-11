@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "稍后尝试重新打开“类似论文”选项卡。",
   "community.detail.similar.openInCommunity": "社区内打开",
   "community.detail.similar.openInArxiv": "前往 arXiv",
+  "community.detail.similar.expandAbstract": "展开摘要",
+  "community.detail.similar.collapseAbstract": "收起摘要",
   "brand.name": "PaperX",
   "common.labels.user": "用户",
   "glossary.managementComingSoon": "管理界面即将推出。"

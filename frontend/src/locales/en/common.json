@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "Try opening the Similar tab again in a moment.",
   "community.detail.similar.openInCommunity": "Open in community",
   "community.detail.similar.openInArxiv": "Open in arXiv",
+  "community.detail.similar.expandAbstract": "Show abstract",
+  "community.detail.similar.collapseAbstract": "Hide abstract",
   "brand.name": "PaperX",
   "common.labels.user": "User",
   "glossary.managementComingSoon": "Management interface coming soon."

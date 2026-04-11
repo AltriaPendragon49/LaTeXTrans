@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "Essayez de rouvrir l'onglet « Articles similaires » dans un instant.",
   "community.detail.similar.openInCommunity": "Ouvrir dans la communauté",
   "community.detail.similar.openInArxiv": "Ouvrir dans arXiv",
+  "community.detail.similar.expandAbstract": "Afficher le résumé",
+  "community.detail.similar.collapseAbstract": "Masquer le résumé",
   "brand.name": "PaperX",
   "common.labels.user": "Utilisateur",
   "glossary.managementComingSoon": "Interface de gestion à venir."

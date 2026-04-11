@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "Попробуйте через мгновение снова открыть вкладку «Похожие статьи».",
   "community.detail.similar.openInCommunity": "Открыть в сообществе",
   "community.detail.similar.openInArxiv": "Открыть в arXiv",
+  "community.detail.similar.expandAbstract": "Показать аннотацию",
+  "community.detail.similar.collapseAbstract": "Скрыть аннотацию",
   "brand.name": "PaperX",
   "common.labels.user": "Пользователь",
   "glossary.managementComingSoon": "Скоро появится интерфейс управления."

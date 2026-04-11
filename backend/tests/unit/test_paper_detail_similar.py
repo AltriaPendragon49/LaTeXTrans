@@ -35,18 +35,6 @@ def _paper(**overrides):
 def test_similar_recommendations_rerank_merged_local_and_arxiv_candidates(monkeypatch):
     monkeypatch.setattr(
         paper_service,
-        "_fetch_paper_by_id",
-        lambda _paper_id: asyncio.sleep(
-            0,
-            result=_paper(
-                title="Structured LaTeX Translation with Multi-Agent Coordination",
-                abstract_raw="A machine translation system for scientific LaTeX documents.",
-                categories=["cs.CL"],
-            ),
-        ),
-    )
-    monkeypatch.setattr(
-        paper_service,
         "_fetch_local_bm25_similar_candidates",
         lambda *, paper, limit=5: asyncio.sleep(
             0,
@@ -84,29 +72,21 @@ def test_similar_recommendations_rerank_merged_local_and_arxiv_candidates(monkey
     )
 
     result = asyncio.run(
-        paper_service.get_community_paper_similar(
-            paper_id="paper-1",
-        )
-    )
-
-    assert [item["arxiv_id"] for item in result["items"]] == ["2504.99999", "2504.12345"]
-    assert result["items"][0]["link_type"] == "arxiv"
-    assert result["items"][1]["link_type"] == "community"
-
-
-def test_similar_recommendations_merge_duplicate_community_and_arxiv_candidates(monkeypatch):
-    monkeypatch.setattr(
-        paper_service,
-        "_fetch_paper_by_id",
-        lambda _paper_id: asyncio.sleep(
-            0,
-            result=_paper(
+        paper_service._generate_similar_recommendations_for_paper(
+            paper=_paper(
                 title="Structured LaTeX Translation with Multi-Agent Coordination",
                 abstract_raw="A machine translation system for scientific LaTeX documents.",
                 categories=["cs.CL"],
             ),
-        ),
+        )
     )
+
+    assert [item["arxiv_id"] for item in result] == ["2504.99999", "2504.12345"]
+    assert result[0]["link_type"] == "arxiv"
+    assert result[1]["link_type"] == "community"
+
+
+def test_similar_recommendations_merge_duplicate_community_and_arxiv_candidates(monkeypatch):
     monkeypatch.setattr(
         paper_service,
         "_fetch_arxiv_similar_candidates",
@@ -156,26 +136,22 @@ def test_similar_recommendations_merge_duplicate_community_and_arxiv_candidates(
         ),
     )
 
-    result = asyncio.run(paper_service.get_community_paper_similar(paper_id="paper-1"))
-
-    assert [item["arxiv_id"] for item in result["items"]] == ["2504.12345", "2504.12346"]
-    assert result["items"][0]["community_paper_id"] == "paper-neighbor"
-    assert result["items"][0]["link_type"] == "community"
-
-
-def test_similar_recommendations_limit_to_top_ten_items(monkeypatch):
-    monkeypatch.setattr(
-        paper_service,
-        "_fetch_paper_by_id",
-        lambda _paper_id: asyncio.sleep(
-            0,
-            result=_paper(
+    result = asyncio.run(
+        paper_service._generate_similar_recommendations_for_paper(
+            paper=_paper(
                 title="Structured LaTeX Translation with Multi-Agent Coordination",
                 abstract_raw="A machine translation system for scientific LaTeX documents.",
                 categories=["cs.CL"],
-            ),
-        ),
+            )
+        )
     )
+
+    assert [item["arxiv_id"] for item in result] == ["2504.12345", "2504.12346"]
+    assert result[0]["community_paper_id"] == "paper-neighbor"
+    assert result[0]["link_type"] == "community"
+
+
+def test_similar_recommendations_limit_to_top_ten_items(monkeypatch):
     monkeypatch.setattr(
         paper_service,
         "_fetch_local_bm25_similar_candidates",
@@ -203,9 +179,84 @@ def test_similar_recommendations_limit_to_top_ten_items(monkeypatch):
         lambda arxiv_id: asyncio.sleep(0, result=None),
     )
 
+    result = asyncio.run(
+        paper_service._generate_similar_recommendations_for_paper(
+            paper=_paper(
+                title="Structured LaTeX Translation with Multi-Agent Coordination",
+                abstract_raw="A machine translation system for scientific LaTeX documents.",
+                categories=["cs.CL"],
+            )
+        )
+    )
+
+    assert len(result) == 10
+
+
+def test_similar_recommendations_return_persisted_results_without_live_retrieval(monkeypatch):
+    persisted_items = [
+        {
+            "arxiv_id": "2504.12345",
+            "title": "Persisted Neighbor Paper",
+            "abstract": "Persisted abstract.",
+            "arxiv_url": "https://arxiv.org/abs/2504.12345",
+            "community_paper_id": "paper-neighbor",
+            "link_type": "community",
+        }
+    ]
+
+    class _FakeRepository:
+        def list_similar_recommendations(self, paper_id):
+            assert paper_id == "paper-1"
+            return persisted_items
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_ensure_public_paper",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_local_bm25_similar_candidates",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("live local retrieval should not run")),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_arxiv_similar_candidates",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("live arXiv retrieval should not run")),
+    )
+
     result = asyncio.run(paper_service.get_community_paper_similar(paper_id="paper-1"))
 
-    assert len(result["items"]) == 10
+    assert result == {"items": persisted_items}
+
+
+def test_similar_recommendations_return_empty_for_legacy_paper_without_persisted_results(monkeypatch):
+    class _FakeRepository:
+        def list_similar_recommendations(self, paper_id):
+            assert paper_id == "paper-1"
+            return []
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_ensure_public_paper",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_local_bm25_similar_candidates",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy papers should not trigger live local retrieval")),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_arxiv_similar_candidates",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy papers should not trigger live arXiv retrieval")),
+    )
+
+    result = asyncio.run(paper_service.get_community_paper_similar(paper_id="paper-1"))
+
+    assert result == {"items": []}
 
 
 def test_local_bm25_similarity_ranks_related_community_papers_first(monkeypatch):

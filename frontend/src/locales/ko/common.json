@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "잠시 후 '유사 논문' 탭을 다시 열어보세요.",
   "community.detail.similar.openInCommunity": "커뮤니티에서 열기",
   "community.detail.similar.openInArxiv": "arXiv에서 열기",
+  "community.detail.similar.expandAbstract": "초록 펼치기",
+  "community.detail.similar.collapseAbstract": "초록 접기",
   "brand.name": "PaperX",
   "common.labels.user": "사용자",
   "glossary.managementComingSoon": "관리 인터페이스가 곧 제공될 예정입니다."

@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "Intente abrir la pestaña Similares nuevamente en un momento.",
   "community.detail.similar.openInCommunity": "Abrir en la comunidad",
   "community.detail.similar.openInArxiv": "Abrir en arXiv",
+  "community.detail.similar.expandAbstract": "Mostrar resumen",
+  "community.detail.similar.collapseAbstract": "Ocultar resumen",
   "brand.name": "PaperX",
   "common.labels.user": "Usuario",
   "glossary.managementComingSoon": "Interfaz de gestión próximamente."

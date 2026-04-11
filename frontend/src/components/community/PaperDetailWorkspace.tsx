@@ -424,6 +424,7 @@ export function PaperDetailWorkspace({
   const [expandedInsightKey, setExpandedInsightKey] = useState<string>("")
   const [similarState, setSimilarState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [similarItems, setSimilarItems] = useState<CommunityPaperSimilarItem[]>([])
+  const [expandedSimilarKey, setExpandedSimilarKey] = useState<string>("")
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -472,6 +473,7 @@ export function PaperDetailWorkspace({
   useEffect(() => {
     setActiveTab("insights")
     setExpandedInsightKey("")
+    setExpandedSimilarKey("")
     setSimilarItems([])
     setSimilarState("idle")
   }, [paper.id])
@@ -489,6 +491,7 @@ export function PaperDetailWorkspace({
           return
         }
         setSimilarItems(response.items ?? [])
+        setExpandedSimilarKey("")
         setSimilarState("ready")
       })
       .catch(() => {
@@ -798,33 +801,61 @@ export function PaperDetailWorkspace({
             {similarState === "ready" && similarItems.length > 0 ? (
               <div className="space-y-3">
                 {similarItems.map((item) => (
-                  <article
-                    key={`${item.arxiv_id}-${item.community_paper_id ?? item.arxiv_url}`}
-                    className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-4"
-                  >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">
-                      {item.arxiv_id}
-                    </p>
-                    <h3 className="mt-2 text-sm font-semibold text-on-surface">{item.title}</h3>
-                    <p className="mt-2 text-xs leading-6 text-on-surface-variant">{item.abstract}</p>
-                    {item.community_paper_id ? (
-                      <Link
-                        to={`/paper/${item.community_paper_id}`}
-                        className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
+                  (() => {
+                    const itemKey = `${item.arxiv_id}-${item.community_paper_id ?? item.arxiv_url}`
+                    const expanded = expandedSimilarKey === itemKey
+                    return (
+                      <article
+                        key={itemKey}
+                        className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest"
                       >
-                        {t("community.detail.similar.openInCommunity")}
-                      </Link>
-                    ) : (
-                      <a
-                        href={item.arxiv_url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
-                      >
-                        {t("community.detail.similar.openInArxiv")}
-                      </a>
-                    )}
-                  </article>
+                        <div className="flex items-start justify-between gap-3 px-4 py-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">
+                              {item.arxiv_id}
+                            </p>
+                            <h3 className="mt-2 text-sm font-semibold text-on-surface">{item.title}</h3>
+                            {item.community_paper_id ? (
+                              <Link
+                                to={`/paper/${item.community_paper_id}`}
+                                className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
+                              >
+                                {t("community.detail.similar.openInCommunity")}
+                              </Link>
+                            ) : (
+                              <a
+                                href={item.arxiv_url}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
+                              >
+                                {t("community.detail.similar.openInArxiv")}
+                              </a>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedSimilarKey((current) => (current === itemKey ? "" : itemKey))}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            {expanded
+                              ? t("community.detail.similar.collapseAbstract")
+                              : t("community.detail.similar.expandAbstract")}
+                            {expanded ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                        {expanded ? (
+                          <div className="border-t border-outline-variant/20 px-4 py-4">
+                            <p className="text-xs leading-6 text-on-surface-variant">{item.abstract}</p>
+                          </div>
+                        ) : null}
+                      </article>
+                    )
+                  })()
                 ))}
               </div>
             ) : null}

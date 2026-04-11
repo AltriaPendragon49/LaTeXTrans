@@ -55,6 +55,18 @@ STRUCTURED_INSIGHT_COLUMNS = (
     "updated_at",
 )
 
+SIMILAR_RECOMMENDATION_COLUMNS = (
+    "paper_id",
+    "position",
+    "arxiv_id",
+    "title",
+    "abstract",
+    "arxiv_url",
+    "community_paper_id",
+    "link_type",
+    "updated_at",
+)
+
 CURATION_JOB_COLUMNS = (
     "job_id",
     "batch_id",
@@ -201,6 +213,30 @@ class CommunityPaperRepository:
             if key not in STRUCTURED_INSIGHT_COLUMNS:
                 continue
             serialized[key] = value
+        return serialized
+
+    def _normalize_similar_recommendation_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+
+        normalized = dict(row)
+        for column in SIMILAR_RECOMMENDATION_COLUMNS:
+            value = normalized.get(column)
+            if column == "position" and value is not None:
+                normalized[column] = int(value)
+            else:
+                normalized[column] = value
+        return normalized
+
+    def _serialize_similar_recommendation_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        serialized: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key not in SIMILAR_RECOMMENDATION_COLUMNS:
+                continue
+            if key == "position" and value is not None:
+                serialized[key] = int(value)
+            else:
+                serialized[key] = value
         return serialized
 
     def _normalize_curation_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -532,6 +568,68 @@ class CommunityPaperRepository:
             if str(row.get("section_key") or "") == section_key:
                 return row
         return payload
+
+    def list_similar_recommendations(self, paper_id: str) -> list[dict[str, Any]]:
+        try:
+            with db_connection() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    (
+                        "select "
+                        + ", ".join(SIMILAR_RECOMMENDATION_COLUMNS)
+                        + " from community_similar_recommendations where paper_id = "
+                        + _placeholder(0)
+                        + " order by position asc"
+                    ),
+                    (paper_id,),
+                )
+                return [
+                    normalized
+                    for normalized in (
+                        self._normalize_similar_recommendation_row(row) for row in _fetchall(cursor)
+                    )
+                    if normalized is not None
+                ]
+        except Exception:
+            return []
+
+    def replace_similar_recommendations(self, *, paper_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized_paper_id = str(paper_id or "").strip()
+        if not normalized_paper_id:
+            raise ValueError("paper_id is required")
+
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "delete from community_similar_recommendations where paper_id = " + _placeholder(0),
+                (normalized_paper_id,),
+            )
+
+            for index, item in enumerate(items):
+                payload = {
+                    "paper_id": normalized_paper_id,
+                    "position": index,
+                    "arxiv_id": item.get("arxiv_id"),
+                    "title": item.get("title"),
+                    "abstract": item.get("abstract"),
+                    "arxiv_url": item.get("arxiv_url"),
+                    "community_paper_id": item.get("community_paper_id"),
+                    "link_type": item.get("link_type"),
+                    "updated_at": item.get("updated_at") or _utc_now_naive().isoformat(),
+                }
+                serialized = self._serialize_similar_recommendation_updates(payload)
+                columns = tuple(column for column in SIMILAR_RECOMMENDATION_COLUMNS if column in serialized)
+                placeholders = ", ".join(_placeholder(placeholder_index) for placeholder_index in range(len(columns)))
+                cursor.execute(
+                    (
+                        "insert into community_similar_recommendations ("
+                        + ", ".join(columns)
+                        + f") values ({placeholders})"
+                    ),
+                    tuple(serialized[column] for column in columns),
+                )
+
+        return self.list_similar_recommendations(normalized_paper_id)
 
     def insert_curation_job(self, payload: dict[str, Any]) -> dict[str, Any]:
         serialized = self._serialize_curation_job_updates(payload)
@@ -980,6 +1078,7 @@ class CommunityPaperRepository:
             "paper_likes",
             "paper_favorites",
             "community_structured_insights",
+            "community_similar_recommendations",
             "papers",
         }:
             raise ValueError(f"unsupported cleanup table: {table_name}")
@@ -1021,5 +1120,6 @@ __all__ = [
     "CommunityPaperRepository",
     "PAPER_COLUMNS",
     "PAPER_ASSET_COLUMNS",
+    "SIMILAR_RECOMMENDATION_COLUMNS",
     "DatabaseUnavailableError",
 ]

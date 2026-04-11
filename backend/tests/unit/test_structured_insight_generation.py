@@ -643,6 +643,16 @@ def test_publish_admin_curation_job_preserves_job_arxiv_id_when_metadata_omits_i
         "_upsert_structured_insight_sections",
         lambda **_kwargs: asyncio.sleep(0, result=None),
     )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_similar_recommendations_for_paper",
+        lambda **_kwargs: asyncio.sleep(0, result=[]),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_replace_persisted_similar_recommendations",
+        lambda **_kwargs: asyncio.sleep(0, result=[]),
+    )
     monkeypatch.setattr(paper_service, "_update_paper", _fake_update_paper)
 
     result = asyncio.run(
@@ -666,6 +676,114 @@ def test_publish_admin_curation_job_preserves_job_arxiv_id_when_metadata_omits_i
     assert inserted["arxiv_id"] == "2508.18791"
     assert updated_payload["arxiv_id"] == "2508.18791"
     assert result["arxiv_id"] == "2508.18791"
+
+
+def test_publish_admin_curation_job_persists_similar_recommendations_before_publication(monkeypatch):
+    persisted_payload: dict[str, object] = {}
+    update_calls: list[dict[str, object]] = []
+    paper = {
+        "id": "paper-1",
+        "title": "Curated paper",
+        "arxiv_id": "2501.00001",
+        "authors": ["Alice"],
+        "categories": ["cs.CL"],
+        "abstract_raw": "raw abstract",
+        "abstract_translated": None,
+        "community_status": "official",
+        "trans_status": "processing",
+        "visibility": "private",
+        "status": "curating",
+    }
+
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=paper),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_sync_task_assets_for_paper",
+        lambda **_kwargs: asyncio.sleep(0, result={"paper": paper}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_extract_translated_abstract_from_task",
+        lambda _task_id: "translated abstract",
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_structured_insight_sections_from_task",
+        lambda **_kwargs: asyncio.sleep(0, result=_valid_sections()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_upsert_structured_insight_sections",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_similar_recommendations_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result=[
+                {
+                    "arxiv_id": "2504.12345",
+                    "title": "Neighbor Paper",
+                    "abstract": "Neighbor abstract",
+                    "arxiv_url": "https://arxiv.org/abs/2504.12345",
+                    "community_paper_id": "paper-neighbor",
+                    "link_type": "community",
+                }
+            ],
+        ),
+    )
+
+    async def _fake_replace_persisted(*, paper_id, items):
+        persisted_payload["paper_id"] = paper_id
+        persisted_payload["items"] = items
+
+    monkeypatch.setattr(
+        paper_service,
+        "_replace_persisted_similar_recommendations",
+        _fake_replace_persisted,
+    )
+
+    async def _fake_update_paper(_paper_id, payload):
+        update_calls.append(dict(payload))
+        return {**paper, **payload}
+
+    monkeypatch.setattr(paper_service, "_update_paper", _fake_update_paper)
+
+    asyncio.run(
+        paper_service._publish_admin_curation_job(
+            job={"paper_id": "paper-1", "created_by": "admin-1", "source_type": "arxiv"},
+            metadata={
+                "title": "Curated paper",
+                "arxiv_id": "2501.00001",
+                "authors": ["Alice"],
+                "categories": ["cs.CL"],
+                "abstract_raw": "raw abstract",
+            },
+            translated_task_id="task-1",
+        )
+    )
+
+    assert persisted_payload == {
+        "paper_id": "paper-1",
+        "items": [
+            {
+                "arxiv_id": "2504.12345",
+                "title": "Neighbor Paper",
+                "abstract": "Neighbor abstract",
+                "arxiv_url": "https://arxiv.org/abs/2504.12345",
+                "community_paper_id": "paper-neighbor",
+                "link_type": "community",
+            }
+        ],
+    }
+    assert update_calls
+    assert update_calls[-1]["visibility"] == "public"
+    assert update_calls[-1]["status"] == "published"
 
 
 def test_build_module_fallback_content_uses_excerpt_and_remains_readable():

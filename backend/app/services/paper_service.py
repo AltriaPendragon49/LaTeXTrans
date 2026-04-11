@@ -1005,6 +1005,86 @@ async def _fetch_arxiv_similar_candidates(
         return []
 
 
+async def _generate_similar_recommendations_for_paper(
+    *,
+    paper: Dict[str, Any],
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
+    current_arxiv_id = _normalize_arxiv_identifier(paper.get("arxiv_id")) or ""
+    current_title = _normalize_metadata_text(paper.get("title")) or ""
+    query_terms = _build_similarity_query_terms(
+        title=paper.get("title"),
+        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
+    )
+    if not query_terms:
+        return []
+
+    current_categories = [
+        _normalize_metadata_text(item) or ""
+        for item in (paper.get("categories") if isinstance(paper.get("categories"), list) else [])
+    ]
+    current_categories = [item for item in current_categories if item]
+
+    local_items = await _fetch_local_bm25_similar_candidates(paper=paper, limit=max(limit * 2, 20))
+    arxiv_candidates = await _fetch_arxiv_similar_candidates(
+        arxiv_id=current_arxiv_id or None,
+        title=paper.get("title"),
+        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
+        categories=paper.get("categories") if isinstance(paper.get("categories"), list) else None,
+        limit=max(limit * 2, 20),
+    )
+
+    merged_candidates: Dict[str, Dict[str, Any]] = {}
+    for raw_candidate in [*local_items, *arxiv_candidates]:
+        candidate = await _normalize_similarity_candidate(candidate=raw_candidate)
+        if candidate is None:
+            continue
+        candidate_arxiv_id = candidate.get("arxiv_id") or ""
+        candidate_title = candidate.get("title") or ""
+        if candidate_arxiv_id and current_arxiv_id and candidate_arxiv_id == current_arxiv_id:
+            continue
+        if candidate_title and current_title and candidate_title == current_title:
+            continue
+        candidate_key = candidate_arxiv_id or candidate_title.lower()
+        merged_candidates[candidate_key] = _merge_similarity_candidates(
+            existing=merged_candidates.get(candidate_key),
+            incoming=candidate,
+        )
+
+    if not merged_candidates:
+        return []
+
+    merged_items = list(merged_candidates.values())
+    documents = [_build_similarity_candidate_document_tokens(candidate) for candidate in merged_items]
+    bm25_scores = _compute_bm25_scores(query_terms, documents)
+
+    ranked_items: List[Dict[str, Any]] = []
+    for candidate, document_tokens, bm25_score in zip(merged_items, documents, bm25_scores):
+        final_score = _score_similarity_result_candidate(
+            query_terms=query_terms,
+            document_tokens=document_tokens,
+            candidate=candidate,
+            bm25_score=bm25_score,
+            current_categories=current_categories,
+        )
+        if final_score is None:
+            continue
+        ranked_items.append({**candidate, "_score": final_score})
+
+    ranked_items.sort(key=lambda item: (-float(item["_score"]), item["title"]))
+    return [
+        {
+            "arxiv_id": item["arxiv_id"],
+            "title": item["title"],
+            "abstract": item["abstract"],
+            "arxiv_url": item["arxiv_url"],
+            "community_paper_id": item["community_paper_id"],
+            "link_type": item["link_type"],
+        }
+        for item in ranked_items[:limit]
+    ]
+
+
 async def _fetch_arxiv_metadata(arxiv_id: str) -> Dict[str, Any]:
     try:
         return await asyncio.to_thread(_fetch_arxiv_metadata_sync, arxiv_id)
@@ -1719,6 +1799,55 @@ async def _fetch_structured_insight_sections(paper_id: str) -> List[Dict[str, An
     except Exception as exc:
         logger.warning("Failed to fetch structured insight sections for paper %s: %s", paper_id, exc)
         return []
+
+
+async def _fetch_persisted_similar_recommendations(paper_id: str) -> List[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        rows = await _run_local_repo(lambda: repository.list_similar_recommendations(paper_id))
+    except DatabaseUnavailableError:
+        return []
+    except Exception as exc:
+        logger.warning("Failed to fetch persisted similar recommendations for paper %s: %s", paper_id, exc)
+        return []
+
+    return [
+        {
+            "arxiv_id": str(row.get("arxiv_id") or ""),
+            "title": str(row.get("title") or ""),
+            "abstract": str(row.get("abstract") or ""),
+            "arxiv_url": str(row.get("arxiv_url") or ""),
+            "community_paper_id": row.get("community_paper_id"),
+            "link_type": str(row.get("link_type") or "arxiv"),
+        }
+        for row in rows
+        if str(row.get("title") or "").strip()
+    ]
+
+
+async def _replace_persisted_similar_recommendations(*, paper_id: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    repository = get_community_paper_repository()
+    try:
+        rows = await _run_local_repo(lambda: repository.replace_similar_recommendations(paper_id=paper_id, items=items))
+    except DatabaseUnavailableError:
+        logger.warning("Persisted similar recommendations require database availability for paper %s", paper_id)
+        raise
+    except Exception as exc:
+        logger.warning("Failed to persist similar recommendations for paper %s: %s", paper_id, exc)
+        raise
+
+    return [
+        {
+            "arxiv_id": str(row.get("arxiv_id") or ""),
+            "title": str(row.get("title") or ""),
+            "abstract": str(row.get("abstract") or ""),
+            "arxiv_url": str(row.get("arxiv_url") or ""),
+            "community_paper_id": row.get("community_paper_id"),
+            "link_type": str(row.get("link_type") or "arxiv"),
+        }
+        for row in rows
+        if str(row.get("title") or "").strip()
+    ]
 
 
 def _empty_structured_insight_section(section_key: str) -> Dict[str, Any]:
@@ -3788,6 +3917,25 @@ async def _publish_admin_curation_job(
         paper_id=paper["id"],
         sections=structured_insight_sections,
     )
+    similar_source_paper = {
+        **paper,
+        "arxiv_id": resolved_arxiv_id,
+        "title": metadata.get("title") or paper.get("title"),
+        "authors": metadata.get("authors") or paper.get("authors") or [],
+        "categories": metadata.get("categories") or paper.get("categories") or [],
+        "abstract_raw": metadata.get("abstract_raw") or paper.get("abstract_raw"),
+        "abstract_translated": abstract_translated,
+        "trans_status": "completed",
+        "community_status": COMMUNITY_STATUS_OFFICIAL,
+    }
+    similar_recommendations = await _generate_similar_recommendations_for_paper(
+        paper=similar_source_paper,
+        limit=10,
+    )
+    await _replace_persisted_similar_recommendations(
+        paper_id=paper["id"],
+        items=similar_recommendations,
+    )
     updated = await _update_paper(
         paper["id"],
         {
@@ -4098,6 +4246,7 @@ async def _run_delete_job(job_id: str) -> None:
                 "paper_likes",
                 "paper_favorites",
                 "community_structured_insights",
+                "community_similar_recommendations",
             ]:
                 await _run_local_repo(lambda table_name=table_name: repository.delete_rows_for_papers(table_name, [paper_id]))
 
@@ -4639,87 +4788,8 @@ async def get_community_paper_detail(
 
 
 async def get_community_paper_similar(*, paper_id: str) -> Dict[str, Any]:
-    paper = await _ensure_public_paper(paper_id)
-    current_arxiv_id = _normalize_arxiv_identifier(paper.get("arxiv_id")) or ""
-    current_title = _normalize_metadata_text(paper.get("title")) or ""
-    query_terms = _build_similarity_query_terms(
-        title=paper.get("title"),
-        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
-    )
-    if not query_terms:
-        return {"items": []}
-
-    current_categories = [
-        _normalize_metadata_text(item) or ""
-        for item in (paper.get("categories") if isinstance(paper.get("categories"), list) else [])
-    ]
-    current_categories = [item for item in current_categories if item]
-
-    local_items = await _fetch_local_bm25_similar_candidates(paper=paper, limit=20)
-    arxiv_candidates = await _fetch_arxiv_similar_candidates(
-        arxiv_id=current_arxiv_id or None,
-        title=paper.get("title"),
-        abstract=paper.get("abstract_raw") or paper.get("abstract_translated"),
-        categories=paper.get("categories") if isinstance(paper.get("categories"), list) else None,
-        limit=20,
-    )
-
-    merged_candidates: Dict[str, Dict[str, Any]] = {}
-    for raw_candidate in [*local_items, *arxiv_candidates]:
-        candidate = await _normalize_similarity_candidate(candidate=raw_candidate)
-        if candidate is None:
-            continue
-        candidate_arxiv_id = candidate.get("arxiv_id") or ""
-        candidate_title = candidate.get("title") or ""
-        if candidate_arxiv_id and current_arxiv_id and candidate_arxiv_id == current_arxiv_id:
-            continue
-        if candidate_title and current_title and candidate_title == current_title:
-            continue
-        candidate_key = candidate_arxiv_id or candidate_title.lower()
-        merged_candidates[candidate_key] = _merge_similarity_candidates(
-            existing=merged_candidates.get(candidate_key),
-            incoming=candidate,
-        )
-
-    if not merged_candidates:
-        return {"items": []}
-
-    merged_items = list(merged_candidates.values())
-    documents = [_build_similarity_candidate_document_tokens(candidate) for candidate in merged_items]
-    bm25_scores = _compute_bm25_scores(query_terms, documents)
-
-    ranked_items: List[Dict[str, Any]] = []
-    for candidate, document_tokens, bm25_score in zip(merged_items, documents, bm25_scores):
-        final_score = _score_similarity_result_candidate(
-            query_terms=query_terms,
-            document_tokens=document_tokens,
-            candidate=candidate,
-            bm25_score=bm25_score,
-            current_categories=current_categories,
-        )
-        if final_score is None:
-            continue
-        ranked_items.append(
-            {
-                **candidate,
-                "_score": final_score,
-            }
-        )
-
-    ranked_items.sort(key=lambda item: (-float(item["_score"]), item["title"]))
-    return {
-        "items": [
-            {
-                "arxiv_id": item["arxiv_id"],
-                "title": item["title"],
-                "abstract": item["abstract"],
-                "arxiv_url": item["arxiv_url"],
-                "community_paper_id": item["community_paper_id"],
-                "link_type": item["link_type"],
-            }
-            for item in ranked_items[:10]
-        ]
-    }
+    await _ensure_public_paper(paper_id)
+    return {"items": await _fetch_persisted_similar_recommendations(paper_id)}
 
 
 async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]:

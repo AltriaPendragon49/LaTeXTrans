@@ -603,6 +603,8 @@
   "community.detail.similar.errorDescription": "しばらくしてから [類似論文] タブを再度開いてみてください。",
   "community.detail.similar.openInCommunity": "コミュニティで開く",
   "community.detail.similar.openInArxiv": "arXiv で開く",
+  "community.detail.similar.expandAbstract": "要旨を表示",
+  "community.detail.similar.collapseAbstract": "要旨を隠す",
   "brand.name": "PaperX",
   "common.labels.user": "ユーザー",
   "glossary.managementComingSoon": "管理インターフェースは近日公開予定です。"

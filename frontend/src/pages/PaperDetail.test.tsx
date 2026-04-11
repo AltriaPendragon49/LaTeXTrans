@@ -499,8 +499,10 @@ describe("PaperDetailPage", () => {
     expect(getCommunityPaperSimilarMock).toHaveBeenCalledWith("paper-1")
     expect(await screen.findByText("Neighbor Paper")).toBeInTheDocument()
     expect(screen.getByText("2504.12345")).toBeInTheDocument()
-    expect(screen.getByText("A nearby paper abstract.")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Open in community" })).toHaveAttribute("href", "/paper/paper-neighbor")
+    expect(screen.queryByText("A nearby paper abstract.")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: i18n.t("community.detail.similar.expandAbstract") }))
+    expect(screen.getByText("A nearby paper abstract.")).toBeInTheDocument()
   })
 
   it("removes duplicated title and author lead content from the translated html reader body", async () => {
