@@ -611,7 +611,7 @@ async def run_translation(
             else None
         )
         agent_config = {
-            "sys_name": "LaTeXTrans",
+            "sys_name": "PaperX",
             "target_language": target_language,
             "source_language": source_language,
             "mode": TRANSLATION_MODE_MAP.get(advanced_config.translation_mode, 0),

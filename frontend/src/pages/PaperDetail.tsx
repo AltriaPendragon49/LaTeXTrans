@@ -130,6 +130,7 @@ function hasSourcePdfResource(
 
 function resolveAvailableModes(
   paper: {
+    arxiv_id?: string | null
     trans_status?: string | null
     assets?: { translated_pdf?: unknown } | null
     latest_asset?: { asset_type?: string | null } | null
@@ -137,6 +138,7 @@ function resolveAvailableModes(
   preview: { html_content?: string | null } | null | undefined,
   reader: {
     available_modes?: CommunityPaperReaderMode[] | null
+    source?: { kind?: string | null } | null
     translated?: { kind?: string | null; html_content?: string | null } | null
   } | null | undefined,
 ): CommunityPaperReaderMode[] {

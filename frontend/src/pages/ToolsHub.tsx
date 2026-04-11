@@ -11,7 +11,7 @@ function GlossaryPanel() {
   return (
     <div className="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant/10 shadow-sm">
       <h3 className="text-lg font-bold text-on-surface mb-6">{t("glossary.glossary_management")}</h3>
-      <p className="text-sm text-tertiary">Management interface coming soon.</p>
+      <p className="text-sm text-tertiary">{t("glossary.managementComingSoon")}</p>
     </div>
   )
 }
@@ -41,7 +41,7 @@ export default function ToolsHubPage() {
             {t("navbar.tools")}
           </h1>
           <p className="max-w-xl text-sm text-tertiary lg:text-base">
-            Direct access to the LaTexTrans ecosystem for high-fidelity document translation.
+            {t("dashboard.toolsDescription")}
           </p>
         </header>
 

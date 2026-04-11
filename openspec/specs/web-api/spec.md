@@ -196,10 +196,10 @@ The backend system MUST validate advanced typography parameters to prevent malfo
 ### Requirement: Email Notification Service
 The system SHALL provide a background email service to notify users of task completion.
 
-#### Scenario: Dispatching status emails
-- **WHEN** a task with `email_notify=True` finishes as `COMPLETED` or `FAILED`
-- **THEN** the `EmailService` MUST dispatch an HTML email using SMTP credentials
-- **AND** include the task ID and final status in the message.
+#### Scenario: Enabling completion emails
+- **WHEN** a user enables task email notifications and a task later reaches a terminal state
+- **THEN** the product SHALL use PaperX-branded completion or failure wording in its outward-facing notification surfaces
+- **AND** the user-facing status email content SHALL keep the task identifier and terminal status details.
 
 ### Requirement: Translated PDF Resolution Logic
 The system SHALL accurately locate the final translated PDF while avoiding deep-nested source directories.
@@ -623,4 +623,11 @@ The backend SHALL expose a public paper-detail recommendation API for similar pa
 - **WHEN** a returned similar-paper candidate does not exist in the local public community library
 - **THEN** the API SHALL still return the candidate's `arxiv_id`, title, abstract, and official `arxiv_url`
 - **AND** the response SHALL remain usable for an external arXiv jump.
+
+### Requirement: Public API metadata uses the current product brand
+The API SHALL expose outward-facing service metadata using the current PaperX product brand.
+
+#### Scenario: Root metadata reflects the current brand
+- **WHEN** a client requests the API root endpoint
+- **THEN** the response message and descriptive service metadata SHALL identify the backend as PaperX rather than legacy LaTeXTrans branding.
 

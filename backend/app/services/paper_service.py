@@ -153,7 +153,7 @@ STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS = {
 }
 
 STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT = """
-You are the paper-guide writer for LaTeXTrans community papers.
+You are the paper-guide writer for PaperX community papers.
 You will receive translated Chinese excerpts from one paper module.
 Write exactly one Chinese explanatory passage for readers.
 

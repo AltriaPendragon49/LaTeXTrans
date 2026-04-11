@@ -2,11 +2,20 @@
 # 
 # Usage: .\scripts\deploy-frontend.ps1
 #
-# The API URL is now fixed (api.latextrans.online) and configured in .env.production,
+# The API URL is read from frontend/.env.production,
 # so no parameters are needed.
 
 $ErrorActionPreference = "Stop"
 $FrontendDir = Join-Path $PSScriptRoot "..\frontend"
+$EnvFile = Join-Path $FrontendDir ".env.production"
+$ApiBaseUrl = $null
+
+if (Test-Path $EnvFile) {
+    $ApiLine = Get-Content $EnvFile | Where-Object { $_ -match '^\s*VITE_API_BASE_URL=' } | Select-Object -First 1
+    if ($ApiLine) {
+        $ApiBaseUrl = ($ApiLine -replace '^\s*VITE_API_BASE_URL=', '').Trim()
+    }
+}
 
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  LaTeXTrans - Frontend Deployment to Cloudflare" -ForegroundColor Cyan
@@ -24,7 +33,14 @@ if (-not $wrangler) {
 Push-Location $FrontendDir
 
 try {
-    Write-Host "[INFO] API URL: https://api.latextrans.online/api (from .env.production)" -ForegroundColor Green
+    if ($ApiBaseUrl) {
+        Write-Host "[INFO] API URL from .env.production: $ApiBaseUrl" -ForegroundColor Green
+        if ($ApiBaseUrl -match '/api/?$') {
+            Write-Host "[WARN] VITE_API_BASE_URL usually should not include a trailing /api in this project." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[WARN] VITE_API_BASE_URL not found in .env.production. Build will use whatever Vite env resolves at build time." -ForegroundColor Yellow
+    }
 
     # Install dependencies if needed
     if (-not (Test-Path "node_modules")) {
@@ -51,10 +67,7 @@ try {
     Write-Host "  Deployment Complete!" -ForegroundColor Green
     Write-Host "==================================================" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Your frontend is now live at:" -ForegroundColor Cyan
-    Write-Host "  https://latextrans.online" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Make sure your backend and tunnel are running!" -ForegroundColor Cyan
+    Write-Host "Verify the new deployment in Cloudflare Pages and confirm it points to your current API domain." -ForegroundColor Cyan
 
 } finally {
     Pop-Location

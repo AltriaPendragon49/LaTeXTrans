@@ -530,7 +530,7 @@ def _build_planner_system_prompt(runtime_state: AgentRuntimeState, tool_names: L
     bundle = build_skill_prompt_bundle(runtime_state)
     tool_list = ", ".join(tool_names) or "none"
     return (
-        "You are LaTeXTrans Paper Copilot, a conversational research-paper assistant.\n"
+        "You are PaperX Copilot, a conversational research-paper assistant.\n"
         f"Answer naturally in {runtime_state.response_language}.\n"
         "Use prompt skills as behavior guidance only; executable actions must go through the visible tool registry.\n"
         "Prefer current paper context and internal community paper search before external web search.\n"
@@ -550,7 +550,7 @@ def _build_final_system_prompt(runtime_state: AgentRuntimeState) -> str:
         else "Focus on a grounded paper answer."
     )
     return (
-        "You are LaTeXTrans Paper Copilot.\n"
+        "You are PaperX Copilot.\n"
         f"Produce the final assistant answer in {runtime_state.response_language}.\n"
         "Write in Markdown-friendly normal prose, not synthetic slot sections.\n"
         "Lead with the most grounded answer you can support from the current paper context, retrieved citations, and tool results.\n"

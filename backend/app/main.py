@@ -46,7 +46,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
-    description="LaTeXTrans Backend API"
+    description="PaperX Backend API"
 )
 
 # Configure CORS
@@ -480,7 +480,7 @@ async def root():
         Welcome message
     """
     return {
-        "message": "LaTeXTrans Backend API",
+        "message": "PaperX Backend API",
         "version": settings.version,
         "docs": "/docs",
         "health": "/api/health"

@@ -2,6 +2,7 @@ import { Compass, PenSquare, Shield, User, Settings } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
+import paperxLogo from "../../paperx.png"
 
 function hasAdminRole(roles: string[] | null | undefined): boolean {
   if (!roles?.length) {
@@ -16,15 +17,24 @@ export function AppSidebar() {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const isAdmin = hasAdminRole(user?.roles)
-  const profileLabel = user?.display_name?.trim() || user?.email?.split('@')[0] || user?.external_user_id || "User"
+  const brandName = t("brand.name")
+  const profileLabel =
+    user?.display_name?.trim() ||
+    user?.email?.split('@')[0] ||
+    user?.external_user_id ||
+    t("common.labels.user")
   const profileInitial = profileLabel.charAt(0).toUpperCase()
 
   return (
     <nav className="fixed left-0 top-0 h-full flex flex-col justify-between py-8 px-4 z-50 backdrop-blur-xl bg-surface dark:bg-slate-900 w-20 hover:w-64 transition-all duration-300 ease-in-out border-none group shadow-[0_20px_40px_rgba(27,28,28,0.06)]">
       <div className="flex flex-col gap-8 items-center group-hover:items-start group-hover:px-4">
         <div className="text-lg font-bold text-primary tracking-tighter mb-4 flex items-center justify-center">
-          <span className="group-hover:hidden">LT</span>
-          <span className="hidden group-hover:block whitespace-nowrap">LaTexTrans</span>
+          <img
+            src={paperxLogo}
+            alt={brandName}
+            className="h-9 w-9 shrink-0 rounded-xl object-cover shadow-[0_12px_30px_rgba(0,55,176,0.18)]"
+          />
+          <span className="hidden group-hover:block whitespace-nowrap ml-3">{brandName}</span>
         </div>
         
         <div className="flex flex-col gap-4 w-full">
@@ -68,7 +78,7 @@ export function AppSidebar() {
         
         <button onClick={() => navigate('/settings')} className="flex items-center gap-4 text-tertiary hover:bg-surface-container-low rounded-full px-4 py-3 transition-colors w-full justify-center group-hover:justify-start">
           <Settings className="w-6 h-6 shrink-0" />
-          <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">Settings</span>
+          <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("settings.title")}</span>
         </button>
 
         {isAuthenticated && user && (
@@ -78,7 +88,6 @@ export function AppSidebar() {
             </div>
             <div className="hidden group-hover:flex flex-col min-w-0">
               <span className="text-xs font-bold text-on-surface truncate pr-2">{profileLabel}</span>
-              <span className="text-[10px] text-tertiary truncate pr-2">Pro Plan</span>
             </div>
           </button>
         )}

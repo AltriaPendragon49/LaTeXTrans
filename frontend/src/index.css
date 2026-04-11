@@ -468,20 +468,6 @@
     background-position: 200% 0;
   }
 }
- ::highlight(paper-detail-reader-selection) {
-   background-color: var(--primary);
-   color: var(--primary-foreground);
- }
-
- ::highlight(paper-annotation-red) { background-color: rgba(255, 82, 82, 0.3); }
- ::highlight(paper-annotation-orange) { background-color: rgba(255, 171, 64, 0.3); }
- ::highlight(paper-annotation-yellow) { background-color: rgba(255, 215, 64, 0.3); }
- ::highlight(paper-annotation-green) { background-color: rgba(105, 240, 174, 0.3); }
- ::highlight(paper-annotation-blue) { background-color: rgba(68, 138, 255, 0.3); }
- ::highlight(paper-annotation-purple) { background-color: rgba(179, 136, 255, 0.3); }
- ::highlight(paper-annotation-fuchsia) { background-color: rgba(255, 64, 129, 0.3); }
- ::highlight(paper-annotation-cyan) { background-color: rgba(24, 255, 255, 0.3); }
-
  .no-scrollbar::-webkit-scrollbar {
    display: none;
  }

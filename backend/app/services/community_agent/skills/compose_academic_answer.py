@@ -162,7 +162,7 @@ class ComposeAcademicAnswerSkill(AgentSkill):
             {
                 "role": "system",
                 "content": (
-                    "You are the grounded answer composer for the LaTeXTrans community paper agent. "
+                    "You are the grounded answer composer for the PaperX community paper agent. "
                     "Return strict JSON only. Use only the provided evidence. "
                     "Do not output markdown. Do not output a long-form summary. "
                     "Write every slot value in the requested answer_language so it matches the user's prompt language. "

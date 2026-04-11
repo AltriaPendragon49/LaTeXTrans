@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Application Info
-    app_name: str = "LaTeXTrans Backend"
+    app_name: str = "PaperX Backend"
     version: str = "0.1.0"
     
     llm_api_key: str = Field(

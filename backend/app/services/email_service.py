@@ -91,8 +91,8 @@ class EmailService:
 
         is_success = status in ("completed", "completed_with_warnings")
         subject = (
-            f"✅ 翻译完成 – LaTeXTrans" if is_success
-            else f"❌ 翻译失败 – LaTeXTrans"
+            f"✅ 翻译完成 – PaperX" if is_success
+            else f"❌ 翻译失败 – PaperX"
         )
         task_label = title or task_id
         status_cn = (
@@ -125,7 +125,7 @@ class EmailService:
       </tr>
     </table>
     <p style="font-size:12px;color:#9ca3af;margin-top:24px;">
-      此邮件由 LaTeXTrans 系统自动发送，请勿回复。
+      此邮件由 PaperX 系统自动发送，请勿回复。
     </p>
   </div>
 </body>
