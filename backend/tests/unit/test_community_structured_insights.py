@@ -12,7 +12,7 @@ def _paper(**overrides):
         "authors": [],
         "categories": [],
         "abstract_raw": "This paper studies a translation pipeline.",
-        "abstract_translated": "本文研究一个翻译流水线。",
+        "abstract_translated": "本文研究一个翻译流水线，并为新的论文导读系统提供基础语义锚点。",
         "community_status": "official",
         "trans_status": "completed",
         "created_at": "2026-03-18T00:00:00+00:00",
@@ -67,9 +67,9 @@ def test_detail_returns_not_ready_structured_insight_payload_for_legacy_visible_
     assert result["structured_insights"]["state"] == "not_ready"
     assert [section["section_key"] for section in result["structured_insights"]["sections"]] == [
         "problem",
-        "method",
-        "key_idea",
+        "solution",
+        "innovation",
         "experiment",
-        "result",
-        "limitation",
+        "future",
     ]
+    assert all("content" in section for section in result["structured_insights"]["sections"])

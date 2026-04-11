@@ -65,7 +65,7 @@ const basePaper = {
   authors: ["Ada Lovelace"],
   categories: ["cs.AI"],
   abstract_raw: "English abstract body.",
-  abstract_translated: "中文摘要。",
+  abstract_translated: "这是一段中文摘要，用来支持结构化导读模块展示。",
   community_status: "official" as const,
   trans_status: "completed" as const,
   created_at: "2026-03-18T00:00:00Z",
@@ -88,6 +88,38 @@ const basePaper = {
   comment_count: 0,
   view_count: 10,
 }
+
+const problemContent =
+  "论文聚焦复杂 LaTeX 文档翻译任务中的结构损坏问题，并解释了为什么这一问题会直接影响科研协作效率。"
+const solutionContent =
+  "作者将解析、翻译和重组拆为可衔接的流程阶段，形成清晰 pipeline，使读者能理解各阶段如何协同完成最终输出。"
+const innovationContent =
+  "创新点在于把多智能体协作与结构保持策略深度绑定，不是简单复用传统端到端翻译，而是强调复杂项目可编译性。"
+const experimentContent =
+  "实验覆盖多类文档与多项指标，并通过对照设置验证方案在结构保真和可读性上的提升，支撑方法有效性的核心结论。"
+const futureContent =
+  "论文指出可从长文档鲁棒性、跨领域迁移与自动纠错方向继续扩展，同时对后续科研写作工具研究有启发意义。"
+const structuredProblemContent = `LaTeX文档翻译的核心难点在于同时保持语义准确性和文档可编译性。
+
+问题本质
+LaTeX文档将自然语言与数学公式、表格和交叉引用等结构深度交织，使翻译不仅是语言转换，还涉及结构解析。
+
+现有方法的局限
+主流机器翻译系统缺乏对LaTeX语法结构的理解，无法处理嵌套元素和命令依赖关系，导致翻译后出现格式错乱、符号误译或引用失效等问题。
+
+为什么重要
+LaTeX是学术界主流排版系统，翻译质量直接影响论文的可读性和可传播性。`
+
+const inlineStructuredProblemContent =
+  "This paper studies LaTeX document translation while preserving semantics and compileability. " +
+  "\u95ee\u9898\u672c\u8d28\uff1aLaTeX documents mix natural language with formulas, tables, and references. " +
+  "\u73b0\u6709\u65b9\u6cd5\u7684\u5c40\u9650\uff1aGeneral-purpose MT systems often break commands, cross-references, and terminology consistency. " +
+  "\u4e3a\u4ec0\u4e48\u91cd\u8981\uff1aResearchers need translations that remain readable, faithful, and directly compilable."
+const inlineSpaceSeparatedSolutionContent =
+  "This workflow coordinates multiple agents to preserve LaTeX structure during translation. " +
+  "\u6838\u5fc3\u601d\u8def LaTeXTrans decomposes translation into specialized agents that each handle one part of the pipeline. " +
+  "\u5173\u952e\u6d41\u7a0b The parser isolates protected LaTeX units before translation and the generator rebuilds the final document. " +
+  "\u6a21\u5757\u534f\u540c The validator, summarizer, and terminology extractor feed corrections back into the translation loop."
 
 function buildDetailReturn(overrides?: Record<string, unknown>) {
   return {
@@ -132,12 +164,27 @@ function buildDetailReturn(overrides?: Record<string, unknown>) {
       sections: [
         {
           section_key: "problem",
-          summary_en: "English problem summary",
-          summary_zh: "中文问题摘要",
-          bullets_en: ["English bullet"],
-          bullets_zh: ["中文要点"],
-          body_en: "English body",
-          body_zh: "中文正文",
+          content: problemContent,
+          updated_at: "2026-03-18T03:00:00Z",
+        },
+        {
+          section_key: "solution",
+          content: solutionContent,
+          updated_at: "2026-03-18T03:00:00Z",
+        },
+        {
+          section_key: "innovation",
+          content: innovationContent,
+          updated_at: "2026-03-18T03:00:00Z",
+        },
+        {
+          section_key: "experiment",
+          content: experimentContent,
+          updated_at: "2026-03-18T03:00:00Z",
+        },
+        {
+          section_key: "future",
+          content: futureContent,
           updated_at: "2026-03-18T03:00:00Z",
         },
       ],
@@ -160,7 +207,7 @@ describe("PaperDetailPage", () => {
     })
   })
 
-  it("renders the reader shell and structured insights for completed papers", async () => {
+  it("renders the reader shell and five guide modules for completed papers", async () => {
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
 
     render(
@@ -175,8 +222,128 @@ describe("PaperDetailPage", () => {
     expect(screen.getByTestId("paper-detail-reader-panel")).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-insights-panel")).toBeInTheDocument()
     expect(screen.getByText("Structured insights")).toBeInTheDocument()
-    expect(screen.getByText("中文问题摘要")).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.detail.insights.section.problem"))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.detail.insights.section.solution"))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.detail.insights.section.innovation"))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.detail.insights.section.experiment"))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.detail.insights.section.future"))).toBeInTheDocument()
+    expect(screen.getByText(problemContent)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Download" })).toBeEnabled()
+  })
+
+  it("renders light structured insight content with summary and titled subsections", async () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        structuredInsights: {
+          state: "ready",
+          sections: [
+            {
+              section_key: "problem",
+              content: structuredProblemContent,
+              updated_at: "2026-03-18T03:00:00Z",
+            },
+          ],
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("LaTeX文档翻译的核心难点在于同时保持语义准确性和文档可编译性。")).toBeInTheDocument()
+    expect(screen.getByText("问题本质")).toBeInTheDocument()
+    expect(screen.getByText("现有方法的局限")).toBeInTheDocument()
+    expect(screen.getByText("为什么重要")).toBeInTheDocument()
+    expect(screen.getByText(/LaTeX文档将自然语言与数学公式/)).toBeInTheDocument()
+  })
+
+  it("parses inline titled insight content from a single long paragraph", async () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        structuredInsights: {
+          state: "ready",
+          sections: [
+            {
+              section_key: "problem",
+              content: inlineStructuredProblemContent,
+              updated_at: "2026-03-18T03:00:00Z",
+            },
+          ],
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(
+      screen.getByText(/This paper studies LaTeX document translation while preserving semantics/),
+    ).toBeInTheDocument()
+    expect(screen.getByText("\u95ee\u9898\u672c\u8d28")).toBeInTheDocument()
+    expect(screen.getByText("\u73b0\u6709\u65b9\u6cd5\u7684\u5c40\u9650")).toBeInTheDocument()
+    expect(screen.getByText("\u4e3a\u4ec0\u4e48\u91cd\u8981")).toBeInTheDocument()
+    expect(screen.getByText(/mix natural language with formulas, tables, and references/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/General-purpose MT systems often break commands, cross-references/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/translations that remain readable, faithful, and directly compilable/)).toBeInTheDocument()
+  })
+
+  it("parses inline titled insight content when labels are separated by spaces instead of colons", async () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        structuredInsights: {
+          state: "ready",
+          sections: [
+            {
+              section_key: "solution",
+              content: inlineSpaceSeparatedSolutionContent,
+              updated_at: "2026-03-18T03:00:00Z",
+            },
+          ],
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(
+      screen.getByText(/This workflow coordinates multiple agents to preserve LaTeX structure/),
+    ).toBeInTheDocument()
+    expect(screen.getByText("\u6838\u5fc3\u601d\u8def")).toBeInTheDocument()
+    expect(screen.getByText("\u5173\u952e\u6d41\u7a0b")).toBeInTheDocument()
+    expect(screen.getByText("\u6a21\u5757\u534f\u540c")).toBeInTheDocument()
+    expect(
+      screen.getByText(/decomposes translation into specialized agents that each handle one part/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "The parser isolates protected LaTeX units before translation and the generator rebuilds the final document.",
+        { selector: "p" },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "The validator, summarizer, and terminology extractor feed corrections back into the translation loop.",
+        { selector: "p" },
+      ),
+    ).toBeInTheDocument()
   })
 
   it("preserves source pdf, translated html, and translated pdf preview modes", async () => {

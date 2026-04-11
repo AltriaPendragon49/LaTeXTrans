@@ -587,11 +587,10 @@
   "community.detail.insightsEmptyTitle": "Structured insights are unavailable",
   "community.detail.insightsEmptyDescription": "The reader is available, but this paper does not have a persisted insight package yet.",
   "community.detail.insights.languagePending": "This insight section is not ready in the current reading language yet.",
-  "community.detail.insights.section.problem": "Problem",
-  "community.detail.insights.section.method": "Method",
-  "community.detail.insights.section.keyIdea": "Key idea",
-  "community.detail.insights.section.experiment": "Experiment",
-  "community.detail.insights.section.result": "Result",
-  "community.detail.insights.section.limitation": "Limitation",
+  "community.detail.insights.section.problem": "这篇论文解决什么问题，为什么重要，现有方法的关键不足是什么？",
+  "community.detail.insights.section.solution": "作者的核心思路是什么，方法整体是如何工作的？",
+  "community.detail.insights.section.innovation": "论文的关键创新点有哪些，相比已有方法，本质区别在哪里？",
+  "community.detail.insights.section.experiment": "论文如何验证方法有效性，主要结论是什么？",
+  "community.detail.insights.section.future": "这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？",
   "community.detail.insights.section.fallback": "Insight section"
 }

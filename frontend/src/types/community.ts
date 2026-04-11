@@ -252,16 +252,21 @@ export interface PaperAnnotationOverlayRect {
 }
 
 export interface StructuredInsightSection {
-  section_key: string
-  summary_en?: string | null
-  summary_zh?: string | null
-  bullets_en?: string[] | null
-  bullets_zh?: string[] | null
-  body_en?: string | null
-  body_zh?: string | null
+  section_key: StructuredInsightSectionKey
+  content?: string | null
   status?: string | null
   updated_at?: string | null
 }
+
+export const STRUCTURED_INSIGHT_SECTION_KEYS = [
+  "problem",
+  "solution",
+  "innovation",
+  "experiment",
+  "future",
+] as const
+
+export type StructuredInsightSectionKey = (typeof STRUCTURED_INSIGHT_SECTION_KEYS)[number]
 
 export interface StructuredInsightsPayload {
   state: string

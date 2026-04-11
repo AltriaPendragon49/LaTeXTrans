@@ -61,12 +61,115 @@ _curation_job_tasks: Dict[str, asyncio.Task] = {}
 _delete_job_tasks: Dict[str, asyncio.Task] = {}
 STRUCTURED_INSIGHT_SECTION_KEYS = (
     "problem",
-    "method",
-    "key_idea",
+    "solution",
+    "innovation",
     "experiment",
-    "result",
-    "limitation",
+    "future",
 )
+STRUCTURED_INSIGHT_MIN_TEXT_LENGTH = 80
+STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS = 2
+STRUCTURED_INSIGHT_READY_STATUS = "ready"
+STRUCTURED_INSIGHT_PROCESSING_STATUS = "processing"
+STRUCTURED_INSIGHT_NOT_READY_STATUS = "not_ready"
+STRUCTURED_INSIGHT_SOURCE_MAX_CHARS = 2400
+STRUCTURED_INSIGHT_FAILURE_PLACEHOLDERS = (
+    "暂时无法生成",
+    "生成失败",
+    "请参考摘要",
+    "信息不足",
+    "暂无内容",
+    "not_ready",
+    "pending",
+    "processing",
+)
+STRUCTURED_INSIGHT_SECTION_QUESTIONS = {
+    "problem": "这篇论文解决什么问题，为什么重要，现有方法的关键不足是什么？",
+    "solution": "作者的核心思路是什么，方法整体是如何工作的？",
+    "innovation": "论文的关键创新点有哪些，相比已有方法，本质区别在哪里？",
+    "experiment": "论文如何验证方法有效性，主要结论是什么？",
+    "future": "这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？",
+}
+STRUCTURED_INSIGHT_SECTION_FALLBACK_LABELS = {
+    "problem": "论文要解决的问题与现有方法不足",
+    "solution": "论文的核心思路与整体流程",
+    "innovation": "论文相对已有方法的关键创新",
+    "experiment": "论文中的实验验证与主要结论",
+    "future": "论文的潜在扩展方向与研究启发",
+}
+STRUCTURED_INSIGHT_SECTION_BOUNDARIES = {
+    "problem": {
+        "must_cover": "说明论文要解决的核心问题、该问题的重要性，以及已有方法的关键不足；优先使用论文中明确写出的定义、难点和研究动机。",
+        "avoid": "不要详细展开作者方法，不要提前总结实验结果，不要写成泛泛的总述，不要用行业常识替代论文自己的问题陈述。",
+        "section_focus": "聚焦论文自己如何定义问题、为什么重要、现有方法到底卡在哪里。",
+    },
+    "solution": {
+        "must_cover": "说明作者的核心思路、整体 pipeline，以及关键步骤之间如何衔接；用论文里的方法机制解释它是怎么工作的。",
+        "avoid": "不要描述系统的使用方式（如CLI、Web平台），不要写 CLI、Web、平台相关使用方式，不要写产品功能、部署流程，不要把输出 PDF、源码、日志等产品功能当成方法本身，不要只堆术语或模块名而不解释作用。",
+        "section_focus": "聚焦方法如何工作、关键环节如何协作、各机制为什么这样串起来。",
+    },
+    "innovation": {
+        "must_cover": "说明论文真正的创新点，以及它和已有方法相比本质上新在哪里；用可核验的差异解释创新，而不是靠宣传性判断。",
+        "avoid": "不要只是换句话重复 solution，不要只说效果更好或提出了一个新方法，不要使用'首个'、'首次'、'无损'、'质的不同'这类强断言；同时避免使用“首次”“首个”“质的突破”等强判断，除非提供内容明确这样表述。",
+        "section_focus": "聚焦论文和已有方法的差异来自结构、流程、目标或能力边界的哪里。",
+    },
+    "experiment": {
+        "must_cover": "说明论文如何验证方法有效性，包括关键数据、指标、设置，以及实验最后证明了什么、优于哪些方法、优势体现在哪类能力上；如果论文中有实验数值、对比结果、提升幅度，请优先写出。",
+        "avoid": "不要只罗列实验设置，不要只说做了实验且有效，要明确结论，优先做结果导向的解读。",
+        "section_focus": "聚焦实验结果如何支撑论文主张，而不是仅复述评测流程。",
+    },
+    "future": {
+        "must_cover": "说明论文暴露的真实局限、潜在扩展方向，以及对相关研究的启发；优先依据论文明确提到的局限、讨论或结论。",
+        "avoid": "不要脱离论文内容自由发挥，不要只写空泛愿景，不要扩展出论文未出现的研究建议。",
+        "section_focus": "聚焦论文自己承认的限制与自然延伸出的下一步，而不是额外脑补。",
+    },
+}
+STRUCTURED_INSIGHT_GROUNDING_REQUIREMENTS = (
+    "只基于提供的论文内容回答，不要补充输入里没有出现的具体事实；"
+    "优先使用论文中明确写出的目标、方法、结果、局限与比较；"
+    "避免用行业常识补全、避免空泛背景铺陈。"
+)
+STRUCTURED_INSIGHT_STYLE_REQUIREMENTS = (
+    "使用中文面向读者解释，只输出正文，不要输出 JSON、标题、编号或项目列表。"
+    "优先写论文特有的信息，控制在一到两段内，避免模板化套话。"
+)
+STRUCTURED_INSIGHT_ANTI_REPETITION_REQUIREMENTS = (
+    "避免与其他模块重复，尤其不要把别的模块已经展开的内容原样再说一遍。"
+)
+STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS = {
+    "default": "保持段落式输出，以解释和压缩信息为主，不要改成 bullet 列表或密集条目堆叠。",
+    "experiment": "以段落为主；如果论文里有清晰的指标、数值、对比结果，可加入至多 2~3 条很短的信息点，帮助读者快速扫描关键信息，但不要把整段写成列表。",
+}
+STRUCTURED_INSIGHT_STRUCTURE_REQUIREMENTS = (
+    "输出应采用轻结构化形式：先写一行总结句，再写2~4个子结构段；"
+    "每个子结构需有简短标题和对应解释内容；不要输出单一长段落，也不要改成纯 bullet 列表。"
+)
+STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS = {
+    "problem": ["问题本质", "现有方法的局限", "为什么重要"],
+    "solution": ["核心思路", "关键流程", "模块协同"],
+    "innovation": ["关键创新点", "本质差异", "为什么不一样"],
+    "experiment": ["核心指标", "对比结果", "实验结论"],
+    "future": ["当前局限", "可改进方向", "研究启发"],
+}
+
+STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT = """
+You are the paper-guide writer for LaTeXTrans community papers.
+You will receive translated Chinese excerpts from one paper module.
+Write exactly one Chinese explanatory passage for readers.
+
+Rules:
+- Output Chinese only.
+- Ground the answer strictly in the provided excerpt.
+- Use only supported claims from the provided excerpt and avoid filling gaps with general domain knowledge.
+- Do not output JSON, headings, or markdown fences.
+- Keep paragraph-first output; only when the style_requirements and density_requirements explicitly allow it may you use at most 2-3 short bullet-like lines.
+- Prefer a summary sentence followed by 2-4 titled mini-sections; use plain text short titles rather than markdown headings.
+- Write normal prose that is easy for readers to understand.
+- If the evidence is limited, say that explicitly in Chinese instead of inventing facts.
+- Stay focused on the current question instead of summarizing the whole paper.
+- Prefer paper-specific details over generic praise or industry-level generalities.
+
+Return only the final Chinese passage.
+""".strip()
 
 
 def _utc_now_iso() -> str:
@@ -129,6 +232,38 @@ def _normalize_metadata_text(value: Optional[str]) -> Optional[str]:
         return None
     normalized = " ".join(str(value).split()).strip()
     return normalized or None
+
+
+def _resolve_chat_completions_url(raw_url: Optional[str]) -> Optional[str]:
+    normalized = str(raw_url or "").strip().rstrip("/")
+    if not normalized:
+        return None
+    if normalized.endswith("/chat/completions"):
+        return normalized
+    if normalized.endswith("/v1"):
+        return f"{normalized}/chat/completions"
+    return f"{normalized}/v1/chat/completions"
+
+
+def _extract_json_object(raw_text: str) -> Optional[Dict[str, Any]]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+        return payload if isinstance(payload, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return None
+
+    try:
+        payload = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _count_cjk_characters(value: Optional[str]) -> int:
@@ -1031,13 +1166,8 @@ async def _fetch_structured_insight_sections(paper_id: str) -> List[Dict[str, An
 def _empty_structured_insight_section(section_key: str) -> Dict[str, Any]:
     return {
         "section_key": section_key,
-        "summary_en": None,
-        "summary_zh": None,
-        "bullets_en": [],
-        "bullets_zh": [],
-        "body_en": None,
-        "body_zh": None,
-        "status": "not_ready",
+        "content": None,
+        "status": STRUCTURED_INSIGHT_NOT_READY_STATUS,
         "updated_at": None,
     }
 
@@ -1054,7 +1184,15 @@ def _build_structured_insights_payload(
         section_map.get(section_key, _empty_structured_insight_section(section_key))
         for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
     ]
-    state = "ready" if any(section.get("status") == "ready" for section in ordered_sections) else "not_ready"
+    statuses = {str(section.get("status") or "").strip() for section in ordered_sections}
+    all_ready = all(status == STRUCTURED_INSIGHT_READY_STATUS for status in statuses if status)
+    all_readable = all(_is_structured_insight_content_readable(section.get("content")) for section in ordered_sections)
+    if ordered_sections and all_ready and all_readable:
+        state = STRUCTURED_INSIGHT_READY_STATUS
+    elif STRUCTURED_INSIGHT_PROCESSING_STATUS in statuses or "queued" in statuses:
+        state = STRUCTURED_INSIGHT_PROCESSING_STATUS
+    else:
+        state = STRUCTURED_INSIGHT_NOT_READY_STATUS
     return {
         "state": state,
         "sections": ordered_sections,
@@ -2577,55 +2715,447 @@ async def _upsert_structured_insight_sections(
     return stored
 
 
-def _build_structured_insight_text(
-    *,
-    section_key: str,
-    title: str,
-    abstract_en: str,
-    abstract_zh: str,
-) -> Dict[str, Any]:
-    english_summary = abstract_en or title or "Not ready yet."
-    chinese_summary = abstract_zh or "暂未生成。"
-    label_map = {
-        "problem": ("Problem framing", "问题定义"),
-        "method": ("Method overview", "方法概览"),
-        "key_idea": ("Key idea", "核心思想"),
-        "experiment": ("Experiment setup", "实验设置"),
-        "result": ("Main result", "主要结果"),
-        "limitation": ("Current limitation", "当前局限"),
-    }
-    label_en, label_zh = label_map.get(section_key, (section_key.replace("_", " "), section_key))
-    return {
-        "section_key": section_key,
-        "summary_en": english_summary,
-        "summary_zh": chinese_summary,
-        "bullets_en": [label_en, title] if title else [label_en],
-        "bullets_zh": [label_zh, title] if title else [label_zh],
-        "body_en": english_summary,
-        "body_zh": chinese_summary,
-        "status": "ready",
-        "updated_at": _utc_now_iso(),
-    }
+def _load_task_artifact_json(output_dir: Path, artifact_name: str) -> List[Dict[str, Any]]:
+    artifact_path = output_dir / artifact_name
+    if not artifact_path.exists():
+        return []
+    try:
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return payload if isinstance(payload, list) else []
 
 
-def _generate_structured_insight_sections(
+def _build_structured_insight_placeholder_map(output_dir: Path) -> Dict[str, str]:
+    placeholder_map: Dict[str, str] = {}
+    for artifact_name in ("envs_map.json", "captions_map.json"):
+        for item in _load_task_artifact_json(output_dir, artifact_name):
+            placeholder = str(item.get("placeholder") or "").strip()
+            if not placeholder:
+                continue
+            translated = str(item.get("trans_content") or item.get("content") or "").strip()
+            if translated:
+                placeholder_map[placeholder] = translated
+    return placeholder_map
+
+
+def _expand_structured_insight_placeholders(text: str, placeholder_map: Dict[str, str]) -> str:
+    expanded = str(text or "")
+    for placeholder, replacement in placeholder_map.items():
+        expanded = expanded.replace(placeholder, replacement)
+    return expanded
+
+
+def _normalize_structured_insight_text(text: str) -> Optional[str]:
+    plain = _normalize_metadata_text(extract_text_from_tex(str(text or "")))
+    if plain:
+        return plain
+    return _normalize_metadata_text(text)
+
+
+def _load_structured_insight_translated_sections(task_id: str) -> List[Dict[str, Any]]:
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        sections = _load_task_artifact_json(output_dir, "sections_map.json")
+        if not sections:
+            continue
+        placeholder_map = _build_structured_insight_placeholder_map(output_dir)
+        normalized_sections: List[Dict[str, Any]] = []
+        for index, section in enumerate(sections):
+            translated = str(section.get("trans_content") or section.get("content") or "").strip()
+            if not translated:
+                continue
+            expanded = _expand_structured_insight_placeholders(translated, placeholder_map)
+            normalized = _normalize_structured_insight_text(expanded)
+            if not normalized:
+                continue
+            title = _normalize_metadata_text(section.get("title"))
+            normalized_sections.append(
+                {
+                    "index": index,
+                    "section": str(section.get("section") or "").strip() or str(index + 1),
+                    "title": title,
+                    "content": normalized,
+                    "raw_content": expanded,
+                }
+            )
+        if normalized_sections:
+            return normalized_sections
+    return []
+
+
+def _structured_insight_section_buckets(title: Optional[str], content: Optional[str]) -> set[str]:
+    normalized_title = str(title or "").strip().lower()
+    normalized_content = str(content or "").strip().lower()
+    if not normalized_title and not normalized_content:
+        return set()
+
+    bucket_keywords = {
+        "abstract": ("abstract", "摘要"),
+        "introduction": ("introduction", "intro", "background", "motivation", "prelim", "引言", "背景", "概述"),
+        "contribution": ("contribution", "contributions", "novelty", "our approach", "贡献", "创新", "主要贡献"),
+        "method": ("method", "approach", "framework", "model", "algorithm", "architecture", "design", "方法", "模型", "算法", "框架"),
+        "experiment": ("experiment", "evaluation", "setup", "benchmark", "ablation", "实验", "评测", "设置"),
+        "result": ("result", "results", "analysis", "finding", "findings", "outcome", "结果", "分析", "结论"),
+        "conclusion": ("conclusion", "discussion", "limitation", "future", "结论", "讨论", "局限", "未来"),
+    }
+
+    matched = {
+        bucket
+        for bucket, keywords in bucket_keywords.items()
+        if any(keyword in normalized_title for keyword in keywords)
+    }
+    raw_content = str(content or "")
+    contribution_markers = (
+        "本文贡献如下",
+        "主要贡献如下",
+        "我们的贡献如下",
+        "our contributions are",
+        "the main contributions are",
+    )
+    result_markers = (
+        "提升",
+        "优于",
+        "领先",
+        "improves by",
+        "outperforms",
+        "achieves better",
+    )
+    if any(marker in raw_content for marker in contribution_markers):
+        matched.add("contribution")
+    if "结果" in raw_content and any(marker in raw_content for marker in result_markers):
+        matched.add("result")
+    return matched
+
+
+def _dedupe_structured_insight_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen_indexes: set[int] = set()
+    ordered: List[Dict[str, Any]] = []
+    for section in sections:
+        index = int(section.get("index") or 0)
+        if index in seen_indexes:
+            continue
+        seen_indexes.add(index)
+        ordered.append(section)
+    return ordered
+
+
+def _compose_structured_insight_excerpt(
+    sections: List[Dict[str, Any]],
     *,
-    title: str,
-    abstract_en: Optional[str],
-    abstract_zh: Optional[str],
-) -> List[Dict[str, Any]]:
-    normalized_title = str(title or "").strip()
-    normalized_en = _normalize_metadata_text(abstract_en) or normalized_title
-    normalized_zh = _normalize_metadata_text(abstract_zh) or "暂未生成。"
-    return [
-        _build_structured_insight_text(
-            section_key=section_key,
-            title=normalized_title,
-            abstract_en=normalized_en,
-            abstract_zh=normalized_zh,
-        )
-        for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+    max_chars: int,
+) -> str:
+    chunks: List[str] = []
+    total = 0
+    for section in _dedupe_structured_insight_sections(sections):
+        title = _normalize_metadata_text(section.get("title"))
+        content = _normalize_metadata_text(section.get("content"))
+        if not content:
+            continue
+        chunk = f"【{title}】\n{content}" if title else content
+        remaining = max_chars - total
+        if remaining <= 0:
+            break
+        if len(chunk) > remaining:
+            chunk = chunk[:remaining].rstrip()
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= max_chars:
+            break
+    return "\n\n".join(chunk for chunk in chunks if chunk).strip()
+
+
+def _prepare_structured_insight_sources(task_id: str) -> Dict[str, str]:
+    sections = _load_structured_insight_translated_sections(task_id)
+    if not sections:
+        return {section_key: "" for section_key in STRUCTURED_INSIGHT_SECTION_KEYS}
+
+    classified = [
+        {
+            **section,
+            "buckets": _structured_insight_section_buckets(section.get("title"), section.get("content")),
+        }
+        for section in sections
     ]
+
+    def pick(*bucket_names: str) -> List[Dict[str, Any]]:
+        selected = [
+            section
+            for section in classified
+            if set(bucket_names) & set(section.get("buckets") or set())
+        ]
+        return _dedupe_structured_insight_sections(selected)
+
+    def by_index(start: int, end: int) -> List[Dict[str, Any]]:
+        return classified[max(0, start):max(0, min(len(classified), end))]
+
+    abstract_sections = pick("abstract")
+    introduction_sections = pick("introduction")
+    contribution_sections = pick("contribution")
+    method_sections = pick("method")
+    experiment_sections = pick("experiment")
+    result_sections = pick("result")
+    conclusion_sections = pick("conclusion")
+
+    total_sections = len(classified)
+    middle_start = max((total_sections // 2) - 1, 0)
+    abstract_anchor_sections = abstract_sections or by_index(0, min(1, total_sections))
+    problem_sections = abstract_anchor_sections + introduction_sections
+    solution_sections = abstract_anchor_sections + (method_sections or by_index(middle_start, min(middle_start + 2, total_sections)))
+    innovation_sections = abstract_anchor_sections + (
+        contribution_sections
+        or method_sections[:1]
+        or introduction_sections[:1]
+        or by_index(0, min(3, total_sections))
+    )
+    prioritized_experiment_sections = _dedupe_structured_insight_sections(result_sections + experiment_sections)
+    experiment_sections_with_anchor = abstract_anchor_sections + (
+        prioritized_experiment_sections or by_index(max(total_sections - 3, 0), total_sections)
+    )
+    future_sections = abstract_anchor_sections + (
+        conclusion_sections or by_index(max(total_sections - 2, 0), total_sections)
+    )
+
+    return {
+        "problem": _compose_structured_insight_excerpt(
+            problem_sections or by_index(0, min(2, total_sections)),
+            max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
+        ),
+        "solution": _compose_structured_insight_excerpt(
+            solution_sections,
+            max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
+        ),
+        "innovation": _compose_structured_insight_excerpt(
+            innovation_sections,
+            max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
+        ),
+        "experiment": _compose_structured_insight_excerpt(
+            experiment_sections_with_anchor,
+            max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
+        ),
+        "future": _compose_structured_insight_excerpt(
+            future_sections,
+            max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
+        ),
+    }
+
+
+def _normalize_structured_insight_section(section: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "section_key": str(section.get("section_key") or "").strip(),
+        "content": _normalize_metadata_text(section.get("content")),
+        "status": str(section.get("status") or STRUCTURED_INSIGHT_READY_STATUS).strip() or STRUCTURED_INSIGHT_READY_STATUS,
+        "updated_at": section.get("updated_at") or _utc_now_iso(),
+    }
+
+
+def _truncate_debug_text(value: Any, limit: int = 500) -> str:
+    text = _normalize_metadata_text(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False))
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}..."
+
+
+def _is_structured_insight_content_readable(content: Optional[str]) -> bool:
+    normalized = _normalize_metadata_text(content)
+    if not normalized or len(normalized) < STRUCTURED_INSIGHT_MIN_TEXT_LENGTH:
+        return False
+    lowered = normalized.lower()
+    if any(placeholder in normalized or placeholder in lowered for placeholder in STRUCTURED_INSIGHT_FAILURE_PLACEHOLDERS):
+        return False
+    return _count_cjk_characters(normalized) >= 24
+
+
+def _build_structured_insight_fallback_content(*, section_key: str, excerpt: str) -> str:
+    label = STRUCTURED_INSIGHT_SECTION_FALLBACK_LABELS.get(section_key, "论文相关内容")
+    normalized_excerpt = _normalize_metadata_text(excerpt) or ""
+    snippet = normalized_excerpt[:220].rstrip("，。；;,. ")
+    base_content: str
+    if snippet:
+        base_content = (
+            f"根据论文的中文内容，关于{label}，可以先这样理解：{snippet}。"
+            "这一段导读基于当前可用的翻译片段整理而成，重点是帮助读者快速抓住论文在这一模块里真正强调的信息，"
+            "后续如果需要更细的论证细节，仍然可以回到对应章节继续核对。"
+        )
+    else:
+        base_content = (
+            f"根据论文的中文内容，关于{label}，当前仍然可以从已翻译正文中提炼出一条基础判断："
+            "作者在这一部分提供了与论文主线直接相关的说明，只是现有摘录不足以支持更细的逐点展开。"
+            "因此这里先给出可展示的导读文本，帮助读者建立整体理解，再结合原文段落补充具体细节。"
+        )
+    if len(base_content) < STRUCTURED_INSIGHT_MIN_TEXT_LENGTH:
+        base_content = (
+            f"{base_content} 这也意味着该模块已经具备最基本的可读性，可以作为发布时的兜底内容。"
+        )
+    return base_content
+
+
+def _validate_structured_insight_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    section_map: Dict[str, Dict[str, Any]] = {}
+    seen_contents: Dict[str, str] = {}
+    for raw_section in sections:
+        section = _normalize_structured_insight_section(raw_section)
+        section_key = section["section_key"]
+        if section_key not in STRUCTURED_INSIGHT_SECTION_KEYS:
+            raise ValueError(f"Unsupported structured insight section: {section_key}")
+        if not _is_structured_insight_content_readable(section.get("content")):
+            raise ValueError(f"Structured insight section {section_key} is unreadable")
+        normalized_content = _normalize_metadata_text(section.get("content")) or ""
+        duplicate_key = seen_contents.get(normalized_content)
+        if duplicate_key is not None:
+            raise ValueError(
+                f"Structured insight section {section_key} duplicates section {duplicate_key}"
+            )
+        seen_contents[normalized_content] = section_key
+        section_map[section_key] = section
+
+    missing = [section_key for section_key in STRUCTURED_INSIGHT_SECTION_KEYS if section_key not in section_map]
+    if missing:
+        raise ValueError(f"Missing structured insight sections: {', '.join(missing)}")
+
+    return [section_map[section_key] for section_key in STRUCTURED_INSIGHT_SECTION_KEYS]
+
+
+async def _build_structured_insight_llm_config(user_id: Optional[str]) -> Dict[str, Any]:
+    default_request = translate_route.TranslateRequest(source_language="en", target_language="zh")
+    return await translate_route.build_llm_config_async(default_request.advanced_config, user_id)
+
+
+async def _call_structured_insight_llm(
+    *,
+    llm_config: Dict[str, Any],
+    system_prompt: str,
+    user_payload: Dict[str, Any],
+    temperature: float = 0.1,
+    max_tokens: int = 3000,
+) -> str:
+    provider_url = _resolve_chat_completions_url(
+        str(llm_config.get("base_url") or settings.llm_base_url or "")
+    )
+    provider_key = str(llm_config.get("api_key") or settings.llm_api_key or "").strip()
+    provider_model = str(llm_config.get("model") or settings.llm_model or "").strip()
+    if not provider_url or not provider_key or not provider_model:
+        raise RuntimeError("Structured insight LLM configuration is unavailable")
+
+    async with httpx.AsyncClient(timeout=max(float(llm_config.get("timeout") or settings.llm_timeout), 10.0)) as client:
+        response = await client.post(
+            provider_url,
+            json={
+                "model": provider_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                ],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": False,
+            },
+            headers={
+                "Authorization": f"Bearer {provider_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+    choices = payload.get("choices") if isinstance(payload, dict) else None
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("Structured insight LLM response is missing choices")
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("Structured insight LLM response is empty")
+    return content
+
+
+async def _generate_structured_insight_sections_from_task(
+    *,
+    task_id: str,
+    title: str,
+    abstract_raw: Optional[str],
+    created_by: Optional[str],
+) -> List[Dict[str, Any]]:
+    sources = _prepare_structured_insight_sources(task_id)
+    llm_config = await _build_structured_insight_llm_config(created_by)
+    generated_sections: List[Dict[str, Any]] = []
+    prior_section_summaries: List[str] = []
+
+    for section_key in STRUCTURED_INSIGHT_SECTION_KEYS:
+        excerpt = _normalize_metadata_text(sources.get(section_key)) or ""
+        content: Optional[str] = None
+        last_error: Optional[Exception] = None
+        boundaries = STRUCTURED_INSIGHT_SECTION_BOUNDARIES.get(section_key, {})
+
+        if excerpt:
+            for attempt in range(STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1):
+                try:
+                    raw_content = await _call_structured_insight_llm(
+                        llm_config=llm_config,
+                        system_prompt=STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT,
+                        user_payload={
+                            "title": _normalize_metadata_text(title),
+                            "abstract_raw": _normalize_metadata_text(abstract_raw),
+                            "section_key": section_key,
+                            "question": STRUCTURED_INSIGHT_SECTION_QUESTIONS[section_key],
+                            "must_cover": boundaries.get("must_cover"),
+                            "avoid": boundaries.get("avoid"),
+                            "section_focus": boundaries.get("section_focus"),
+                            "grounding_requirements": STRUCTURED_INSIGHT_GROUNDING_REQUIREMENTS,
+                            "style_requirements": STRUCTURED_INSIGHT_STYLE_REQUIREMENTS,
+                            "density_requirements": STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS.get(
+                                section_key,
+                                STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS["default"],
+                            ),
+                            "structure_requirements": STRUCTURED_INSIGHT_STRUCTURE_REQUIREMENTS,
+                            "suggested_subheadings": STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS.get(section_key, []),
+                            "anti_repetition_requirements": STRUCTURED_INSIGHT_ANTI_REPETITION_REQUIREMENTS,
+                            "avoid_repeat_hint": "避免重复前面模块已经讲清的内容，重点回答当前问题。",
+                            "previous_module_briefs": list(prior_section_summaries),
+                            "source_excerpt_zh": excerpt,
+                        },
+                        temperature=0.1,
+                        max_tokens=1200,
+                    )
+                    normalized_content = _normalize_metadata_text(raw_content)
+                    if not _is_structured_insight_content_readable(normalized_content):
+                        raise ValueError(f"Structured insight section {section_key} returned unreadable content")
+                    content = normalized_content
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "Structured insight generation failed for task %s section %s (attempt %s/%s): %s",
+                        task_id,
+                        section_key,
+                        attempt + 1,
+                        STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1,
+                        exc,
+                    )
+
+        if not content:
+            content = _build_structured_insight_fallback_content(section_key=section_key, excerpt=excerpt)
+            if last_error is not None:
+                logger.warning(
+                    "Using fallback structured insight content for task %s section %s after generation failure: %s",
+                    task_id,
+                    section_key,
+                    last_error,
+                )
+
+        generated_sections.append(
+            {
+                "section_key": section_key,
+                "content": content,
+                "status": STRUCTURED_INSIGHT_READY_STATUS,
+                "updated_at": _utc_now_iso(),
+            }
+        )
+        normalized_content = _normalize_metadata_text(content) or ""
+        if normalized_content:
+            prior_section_summaries.append(f"{section_key}: {normalized_content[:120]}")
+
+    return _validate_structured_insight_sections(generated_sections)
 
 
 def _archive_metadata_from_source_path(source_path: Path, fallback_title: str) -> Dict[str, Any]:
@@ -2654,10 +3184,17 @@ async def _publish_admin_curation_job(
     paper_id = str(job.get("paper_id") or "").strip()
     existing = await _fetch_paper_by_id(paper_id) if paper_id else None
     paper = existing
+    resolved_arxiv_id = (
+        _normalize_metadata_text(metadata.get("arxiv_id"))
+        or _normalize_metadata_text(job.get("arxiv_id"))
+        or _normalize_metadata_text((paper or {}).get("arxiv_id"))
+    )
+    if str(job.get("source_type") or "").strip() == "arxiv" and not resolved_arxiv_id:
+        raise ValueError("Admin arXiv curation publish requires arxiv_id")
     if paper is None:
         payload = _paper_payload(
             source=str(job.get("source_type") or "upload"),
-            arxiv_id=metadata.get("arxiv_id"),
+            arxiv_id=resolved_arxiv_id,
             title=metadata.get("title") or "Curated paper",
             created_by=str(job.get("created_by") or ""),
             community_status=COMMUNITY_STATUS_OFFICIAL,
@@ -2682,18 +3219,21 @@ async def _publish_admin_curation_job(
     )
     paper = sync_result.get("paper") or paper
     abstract_translated = _extract_translated_abstract_from_task(translated_task_id) or paper.get("abstract_translated")
+    structured_insight_sections = await _generate_structured_insight_sections_from_task(
+        task_id=translated_task_id,
+        title=str(metadata.get("title") or paper.get("title") or ""),
+        abstract_raw=metadata.get("abstract_raw") or paper.get("abstract_raw"),
+        created_by=str(job.get("created_by") or ""),
+    )
+    _validate_structured_insight_sections(structured_insight_sections)
     await _upsert_structured_insight_sections(
         paper_id=paper["id"],
-        sections=_generate_structured_insight_sections(
-            title=str(metadata.get("title") or paper.get("title") or ""),
-            abstract_en=metadata.get("abstract_raw") or paper.get("abstract_raw"),
-            abstract_zh=abstract_translated,
-        ),
+        sections=structured_insight_sections,
     )
     updated = await _update_paper(
         paper["id"],
         {
-            "arxiv_id": metadata.get("arxiv_id") or paper.get("arxiv_id"),
+            "arxiv_id": resolved_arxiv_id,
             "title": metadata.get("title") or paper.get("title"),
             "authors": metadata.get("authors") or paper.get("authors") or [],
             "categories": metadata.get("categories") or paper.get("categories") or [],

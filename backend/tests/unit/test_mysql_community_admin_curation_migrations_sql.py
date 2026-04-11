@@ -3,6 +3,7 @@ from pathlib import Path
 
 CURATION_MIGRATION = Path("backend/migrations_mysql/20260411_0002_community_admin_curation_flow.sql")
 ASSET_ID_EXPANSION_MIGRATION = Path("backend/migrations_mysql/20260411_0003_expand_paper_asset_id_columns.sql")
+CONTENT_BACKFILL_MIGRATION = Path("backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql")
 
 
 def _normalized_sql(path: Path) -> str:
@@ -15,9 +16,16 @@ def test_mysql_admin_curation_migration_declares_required_tables() -> None:
         "create table if not exists community_structured_insights",
         "create table if not exists community_curation_jobs",
         "create table if not exists community_delete_jobs",
+        "content mediumtext null",
     ]
     for fragment in required_fragments:
         assert fragment in sql
+    assert "summary_en" not in sql
+    assert "summary_zh" not in sql
+    assert "bullets_en" not in sql
+    assert "bullets_zh" not in sql
+    assert "body_en" not in sql
+    assert "body_zh" not in sql
 
 
 def test_mysql_asset_id_expansion_migration_exists_and_alters_columns() -> None:
@@ -25,3 +33,12 @@ def test_mysql_asset_id_expansion_migration_exists_and_alters_columns() -> None:
     sql = _normalized_sql(ASSET_ID_EXPANSION_MIGRATION)
     assert "modify column trans_latest_asset_pdf_id varchar(255) null" in sql
     assert "modify column community_selected_asset_id varchar(255) null" in sql
+
+
+def test_mysql_structured_insight_content_backfill_migration_exists_and_is_idempotent() -> None:
+    assert CONTENT_BACKFILL_MIGRATION.exists()
+    sql = _normalized_sql(CONTENT_BACKFILL_MIGRATION)
+    assert "information_schema.columns" in sql
+    assert "table_name = 'community_structured_insights'" in sql
+    assert "column_name = 'content'" in sql
+    assert "alter table community_structured_insights add column content mediumtext null after section_key" in sql

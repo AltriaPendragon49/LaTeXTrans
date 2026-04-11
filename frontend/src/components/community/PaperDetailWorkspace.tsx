@@ -12,6 +12,7 @@ import type {
   CommunityPaperReader,
   CommunityPaperReaderMode,
   StructuredInsightSection,
+  StructuredInsightSectionKey,
   StructuredInsightsPayload,
 } from "@/types/community"
 
@@ -19,6 +20,13 @@ const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v2"
 const DEFAULT_SPLIT_RATIO = 0.65
 const MIN_READER_WIDTH = 720
 const MIN_SIDEBAR_WIDTH = 260
+const GUIDE_SECTION_ORDER = [
+  "problem",
+  "solution",
+  "innovation",
+  "experiment",
+  "future",
+] as const
 
 interface PaperDetailWorkspaceProps {
   paper: CommunityPaper
@@ -55,32 +63,261 @@ function clampSplitRatio(ratio: number, width: number) {
   return Math.min(Math.max(ratio, minRatio), maxRatio)
 }
 
-function getInsightLabel(sectionKey: string, t: (key: string) => string) {
+function isGuideSectionKey(sectionKey: string): sectionKey is StructuredInsightSectionKey {
+  return GUIDE_SECTION_ORDER.includes(sectionKey as StructuredInsightSectionKey)
+}
+
+function getInsightLabel(sectionKey: StructuredInsightSectionKey, t: (key: string) => string) {
   switch (sectionKey) {
     case "problem":
       return t("community.detail.insights.section.problem")
-    case "method":
-      return t("community.detail.insights.section.method")
-    case "key_idea":
-      return t("community.detail.insights.section.keyIdea")
+    case "solution":
+      return t("community.detail.insights.section.solution")
+    case "innovation":
+      return t("community.detail.insights.section.innovation")
     case "experiment":
       return t("community.detail.insights.section.experiment")
-    case "result":
-      return t("community.detail.insights.section.result")
-    case "limitation":
-      return t("community.detail.insights.section.limitation")
-    default:
-      return t("community.detail.insights.section.fallback")
+    case "future":
+      return t("community.detail.insights.section.future")
   }
 }
 
-function getInsightContent(section: StructuredInsightSection, mode: CommunityPaperReaderMode) {
-  const useZh = mode !== "source"
+interface ParsedInsightContent {
+  summary: string | null
+  sections: Array<{
+    title: string
+    body: string
+  }>
+  paragraphs: string[]
+}
+
+const INLINE_INSIGHT_SECTION_TITLES = [
+  "问题本质",
+  "现有方法的局限",
+  "现有方法的关键不足",
+  "为什么重要",
+  "研究动机",
+  "核心难点",
+  "核心思路",
+  "方法整体",
+  "关键流程",
+  "整体流程",
+  "模块协同",
+  "方法机制",
+  "Pipeline",
+  "pipeline",
+  "关键创新点",
+  "本质差异",
+  "为什么不一样",
+  "新意所在",
+  "差异来源",
+  "核心指标",
+  "对比结果",
+  "实验结论",
+  "主要结论",
+  "评估方式",
+  "实验设置",
+  "当前局限",
+  "真实局限",
+  "潜在局限",
+  "改进方向",
+  "扩展方向",
+  "研究启发",
+] as const
+
+const INLINE_INSIGHT_SECTION_TITLE_SET = new Set<string>(INLINE_INSIGHT_SECTION_TITLES)
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function normalizeInsightTitleLine(line: string) {
+  const normalized = line
+    .replace(/^[#*\-\s>\d.)]+/, "")
+    .replace(/[：:]\s*$/, "")
+    .trim()
+
+  return INLINE_INSIGHT_SECTION_TITLE_SET.has(normalized) ? normalized : null
+}
+
+function extractHeuristicTitledBlock(block: string) {
+  const lines = block
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length < 2) {
+    return null
+  }
+
+  const firstLine = lines[0]
+  if (firstLine.length > 14 || /[.?!:。！？：]/.test(firstLine)) {
+    return null
+  }
 
   return {
-    summary: useZh ? section.summary_zh : section.summary_en,
-    bullets: useZh ? section.bullets_zh : section.bullets_en,
-    body: useZh ? section.body_zh : section.body_en,
+    lead: "",
+    sections: [
+      {
+        title: firstLine,
+        body: lines.slice(1).join("\n"),
+      },
+    ],
+  }
+}
+
+function extractLineTitledSections(block: string) {
+  const lines = block
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length < 2) {
+    return null
+  }
+
+  const sections: ParsedInsightContent["sections"] = []
+  const introLines: string[] = []
+  let currentTitle: string | null = null
+  let currentBody: string[] = []
+
+  const pushCurrentSection = () => {
+    if (!currentTitle) {
+      return
+    }
+
+    const body = currentBody.join("\n").trim()
+    if (body) {
+      sections.push({ title: currentTitle, body })
+    }
+
+    currentTitle = null
+    currentBody = []
+  }
+
+  for (const line of lines) {
+    const knownTitle = normalizeInsightTitleLine(line)
+    if (knownTitle) {
+      pushCurrentSection()
+      currentTitle = knownTitle
+      continue
+    }
+
+    if (currentTitle) {
+      currentBody.push(line)
+    } else {
+      introLines.push(line)
+    }
+  }
+
+  pushCurrentSection()
+
+  if (sections.length === 0) {
+    return null
+  }
+
+  return {
+    lead: introLines.join("\n").trim(),
+    sections,
+  }
+}
+
+function extractInlineTitledSections(block: string) {
+  const titlePattern = INLINE_INSIGHT_SECTION_TITLES
+    .slice()
+    .sort((left, right) => right.length - left.length)
+    .map(escapeRegExp)
+    .join("|")
+  const matcher = new RegExp(`(?:^|\\s)(${titlePattern})(?:\\s*[：:]|\\s+)`, "g")
+  const matches = Array.from(block.matchAll(matcher))
+
+  if (matches.length === 0) {
+    return null
+  }
+
+  const sections: ParsedInsightContent["sections"] = []
+  const lead = block.slice(0, matches[0].index ?? 0).trim()
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const currentMatch = matches[index]
+    const nextMatch = matches[index + 1]
+    const title = currentMatch[1]?.trim() ?? ""
+    const bodyStart = (currentMatch.index ?? 0) + currentMatch[0].length
+    const bodyEnd = nextMatch?.index ?? block.length
+    const body = block.slice(bodyStart, bodyEnd).trim()
+
+    if (title && body) {
+      sections.push({ title, body })
+    }
+  }
+
+  if (sections.length === 0) {
+    return null
+  }
+
+  return { lead, sections }
+}
+
+function parseInsightContent(content: string): ParsedInsightContent {
+  const normalized = content
+    .split(/\r?\n\s*\r?\n/g)
+    .map((block) => block.trim())
+    .filter(Boolean)
+
+  if (normalized.length === 0) {
+    return { summary: null, sections: [], paragraphs: [] }
+  }
+
+  const [summaryBlock, ...restBlocks] = normalized
+  const sections: ParsedInsightContent["sections"] = []
+  const paragraphs: string[] = []
+  let summary = summaryBlock || null
+
+  const structuredSummaryBlock =
+    extractLineTitledSections(summaryBlock) ??
+    extractHeuristicTitledBlock(summaryBlock) ??
+    extractInlineTitledSections(summaryBlock)
+
+  if (structuredSummaryBlock) {
+    summary = structuredSummaryBlock.lead || null
+    sections.push(...structuredSummaryBlock.sections)
+  }
+
+  for (const block of restBlocks) {
+    const lines = block
+      .split(/\r?\n/g)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    if (
+      lines.length >= 2 &&
+      lines[0].length <= 14 &&
+      !/[。！？：:；;]/.test(lines[0])
+    ) {
+      sections.push({
+        title: lines[0],
+        body: lines.slice(1).join("\n"),
+      })
+      continue
+    }
+
+    const inlineTitledContent = extractInlineTitledSections(block)
+    if (inlineTitledContent) {
+      if (inlineTitledContent.lead) {
+        paragraphs.push(inlineTitledContent.lead)
+      }
+
+      sections.push(...inlineTitledContent.sections)
+      continue
+    }
+
+    paragraphs.push(block)
+  }
+
+  return {
+    summary,
+    sections,
+    paragraphs,
   }
 }
 
@@ -176,7 +413,21 @@ export function PaperDetailWorkspace({
     () => (sourceHtmlContent ? DOMPurify.sanitize(sourceHtmlContent) : null),
     [sourceHtmlContent],
   )
-  const selectedInsights = structuredInsights?.sections ?? []
+  const guideSections = structuredInsights?.sections ?? []
+  const selectedInsights = useMemo<StructuredInsightSection[]>(() => {
+    const sectionMap = new Map<StructuredInsightSectionKey, StructuredInsightSection>()
+    for (const section of guideSections) {
+      if (isGuideSectionKey(section.section_key) && !sectionMap.has(section.section_key)) {
+        sectionMap.set(section.section_key, section)
+      }
+    }
+
+    return GUIDE_SECTION_ORDER.flatMap((sectionKey) => {
+      const section = sectionMap.get(sectionKey)
+      return section ? [section] : []
+    })
+  }, [guideSections])
+  const hasGuideSections = selectedInsights.length > 0
   const desktopGridColumns = `${splitRatio}fr 12px ${Math.max(1 - splitRatio, 0.18)}fr`
 
   return (
@@ -359,10 +610,11 @@ export function PaperDetailWorkspace({
                   {t("community.detail.insightsPendingDescription")}
                 </p>
               </div>
-            ) : selectedInsights.length > 0 ? (
+            ) : hasGuideSections ? (
               selectedInsights.map((section) => {
-                const content = getInsightContent(section, preferredMode)
+                const content = section.content?.trim() ?? ""
                 const expanded = expandedInsightKey === section.section_key || expandedInsightKey === null
+                const parsedContent = content ? parseInsightContent(content) : null
 
                 return (
                   <div
@@ -390,20 +642,36 @@ export function PaperDetailWorkspace({
 
                     {expanded ? (
                       <div className="border-t border-outline-variant/20 px-4 py-4 text-sm text-on-surface-variant space-y-3">
-                        {content.summary ? <p className="text-on-surface whitespace-pre-wrap">{content.summary}</p> : null}
-                        {content.bullets?.length ? (
-                          <ul className="space-y-2 pl-5">
-                            {content.bullets.map((bullet, index) => (
-                              <li key={`${section.section_key}-${index}`} className="list-disc">
-                                {bullet}
-                              </li>
+                        {parsedContent ? (
+                          <div className="space-y-3">
+                            {parsedContent.summary ? (
+                              <p className="text-on-surface font-medium leading-7 whitespace-pre-wrap">
+                                {parsedContent.summary}
+                              </p>
+                            ) : null}
+                            {parsedContent.sections.map((item) => (
+                              <div
+                                key={`${section.section_key}-${item.title}`}
+                                className="space-y-1.5 border-l-2 border-outline-variant/30 pl-3"
+                              >
+                                <p className="text-[12px] font-semibold tracking-[0.06em] text-on-surface/85">
+                                  {item.title}
+                                </p>
+                                <p className="text-on-surface whitespace-pre-wrap leading-7">{item.body}</p>
+                              </div>
                             ))}
-                          </ul>
-                        ) : null}
-                        {content.body ? <p className="whitespace-pre-wrap">{content.body}</p> : null}
-                        {!content.summary && !content.body && !content.bullets?.length ? (
+                            {parsedContent.paragraphs.map((paragraph, index) => (
+                              <p
+                                key={`${section.section_key}-paragraph-${index}`}
+                                className="text-on-surface whitespace-pre-wrap leading-7"
+                              >
+                                {paragraph}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
                           <p>{t("community.detail.insights.languagePending")}</p>
-                        ) : null}
+                        )}
                       </div>
                     ) : null}
                   </div>

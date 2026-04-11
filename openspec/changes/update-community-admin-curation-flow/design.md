@@ -4,7 +4,9 @@ The repository currently treats the community homepage and paper detail page as 
 - community becomes a curated reading/search destination
 - ordinary translation tools remain available but do not publish community content
 - only admins can add or delete community papers
-- public paper detail uses prepared structured insights instead of a live copilot pane
+- public paper detail uses prepared paper-guide modules instead of a live copilot pane
+
+The previous implementation direction moved from legacy summary/body/bullets storage to a six-module content-only guide. After content review, that six-module shape is still too diffuse and repetitive. The desired product now converges on a higher-density five-module reading guide.
 
 The project already has local-role admin support and a local/MySQL-backed auth/session model. We should reuse that instead of inventing a new admin account system.
 
@@ -18,11 +20,13 @@ The project already has local-role admin support and a local/MySQL-backed auth/s
   - Support bounded-concurrency batch intake for both `arXiv ID` and archive uploads.
   - Keep a stable, non-changing canonical `paper_id` for each community paper.
   - Make community deletion a comprehensive hard delete.
+  - Turn the detail-page guide into a fixed five-module Chinese paper-guide system optimized for reader understanding.
 - Non-Goals:
   - Do not redesign the entire site information architecture.
   - Do not build a self-serve admin-management console.
   - Do not delete the community-agent backend runtime or routes in this change.
   - Do not auto-publish ordinary user tool outputs into the community library.
+  - Do not migrate or backfill old public papers into the new five-module shape in this change.
 
 ## Decisions
 
@@ -51,7 +55,7 @@ Only the admin-only curation page may create new publicly visible community pape
 1. intake
 2. metadata preparation
 3. translation
-4. structured insight generation
+4. paper-guide generation
 5. publication
 
 Public visibility is granted only after all required stages succeed.
@@ -86,38 +90,115 @@ Why:
 - It avoids handling raw passwords in development operations.
 - It fits the existing `LOCAL_ADMIN_EXTERNAL_USER_IDS` and `user_roles` model.
 
-### Decision: Structured insights are stored assets with a fixed schema
-The detail-page right pane will read persisted structured insights instead of generating them live. The fixed section set is:
+### Decision: Paper guides become a fixed five-module Chinese paper-guide system
+The detail-page right pane will read persisted paper-guide content instead of generating live copilot output. The system, not the model, owns the structure. The fixed five modules are:
 
-- `problem`
-- `method`
-- `key_idea`
-- `experiment`
-- `result`
-- `limitation`
+- `problem`: 这篇论文解决什么问题，为什么重要，现有方法的关键不足是什么？
+- `solution`: 作者的核心思路是什么，方法整体是如何工作的？
+- `innovation`: 论文的关键创新点有哪些，相比已有方法，本质区别在哪里？
+- `experiment`: 论文如何验证方法有效性，主要结论是什么？
+- `future`: 这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？
 
-Each section stores language-aligned content for at least English and Chinese. The minimum section payload includes:
+Each module stores reader-facing Chinese text in a system-owned object. The persisted contract remains intentionally minimal:
 
-- `section_key`
-- `summary_en`
-- `summary_zh`
-- `bullets_en[]`
-- `bullets_zh[]`
-- `body_en`
-- `body_zh`
-- `status`
-- `updated_at`
+- `guide_sections.problem.content`
+- `guide_sections.solution.content`
+- `guide_sections.innovation.content`
+- `guide_sections.experiment.content`
+- `guide_sections.future.content`
 
-The UI selects which language to display based on the current reader mode. If the required language variant is missing for a visible legacy/degraded paper, the pane shows an explicit not-ready placeholder rather than silently switching languages.
+A representative stored shape is:
 
-Current version rule:
-- structured insights are system-generated and read-only in this version
-- future admin editing remains an allowed extension, but it is not part of this version
+```json
+{
+  "paper_id": "...",
+  "guide_sections": {
+    "problem": { "content": "..." },
+    "solution": { "content": "..." },
+    "innovation": { "content": "..." },
+    "experiment": { "content": "..." },
+    "future": { "content": "..." }
+  }
+}
+```
+
+Reader-mode switches still control the paper reader itself, but they do not change the guide language. Legacy papers are out of scope for this refinement: the new five-module guide is guaranteed only for newly curated papers after this change lands.
 
 Why:
-- It produces stable, testable page output.
-- It prevents layout drift caused by per-request generation.
-- It aligns cleanly with the requested “follow the current reading mode” behavior.
+- The intended reading path is now problem -> method -> innovation -> experiment -> outlook.
+- Five modules reduce repetition and make module boundaries clearer than the previous six-module shape.
+- The final UI only needs one Chinese text block per module.
+
+### Decision: Each module is generated independently from title + abstract + module-relevant excerpts
+Paper-guide generation runs after translation succeeds. The backend prepares module-specific source material from the translated paper, then asks the model to answer one fixed question at a time.
+
+Preferred source emphasis by module:
+
+- `problem`: title + abstract + introduction + nearby current-method limitation paragraphs
+- `solution`: title + abstract + method / system overview
+- `innovation`: title + abstract + contribution paragraphs + key method-design paragraphs
+- `experiment`: title + abstract + experiment / evaluation / results
+- `future`: title + abstract + conclusion / discussion / limitation
+
+Fallback routing rule:
+- if exact section labels are missing, use the nearest translated sections in reading order
+- do not use one shared full-paper payload for all modules as the normal path
+
+Generation rule:
+- five independent LLM calls
+- one module per call
+- no requirement that the model returns a multi-section package
+
+Why:
+- single-module retries are much safer than whole-package retries
+- title + abstract act as the shared semantic anchor for every module
+- prompt tuning becomes simpler and more targeted
+
+### Decision: Model outputs plain Chinese text, not strict JSON contracts
+The model should only produce the Chinese content body for one module. The system wraps that content into the fixed module object structure.
+
+Prompt-level requirements:
+- answer in Chinese
+- explain clearly for readers
+- ground the answer in the provided paper content
+- allow normal prose and paragraphs
+- do not output JSON
+- do not output headings or numbering
+- keep the answer focused on the current question instead of summarizing the whole paper
+- prefer paper-specific details over generic praise
+
+Per-module boundary rules:
+- `problem` answers what the paper solves, why it matters, and where prior approaches fall short
+- `solution` answers how the method works
+- `innovation` answers what is fundamentally new compared with prior work
+- `experiment` answers how the paper validates effectiveness and what the results show
+- `future` answers realistic extensions, limits, and research implications
+
+Acceptance rule for each module:
+- `guide_sections.<key>.content` must be non-empty after normalization
+- `guide_sections.<key>.content` must pass a minimum readability check, including:
+  - minimum content length after trimming
+  - rejection of obvious failure placeholders
+  - rejection of exact duplicates across modules
+
+Why:
+- strict JSON parsing and repair loops created instability without product value
+- the frontend only consumes display text
+- system-controlled structure removes an entire failure class
+
+### Decision: Publication still gates on five modules, but fallback content is allowed
+Admin publication still requires all five modules to exist before the paper becomes public. However, a module should not block publication solely because a high-fidelity LLM answer failed in one attempt.
+
+Fallback rule:
+- retry the failed module a bounded number of times
+- if it still fails, generate a simplified Chinese fallback from trusted inputs such as title + abstract plus a small module-relevant excerpt when available
+- store that fallback inside the module object as `content`
+- the fallback path MUST guarantee that the final stored value is a displayable Chinese body paragraph rather than another failure marker or retry envelope
+
+Why:
+- five-module completion remains a product gate
+- LLM volatility should not deadlock the publish path
+- the user explicitly prefers robustness over fragile structure
 
 ### Decision: Archive-based intake must extract feed metadata before publication
 When admins upload a TeX-containing archive, the curation pipeline must extract title and abstract so the resulting community card can render the same kind of headline metadata expected from arXiv-based intake.
@@ -164,8 +245,8 @@ Why:
 - Persistent retries make the hard-delete promise realistic even when cleanup spans many resources.
 
 ## Risks / Trade-offs
-- Structured insight generation adds another quality-sensitive generation stage.
-  - Mitigation: fixed schema, bounded output size, publication gate only after success.
+- Paper-guide generation adds another quality-sensitive generation stage.
+  - Mitigation: fixed module set, module-specific prompts, independent retries, title/abstract anchoring, and fallback content.
 - Archive metadata extraction may be less reliable than arXiv metadata.
   - Mitigation: extract from TeX sources before publication and keep a failure path that blocks public release until required metadata exists.
 - Hidden-but-retained agent code can drift if not documented.
@@ -174,13 +255,15 @@ Why:
   - Mitigation: restrict to admins and make the contract explicit.
 - Canonical archive-to-paper matching can be ambiguous when no arXiv identifier is present.
   - Mitigation: require stable dedupe logic and always preserve the first canonical `paper_id` once chosen.
+- Local excerpt routing can misclassify sections on papers with weak headings.
+  - Mitigation: use title + abstract as the shared anchor and fall back to reading-order heuristics.
 
 ## Migration Plan
-1. Introduce admin-only curation APIs, structured insight persistence, and hard-delete flow.
-2. Stop ordinary tool translation auto-publication.
-3. Update homepage and detail UI to hide public agent entry points and surface search/insights instead.
-4. Add admin-only sidebar entry and curation page.
-5. Verify normal user tools remain available and do not publish community content.
+1. Keep the existing admin-only curation APIs, hard-delete flow, and community/tool separation.
+2. Replace the six-module guide contract with the final five-module paper-guide contract.
+3. Rework module source extraction, prompting, validation, and fallback around the new five-module reading path.
+4. Update the detail UI to render the fixed five-module guide only.
+5. Validate with a real admin curation rerun for `2508.18791` after deleting its old stored guide artifacts.
 
 ## Open Questions
 - What exact archive dedupe heuristic should determine that a no-arXiv archive matches an existing canonical paper before in-place overwrite is allowed?

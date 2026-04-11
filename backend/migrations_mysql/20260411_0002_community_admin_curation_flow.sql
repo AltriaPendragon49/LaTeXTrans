@@ -1,12 +1,7 @@
 create table if not exists community_structured_insights (
   paper_id varchar(64) not null,
   section_key varchar(64) not null,
-  summary_en text null,
-  summary_zh text null,
-  bullets_en json null,
-  bullets_zh json null,
-  body_en mediumtext null,
-  body_zh mediumtext null,
+  content mediumtext null,
   status varchar(32) not null,
   updated_at datetime not null,
   primary key (paper_id, section_key),

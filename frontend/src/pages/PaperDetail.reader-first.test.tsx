@@ -41,6 +41,9 @@ vi.mock("dompurify", () => ({
   },
 }))
 
+const zhGuideContent =
+  "作者把方法拆成多个能够衔接的阶段来解释 pipeline，因此读者不需要回到论文原文也能快速理解整体工作方式。"
+
 const detailPayload = {
   paper: {
     id: "paper-1",
@@ -116,7 +119,7 @@ describe("PaperDetailPage reader-first", () => {
     await i18n.changeLanguage("en")
   })
 
-  it("switches the structured insights language with the reader mode", async () => {
+  it("keeps the five-module chinese guide stable when the reader mode changes", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue({
       ...detailPayload,
@@ -124,13 +127,8 @@ describe("PaperDetailPage reader-first", () => {
         state: "ready",
         sections: [
           {
-            section_key: "problem",
-            summary_en: "English problem summary",
-            summary_zh: "中文问题摘要",
-            bullets_en: ["English bullet"],
-            bullets_zh: ["中文要点"],
-            body_en: "English body",
-            body_zh: "中文正文",
+            section_key: "solution",
+            content: zhGuideContent,
             updated_at: "2026-03-18T03:00:00Z",
           },
         ],
@@ -145,16 +143,16 @@ describe("PaperDetailPage reader-first", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("中文问题摘要")).toBeInTheDocument()
+    expect(screen.getByText(zhGuideContent)).toBeInTheDocument()
+    expect(screen.getByText(i18n.t("community.detail.insights.section.solution"))).toBeInTheDocument()
 
     await user.click(screen.getByTestId("paper-detail-mode-source"))
 
-    expect(screen.getByText("English problem summary")).toBeInTheDocument()
-    expect(screen.getByText("English body")).toBeInTheDocument()
+    expect(screen.getByText(zhGuideContent)).toBeInTheDocument()
     expect(screen.getByTestId("paper-source-pdf-reader")).toBeInTheDocument()
   })
 
-  it("shows a pending placeholder while structured insights are still processing", () => {
+  it("shows a pending placeholder while the five-module guide is still processing", () => {
     usePaperDetailMock.mockReturnValue({
       ...detailPayload,
       structuredInsights: {
@@ -173,7 +171,7 @@ describe("PaperDetailPage reader-first", () => {
 
     expect(screen.getByText("Structured insights are still being prepared")).toBeInTheDocument()
     expect(
-      screen.getByText("This paper will appear in the public library only after the structured reading modules finish."),
+      screen.getByText("This paper will appear in the public library only after the full-paper Chinese analysis modules finish."),
     ).toBeInTheDocument()
   })
 
@@ -193,7 +191,7 @@ describe("PaperDetailPage reader-first", () => {
 
     expect(screen.getByText("Structured insights are unavailable")).toBeInTheDocument()
     expect(
-      screen.getByText("The reader is available, but this paper does not have a persisted insight package yet."),
+      screen.getByText("The reader is available, but this paper does not have a persisted Chinese insight package yet."),
     ).toBeInTheDocument()
   })
 })

@@ -50,12 +50,7 @@ PAPER_ASSET_COLUMNS = (
 STRUCTURED_INSIGHT_COLUMNS = (
     "paper_id",
     "section_key",
-    "summary_en",
-    "summary_zh",
-    "bullets_en",
-    "bullets_zh",
-    "body_en",
-    "body_zh",
+    "content",
     "status",
     "updated_at",
 )
@@ -90,7 +85,6 @@ DELETE_JOB_COLUMNS = (
 )
 
 _PAPER_JSON_COLUMNS = {"authors", "categories"}
-_STRUCTURED_INSIGHT_JSON_COLUMNS = {"bullets_en", "bullets_zh"}
 _DELETE_JOB_INT_COLUMNS = {"attempt_count"}
 _PAPER_INT_COLUMNS = {
     "like_count",
@@ -198,11 +192,7 @@ class CommunityPaperRepository:
 
         normalized = dict(row)
         for column in STRUCTURED_INSIGHT_COLUMNS:
-            value = normalized.get(column)
-            if column in _STRUCTURED_INSIGHT_JSON_COLUMNS:
-                normalized[column] = _decode_json_list(value)
-            else:
-                normalized[column] = value
+            normalized[column] = normalized.get(column)
         return normalized
 
     def _serialize_structured_insight_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -210,10 +200,7 @@ class CommunityPaperRepository:
         for key, value in payload.items():
             if key not in STRUCTURED_INSIGHT_COLUMNS:
                 continue
-            if key in _STRUCTURED_INSIGHT_JSON_COLUMNS:
-                serialized[key] = json.dumps(list(value or []), ensure_ascii=False)
-            else:
-                serialized[key] = value
+            serialized[key] = value
         return serialized
 
     def _normalize_curation_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
