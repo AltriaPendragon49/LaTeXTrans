@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -225,6 +226,45 @@ def _ensure_local_admin(current_user: Optional[Dict[str, Any]]) -> None:
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={"code": "AUTH_FORBIDDEN", "message": "Admin role required."},
+    )
+
+
+async def _proxy_remote_pdf_preview(*, url: str, filename: str, request: Request) -> Response:
+    upstream_headers: Dict[str, str] = {}
+    range_header = request.headers.get("range")
+    if range_header:
+        upstream_headers["range"] = range_header
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+            upstream_response = await client.get(url, headers=upstream_headers)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Translated PDF upstream fetch failed") from exc
+
+    if upstream_response.status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Translated PDF upstream response invalid")
+
+    response_headers = {
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+        "Content-Disposition": f'inline; filename="{filename}"',
+    }
+    for source_name, target_name in (
+        ("accept-ranges", "Accept-Ranges"),
+        ("content-range", "Content-Range"),
+        ("content-length", "Content-Length"),
+        ("etag", "ETag"),
+        ("last-modified", "Last-Modified"),
+    ):
+        value = upstream_response.headers.get(source_name)
+        if value:
+            response_headers[target_name] = value
+
+    media_type = upstream_response.headers.get("content-type") or "application/pdf"
+    return Response(
+        content=upstream_response.content,
+        status_code=upstream_response.status_code,
+        media_type=media_type,
+        headers=response_headers,
     )
 
 
@@ -470,18 +510,15 @@ async def preview_paper(paper_id: str, response: Response):
 
 
 @router.get("/{paper_id}/translated-pdf")
-async def preview_translated_paper_pdf(paper_id: str):
+async def preview_translated_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_translated_pdf_preview(paper_id=paper_id)
     asset = payload["asset"]
     filename = asset.get("file_name") or f"{paper_id}.pdf"
     if payload.get("signed_url"):
-        return RedirectResponse(
+        return await _proxy_remote_pdf_preview(
             url=payload["signed_url"],
-            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-            headers={
-                "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-                "Content-Disposition": f"inline; filename=\"{filename}\"",
-            },
+            filename=str(filename),
+            request=request,
         )
     return FileResponse(
         path=payload["file_path"],
