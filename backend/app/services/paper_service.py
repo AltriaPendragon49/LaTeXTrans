@@ -1210,6 +1210,33 @@ def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
     return candidates
 
 
+def _candidate_runtime_cache_paths_for_task(task_id: str) -> List[Path]:
+    candidates: List[Path] = []
+    seen: set[str] = set()
+
+    def _add_path(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        try:
+            normalized = str(path.resolve(strict=False))
+        except Exception:
+            normalized = str(path)
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        candidates.append(path)
+
+    task = task_manager.get_task(task_id) if task_id else None
+    if task:
+        stored_output = _resolve_storage_path(task.get("output_path") or "")
+        if stored_output.name != task_id and stored_output.parent.name == task_id:
+            _add_path(stored_output.parent)
+        _add_path(stored_output)
+
+    _add_path(Path(settings.outputs_dir) / task_id)
+    return candidates
+
+
 def _extract_translated_abstract_from_task(task_id: str) -> Optional[str]:
     for output_dir in _candidate_output_directories_for_task(task_id):
         abstract = _extract_plaintext_abstract_from_directory(output_dir)
@@ -3355,6 +3382,11 @@ async def _sync_task_assets_for_paper(
             update_payload["community_status"] = COMMUNITY_STATUS_OFFICIAL
             update_payload["official_published_at"] = _utc_now_iso()
         paper = await _update_paper(paper_id, update_payload)
+        if selected_asset and selected_asset.get("storage_backend") == "object_storage":
+            clear_cached_runtime_artifacts(
+                task_id,
+                _candidate_runtime_cache_paths_for_task(task_id),
+            )
         return {"done": True, "status": "completed", "paper": paper}
 
     if task.get("status") in TERMINAL_TASK_STATUSES:
