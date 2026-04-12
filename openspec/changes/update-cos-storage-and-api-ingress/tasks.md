@@ -15,5 +15,5 @@
 
 ## 4. Verification
 - [x] 4.1 Add or update unit/integration coverage for local-disk mode and COS mode.
-- [ ] 4.2 Verify admin curation, community homepage, paper detail, translated PDF, and delete/cleanup flows under object storage.
-- [ ] 4.3 Verify external browser access to `https://api.latextrans.online` after Cloudflare ingress cutover.
+- [x] 4.2 Verify admin curation, community homepage, paper detail, translated PDF, and delete/cleanup flows under object storage.
+- [x] 4.3 Verify external browser access to `https://api.latextrans.online` after Cloudflare ingress cutover.
