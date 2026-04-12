@@ -36,6 +36,10 @@ class StorageBackend(ABC):
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
         raise NotImplementedError
 
+    @abstractmethod
+    def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
+        raise NotImplementedError
+
     def build_download_url(self, *, object_key: str, expires_in: int) -> Optional[str]:
         return None
 
@@ -111,6 +115,9 @@ class LocalDiskStorageBackend(StorageBackend):
         relative = Path(*self._normalize_object_key(ref.object_key))
         return self._root.joinpath(relative)
 
+    def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
+        return self.resolve_local_path(ref).read_text(encoding=encoding)
+
 
 class CosStorageBackend(StorageBackend):
     """Tencent COS-backed storage for production object persistence."""
@@ -162,6 +169,16 @@ class CosStorageBackend(StorageBackend):
 
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
         raise NotImplementedError("COS objects are not stored locally.")
+
+    def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
+        response = self._get_client().get_object(
+            Bucket=self.bucket,
+            Key=self._full_object_key(ref.object_key),
+        )
+        body = response["Body"].get_raw_stream().read()
+        if isinstance(body, str):
+            return body
+        return body.decode(encoding)
 
     def build_download_url(self, *, object_key: str, expires_in: int) -> Optional[str]:
         full_key = self._full_object_key(object_key)

@@ -1523,18 +1523,43 @@ def _load_preview_payload(
     allow_untranslated_zh: bool = False,
     allow_stale_reader: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
-    if not preview_path.exists():
-        return None
+    storage_backend = str(preview_asset.get("storage_backend") or "local_disk").strip().lower()
+    html_content: Optional[str] = None
+    cache_key: Optional[str] = None
 
-    cache_key = _preview_payload_cache_key(preview_path, preview_asset)
+    if storage_backend == "object_storage":
+        object_key = str(preview_asset.get("file_path") or "").strip()
+        if not object_key:
+            return None
+        cache_key = "|".join(
+            [
+                "object_storage",
+                object_key,
+                str(preview_asset.get("id") or ""),
+                str(preview_asset.get("created_at") or ""),
+            ]
+        )
+        ref = StoredObjectRef(
+            storage_backend="object_storage",
+            object_key=object_key,
+            content_type=preview_asset.get("mime_type"),
+        )
+    else:
+        preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
+        if not preview_path.exists():
+            return None
+        cache_key = _preview_payload_cache_key(preview_path, preview_asset)
+
     if cache_key:
         cached_payload = _preview_payload_cache.get(cache_key)
         if cached_payload is not None:
             return cached_payload
 
     try:
-        html_content = preview_path.read_text(encoding="utf-8")
+        if storage_backend == "object_storage":
+            html_content = _get_storage_backend().read_text(ref=ref, encoding="utf-8")
+        else:
+            html_content = preview_path.read_text(encoding="utf-8")
     except Exception:
         return None
     html_content = _normalize_legacy_preview_math_blocks(html_content)
