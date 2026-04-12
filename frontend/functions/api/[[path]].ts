@@ -1,4 +1,4 @@
-const DEFAULT_API_ORIGIN = "https://allocation-fighting-allowed-workshops.trycloudflare.com"
+const DEFAULT_API_ORIGIN = "https://api.latextrans.online"
 
 function normalizeOrigin(value: string | undefined): string {
   const candidate = String(value ?? "").trim()

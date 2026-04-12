@@ -22,7 +22,7 @@ describe("pages api proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const proxiedRequest = fetchMock.mock.calls[0]?.[0] as Request
-    expect(proxiedRequest.url).toBe("https://allocation-fighting-allowed-workshops.trycloudflare.com/api/health?full=1")
+    expect(proxiedRequest.url).toBe("https://api.latextrans.online/api/health?full=1")
     expect(response.status).toBe(200)
   })
 })
