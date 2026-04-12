@@ -1750,7 +1750,7 @@ def _persist_retained_artifact(
                 task_id=task_id,
             )
             staged_cleanup = staged_path
-            resolved_name = staged_path.name
+            resolved_name = Path(source_name or f"{local_path.name}.zip").name or f"{asset_type}.zip"
             resolved_type = content_type or "application/zip"
             destination = _community_asset_destination(
                 paper_id=paper_id,
@@ -1778,8 +1778,14 @@ def _persist_retained_artifact(
             task_id=task_id,
         )
         staged_cleanup = staged_path
-        resolved_name = staged_path.name
+        resolved_name = Path(source_name or f"{local_path.name}.zip").name or f"{asset_type}.zip"
         resolved_type = content_type or "application/zip"
+        destination = _community_asset_destination(
+            paper_id=paper_id,
+            task_id=task_id,
+            asset_type=asset_type,
+            source_name=resolved_name,
+        )
 
     stored = backend.put_file(
         local_path=staged_path,
@@ -2301,7 +2307,11 @@ async def _create_source_asset(
         task_id=task_id,
         asset_type="source_archive",
         source_name=resolved_source.name if resolved_source.is_file() else f"{resolved_source.name}.zip",
-        content_type="application/zip" if resolved_source.is_file() else None,
+        content_type=(
+            mimetypes.guess_type(resolved_source.name)[0] or "application/octet-stream"
+            if resolved_source.is_file()
+            else None
+        ),
     )
     return await _upsert_latest_asset(
         paper_id=paper_id,

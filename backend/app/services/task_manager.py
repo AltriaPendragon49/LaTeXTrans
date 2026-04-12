@@ -54,14 +54,49 @@ def _delete_local_cache_path(path: Path) -> None:
     path.unlink()
 
 
+def _is_within_cleanup_roots(candidate: Path, allowed_roots: List[Path]) -> bool:
+    """Guardrail: only allow cache cleanup under known runtime roots."""
+    try:
+        resolved_candidate = candidate.resolve(strict=False)
+    except Exception:
+        return False
+
+    for root in allowed_roots:
+        try:
+            resolved_root = root.resolve(strict=False)
+        except Exception:
+            continue
+        if resolved_candidate == resolved_root or resolved_candidate.is_relative_to(resolved_root):
+            return True
+    return False
+
+
 def clear_cached_runtime_artifacts(task_id: str, retained_paths: List[Path]) -> List[str]:
+    settings = get_settings()
+    allowed_roots = [Path(settings.outputs_dir), Path(settings.storage_temp_dir)]
     cleared_paths: List[str] = []
     for candidate in retained_paths:
         if not isinstance(candidate, Path):
             candidate = Path(candidate)
         if not candidate.exists():
             continue
-        _delete_local_cache_path(candidate)
+        if not _is_within_cleanup_roots(candidate, allowed_roots):
+            logger.warning(
+                "[TaskManager] Skipped unsafe cache cleanup outside allowed roots for task %s: %s",
+                task_id,
+                candidate,
+            )
+            continue
+        try:
+            _delete_local_cache_path(candidate)
+        except Exception as exc:
+            logger.warning(
+                "[TaskManager] Failed to clear cached artifact for task %s (%s): %s",
+                task_id,
+                candidate,
+                exc,
+            )
+            continue
         cleared_paths.append(str(candidate))
     if cleared_paths:
         logger.info(

@@ -8,6 +8,7 @@ import pytest
 import backend.app.main as main_module
 from backend.app.api.routes import translate as translate_route
 from backend.app.models.config_models import AdvancedConfig
+from backend.app.services import task_manager
 from backend.app.services.task_manager import clear_cached_runtime_artifacts
 
 
@@ -736,11 +737,22 @@ def test_startup_orphan_cleanup_uses_local_translation_task_repository(monkeypat
     assert (terms_dir / "task-keep").exists()
 
 
-def test_clear_cached_runtime_artifacts_removes_existing_file_and_directory(tmp_path: Path):
-    file_path = tmp_path / "task-1" / "translated.pdf"
+def test_clear_cached_runtime_artifacts_removes_existing_file_and_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    outputs_dir = tmp_path / "outputs"
+    staging_dir = tmp_path / "tmp_storage"
+    monkeypatch.setattr(
+        task_manager,
+        "get_settings",
+        lambda: SimpleNamespace(outputs_dir=outputs_dir, storage_temp_dir=staging_dir),
+    )
+
+    file_path = outputs_dir / "task-1" / "translated.pdf"
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text("pdf", encoding="utf-8")
-    preview_dir = tmp_path / "task-1" / "preview"
+    preview_dir = staging_dir / "task-1" / "preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
     (preview_dir / "preview.html").write_text("<article>preview</article>", encoding="utf-8")
 
@@ -750,6 +762,35 @@ def test_clear_cached_runtime_artifacts_removes_existing_file_and_directory(tmp_
     assert str(preview_dir) in cleared
     assert not file_path.exists()
     assert not preview_dir.exists()
+
+
+def test_clear_cached_runtime_artifacts_skips_paths_outside_allowed_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outputs_dir = tmp_path / "outputs"
+    staging_dir = tmp_path / "tmp_storage"
+    outside_dir = tmp_path / "outside"
+    monkeypatch.setattr(
+        task_manager,
+        "get_settings",
+        lambda: SimpleNamespace(outputs_dir=outputs_dir, storage_temp_dir=staging_dir),
+    )
+
+    inside_file = outputs_dir / "task-1" / "inside.txt"
+    inside_file.parent.mkdir(parents=True, exist_ok=True)
+    inside_file.write_text("inside", encoding="utf-8")
+
+    outside_file = outside_dir / "leak.txt"
+    outside_file.parent.mkdir(parents=True, exist_ok=True)
+    outside_file.write_text("outside", encoding="utf-8")
+
+    cleared = clear_cached_runtime_artifacts("task-1", [inside_file, outside_file])
+
+    assert str(inside_file) in cleared
+    assert str(outside_file) not in cleared
+    assert not inside_file.exists()
+    assert outside_file.exists()
 
 
 def test_run_translation_persists_failed_state_on_cancel(monkeypatch, tmp_path: Path):

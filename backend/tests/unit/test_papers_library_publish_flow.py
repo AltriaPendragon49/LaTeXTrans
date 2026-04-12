@@ -8,6 +8,7 @@ os.environ.setdefault("LLM_BASE_URL", "http://dummy")
 os.environ.setdefault("LLM_MODEL", "gpt-4o")
 
 from backend.app.services import paper_service
+from backend.app.services.storage_backend import LocalDiskStorageBackend
 
 
 def _paper(**overrides):
@@ -135,6 +136,10 @@ def test_publish_task_to_community_library_copies_assets_with_relative_paths(mon
         assert not stored_path.is_absolute(), asset_type
         assert payload["storage_backend"] == "local_disk", asset_type
         assert payload["file_path"].startswith("data/community_papers/paper-1/")
+        assert os.path.exists(LocalDiskStorageBackend._fs_path(base_dir / payload["file_path"])), asset_type
+
+    assert upserted["source_archive"]["file_name"] == "arxiv_2503.01010.zip"
+    assert upserted["source_archive"]["file_path"].replace("\\", "/").endswith("/source/arxiv_2503.01010.zip")
 
     assert source_dir.exists()
     assert (source_dir / "main.tex").read_text(encoding="utf-8") == "\\section{Intro}"
@@ -262,7 +267,8 @@ def test_publish_task_to_community_library_records_object_storage_keys(monkeypat
     assert {payload["storage_backend"] for payload in upserted.values()} == {"object_storage"}
     assert upserted["translated_pdf"]["file_path"].startswith("paperx/data/community_papers/paper-1/")
     assert upserted["preview_html"]["file_path"].startswith("paperx/data/community_papers/paper-1/")
-    assert upserted["source_archive"]["file_name"].endswith(".zip")
+    assert upserted["source_archive"]["file_name"] == "arxiv_2503.01010.zip"
+    assert upserted["source_archive"]["file_path"].replace("\\", "/").endswith("/source/arxiv_2503.01010.zip")
     assert any(str(translated_pdf) in paths for _task_id, paths in cleaned)
     assert any(any("preview_generation" in path for path in paths) for _task_id, paths in cleaned)
 
