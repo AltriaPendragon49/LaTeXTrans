@@ -355,6 +355,71 @@ def test_detail_returns_selected_version_and_viewer_state(monkeypatch):
     assert result["paper"]["viewer_state"] == {"liked": True, "favorited": False}
 
 
+def test_detail_returns_preview_locator_instead_of_inline_html(monkeypatch, tmp_path):
+    preview_file = tmp_path / "preview.html"
+    preview_file.write_text(
+        "<article><section id='intro' data-section-id='intro'><h2>Intro</h2></section></article>",
+        encoding="utf-8",
+    )
+    paper = {
+        "id": "paper-preview",
+        "source": "arxiv",
+        "arxiv_id": "2501.33333",
+        "title": "Detail paper",
+        "authors": [],
+        "categories": [],
+        "visibility": "public",
+        "status": "published",
+        "trans_status": "completed",
+        "created_by": "admin-1",
+        "trans_latest_task_id": "task-detail",
+        "trans_latest_asset_pdf_id": None,
+        "like_count": 10,
+        "favorite_count": 2,
+        "comment_count": 1,
+        "view_count": 99,
+        "download_count": 4,
+        "created_at": "2026-03-18T02:00:00+00:00",
+        "updated_at": "2026-03-18T02:00:00+00:00",
+        "community_status": "official",
+        "community_selected_task_id": "task-detail",
+        "community_selected_asset_id": "asset-preview",
+        "official_published_at": "2026-03-18T04:00:00+00:00",
+    }
+    asset_map = {
+        "preview_html": {
+            "id": "asset-preview",
+            "task_id": "task-detail",
+            "asset_type": "preview_html",
+            "file_path": str(preview_file),
+            "file_name": "preview.html",
+            "mime_type": "text/html",
+            "created_at": "2026-03-18T04:00:00+00:00",
+        }
+    }
+
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_id", lambda _paper_id: asyncio.sleep(0, result=paper))
+    monkeypatch.setattr(paper_service, "_hydrate_arxiv_metadata_if_needed", lambda payload: asyncio.sleep(0, result=payload))
+    monkeypatch.setattr(paper_service, "_hydrate_translated_abstract_if_needed", lambda payload, asset_map=None: asyncio.sleep(0, result=payload))
+    monkeypatch.setattr(paper_service, "_fetch_asset_map_for_paper", lambda **_kwargs: asyncio.sleep(0, result=asset_map))
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_viewer_state",
+        lambda _paper_ids, user_id=None: asyncio.sleep(0, result={"paper-preview": {"liked": False, "favorited": False}}),
+    )
+
+    result = asyncio.run(
+        paper_service.get_community_paper_detail(
+            paper_id="paper-preview",
+            viewer_user_id=None,
+        )
+    )
+
+    assert result["preview"]["fetch_url"] == "/api/papers/paper-preview/preview"
+    assert result["reader"]["translated"]["url"] == "/api/papers/paper-preview/preview"
+    assert result["reader"]["translated"]["html_content"] is None
+
+
 def test_detail_hides_stale_preview_and_marks_reader_warming(monkeypatch):
     paper = {
         "id": "paper-detail",

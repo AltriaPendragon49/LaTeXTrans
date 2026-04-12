@@ -3,8 +3,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import os
+import shutil
 from pathlib import Path, PurePosixPath
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from backend.app.core.config import Settings
 
@@ -34,6 +35,9 @@ class StorageBackend(ABC):
     @abstractmethod
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
         raise NotImplementedError
+
+    def build_download_url(self, *, object_key: str, expires_in: int) -> Optional[str]:
+        return None
 
     @staticmethod
     def _normalize_object_key(object_key: str) -> Sequence[str]:
@@ -85,11 +89,16 @@ class LocalDiskStorageBackend(StorageBackend):
     ) -> StoredObjectRef:
         target = self._build_target_path(object_key)
         os.makedirs(self._fs_path(target.parent), exist_ok=True)
-        with open(self._fs_path(local_path), "rb") as source_handle:
-            payload = source_handle.read()
-        with open(self._fs_path(target), "wb") as target_handle:
-            target_handle.write(payload)
-        if delete_local and local_path.exists():
+        same_path = False
+        try:
+            same_path = local_path.resolve(strict=False) == target.resolve(strict=False)
+        except Exception:
+            same_path = False
+        if not same_path:
+            with open(self._fs_path(local_path), "rb") as source_handle:
+                with open(self._fs_path(target), "wb") as target_handle:
+                    shutil.copyfileobj(source_handle, target_handle)
+        if delete_local and local_path.exists() and not same_path:
             local_path.unlink()
         return StoredObjectRef(
             storage_backend="local_disk",
@@ -104,7 +113,7 @@ class LocalDiskStorageBackend(StorageBackend):
 
 
 class CosStorageBackend(StorageBackend):
-    """Placeholder COS backend that keeps the config for future implementation."""
+    """Tencent COS-backed storage for production object persistence."""
 
     def __init__(
         self,
@@ -114,12 +123,14 @@ class CosStorageBackend(StorageBackend):
         secret_id: str,
         secret_key: str,
         base_prefix: str,
+        client: Optional[Any] = None,
     ) -> None:
         self.bucket = bucket
         self.region = region
         self.secret_id = secret_id
         self.secret_key = secret_key
-        self.base_prefix = base_prefix
+        self.base_prefix = str(base_prefix or "").strip().strip("/")
+        self._client = client
 
     def put_file(
         self,
@@ -129,10 +140,62 @@ class CosStorageBackend(StorageBackend):
         content_type: Optional[str],
         delete_local: bool,
     ) -> StoredObjectRef:
-        raise NotImplementedError("COS-backed storage is not implemented yet.")
+        full_key = self._full_object_key(object_key)
+        upload_kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "Key": full_key,
+            "LocalFilePath": self._fs_path(local_path),
+            "EnableMD5": False,
+        }
+        if content_type:
+            upload_kwargs["ContentType"] = content_type
+        self._get_client().upload_file(**upload_kwargs)
+        size_bytes = os.path.getsize(self._fs_path(local_path))
+        if delete_local and local_path.exists():
+            local_path.unlink()
+        return StoredObjectRef(
+            storage_backend="object_storage",
+            object_key=full_key,
+            content_type=content_type,
+            size_bytes=size_bytes,
+        )
 
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
         raise NotImplementedError("COS objects are not stored locally.")
+
+    def build_download_url(self, *, object_key: str, expires_in: int) -> Optional[str]:
+        full_key = self._full_object_key(object_key)
+        return self._get_client().get_presigned_download_url(
+            Bucket=self.bucket,
+            Key=full_key,
+            Expired=expires_in,
+        )
+
+    def _full_object_key(self, object_key: str) -> str:
+        normalized = "/".join(self._normalize_object_key(object_key))
+        if self.base_prefix and normalized != self.base_prefix and not normalized.startswith(f"{self.base_prefix}/"):
+            return f"{self.base_prefix}/{normalized}"
+        return normalized
+
+    def _get_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+
+        try:
+            from qcloud_cos import CosConfig, CosS3Client
+        except ImportError as exc:
+            raise RuntimeError(
+                "COS storage backend requires cos-python-sdk-v5 to be installed."
+            ) from exc
+
+        config = CosConfig(
+            Region=self.region,
+            SecretId=self.secret_id,
+            SecretKey=self.secret_key,
+            Scheme="https",
+        )
+        self._client = CosS3Client(config)
+        return self._client
 
 
 def build_storage_backend(settings: Settings) -> StorageBackend:

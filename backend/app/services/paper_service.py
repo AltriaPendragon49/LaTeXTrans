@@ -1571,6 +1571,28 @@ def _build_preview_payload(
     )
 
 
+def _build_preview_bootstrap_payload(
+    *,
+    paper_id: str,
+    paper: Dict[str, Any],
+    preview_asset: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    preview_payload = _build_preview_payload(
+        paper_id=paper_id,
+        paper=paper,
+        preview_asset=preview_asset,
+    )
+    if not preview_payload:
+        return None
+    return {
+        "paper_id": paper_id,
+        "task_id": preview_payload.get("task_id"),
+        "asset": preview_payload.get("asset"),
+        "generated_at": preview_payload.get("generated_at"),
+        "fetch_url": f"/api/papers/{paper_id}/preview",
+    }
+
+
 async def _recover_preview_asset_in_background(
     *,
     paper_id: str,
@@ -1921,8 +1943,8 @@ def _is_public_community_paper(paper: Optional[Dict[str, Any]]) -> bool:
     return (
         str(paper.get("visibility") or "").strip() == "public"
         and str(paper.get("status") or "").strip() == "published"
-        and str(paper.get("community_status") or "").strip() == COMMUNITY_STATUS_OFFICIAL
-        and str(paper.get("trans_status") or "").strip() == "completed"
+        and str(paper.get("community_status") or "").strip()
+        in {COMMUNITY_STATUS_OFFICIAL, COMMUNITY_STATUS_USER_FALLBACK}
     )
 
 
@@ -2743,6 +2765,33 @@ def _translated_pdf_reader_resource(*, paper_id: str, asset: Dict[str, Any]) -> 
     }
 
 
+def _translated_preview_reader_resource(*, paper_id: str, preview_payload: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "kind": "preview_html",
+        "html_content": preview_payload.get("html_content"),
+        "url": preview_payload.get("fetch_url") or f"/api/papers/{paper_id}/preview",
+        "asset_id": ((preview_payload.get("asset") or {}).get("id")),
+        "anchors": [],
+    }
+
+
+def _resolve_object_storage_signed_url(asset: Dict[str, Any], *, expires_in: int) -> str:
+    direct_url = str(asset.get("signed_url") or "").strip()
+    if direct_url:
+        return direct_url
+
+    file_path = str(asset.get("file_path") or "").strip()
+    if file_path.startswith("http://") or file_path.startswith("https://"):
+        return file_path
+
+    backend = _get_storage_backend()
+    signed_url = backend.build_download_url(
+        object_key=file_path,
+        expires_in=expires_in,
+    )
+    return str(signed_url or "").strip()
+
+
 def _extract_reader_anchors_from_html(html_content: Optional[str]) -> List[Dict[str, Any]]:
     if not html_content:
         return []
@@ -2799,12 +2848,11 @@ def _build_reader_experience_payload(
     )
     translated_resource: Optional[Dict[str, Any]] = None
     if preview_payload:
-        translated_resource = {
-            "kind": "preview_html",
-            "html_content": preview_payload.get("html_content"),
-            "url": None,
-            "anchors": translated_anchors,
-        }
+        translated_resource = _translated_preview_reader_resource(
+            paper_id=paper_id,
+            preview_payload=preview_payload,
+        )
+        translated_resource["anchors"] = translated_anchors
     elif translated_asset:
         translated_resource = _translated_pdf_reader_resource(
             paper_id=paper_id,
@@ -2925,7 +2973,7 @@ async def _resolve_preview_html_asset(
         content_type=preview_asset["mime_type"],
     )
     if stored_ref.storage_backend != "local_disk":
-        clear_cached_runtime_artifacts(task_id, [preview_path])
+        clear_cached_runtime_artifacts(task_id, [preview_path, target_dir])
 
     return await _upsert_latest_asset(
         paper_id=paper_id,
@@ -5033,6 +5081,19 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
     if not translated_asset:
         raise HTTPException(status_code=404, detail="Translated PDF not available")
 
+    if translated_asset.get("storage_backend") == "object_storage":
+        signed_url = _resolve_object_storage_signed_url(
+            translated_asset,
+            expires_in=300,
+        )
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="Translated PDF object not available")
+        return {
+            "paper_id": paper_id,
+            "asset": translated_asset,
+            "signed_url": signed_url,
+        }
+
     file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Translated PDF file not found")
@@ -5107,6 +5168,23 @@ async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]
         raise HTTPException(status_code=404, detail="Translated PDF not available")
     if payload.get("asset_id") != translated_asset.get("id"):
         raise HTTPException(status_code=403, detail="Download token does not match asset")
+
+    if translated_asset.get("storage_backend") == "object_storage":
+        signed_url = _resolve_object_storage_signed_url(
+            translated_asset,
+            expires_in=600,
+        )
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="Translated PDF object not available")
+        try:
+            await _increment_paper_download_count(paper_id)
+        except Exception as exc:
+            logger.warning("Failed to increment download count for paper %s: %s", paper_id, exc)
+        return {
+            "paper_id": paper_id,
+            "asset": translated_asset,
+            "signed_url": signed_url,
+        }
 
     file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
     if not file_path.exists():
@@ -5207,17 +5285,17 @@ async def get_community_paper_detail(
         await _fetch_structured_insight_sections(paper_id)
     )
     resolved_asset_map: Dict[str, Dict[str, Any]] = dict(asset_map or {})
-    preview_payload: Optional[Dict[str, Any]] = None
+    preview_bootstrap: Optional[Dict[str, Any]] = None
 
     preview_asset = resolved_asset_map.get("preview_html")
     if preview_asset:
-        preview_payload = _build_preview_payload(
+        preview_bootstrap = _build_preview_bootstrap_payload(
             paper_id=paper_id,
             paper=paper,
             preview_asset=preview_asset,
         )
 
-    if not preview_payload:
+    if not preview_bootstrap:
         for task_id in _candidate_task_ids_for_asset_recovery(paper, resolved_asset_map):
             preview_asset = await _resolve_preview_html_asset(
                 paper=paper,
@@ -5228,12 +5306,12 @@ async def get_community_paper_detail(
             if not preview_asset:
                 continue
             resolved_asset_map["preview_html"] = preview_asset
-            preview_payload = _build_preview_payload(
+            preview_bootstrap = _build_preview_bootstrap_payload(
                 paper_id=paper_id,
                 paper=paper,
                 preview_asset=preview_asset,
             )
-            if preview_payload:
+            if preview_bootstrap:
                 break
 
     translated_asset = await _ensure_translated_pdf_asset(
@@ -5241,7 +5319,7 @@ async def get_community_paper_detail(
         asset_map=resolved_asset_map,
     )
 
-    if not preview_payload and paper.get("trans_status") in {"completed", "completed_with_warnings"}:
+    if not preview_bootstrap and paper.get("trans_status") in {"completed", "completed_with_warnings"}:
         _schedule_preview_recovery(
             paper_id=paper_id,
             paper=paper,
@@ -5253,7 +5331,7 @@ async def get_community_paper_detail(
     reader_payload = _build_reader_experience_payload(
         paper=paper,
         paper_id=paper_id,
-        preview_payload=preview_payload,
+        preview_payload=preview_bootstrap,
         translated_asset=translated_asset,
         source_html_content=source_html_content,
     )
@@ -5265,7 +5343,7 @@ async def get_community_paper_detail(
             asset_map=resolved_asset_map,
             viewer_state=viewer_state,
         ),
-        "preview": preview_payload,
+        "preview": preview_bootstrap,
         "reader_state": reader_payload["reader_state"],
         "reader": reader_payload["reader"],
         "experience": reader_payload["experience"],

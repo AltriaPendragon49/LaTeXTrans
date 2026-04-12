@@ -349,3 +349,129 @@ def test_resolve_paper_download_does_not_fail_when_download_count_increment_erro
 
     assert result["paper_id"] == "paper-1"
     assert result["asset"]["id"] == "asset-pdf"
+
+
+def test_resolve_paper_translated_pdf_preview_returns_signed_url_for_object_storage(monkeypatch):
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "translated_pdf": {
+                    "id": "asset-pdf",
+                    "task_id": "task-1",
+                    "asset_type": "translated_pdf",
+                    "storage_backend": "object_storage",
+                    "file_path": "https://cos.example.com/paper.pdf?sign=abc",
+                    "file_name": "translated.pdf",
+                    "mime_type": "application/pdf",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.resolve_paper_translated_pdf_preview(paper_id="paper-1"))
+
+    assert result["paper_id"] == "paper-1"
+    assert result["signed_url"].startswith("https://cos.example.com/")
+
+
+def test_resolve_paper_download_returns_signed_url_for_object_storage(monkeypatch):
+    increments = []
+
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "translated_pdf": {
+                    "id": "asset-pdf",
+                    "task_id": "task-1",
+                    "asset_type": "translated_pdf",
+                    "storage_backend": "object_storage",
+                    "file_path": "https://cos.example.com/paper.pdf?sign=abc",
+                    "file_name": "translated.pdf",
+                    "mime_type": "application/pdf",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_increment_paper_download_count",
+        lambda paper_id: asyncio.sleep(0, result=increments.append(paper_id)),
+    )
+
+    session = asyncio.run(paper_service.create_paper_download_session(paper_id="paper-1"))
+    token = session["download_url"].split("token=", 1)[1]
+    result = asyncio.run(paper_service.resolve_paper_download(paper_id="paper-1", token=token))
+
+    assert result["paper_id"] == "paper-1"
+    assert result["signed_url"].startswith("https://cos.example.com/")
+    assert increments == ["paper-1"]
+
+
+def test_resolve_paper_download_builds_signed_url_from_object_key(monkeypatch):
+    increments = []
+
+    class _FakeStorageBackend:
+        def build_download_url(self, *, object_key: str, expires_in: int):
+            assert object_key == "paperx/data/community_papers/paper-1/translated/translated.pdf"
+            assert expires_in == 600
+            return "https://cos.example.com/generated.pdf?sign=xyz"
+
+    monkeypatch.setattr(
+        paper_service,
+        "_get_storage_backend",
+        lambda: _FakeStorageBackend(),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "translated_pdf": {
+                    "id": "asset-pdf",
+                    "task_id": "task-1",
+                    "asset_type": "translated_pdf",
+                    "storage_backend": "object_storage",
+                    "file_path": "paperx/data/community_papers/paper-1/translated/translated.pdf",
+                    "file_name": "translated.pdf",
+                    "mime_type": "application/pdf",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_increment_paper_download_count",
+        lambda paper_id: asyncio.sleep(0, result=increments.append(paper_id)),
+    )
+
+    session = asyncio.run(paper_service.create_paper_download_session(paper_id="paper-1"))
+    token = session["download_url"].split("token=", 1)[1]
+    result = asyncio.run(paper_service.resolve_paper_download(paper_id="paper-1", token=token))
+
+    assert result["signed_url"] == "https://cos.example.com/generated.pdf?sign=xyz"
+    assert increments == ["paper-1"]

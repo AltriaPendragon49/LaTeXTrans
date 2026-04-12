@@ -111,6 +111,50 @@ describe("PaperPreviewReader", () => {
     expect(screen.getByTestId("paper-preview-viewport").className).toContain("overflow-x-hidden")
   })
 
+  it("hydrates translated html when detail only provides a preview locator", async () => {
+    getCommunityPaperPreviewMock.mockResolvedValue({
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview-bootstrap",
+        task_id: "task-1",
+        asset_type: "preview_html",
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      fetch_url: "/api/papers/paper-1/preview",
+      html_content: "<h2>Hydrated intro</h2><p>Bootstrapped reader body</p>",
+      generated_at: "2026-03-18T02:00:00Z",
+    })
+
+    render(
+      <PaperPreviewReader
+        paperId="paper-1"
+        initialPreview={{
+          paper_id: "paper-1",
+          task_id: "task-1",
+          asset: {
+            id: "asset-preview-bootstrap",
+            task_id: "task-1",
+            asset_type: "preview_html",
+            file_name: "preview.html",
+            mime_type: "text/html",
+            created_at: "2026-03-18T02:00:00Z",
+          },
+          fetch_url: "/api/papers/paper-1/preview",
+          generated_at: "2026-03-18T02:00:00Z",
+        }}
+        readerState="ready"
+      />,
+    )
+
+    expect(await screen.findByText("Hydrated intro")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(getCommunityPaperPreviewMock).toHaveBeenCalledWith("paper-1")
+    })
+  })
+
   it("does not load reader enhancement while warming", async () => {
     render(<PaperPreviewReader paperId="paper-1" readerState="warming" />)
 
