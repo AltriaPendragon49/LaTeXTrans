@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "@/api-base"
 import api from "@/lib/api"
 import { getAccessToken } from "@/lib/local-auth"
+import { retryOnTransientNetworkError } from "@/lib/network-retry"
 import type {
   AdminCurationBatchResponse,
   AdminDeletePaperResponse,
@@ -31,13 +32,17 @@ export async function getCommunityPapers(params: {
   q?: string
   limit?: number
 }): Promise<CommunityPaperListResponse> {
-  const response = await api.get<CommunityPaperListResponse>("/papers", {
-    params: {
-      sort: params.sort,
-      ...(params.q ? { q: params.q } : {}),
-      ...(params.limit ? { limit: params.limit } : {}),
-    },
-  })
+  const response = await retryOnTransientNetworkError(
+    () =>
+      api.get<CommunityPaperListResponse>("/papers", {
+        params: {
+          sort: params.sort,
+          ...(params.q ? { q: params.q } : {}),
+          ...(params.limit ? { limit: params.limit } : {}),
+        },
+      }),
+    { attempts: 3, baseDelayMs: 150 },
+  )
   return response.data
 }
 
@@ -87,13 +92,17 @@ function parseSseFrame(frame: string): CommunityAgentStreamEvent | null {
 
 async function fetchCommunityAgentRunResult(resultUrl: string): Promise<CommunityAgentRun> {
   const token = await getAccessToken()
-  const response = await fetch(`${API_BASE_URL}${resultUrl}`, {
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : undefined,
-  })
+  const response = await retryOnTransientNetworkError(
+    () =>
+      fetch(`${API_BASE_URL}${resultUrl}`, {
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : undefined,
+      }),
+    { attempts: 3, baseDelayMs: 150 },
+  )
 
   if (!response.ok) {
     throw new Error(`Failed to fetch run result: ${response.status}`)
@@ -210,7 +219,10 @@ export async function importCommunityPaper(
 export async function getCommunityPaperDetail(
   paperId: string,
 ): Promise<CommunityPaperDetailResponse> {
-  const response = await api.get<CommunityPaperDetailResponse>(`/papers/${paperId}`)
+  const response = await retryOnTransientNetworkError(
+    () => api.get<CommunityPaperDetailResponse>(`/papers/${paperId}`),
+    { attempts: 3, baseDelayMs: 150 },
+  )
   communityPaperDetailCache.set(paperId, response.data)
   return response.data
 }
@@ -218,7 +230,10 @@ export async function getCommunityPaperDetail(
 export async function getCommunityPaperSimilar(
   paperId: string,
 ): Promise<CommunityPaperSimilarResponse> {
-  const response = await api.get<CommunityPaperSimilarResponse>(`/papers/${paperId}/similar`)
+  const response = await retryOnTransientNetworkError(
+    () => api.get<CommunityPaperSimilarResponse>(`/papers/${paperId}/similar`),
+    { attempts: 3, baseDelayMs: 150 },
+  )
   return response.data
 }
 
@@ -256,7 +271,10 @@ export async function submitAdminUploadCurationBatch(params: {
 export async function getAdminCurationBatch(
   batchId: string,
 ): Promise<AdminCurationBatchResponse> {
-  const response = await api.get<AdminCurationBatchResponse>(`/papers/admin/curation/batches/${batchId}`)
+  const response = await retryOnTransientNetworkError(
+    () => api.get<AdminCurationBatchResponse>(`/papers/admin/curation/batches/${batchId}`),
+    { attempts: 3, baseDelayMs: 150 },
+  )
   return response.data
 }
 
@@ -344,14 +362,20 @@ export async function translateCommunityPaper(
 export async function getCommunityPaperPreview(
   paperId: string,
 ): Promise<CommunityPaperPreviewResponse> {
-  const response = await api.get<CommunityPaperPreviewResponse>(`/papers/${paperId}/preview`)
+  const response = await retryOnTransientNetworkError(
+    () => api.get<CommunityPaperPreviewResponse>(`/papers/${paperId}/preview`),
+    { attempts: 3, baseDelayMs: 150 },
+  )
   return response.data
 }
 
 export async function createCommunityPaperDownloadSession(
   paperId: string,
 ): Promise<CommunityPaperDownloadSessionResponse> {
-  const response = await api.post<CommunityPaperDownloadSessionResponse>(`/papers/${paperId}/download-session`)
+  const response = await retryOnTransientNetworkError(
+    () => api.post<CommunityPaperDownloadSessionResponse>(`/papers/${paperId}/download-session`),
+    { attempts: 3, baseDelayMs: 150 },
+  )
   return response.data
 }
 

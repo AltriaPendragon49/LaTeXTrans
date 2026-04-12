@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/api-base"
+import { retryOnTransientNetworkError } from "@/lib/network-retry"
 
 export interface LocalAuthUser {
     id: string
@@ -123,16 +124,20 @@ export async function signInWithPassword(
     password: string,
 ): Promise<{ session: LocalAuthSession | null; error: LocalAuthError | null }> {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                identifier,
-                password,
-            }),
-        })
+        const response = await retryOnTransientNetworkError(
+            () =>
+                fetch(`${API_BASE_URL}/api/auth/login`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        identifier,
+                        password,
+                    }),
+                }),
+            { attempts: 3, baseDelayMs: 150 },
+        )
 
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
@@ -185,12 +190,16 @@ export async function bootstrapLocalSession(): Promise<{
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-            headers: {
-                Authorization: `Bearer ${session.access_token}`,
-                "Content-Type": "application/json",
-            },
-        })
+        const response = await retryOnTransientNetworkError(
+            () =>
+                fetch(`${API_BASE_URL}/api/auth/me`, {
+                    headers: {
+                        Authorization: `Bearer ${session.access_token}`,
+                        "Content-Type": "application/json",
+                    },
+                }),
+            { attempts: 3, baseDelayMs: 150 },
+        )
 
         const payload = await response.json().catch(() => null)
         const restoredUser = normalizeUser(
