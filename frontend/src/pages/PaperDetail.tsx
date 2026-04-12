@@ -146,9 +146,7 @@ function resolveAvailableModes(
   const rawModes = reader?.available_modes ?? []
   const allowTranslatedHtml =
     ENABLE_TRANSLATED_HTML_READER &&
-    (rawModes.includes("translated_html") ||
-      rawModes.includes("translated") ||
-      hasTranslatedHtmlResource(paper, preview, reader))
+    (rawModes.includes("translated_html") || hasTranslatedHtmlResource(paper, preview, reader))
   const allowTranslatedPdf =
     rawModes.includes("translated_pdf") ||
     (rawModes.includes("translated") && hasTranslatedPdfResource(paper, reader)) ||
@@ -171,8 +169,16 @@ function resolvePreferredMode(
   preferredMode: CommunityPaperReaderMode | undefined,
   availableModes: CommunityPaperReaderMode[],
 ): CommunityPaperReaderMode {
-  if (preferredMode === "translated" && availableModes.includes("translated_pdf")) {
-    return "translated_pdf"
+  if (preferredMode === "translated") {
+    if (availableModes.includes("translated_html")) {
+      return "translated_html"
+    }
+    if (availableModes.includes("source")) {
+      return "source"
+    }
+    if (availableModes.includes("translated_pdf")) {
+      return "translated_pdf"
+    }
   }
   if (preferredMode && availableModes.includes(preferredMode)) {
     return preferredMode

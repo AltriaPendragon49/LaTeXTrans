@@ -59,7 +59,26 @@ function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
 }
 
 function buildPdfViewerUrl(url: string) {
-  return `${url}#page=1&zoom=page-fit`
+  const viewerParams = "page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0"
+  return url.includes("#") ? `${url}&${viewerParams}` : `${url}#${viewerParams}`
+}
+
+function resolvePdfDocumentUrl(
+  fallbackUrl: string,
+  resource: { kind?: string | null; url?: string | null } | null | undefined,
+  expectedKind: "source_pdf" | "translated_pdf",
+) {
+  const candidateUrl = String(resource?.url || "").trim()
+  if ((resource?.kind ?? null) !== expectedKind || !candidateUrl) {
+    return fallbackUrl
+  }
+  if (candidateUrl.startsWith("http://") || candidateUrl.startsWith("https://")) {
+    return candidateUrl
+  }
+  if (candidateUrl.startsWith("/")) {
+    return `${API_BASE_URL}${candidateUrl}`
+  }
+  return fallbackUrl
 }
 
 function clampSplitRatio(ratio: number, width: number) {
@@ -484,8 +503,16 @@ export function PaperDetailWorkspace({
   const translatedPreviewAvailable =
     isTranslatedHtmlMode(preferredMode) &&
     (Boolean(preview?.html_content) || reader?.translated?.kind === "preview_html")
-  const sourceDocumentUrl = `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`
-  const translatedPdfUrl = `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`
+  const sourceDocumentUrl = resolvePdfDocumentUrl(
+    `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`,
+    reader?.source,
+    "source_pdf",
+  )
+  const translatedPdfUrl = resolvePdfDocumentUrl(
+    `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`,
+    reader?.translated,
+    "translated_pdf",
+  )
   const sourcePdfViewerUrl = buildPdfViewerUrl(sourceDocumentUrl)
   const translatedPdfViewerUrl = buildPdfViewerUrl(translatedPdfUrl)
   const sanitizedSourceHtml = useMemo(
@@ -591,7 +618,7 @@ export function PaperDetailWorkspace({
               className="h-full w-full border-0 bg-surface-container-lowest"
             />
           ) : isBilingualCompareMode(preferredMode) && canDownload ? (
-            <div className="grid h-full min-h-0 grid-cols-2 gap-3 bg-surface-container-lowest p-3">
+            <div className="grid h-full min-h-0 grid-cols-2 gap-2 bg-surface-container-lowest p-2">
               <iframe
                 data-testid="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}

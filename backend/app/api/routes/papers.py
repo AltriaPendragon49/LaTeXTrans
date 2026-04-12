@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import io
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,7 @@ from backend.app.services import community_content_pool_service, paper_preview_s
 router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
 settings = get_settings()
+LOCAL_PDF_PREVIEW_CHUNK_SIZE = 64 * 1024
 
 
 def _ensure_paper_authorized(
@@ -293,6 +295,98 @@ async def _proxy_remote_pdf_preview(*, url: str, filename: str, request: Request
     )
 
 
+def _parse_single_byte_range(range_header: Optional[str], total_size: int) -> Optional[tuple[int, int]]:
+    normalized = str(range_header or "").strip()
+    if not normalized.startswith("bytes="):
+        return None
+
+    value = normalized[len("bytes=") :].strip()
+    if not value or "," in value:
+        return None
+
+    start_raw, _, end_raw = value.partition("-")
+    try:
+        if start_raw == "":
+            suffix_length = int(end_raw)
+            if suffix_length <= 0:
+                return None
+            end = total_size - 1
+            start = max(total_size - suffix_length, 0)
+        else:
+            start = int(start_raw)
+            if start < 0 or start >= total_size:
+                return None
+            end = int(end_raw) if end_raw else total_size - 1
+            if end < start:
+                return None
+            end = min(end, total_size - 1)
+    except ValueError:
+        return None
+
+    return start, end
+
+
+async def _serve_local_pdf_preview(
+    *,
+    file_path: Path,
+    filename: str,
+    request: Request,
+    cache_control: str,
+) -> Response:
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF file not found")
+
+    total_size = file_path.stat().st_size
+    base_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": cache_control,
+        "Content-Disposition": f'inline; filename="{filename}"',
+    }
+    range_header = request.headers.get("range")
+    byte_range = _parse_single_byte_range(range_header, total_size)
+
+    if range_header and byte_range is None:
+        return Response(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            headers={
+                **base_headers,
+                "Content-Range": f"bytes */{total_size}",
+            },
+        )
+
+    if byte_range is None:
+        return FileResponse(
+            path=file_path,
+            media_type="application/pdf",
+            headers=base_headers,
+        )
+
+    start, end = byte_range
+    content_length = end - start + 1
+
+    async def _stream():
+        with open(file_path, "rb") as handle:
+            handle.seek(start)
+            remaining = content_length
+            while remaining > 0:
+                chunk = handle.read(min(LOCAL_PDF_PREVIEW_CHUNK_SIZE, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
+    return StreamingResponse(
+        _stream(),
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
+        media_type="application/pdf",
+        headers={
+            **base_headers,
+            "Content-Length": str(content_length),
+            "Content-Range": f"bytes {start}-{end}/{total_size}",
+        },
+    )
+
+
 def _paper_thumbnail_cache_dir() -> Path:
     cache_dir = settings.storage_temp_dir / "paper_pdf_thumbnails"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -312,12 +406,37 @@ def _decode_png_data_uri(payload: Optional[str]) -> Optional[bytes]:
 
 def _thumbnail_cache_path(cache_seed: str) -> Path:
     digest = hashlib.sha256(cache_seed.encode("utf-8")).hexdigest()
-    return _paper_thumbnail_cache_dir() / f"{digest}.png"
+    return _paper_thumbnail_cache_dir() / f"{digest}.jpg"
+
+
+def _optimize_thumbnail_bytes(payload: Optional[bytes]) -> Optional[bytes]:
+    if not payload:
+        return None
+
+    try:
+        from PIL import Image
+    except Exception:
+        return payload
+
+    try:
+        with Image.open(io.BytesIO(payload)) as image:
+            page = image.convert("RGB")
+            max_width = 720
+            if page.width > max_width:
+                height = max(1, int(page.height * (max_width / page.width)))
+                resampling = getattr(Image, "Resampling", Image)
+                page = page.resize((max_width, height), resampling.LANCZOS)
+
+            buffer = io.BytesIO()
+            page.save(buffer, format="JPEG", quality=72, optimize=True, progressive=True)
+            return buffer.getvalue()
+    except Exception:
+        return payload
 
 
 def _render_pdf_thumbnail_bytes_from_path(pdf_path: Path) -> Optional[bytes]:
     data_uri = paper_preview_service._inline_pdf_data_uri(pdf_path)
-    return _decode_png_data_uri(data_uri)
+    return _optimize_thumbnail_bytes(_decode_png_data_uri(data_uri))
 
 
 async def _render_pdf_thumbnail_bytes_from_url(url: str) -> Optional[bytes]:
@@ -361,7 +480,7 @@ async def _serve_pdf_thumbnail_response(
     if cache_path.exists():
         return FileResponse(
             path=cache_path,
-            media_type="image/png",
+            media_type="image/jpeg",
             headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
         )
 
@@ -377,7 +496,7 @@ async def _serve_pdf_thumbnail_response(
     cache_path.write_bytes(thumbnail_bytes)
     return FileResponse(
         path=cache_path,
-        media_type="image/png",
+        media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
     )
 
@@ -634,13 +753,11 @@ async def preview_translated_paper_pdf(paper_id: str, request: Request):
             filename=str(filename),
             request=request,
         )
-    return FileResponse(
-        path=payload["file_path"],
-        media_type=asset.get("mime_type") or "application/pdf",
-        headers={
-            "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-            "Content-Disposition": f"inline; filename=\"{filename}\"",
-        },
+    return await _serve_local_pdf_preview(
+        file_path=Path(payload["file_path"]),
+        filename=str(filename),
+        request=request,
+        cache_control="public, max-age=300, stale-while-revalidate=600",
     )
 
 
@@ -677,13 +794,11 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
         return await download_route.preview_source_pdf(legacy_task_id, request)
 
     filename = str(payload.get("filename") or f"{paper_id}.pdf")
-    return FileResponse(
-        path=payload["file_path"],
-        media_type="application/pdf",
-        headers={
-            "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-            "Content-Disposition": f"inline; filename=\"{filename}\"",
-        },
+    return await _serve_local_pdf_preview(
+        file_path=Path(payload["file_path"]),
+        filename=filename,
+        request=request,
+        cache_control="public, max-age=300, stale-while-revalidate=600",
     )
 
 

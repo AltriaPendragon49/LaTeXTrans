@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import Response
@@ -164,3 +165,71 @@ def test_download_paper_redirects_to_signed_url(monkeypatch):
 
     assert response.status_code == 307
     assert response.headers["location"].startswith("https://cos.example.com/")
+
+
+def test_preview_source_pdf_serves_local_range_requests(monkeypatch, tmp_path: Path):
+    pdf_path = tmp_path / "source.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\nmock-source-payload")
+
+    async def _fake_preview(*, paper_id: str):
+        assert paper_id == "paper-1"
+        return {
+            "paper_id": paper_id,
+            "file_path": str(pdf_path),
+            "filename": "source.pdf",
+        }
+
+    monkeypatch.setattr(
+        papers_route.paper_service,
+        "resolve_paper_source_pdf_preview",
+        _fake_preview,
+    )
+
+    response = asyncio.run(
+        papers_route.preview_source_paper_pdf(
+            "paper-1",
+            _request_with_headers({"range": "bytes=0-8"}),
+        )
+    )
+
+    assert isinstance(response, StreamingResponse)
+    assert response.status_code == 206
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-range"] == f"bytes 0-8/{pdf_path.stat().st_size}"
+    assert response.headers["content-disposition"] == 'inline; filename="source.pdf"'
+
+
+def test_preview_translated_pdf_serves_local_range_requests(monkeypatch, tmp_path: Path):
+    pdf_path = tmp_path / "translated.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\nmock-translated-payload")
+
+    async def _fake_preview(*, paper_id: str):
+        assert paper_id == "paper-1"
+        return {
+            "paper_id": paper_id,
+            "asset": {
+                "id": "asset-pdf",
+                "file_name": "translated.pdf",
+                "mime_type": "application/pdf",
+            },
+            "file_path": str(pdf_path),
+        }
+
+    monkeypatch.setattr(
+        papers_route.paper_service,
+        "resolve_paper_translated_pdf_preview",
+        _fake_preview,
+    )
+
+    response = asyncio.run(
+        papers_route.preview_translated_paper_pdf(
+            "paper-1",
+            _request_with_headers({"range": "bytes=0-7"}),
+        )
+    )
+
+    assert isinstance(response, StreamingResponse)
+    assert response.status_code == 206
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-range"] == f"bytes 0-7/{pdf_path.stat().st_size}"
+    assert response.headers["content-disposition"] == 'inline; filename="translated.pdf"'

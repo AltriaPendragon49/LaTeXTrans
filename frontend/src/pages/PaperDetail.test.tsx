@@ -441,14 +441,51 @@ describe("PaperDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "English" }))
     expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/source-pdf#page=1&zoom=page-fit`,
+      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
 
     await user.click(screen.getByRole("button", { name: "Chinese translation (PDF)" }))
     expect(screen.getByTestId("paper-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&zoom=page-fit`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
+  })
+
+  it("defaults to source instead of translated pdf when the backend only signals generic translated readiness", () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        preview: null,
+        reader: {
+          preferred_mode: "translated",
+          available_modes: ["source", "translated"],
+          source: {
+            kind: "source_pdf",
+            html_content: null,
+            url: "https://arxiv.org/pdf/2503.01010",
+          },
+          translated: {
+            kind: "translated_pdf",
+            html_content: null,
+            url: null,
+          },
+          state: "translated_ready",
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
+      "src",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+    )
+    expect(screen.queryByTestId("paper-translated-pdf-reader")).not.toBeInTheDocument()
   })
 
   it("defaults to source first when translated html is unavailable and preserves bilingual compare mode", async () => {
@@ -498,18 +535,18 @@ describe("PaperDetailPage", () => {
     ])
     expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/source-pdf#page=1&zoom=page-fit`,
+      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
 
     await user.click(screen.getByRole("button", { name: "Bilingual compare" }))
 
     expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/source-pdf#page=1&zoom=page-fit`,
+      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
     expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&zoom=page-fit`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
   })
 
