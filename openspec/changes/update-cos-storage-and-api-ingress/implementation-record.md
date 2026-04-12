@@ -40,7 +40,7 @@ Those files were directionally correct, but they did not fully preserve the fina
 - Verified detail bootstrap, preview HTML fetch, source PDF fetch, and translated PDF fetch for the curated paper.
 
 ### 3. Public ingress debugging
-- Confirmed the backend and host-local reverse proxy were healthy on the production server `82.156.76.218`.
+- Confirmed the backend and host-local reverse proxy were healthy on the production host.
 - Confirmed external direct access patterns were unstable when relying on the old browser-facing origin path.
 - Introduced a Pages Functions same-origin `/api/*` proxy so the frontend no longer needs to expose a separate backend origin directly in browser code.
 
@@ -85,14 +85,11 @@ Those files were directionally correct, but they did not fully preserve the fina
 7. Explicit translated PDF download uses the signed download route.
 
 ## Production Host State
-- Server: `82.156.76.218`
-- App checkout path: `/srv/LaTexTrans`
-- Backend service: `latextrans-backend.service`
-- Stable Cloudflare tunnel service: `cloudflared.service`
-- Tunnel config: `/etc/cloudflared/config.yml`
-- Tunnel credentials: `/etc/cloudflared/e5794abe-58a2-4a20-9d1a-2c14352d0d10.json`
+- Server identity, SSH account, and filesystem layout are maintained outside Git in the controlled operations record.
+- Backend service name is maintained in the controlled operations record.
+- Stable Cloudflare tunnel service remains managed through `cloudflared.service`.
+- Tunnel credential file path and tunnel ID are intentionally not preserved in repository documentation.
 - Tunnel name: `latextrans-api`
-- Tunnel ID: `e5794abe-58a2-4a20-9d1a-2c14352d0d10`
 
 ## Important Implementation Files
 
@@ -203,7 +200,7 @@ The active OpenSpec change now has both the original formal proposal/design/spec
 
 ### Deployment intent for this pass
 - Push the updated `main` branch.
-- Pull `main` on `82.156.76.218`.
+- Pull `main` on the production host.
 - Restart `latextrans-backend`.
 - Redeploy the frontend bundle.
 - Re-run live acceptance on homepage preview speed, detail PDF load speed, and bilingual compare first-open fit.
@@ -227,8 +224,8 @@ The active OpenSpec change now has both the original formal proposal/design/spec
 - Pushed `614e6f2` `fix: improve paper pdf loading behavior`.
 - Pushed `2883d5d` `fix: shrink community paper thumbnails`.
 - Pushed `8bdf398` `fix: regenerate lighter pdf thumbnails`.
-- Pulled the updated `main` branch on `82.156.76.218`.
-- Restarted `latextrans-backend.service`.
+- Pulled the updated `main` branch on the production host.
+- Restarted the backend systemd service on the production host.
 - Redeployed the Cloudflare Pages frontend; deployment URL for this pass was `https://a0066e3d.latextrans-bu2.pages.dev`.
 
 ### Live validation captured

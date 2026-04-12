@@ -573,7 +573,7 @@ STORAGE_BACKEND_MODE=cos
 COS_BUCKET=arxiv-1312796310
 COS_REGION=ap-guangzhou
 COS_BASE_PREFIX=latextrans-prod
-STORAGE_TEMP_DIR=/srv/LaTexTrans/backend/data/tmp_storage
+STORAGE_TEMP_DIR=<project-root>/backend/data/tmp_storage
 ```
 
 - [ ] **Step 3: Document the Cloudflare-managed ingress cutover**
