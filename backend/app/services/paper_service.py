@@ -2864,7 +2864,12 @@ def _translated_preview_reader_resource(*, paper_id: str, preview_payload: Dict[
     }
 
 
-def _resolve_object_storage_signed_url(asset: Dict[str, Any], *, expires_in: int) -> str:
+def _resolve_object_storage_signed_url(
+    asset: Dict[str, Any],
+    *,
+    expires_in: int,
+    response_params: Optional[Dict[str, str]] = None,
+) -> str:
     direct_url = str(asset.get("signed_url") or "").strip()
     if direct_url:
         return direct_url
@@ -2877,6 +2882,7 @@ def _resolve_object_storage_signed_url(asset: Dict[str, Any], *, expires_in: int
     signed_url = backend.build_download_url(
         object_key=file_path,
         expires_in=expires_in,
+        params=response_params,
     )
     return str(signed_url or "").strip()
 
@@ -5176,9 +5182,15 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
         raise HTTPException(status_code=404, detail="Translated PDF not available")
 
     if translated_asset.get("storage_backend") == "object_storage":
+        filename = str(translated_asset.get("file_name") or f"{paper_id}.pdf")
+        mime_type = str(translated_asset.get("mime_type") or "application/pdf")
         signed_url = _resolve_object_storage_signed_url(
             translated_asset,
             expires_in=300,
+            response_params={
+                "response-content-disposition": f'inline; filename="{filename}"',
+                "response-content-type": mime_type,
+            },
         )
         if not signed_url:
             raise HTTPException(status_code=404, detail="Translated PDF object not available")
@@ -5264,9 +5276,15 @@ async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]
         raise HTTPException(status_code=403, detail="Download token does not match asset")
 
     if translated_asset.get("storage_backend") == "object_storage":
+        filename = str(translated_asset.get("file_name") or f"{paper_id}.pdf")
+        mime_type = str(translated_asset.get("mime_type") or "application/octet-stream")
         signed_url = _resolve_object_storage_signed_url(
             translated_asset,
             expires_in=600,
+            response_params={
+                "response-content-disposition": f'attachment; filename="{filename}"',
+                "response-content-type": mime_type,
+            },
         )
         if not signed_url:
             raise HTTPException(status_code=404, detail="Translated PDF object not available")

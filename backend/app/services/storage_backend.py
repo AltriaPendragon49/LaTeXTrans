@@ -40,7 +40,13 @@ class StorageBackend(ABC):
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
         raise NotImplementedError
 
-    def build_download_url(self, *, object_key: str, expires_in: int) -> Optional[str]:
+    def build_download_url(
+        self,
+        *,
+        object_key: str,
+        expires_in: int,
+        params: Optional[dict[str, str]] = None,
+    ) -> Optional[str]:
         return None
 
     @staticmethod
@@ -180,12 +186,23 @@ class CosStorageBackend(StorageBackend):
             return body
         return body.decode(encoding)
 
-    def build_download_url(self, *, object_key: str, expires_in: int) -> Optional[str]:
+    def build_download_url(
+        self,
+        *,
+        object_key: str,
+        expires_in: int,
+        params: Optional[dict[str, str]] = None,
+    ) -> Optional[str]:
         full_key = self._full_object_key(object_key)
+        request_kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "Key": full_key,
+            "Expired": expires_in,
+        }
+        if params:
+            request_kwargs["Params"] = params
         return self._get_client().get_presigned_download_url(
-            Bucket=self.bucket,
-            Key=full_key,
-            Expired=expires_in,
+            **request_kwargs,
         )
 
     def _full_object_key(self, object_key: str) -> str:

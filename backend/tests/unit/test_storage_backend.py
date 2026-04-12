@@ -142,6 +142,42 @@ def test_cos_backend_builds_signed_download_url() -> None:
     assert url == "https://cos.example.com/download"
 
 
+def test_cos_backend_builds_signed_download_url_with_response_overrides() -> None:
+    class _FakeClient:
+        def upload_file(self, **kwargs):
+            return {"ETag": "etag"}
+
+        def get_presigned_download_url(self, **kwargs):
+            assert kwargs["Bucket"] == "bucket-1"
+            assert kwargs["Key"] == "paperx/data/community_papers/paper-1/translated/translated.pdf"
+            assert kwargs["Expired"] == 300
+            assert kwargs["Params"] == {
+                "response-content-disposition": 'inline; filename="translated.pdf"',
+                "response-content-type": "application/pdf",
+            }
+            return "https://cos.example.com/inline-download"
+
+    backend = CosStorageBackend(
+        bucket="bucket-1",
+        region="ap-guangzhou",
+        secret_id="secret-id",
+        secret_key="secret-key",
+        base_prefix="paperx",
+        client=_FakeClient(),
+    )
+
+    url = backend.build_download_url(
+        object_key="paperx/data/community_papers/paper-1/translated/translated.pdf",
+        expires_in=300,
+        params={
+            "response-content-disposition": 'inline; filename="translated.pdf"',
+            "response-content-type": "application/pdf",
+        },
+    )
+
+    assert url == "https://cos.example.com/inline-download"
+
+
 def test_storage_backend_factory_rejects_incomplete_cos_config(tmp_path: Path) -> None:
     class DummySettings:
         storage_backend_mode = "cos"

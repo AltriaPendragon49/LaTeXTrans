@@ -429,9 +429,13 @@ def test_resolve_paper_download_builds_signed_url_from_object_key(monkeypatch):
     increments = []
 
     class _FakeStorageBackend:
-        def build_download_url(self, *, object_key: str, expires_in: int):
+        def build_download_url(self, *, object_key: str, expires_in: int, params=None):
             assert object_key == "paperx/data/community_papers/paper-1/translated/translated.pdf"
             assert expires_in == 600
+            assert params == {
+                "response-content-disposition": 'attachment; filename="translated.pdf"',
+                "response-content-type": "application/pdf",
+            }
             return "https://cos.example.com/generated.pdf?sign=xyz"
 
     monkeypatch.setattr(
@@ -475,3 +479,49 @@ def test_resolve_paper_download_builds_signed_url_from_object_key(monkeypatch):
 
     assert result["signed_url"] == "https://cos.example.com/generated.pdf?sign=xyz"
     assert increments == ["paper-1"]
+
+
+def test_resolve_paper_translated_pdf_preview_builds_inline_signed_url_from_object_key(monkeypatch):
+    class _FakeStorageBackend:
+        def build_download_url(self, *, object_key: str, expires_in: int, params=None):
+            assert object_key == "paperx/data/community_papers/paper-1/translated/translated.pdf"
+            assert expires_in == 300
+            assert params == {
+                "response-content-disposition": 'inline; filename="translated.pdf"',
+                "response-content-type": "application/pdf",
+            }
+            return "https://cos.example.com/inline.pdf?sign=xyz"
+
+    monkeypatch.setattr(
+        paper_service,
+        "_get_storage_backend",
+        lambda: _FakeStorageBackend(),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "translated_pdf": {
+                    "id": "asset-pdf",
+                    "task_id": "task-1",
+                    "asset_type": "translated_pdf",
+                    "storage_backend": "object_storage",
+                    "file_path": "paperx/data/community_papers/paper-1/translated/translated.pdf",
+                    "file_name": "translated.pdf",
+                    "mime_type": "application/pdf",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.resolve_paper_translated_pdf_preview(paper_id="paper-1"))
+
+    assert result["signed_url"] == "https://cos.example.com/inline.pdf?sign=xyz"
