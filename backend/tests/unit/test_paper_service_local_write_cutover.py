@@ -244,6 +244,7 @@ def test_update_and_asset_upsert_use_local_repository(
     assert asset["paper_id"] == "paper-local-1"
     assert asset["asset_type"] == "preview_html"
     assert asset["is_latest"] is True
+    assert asset["storage_backend"] == "local_disk"
 
 
 

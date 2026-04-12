@@ -229,8 +229,7 @@ class Settings(BaseSettings):
     storage_temp_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "tmp_storage",
         validation_alias="STORAGE_TEMP_DIR",
-        description="Temporary directory used by the local storage backend. "
-        "Field name is kept for compatibility even though it currently serves as the local root.",
+        description="Temporary staging directory for storage-backed workflows such as COS uploads.",
     )
     cos_bucket: Optional[str] = Field(default=None, validation_alias="COS_BUCKET")
     cos_region: Optional[str] = Field(default=None, validation_alias="COS_REGION")
@@ -414,8 +413,8 @@ class Settings(BaseSettings):
 
     @property
     def local_storage_root(self) -> Path:
-        """Expose the path the local disk backend currently uses as its root."""
-        return self.storage_temp_dir
+        """Expose the durable root the local disk backend uses for dev/local fallback."""
+        return self.base_dir
     
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM API configuration as a dictionary"""

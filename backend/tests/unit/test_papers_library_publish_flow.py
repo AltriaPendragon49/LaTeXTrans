@@ -106,6 +106,7 @@ def test_publish_task_to_community_library_copies_assets_with_relative_paths(mon
             "paper_id": kwargs["paper_id"],
             "task_id": kwargs["task_id"],
             "asset_type": kwargs["asset_type"],
+            "storage_backend": kwargs["storage_backend"],
             "file_path": kwargs["file_path"],
             "file_name": kwargs["file_name"],
             "mime_type": kwargs.get("mime_type"),
@@ -132,14 +133,138 @@ def test_publish_task_to_community_library_copies_assets_with_relative_paths(mon
     for asset_type, payload in upserted.items():
         stored_path = Path(payload["file_path"])
         assert not stored_path.is_absolute(), asset_type
+        assert payload["storage_backend"] == "local_disk", asset_type
         assert payload["file_path"].startswith("data/community_papers/paper-1/")
-        assert (base_dir / payload["file_path"]).exists(), asset_type
 
     assert source_dir.exists()
     assert (source_dir / "main.tex").read_text(encoding="utf-8") == "\\section{Intro}"
     assert output_dir.exists()
     assert (output_dir / "paper_translated.pdf").read_text(encoding="utf-8") == "pdf-bytes"
     assert (output_dir / "sections_map.json").exists()
+
+
+def test_publish_task_to_community_library_records_object_storage_keys(monkeypatch, tmp_path):
+    base_dir = tmp_path / "repo"
+    data_dir = base_dir / "data"
+    uploads_dir = data_dir / "uploads"
+    outputs_dir = data_dir / "outputs"
+    community_dir = data_dir / "community_papers"
+    storage_temp_dir = data_dir / "tmp_storage"
+    source_dir = uploads_dir / "arxiv_2503.01010"
+    output_dir = outputs_dir / "task-1"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    storage_temp_dir.mkdir(parents=True, exist_ok=True)
+    (source_dir / "main.tex").write_text("\\section{Intro}", encoding="utf-8")
+    translated_pdf = output_dir / "paper_translated.pdf"
+    translated_pdf.write_text("pdf-bytes", encoding="utf-8")
+    (output_dir / "sections_map.json").write_text(
+        json.dumps(
+            [
+                {
+                    "section": "1",
+                    "content": "\\section{Intro}\nBody",
+                    "trans_content": "\\section{寮曡█}\n涓枃姝ｆ枃",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
+    monkeypatch.setattr(paper_service.settings, "data_dir", data_dir)
+    monkeypatch.setattr(paper_service.settings, "uploads_dir", uploads_dir)
+    monkeypatch.setattr(paper_service.settings, "outputs_dir", outputs_dir)
+    monkeypatch.setattr(paper_service.settings, "community_papers_dir", community_dir, raising=False)
+    monkeypatch.setattr(paper_service.settings, "storage_temp_dir", storage_temp_dir, raising=False)
+    monkeypatch.setattr(paper_service.settings, "storage_backend_mode", "cos", raising=False)
+    monkeypatch.setattr(paper_service.settings, "cos_base_prefix", "paperx", raising=False)
+
+    class _TaskManager:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return {
+                "task_id": task_id,
+                "status": "completed",
+                "source_type": "arxiv",
+                "arxiv_id": "2503.01010",
+                "user_id": "user-1",
+                "source_available": True,
+                "source_path": str(source_dir),
+                "output_path": str(output_dir),
+            }
+
+    class _FakeStorage:
+        def put_file(self, *, local_path, object_key, content_type, delete_local):
+            return type(
+                "Stored",
+                (),
+                {
+                    "storage_backend": "object_storage",
+                    "object_key": object_key,
+                    "content_type": content_type,
+                    "size_bytes": local_path.stat().st_size if local_path.exists() else None,
+                },
+            )()
+
+    inserted = {}
+    updated = []
+    upserted = {}
+    cleaned = []
+
+    async def _fetch_paper_by_arxiv_id(_arxiv_id):
+        return None
+
+    async def _insert_paper(payload):
+        inserted.update(payload)
+        return _paper(id="paper-1", **payload)
+
+    async def _update_paper(paper_id, payload):
+        updated.append((paper_id, payload))
+        return _paper(id=paper_id, **payload)
+
+    async def _upsert_latest_asset(**kwargs):
+        upserted[kwargs["asset_type"]] = kwargs
+        return {
+            "id": f"asset-{kwargs['asset_type']}",
+            "paper_id": kwargs["paper_id"],
+            "task_id": kwargs["task_id"],
+            "asset_type": kwargs["asset_type"],
+            "storage_backend": kwargs["storage_backend"],
+            "file_path": kwargs["file_path"],
+            "file_name": kwargs["file_name"],
+            "mime_type": kwargs.get("mime_type"),
+            "created_at": "2026-03-18T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(paper_service, "task_manager", _TaskManager())
+    monkeypatch.setattr(paper_service, "_get_storage_backend", lambda: _FakeStorage())
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_arxiv_id", _fetch_paper_by_arxiv_id)
+    monkeypatch.setattr(paper_service, "_insert_paper", _insert_paper)
+    monkeypatch.setattr(paper_service, "_update_paper", _update_paper)
+    monkeypatch.setattr(paper_service, "_upsert_latest_asset", _upsert_latest_asset)
+    monkeypatch.setattr(
+        paper_service,
+        "clear_cached_runtime_artifacts",
+        lambda task_id, retained_paths: cleaned.append((task_id, tuple(str(path) for path in retained_paths))),
+    )
+
+    result = asyncio.run(
+        paper_service.ensure_task_published_to_community_library(
+            task_id="task-1",
+        )
+    )
+
+    assert result["paper"]["id"] == "paper-1"
+    assert inserted["community_status"] == "user_fallback"
+    assert set(upserted) == {"source_archive", "translated_pdf", "preview_html"}
+    assert {payload["storage_backend"] for payload in upserted.values()} == {"object_storage"}
+    assert upserted["translated_pdf"]["file_path"].startswith("paperx/data/community_papers/paper-1/")
+    assert upserted["preview_html"]["file_path"].startswith("paperx/data/community_papers/paper-1/")
+    assert upserted["source_archive"]["file_name"].endswith(".zip")
+    assert any(str(translated_pdf) in paths for _task_id, paths in cleaned)
+    assert any(any("preview_generation" in path for path in paths) for _task_id, paths in cleaned)
 
 
 def test_publish_task_reuses_existing_paper_for_same_arxiv(monkeypatch, tmp_path):

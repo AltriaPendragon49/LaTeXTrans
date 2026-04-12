@@ -45,6 +45,33 @@ def get_auth_repository() -> AuthRepository:
     return AuthRepository()
 
 
+def _delete_local_cache_path(path: Path) -> None:
+    if not path.exists():
+        return
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=False)
+        return
+    path.unlink()
+
+
+def clear_cached_runtime_artifacts(task_id: str, retained_paths: List[Path]) -> List[str]:
+    cleared_paths: List[str] = []
+    for candidate in retained_paths:
+        if not isinstance(candidate, Path):
+            candidate = Path(candidate)
+        if not candidate.exists():
+            continue
+        _delete_local_cache_path(candidate)
+        cleared_paths.append(str(candidate))
+    if cleared_paths:
+        logger.info(
+            "[TaskManager] Cleared local cache artifacts for task %s after durable persistence: %s",
+            task_id,
+            cleared_paths,
+        )
+    return cleared_paths
+
+
 
 def set_runtime_shutting_down(value: bool) -> None:
     """Set global runtime shutdown flag for task execution guards."""

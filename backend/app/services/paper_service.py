@@ -34,7 +34,17 @@ from backend.app.repositories import CommunityPaperRepository
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_preview_service
-from backend.app.services.task_manager import get_task_manager, get_task_queue
+from backend.app.services.storage_backend import (
+    LocalDiskStorageBackend,
+    StorageBackend,
+    StoredObjectRef,
+    build_storage_backend,
+)
+from backend.app.services.task_manager import (
+    clear_cached_runtime_artifacts,
+    get_task_manager,
+    get_task_queue,
+)
 from backend.app.utils.async_blocking import run_db_blocking
 
 logger = logging.getLogger(__name__)
@@ -1673,6 +1683,115 @@ def _copy_into_community_library(source_path: Path, destination_path: Path) -> P
     return destination_path
 
 
+def _get_storage_backend() -> StorageBackend:
+    return build_storage_backend(settings)
+
+
+def _storage_uses_object_store(backend: StorageBackend) -> bool:
+    return not isinstance(backend, LocalDiskStorageBackend)
+
+
+def _storage_object_key_from_destination(destination_path: Path) -> str:
+    relative_path = _store_relative_path(destination_path)
+    if settings.storage_backend_mode.strip().lower() != "cos":
+        return relative_path
+
+    normalized_prefix = str(settings.cos_base_prefix or "").strip().strip("/")
+    normalized_relative = relative_path.lstrip("/")
+    if not normalized_prefix:
+        return normalized_relative
+    return f"{normalized_prefix}/{normalized_relative}"
+
+
+def _archive_directory_for_storage(
+    *,
+    source_path: Path,
+    task_id: Optional[str],
+) -> Path:
+    archive_root = settings.storage_temp_dir / "staged_archives"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    archive_base = archive_root / f"{task_id or 'shared'}-{uuid4().hex[:8]}"
+    archive_path = Path(
+        shutil.make_archive(
+            str(archive_base),
+            "zip",
+            root_dir=source_path.parent,
+            base_dir=source_path.name,
+        )
+    )
+    return archive_path
+
+
+def _persist_retained_artifact(
+    *,
+    local_path: Path,
+    paper_id: str,
+    task_id: Optional[str],
+    asset_type: str,
+    source_name: str,
+    content_type: Optional[str],
+) -> tuple[StoredObjectRef, str]:
+    backend = _get_storage_backend()
+    destination = _community_asset_destination(
+        paper_id=paper_id,
+        task_id=task_id,
+        asset_type=asset_type,
+        source_name=source_name,
+    )
+
+    if isinstance(backend, LocalDiskStorageBackend):
+        staged_path = local_path
+        staged_cleanup: Optional[Path] = None
+        resolved_name = Path(source_name or local_path.name).name or asset_type
+        resolved_type = content_type
+        if local_path.is_dir():
+            staged_path = _archive_directory_for_storage(
+                source_path=local_path,
+                task_id=task_id,
+            )
+            staged_cleanup = staged_path
+            resolved_name = staged_path.name
+            resolved_type = content_type or "application/zip"
+            destination = _community_asset_destination(
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_type=asset_type,
+                source_name=resolved_name,
+            )
+        stored = backend.put_file(
+            local_path=staged_path,
+            object_key=_store_relative_path(destination),
+            content_type=resolved_type,
+            delete_local=False,
+        )
+        if staged_cleanup and staged_cleanup.exists():
+            staged_cleanup.unlink()
+        return stored, resolved_name
+
+    staged_path = local_path
+    staged_cleanup: Optional[Path] = None
+    resolved_name = Path(source_name or local_path.name).name or asset_type
+    resolved_type = content_type
+    if local_path.is_dir():
+        staged_path = _archive_directory_for_storage(
+            source_path=local_path,
+            task_id=task_id,
+        )
+        staged_cleanup = staged_path
+        resolved_name = staged_path.name
+        resolved_type = content_type or "application/zip"
+
+    stored = backend.put_file(
+        local_path=staged_path,
+        object_key=_storage_object_key_from_destination(destination),
+        content_type=resolved_type,
+        delete_local=False,
+    )
+    if staged_cleanup and staged_cleanup.exists():
+        staged_cleanup.unlink()
+    return stored, resolved_name
+
+
 async def resolve_submitter_context(
     current_user: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -2096,6 +2215,7 @@ async def _upsert_latest_asset(
     file_path: str,
     file_name: Optional[str] = None,
     mime_type: Optional[str] = None,
+    storage_backend: str = "local_disk",
 ) -> Dict[str, Any]:
     repository = get_community_paper_repository()
     resolved_name = file_name or Path(file_path).name
@@ -2109,6 +2229,7 @@ async def _upsert_latest_asset(
                 file_path=file_path,
                 file_name=resolved_name,
                 mime_type=resolved_mime,
+                storage_backend=storage_backend,
             )
         )
     except DatabaseUnavailableError as exc:
@@ -2174,19 +2295,22 @@ async def _create_source_asset(
     resolved_source = _resolve_storage_path(source_path)
     if not resolved_source.exists():
         return None
-    destination = _community_asset_destination(
+    stored_ref, stored_name = _persist_retained_artifact(
+        local_path=resolved_source,
         paper_id=paper_id,
         task_id=task_id,
         asset_type="source_archive",
-        source_name=resolved_source.name,
+        source_name=resolved_source.name if resolved_source.is_file() else f"{resolved_source.name}.zip",
+        content_type="application/zip" if resolved_source.is_file() else None,
     )
-    copied = _copy_into_community_library(resolved_source, destination)
     return await _upsert_latest_asset(
         paper_id=paper_id,
         task_id=task_id,
         asset_type="source_archive",
-        file_path=_store_relative_path(copied),
-        file_name=copied.name,
+        file_path=stored_ref.object_key,
+        file_name=stored_name,
+        mime_type=stored_ref.content_type,
+        storage_backend=stored_ref.storage_backend,
     )
 
 
@@ -2429,23 +2553,26 @@ async def _resolve_translated_pdf_asset(
         pdf_path = download_route._find_translated_pdf(output_dir)
         if not pdf_path or not pdf_path.exists():
             continue
-
-        destination = _community_asset_destination(
+        stored_ref, stored_name = _persist_retained_artifact(
+            local_path=pdf_path,
             paper_id=paper_id,
             task_id=task_id,
             asset_type="translated_pdf",
             source_name=pdf_path.name,
+            content_type="application/pdf",
         )
-        copied = _copy_into_community_library(pdf_path, destination)
 
         asset = await _upsert_latest_asset(
             paper_id=paper_id,
             task_id=task_id,
             asset_type="translated_pdf",
-            file_path=_store_relative_path(copied),
-            file_name=copied.name,
-            mime_type="application/pdf",
+            file_path=stored_ref.object_key,
+            file_name=stored_name,
+            mime_type=stored_ref.content_type or "application/pdf",
+            storage_backend=stored_ref.storage_backend,
         )
+        if stored_ref.storage_backend != "local_disk":
+            clear_cached_runtime_artifacts(task_id, [pdf_path])
         await _update_paper(
             paper_id,
             {
@@ -2749,6 +2876,12 @@ async def _resolve_preview_html_asset(
     asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     preview_asset: Optional[Dict[str, str]] = None
+    backend = _get_storage_backend()
+    target_dir = (
+        settings.storage_temp_dir / "preview_generation" / paper_id
+        if _storage_uses_object_store(backend)
+        else _community_library_root(paper_id) / "preview"
+    )
     source_dirs = _candidate_source_directories_for_preview(
         paper_id=paper_id,
         task_id=task_id,
@@ -2758,7 +2891,7 @@ async def _resolve_preview_html_asset(
         try:
             preview_asset = paper_preview_service.generate_preview_html(
                 output_dir,
-                target_dir=_community_library_root(paper_id) / "preview",
+                target_dir=target_dir,
                 source_dirs=source_dirs,
                 paper_metadata={
                     "title": paper.get("title"),
@@ -2772,13 +2905,26 @@ async def _resolve_preview_html_asset(
     if not preview_asset:
         return None
 
+    preview_path = Path(preview_asset["file_path"])
+    stored_ref, stored_name = _persist_retained_artifact(
+        local_path=preview_path,
+        paper_id=paper_id,
+        task_id=task_id,
+        asset_type="preview_html",
+        source_name=preview_asset["file_name"],
+        content_type=preview_asset["mime_type"],
+    )
+    if stored_ref.storage_backend != "local_disk":
+        clear_cached_runtime_artifacts(task_id, [preview_path])
+
     return await _upsert_latest_asset(
         paper_id=paper_id,
         task_id=task_id,
         asset_type="preview_html",
-        file_path=_store_relative_path(preview_asset["file_path"]),
-        file_name=preview_asset["file_name"],
-        mime_type=preview_asset["mime_type"],
+        file_path=stored_ref.object_key,
+        file_name=stored_name,
+        mime_type=stored_ref.content_type,
+        storage_backend=stored_ref.storage_backend,
     )
 
 

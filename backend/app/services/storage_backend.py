@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import os
 from pathlib import Path, PurePosixPath
 from typing import Optional, Sequence
 
@@ -49,6 +50,15 @@ class StorageBackend(ABC):
             raise ValueError("Object keys cannot use drive-qualified absolute paths.")
         return parts
 
+    @staticmethod
+    def _fs_path(path: Path) -> str:
+        raw = os.path.abspath(os.fspath(path))
+        if os.name != "nt" or raw.startswith("\\\\?\\") or len(raw) < 240:
+            return raw
+        if raw.startswith("\\\\"):
+            return "\\\\?\\UNC\\" + raw.lstrip("\\")
+        return "\\\\?\\" + raw
+
 
 class LocalDiskStorageBackend(StorageBackend):
     """Simple backend that persists objects to a local filesystem root."""
@@ -74,15 +84,18 @@ class LocalDiskStorageBackend(StorageBackend):
         delete_local: bool,
     ) -> StoredObjectRef:
         target = self._build_target_path(object_key)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(local_path.read_bytes())
+        os.makedirs(self._fs_path(target.parent), exist_ok=True)
+        with open(self._fs_path(local_path), "rb") as source_handle:
+            payload = source_handle.read()
+        with open(self._fs_path(target), "wb") as target_handle:
+            target_handle.write(payload)
         if delete_local and local_path.exists():
             local_path.unlink()
         return StoredObjectRef(
             storage_backend="local_disk",
             object_key="/".join(self._normalize_object_key(object_key)),
             content_type=content_type,
-            size_bytes=target.stat().st_size,
+            size_bytes=os.path.getsize(self._fs_path(target)),
         )
 
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:

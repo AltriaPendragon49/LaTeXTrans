@@ -8,6 +8,7 @@ import pytest
 import backend.app.main as main_module
 from backend.app.api.routes import translate as translate_route
 from backend.app.models.config_models import AdvancedConfig
+from backend.app.services.task_manager import clear_cached_runtime_artifacts
 
 
 class _Result:
@@ -733,6 +734,22 @@ def test_startup_orphan_cleanup_uses_local_translation_task_repository(monkeypat
     assert set(fake_repo.existing_queries[0]) == {"task-orphan", "task-keep"}
     assert not (outputs_dir / "task-orphan").exists()
     assert (terms_dir / "task-keep").exists()
+
+
+def test_clear_cached_runtime_artifacts_removes_existing_file_and_directory(tmp_path: Path):
+    file_path = tmp_path / "task-1" / "translated.pdf"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text("pdf", encoding="utf-8")
+    preview_dir = tmp_path / "task-1" / "preview"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    (preview_dir / "preview.html").write_text("<article>preview</article>", encoding="utf-8")
+
+    cleared = clear_cached_runtime_artifacts("task-1", [file_path, preview_dir])
+
+    assert str(file_path) in cleared
+    assert str(preview_dir) in cleared
+    assert not file_path.exists()
+    assert not preview_dir.exists()
 
 
 def test_run_translation_persists_failed_state_on_cancel(monkeypatch, tmp_path: Path):
