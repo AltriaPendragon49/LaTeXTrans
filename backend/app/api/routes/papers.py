@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import io
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
 settings = get_settings()
 LOCAL_PDF_PREVIEW_CHUNK_SIZE = 64 * 1024
-THUMBNAIL_CACHE_VERSION = "v2"
+THUMBNAIL_CACHE_VERSION = "v3"
 
 
 def _ensure_paper_authorized(
@@ -407,37 +408,44 @@ def _decode_png_data_uri(payload: Optional[str]) -> Optional[bytes]:
 
 def _thumbnail_cache_path(cache_seed: str) -> Path:
     digest = hashlib.sha256(f"{THUMBNAIL_CACHE_VERSION}:{cache_seed}".encode("utf-8")).hexdigest()
-    return _paper_thumbnail_cache_dir() / f"{digest}.jpg"
-
-
-def _optimize_thumbnail_bytes(payload: Optional[bytes]) -> Optional[bytes]:
-    if not payload:
-        return None
-
-    try:
-        from PIL import Image
-    except Exception:
-        return payload
-
-    try:
-        with Image.open(io.BytesIO(payload)) as image:
-            page = image.convert("RGB")
-            max_width = 480
-            if page.width > max_width:
-                height = max(1, int(page.height * (max_width / page.width)))
-                resampling = getattr(Image, "Resampling", Image)
-                page = page.resize((max_width, height), resampling.LANCZOS)
-
-            buffer = io.BytesIO()
-            page.save(buffer, format="JPEG", quality=58, optimize=True, progressive=True)
-            return buffer.getvalue()
-    except Exception:
-        return payload
+    return _paper_thumbnail_cache_dir() / f"{digest}.png"
 
 
 def _render_pdf_thumbnail_bytes_from_path(pdf_path: Path) -> Optional[bytes]:
-    data_uri = paper_preview_service._inline_pdf_data_uri(pdf_path)
-    return _optimize_thumbnail_bytes(_decode_png_data_uri(data_uri))
+    rasterizer = shutil.which("pdftocairo") or shutil.which("pdftoppm")
+    if not rasterizer:
+        data_uri = paper_preview_service._inline_pdf_data_uri(pdf_path)
+        return _decode_png_data_uri(data_uri)
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_prefix = Path(temp_dir) / "page"
+            command = [
+                rasterizer,
+                "-f",
+                "1",
+                "-l",
+                "1",
+                "-singlefile",
+                "-png",
+                "-scale-to-x",
+                "480",
+                "-scale-to-y",
+                "-1",
+                str(pdf_path),
+                str(output_prefix),
+            ]
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            rendered = output_prefix.with_suffix(".png")
+            return rendered.read_bytes() if rendered.exists() else None
+    except Exception:
+        data_uri = paper_preview_service._inline_pdf_data_uri(pdf_path)
+        return _decode_png_data_uri(data_uri)
 
 
 async def _render_pdf_thumbnail_bytes_from_url(url: str) -> Optional[bytes]:
@@ -481,7 +489,7 @@ async def _serve_pdf_thumbnail_response(
     if cache_path.exists():
         return FileResponse(
             path=cache_path,
-            media_type="image/jpeg",
+            media_type="image/png",
             headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
         )
 
@@ -497,7 +505,7 @@ async def _serve_pdf_thumbnail_response(
     cache_path.write_bytes(thumbnail_bytes)
     return FileResponse(
         path=cache_path,
-        media_type="image/jpeg",
+        media_type="image/png",
         headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
     )
 
