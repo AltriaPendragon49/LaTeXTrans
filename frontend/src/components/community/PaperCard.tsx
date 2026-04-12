@@ -26,6 +26,13 @@ const PDF_PREVIEW_OPTIONS_SOURCE = Object.freeze({
   rangeChunkSize: 128 * 1024,
 })
 
+const PDF_PREVIEW_OPTIONS_TRANSLATED = Object.freeze({
+  ...PDF_PREVIEW_OPTIONS_BASE,
+  disableStream: true,
+  disableAutoFetch: true,
+  rangeChunkSize: 128 * 1024,
+})
+
 interface PaperCardProps {
   paper: CommunityPaper
   onDelete?: (paper: CommunityPaper) => void
@@ -288,7 +295,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
             pdfUrl={transPdfUrl}
             unavailableIcon="translate"
             placeholderTone="accent"
-            pdfOptions={PDF_PREVIEW_OPTIONS_BASE}
+            pdfOptions={PDF_PREVIEW_OPTIONS_TRANSLATED}
           />
           <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] bg-blue-50 px-2 py-0.5 rounded-sm dark:bg-blue-900/30 dark:text-blue-300">ZH-CN</span>
         </div>

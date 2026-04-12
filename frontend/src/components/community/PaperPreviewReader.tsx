@@ -10,11 +10,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { getCommunityPaperPreview } from "@/lib/community-api"
+import { stripLeadingDuplicatePaperHeaderHtml, type PaperReaderMetadata } from "@/lib/paper-reader-html"
 import { enhancePaperPreviewElement, preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import type { CommunityPaperPreviewResponse } from "@/types/community"
 
 interface PaperPreviewReaderProps {
   paperId: string
+  paperMetadata?: PaperReaderMetadata | null
   initialPreview?: CommunityPaperPreviewResponse | null
   readerState?: "ready" | "warming" | "unavailable"
 }
@@ -105,7 +107,7 @@ function normalizePreviewHtml(rawHtml: string): string {
 }
 
 export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderProps>(
-  function PaperPreviewReader({ paperId, initialPreview = null, readerState = "unavailable" }, ref) {
+  function PaperPreviewReader({ paperId, paperMetadata = null, initialPreview = null, readerState = "unavailable" }, ref) {
     const { t } = useTranslation()
     const contentRef = useRef<HTMLDivElement | null>(null)
     const preparedPreviewRef = useRef<{ signature: string; html: string } | null>(null)
@@ -197,13 +199,14 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       }
 
       const normalized = normalizePreviewHtml(preview.html_content)
-      const sanitized = DOMPurify.sanitize(normalized)
+      const stripped = stripLeadingDuplicatePaperHeaderHtml(normalized, paperMetadata) ?? normalized
+      const sanitized = DOMPurify.sanitize(stripped)
       preparedPreviewRef.current = {
         signature: previewSignature,
         html: sanitized,
       }
       return sanitized
-    }, [preview?.html_content, previewSignature])
+    }, [paperMetadata, preview?.html_content, previewSignature])
 
     useEffect(() => {
       if (!previewSignature) {

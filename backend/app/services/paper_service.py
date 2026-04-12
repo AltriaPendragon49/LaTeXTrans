@@ -65,6 +65,7 @@ TERMINAL_TASK_STATUSES = {
 _preview_recovery_inflight: set[str] = set()
 _detail_repair_inflight: set[str] = set()
 _preview_payload_cache: Dict[str, Dict[str, Any]] = {}
+_preview_html_cache: Dict[str, str] = {}
 _source_html_cache: Dict[str, str] = {}
 _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
@@ -1542,6 +1543,59 @@ def _preview_payload_cache_key(
     )
 
 
+def _preview_html_cache_key(preview_asset: Dict[str, Any]) -> Optional[str]:
+    storage_backend = str(preview_asset.get("storage_backend") or "local_disk").strip().lower()
+    if storage_backend == "object_storage":
+        object_key = str(preview_asset.get("file_path") or "").strip()
+        if not object_key:
+            return None
+        return "|".join(
+            [
+                "object_storage",
+                object_key,
+                str(preview_asset.get("id") or ""),
+                str(preview_asset.get("created_at") or ""),
+            ]
+        )
+
+    preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
+    return _preview_payload_cache_key(preview_path, preview_asset)
+
+
+def _read_preview_html_from_asset(preview_asset: Dict[str, Any]) -> Optional[str]:
+    storage_backend = str(preview_asset.get("storage_backend") or "local_disk").strip().lower()
+    cache_key = _preview_html_cache_key(preview_asset)
+    if cache_key:
+        cached_html = _preview_html_cache.get(cache_key)
+        if cached_html is not None:
+            return cached_html
+
+    try:
+        if storage_backend == "object_storage":
+            object_key = str(preview_asset.get("file_path") or "").strip()
+            if not object_key:
+                return None
+            html_content = _get_storage_backend().read_text(
+                ref=StoredObjectRef(
+                    storage_backend="object_storage",
+                    object_key=object_key,
+                    content_type=preview_asset.get("mime_type"),
+                ),
+                encoding="utf-8",
+            )
+        else:
+            preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
+            if not preview_path.exists():
+                return None
+            html_content = preview_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    if cache_key:
+        _preview_html_cache[cache_key] = html_content
+    return html_content
+
+
 def _load_preview_payload(
     *,
     paper_id: str,
@@ -1550,44 +1604,15 @@ def _load_preview_payload(
     allow_untranslated_zh: bool = False,
     allow_stale_reader: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    storage_backend = str(preview_asset.get("storage_backend") or "local_disk").strip().lower()
-    html_content: Optional[str] = None
-    cache_key: Optional[str] = None
-
-    if storage_backend == "object_storage":
-        object_key = str(preview_asset.get("file_path") or "").strip()
-        if not object_key:
-            return None
-        cache_key = "|".join(
-            [
-                "object_storage",
-                object_key,
-                str(preview_asset.get("id") or ""),
-                str(preview_asset.get("created_at") or ""),
-            ]
-        )
-        ref = StoredObjectRef(
-            storage_backend="object_storage",
-            object_key=object_key,
-            content_type=preview_asset.get("mime_type"),
-        )
-    else:
-        preview_path = _resolve_storage_path(preview_asset.get("file_path") or "")
-        if not preview_path.exists():
-            return None
-        cache_key = _preview_payload_cache_key(preview_path, preview_asset)
+    cache_key = _preview_html_cache_key(preview_asset)
 
     if cache_key:
         cached_payload = _preview_payload_cache.get(cache_key)
         if cached_payload is not None:
             return cached_payload
 
-    try:
-        if storage_backend == "object_storage":
-            html_content = _get_storage_backend().read_text(ref=ref, encoding="utf-8")
-        else:
-            html_content = preview_path.read_text(encoding="utf-8")
-    except Exception:
+    html_content = _read_preview_html_from_asset(preview_asset)
+    if html_content is None:
         return None
     html_content = _normalize_legacy_preview_math_blocks(html_content)
 
@@ -3332,6 +3357,7 @@ async def _sync_task_assets_for_paper(
     task_id: str,
     promote_to_official: bool,
     paper: Optional[Dict[str, Any]] = None,
+    defer_runtime_cleanup: bool = False,
 ) -> Dict[str, Any]:
     task = task_manager.get_task(task_id)
     if not task:
@@ -3388,12 +3414,28 @@ async def _sync_task_assets_for_paper(
             update_payload["community_status"] = COMMUNITY_STATUS_OFFICIAL
             update_payload["official_published_at"] = _utc_now_iso()
         paper = await _update_paper(paper_id, update_payload)
-        if selected_asset and selected_asset.get("storage_backend") == "object_storage":
+        if (
+            selected_asset
+            and selected_asset.get("storage_backend") == "object_storage"
+            and not defer_runtime_cleanup
+        ):
             clear_cached_runtime_artifacts(
                 task_id,
                 _candidate_runtime_cache_paths_for_task(task_id),
             )
-        return {"done": True, "status": "completed", "paper": paper}
+        return {
+            "done": True,
+            "status": "completed",
+            "paper": paper,
+            "translated_asset": translated_asset,
+            "preview_asset": preview_asset,
+            "selected_asset": selected_asset,
+            "needs_runtime_cleanup": bool(
+                defer_runtime_cleanup
+                and selected_asset
+                and selected_asset.get("storage_backend") == "object_storage"
+            ),
+        }
 
     if task.get("status") in TERMINAL_TASK_STATUSES:
         if not paper:
@@ -3423,7 +3465,14 @@ async def _sync_task_assets_for_paper(
                 "updated_at": _utc_now_iso(),
             },
         )
-        return {"done": True, "status": "failed", "paper": paper}
+        return {
+            "done": True,
+            "status": "failed",
+            "paper": paper,
+            "translated_asset": translated_asset,
+            "preview_asset": preview_asset,
+            "selected_asset": selected_asset,
+        }
 
     return {"done": False, "status": task.get("status")}
 
@@ -3897,6 +3946,59 @@ def _load_structured_insight_translated_sections(task_id: str) -> List[Dict[str,
     return []
 
 
+def _load_structured_insight_sections_from_preview_asset(
+    preview_asset: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not preview_asset:
+        return []
+
+    html_content = _read_preview_html_from_asset(preview_asset)
+    if not html_content:
+        return []
+
+    try:
+        soup = BeautifulSoup(html_content, "html.parser")
+    except Exception:
+        return []
+
+    article = soup.select_one("article") or soup.body
+    if article is None:
+        return []
+
+    candidate_sections = article.find_all("section", recursive=False)
+    if not candidate_sections:
+        candidate_sections = article.find_all("section")
+    if not candidate_sections:
+        candidate_sections = [article]
+
+    normalized_sections: List[Dict[str, Any]] = []
+    for index, section in enumerate(candidate_sections):
+        heading = section.find(["h1", "h2", "h3", "h4", "h5", "h6"])
+        title = _normalize_metadata_text(heading.get_text(" ", strip=True) if heading else None)
+        text_chunks: List[str] = []
+        for block in section.find_all(["p", "li", "blockquote", "figcaption"]):
+            text = _normalize_metadata_text(block.get_text(" ", strip=True))
+            if not text:
+                continue
+            if title and text == title:
+                continue
+            text_chunks.append(text)
+        content = _normalize_multiline_text("\n\n".join(text_chunks))
+        if not content:
+            continue
+        normalized_sections.append(
+            {
+                "index": index,
+                "section": str(index + 1),
+                "title": title,
+                "content": content,
+                "raw_content": content,
+            }
+        )
+
+    return normalized_sections
+
+
 def _structured_insight_section_buckets(title: Optional[str], content: Optional[str]) -> set[str]:
     normalized_title = str(title or "").strip().lower()
     normalized_content = str(content or "").strip().lower()
@@ -3978,8 +4080,14 @@ def _compose_structured_insight_excerpt(
     return "\n\n".join(chunk for chunk in chunks if chunk).strip()
 
 
-def _prepare_structured_insight_sources(task_id: str) -> Dict[str, str]:
+def _prepare_structured_insight_sources(
+    task_id: str,
+    *,
+    preview_asset: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
     sections = _load_structured_insight_translated_sections(task_id)
+    if not sections and preview_asset:
+        sections = _load_structured_insight_sections_from_preview_asset(preview_asset)
     if not sections:
         return {section_key: "" for section_key in STRUCTURED_INSIGHT_SECTION_KEYS}
 
@@ -4189,8 +4297,13 @@ async def _generate_structured_insight_sections_from_task(
     title: str,
     abstract_raw: Optional[str],
     created_by: Optional[str],
+    preview_asset: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    sources = _prepare_structured_insight_sources(task_id)
+    sources = (
+        _prepare_structured_insight_sources(task_id, preview_asset=preview_asset)
+        if preview_asset
+        else _prepare_structured_insight_sources(task_id)
+    )
     llm_config = await _build_structured_insight_llm_config(created_by)
     generated_sections: List[Dict[str, Any]] = []
     prior_section_summaries: List[str] = []
@@ -4330,6 +4443,7 @@ async def _publish_admin_curation_job(
         task_id=translated_task_id,
         promote_to_official=False,
         paper=paper,
+        defer_runtime_cleanup=True,
     )
     paper = sync_result.get("paper") or paper
     abstract_translated = _extract_translated_abstract_from_task(translated_task_id) or paper.get("abstract_translated")
@@ -4338,12 +4452,18 @@ async def _publish_admin_curation_job(
         title=str(metadata.get("title") or paper.get("title") or ""),
         abstract_raw=metadata.get("abstract_raw") or paper.get("abstract_raw"),
         created_by=str(job.get("created_by") or ""),
+        preview_asset=sync_result.get("preview_asset"),
     )
     _validate_structured_insight_sections(structured_insight_sections)
     await _upsert_structured_insight_sections(
         paper_id=paper["id"],
         sections=structured_insight_sections,
     )
+    if sync_result.get("needs_runtime_cleanup"):
+        clear_cached_runtime_artifacts(
+            translated_task_id,
+            _candidate_runtime_cache_paths_for_task(translated_task_id),
+        )
     similar_source_paper = {
         **paper,
         "arxiv_id": resolved_arxiv_id,
@@ -5438,7 +5558,11 @@ async def get_community_paper_detail(
             asset_map=resolved_asset_map,
         )
 
-    source_html_content = await _fetch_sanitized_arxiv_html(str(paper.get("arxiv_id") or ""))
+    source_html_content = (
+        None
+        if fast_path
+        else await _fetch_sanitized_arxiv_html(str(paper.get("arxiv_id") or ""))
+    )
 
     reader_payload = _build_reader_experience_payload(
         paper=paper,

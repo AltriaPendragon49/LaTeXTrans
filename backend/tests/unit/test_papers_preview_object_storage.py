@@ -81,3 +81,57 @@ def test_get_paper_preview_reads_object_storage_asset(monkeypatch):
     assert result["paper_id"] == "paper-1"
     assert result["asset"]["id"] == "asset-preview"
     assert "Preview content loaded from object storage." in result["html_content"]
+
+
+def test_get_paper_preview_reuses_cached_object_storage_payload(monkeypatch):
+    if hasattr(paper_service, "_preview_payload_cache"):
+        paper_service._preview_payload_cache.clear()
+    if hasattr(paper_service, "_preview_html_cache"):
+        paper_service._preview_html_cache.clear()
+
+    read_count = {"count": 0}
+    html = (
+        f'<article class="paper-preview" data-reader-version="{paper_preview_service.PREVIEW_READER_VERSION}">'
+        "<section><h2>Introduction</h2><p>Preview content loaded from object storage.</p></section>"
+        "</article>"
+    )
+
+    class _FakeBackend:
+        def read_text(self, *, ref, encoding="utf-8"):
+            read_count["count"] += 1
+            assert ref.storage_backend == "object_storage"
+            assert ref.object_key == "paperx/data/community_papers/paper-1/preview/preview-cached.html"
+            assert encoding == "utf-8"
+            return html
+
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "preview_html": {
+                    "id": "asset-preview-cached",
+                    "task_id": "task-1",
+                    "asset_type": "preview_html",
+                    "storage_backend": "object_storage",
+                    "file_path": "paperx/data/community_papers/paper-1/preview/preview-cached.html",
+                    "file_name": "preview-cached.html",
+                    "mime_type": "text/html",
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(paper_service, "_get_storage_backend", lambda: _FakeBackend())
+
+    first = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+    second = asyncio.run(paper_service.get_paper_preview(paper_id="paper-1"))
+
+    assert first["html_content"] == second["html_content"]
+    assert read_count["count"] == 1

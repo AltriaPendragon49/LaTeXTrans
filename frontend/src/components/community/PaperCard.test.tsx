@@ -25,7 +25,15 @@ vi.mock("@/lib/paper-preview-enhancer", () => ({
 }))
 
 vi.mock("react-pdf", () => ({
-  Document: ({ file }: { file: string | null }) => <div data-testid="pdf-document" data-file={file ?? ""} />,
+  Document: ({ file, options }: { file: string | null; options?: Record<string, unknown> }) => (
+    <div
+      data-testid="pdf-document"
+      data-file={file ?? ""}
+      data-disable-stream={String(options?.disableStream ?? "")}
+      data-disable-auto-fetch={String(options?.disableAutoFetch ?? "")}
+      data-range-chunk-size={String(options?.rangeChunkSize ?? "")}
+    />
+  ),
   Page: () => <div data-testid="pdf-page" />,
   pdfjs: {
     version: "test",
@@ -167,5 +175,20 @@ describe("PaperCard", () => {
     const pdfDocuments = screen.getAllByTestId("pdf-document")
     expect(pdfDocuments[0]).toHaveAttribute("data-file", `${API_BASE_URL}/api/papers/paper-1/source-pdf`)
     expect(pdfDocuments[1]).toHaveAttribute("data-file", `${API_BASE_URL}/api/papers/paper-1/translated-pdf`)
+  })
+
+  it("uses range-friendly PDF preview options for both source and translated thumbnails", () => {
+    render(
+      <MemoryRouter>
+        <PaperCard paper={paper} />
+      </MemoryRouter>,
+    )
+
+    const pdfDocuments = screen.getAllByTestId("pdf-document")
+    for (const document of pdfDocuments) {
+      expect(document).toHaveAttribute("data-disable-stream", "true")
+      expect(document).toHaveAttribute("data-disable-auto-fetch", "true")
+      expect(document).toHaveAttribute("data-range-chunk-size", String(128 * 1024))
+    }
   })
 })

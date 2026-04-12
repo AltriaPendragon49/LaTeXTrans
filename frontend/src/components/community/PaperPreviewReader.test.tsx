@@ -155,6 +155,62 @@ describe("PaperPreviewReader", () => {
     })
   })
 
+  it("strips duplicated paper title and author lead content from hydrated previews", async () => {
+    getCommunityPaperPreviewMock.mockResolvedValue({
+      paper_id: "paper-1",
+      task_id: "task-1",
+      asset: {
+        id: "asset-preview-bootstrap",
+        task_id: "task-1",
+        asset_type: "preview_html",
+        file_name: "preview.html",
+        mime_type: "text/html",
+        created_at: "2026-03-18T02:00:00Z",
+      },
+      fetch_url: "/api/papers/paper-1/preview",
+      html_content:
+        "<article><header><h1>Structured LaTeX Translation</h1><p>Ada Lovelace, Alan Turing</p></header><section><h2>Introduction</h2><p>Hydrated reader body</p></section></article>",
+      generated_at: "2026-03-18T02:00:00Z",
+    })
+
+    render(
+      <PaperPreviewReader
+        paperId="paper-1"
+        paperMetadata={{ title: "Structured LaTeX Translation", authors: ["Ada Lovelace", "Alan Turing"] }}
+        initialPreview={{
+          paper_id: "paper-1",
+          task_id: "task-1",
+          asset: {
+            id: "asset-preview-bootstrap",
+            task_id: "task-1",
+            asset_type: "preview_html",
+            file_name: "preview.html",
+            mime_type: "text/html",
+            created_at: "2026-03-18T02:00:00Z",
+          },
+          fetch_url: "/api/papers/paper-1/preview",
+          generated_at: "2026-03-18T02:00:00Z",
+        }}
+        readerState="ready"
+      />,
+    )
+
+    expect(await screen.findByText("Introduction")).toBeInTheDocument()
+    expect(screen.getByText("Hydrated reader body")).toBeInTheDocument()
+    expect(sanitizeMock).toHaveBeenCalledWith(expect.not.stringContaining("Structured LaTeX Translation"))
+    expect(sanitizeMock).toHaveBeenCalledWith(expect.not.stringContaining("Ada Lovelace, Alan Turing"))
+    expect(
+      screen.queryByText("Structured LaTeX Translation", {
+        selector: "[data-testid='paper-preview-reader'] *",
+      }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Ada Lovelace, Alan Turing", {
+        selector: "[data-testid='paper-preview-reader'] *",
+      }),
+    ).not.toBeInTheDocument()
+  })
+
   it("does not load reader enhancement while warming", async () => {
     render(<PaperPreviewReader paperId="paper-1" readerState="warming" />)
 

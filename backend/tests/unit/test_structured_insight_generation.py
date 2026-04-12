@@ -141,6 +141,59 @@ def test_prepare_structured_insight_sources_prioritizes_intro_contributions_and_
     assert "整体领先" in sources["experiment"]
 
 
+def test_prepare_structured_insight_sources_falls_back_to_preview_asset_when_runtime_sections_are_missing(monkeypatch):
+    preview_html = """
+    <article class="paper-preview">
+      <section>
+        <h2>摘要</h2>
+        <p>本文聚焦结构化 LaTeX 翻译在复杂论文场景中的关键困难，并说明已有方法在结构保持方面仍有明显不足。</p>
+      </section>
+      <section>
+        <h2>方法</h2>
+        <p>我们提出多智能体协同流程，将解析、术语一致性和重建编排到统一 pipeline 中完成。</p>
+      </section>
+      <section>
+        <h2>实验</h2>
+        <p>实验结果显示该方法在结构保持与编译成功率上稳定优于对比基线。</p>
+      </section>
+      <section>
+        <h2>结论</h2>
+        <p>未来可以继续扩展到更多模板、更多公式密集型场景，并加强术语长期记忆。</p>
+      </section>
+    </article>
+    """
+
+    monkeypatch.setattr(
+        paper_service,
+        "_candidate_output_directories_for_task",
+        lambda _task_id: [],
+    )
+
+    class _FakeBackend:
+        def read_text(self, *, ref, encoding="utf-8"):
+            assert ref.storage_backend == "object_storage"
+            assert ref.object_key == "paperx/data/community_papers/paper-1/preview/preview.html"
+            assert encoding == "utf-8"
+            return preview_html
+
+    monkeypatch.setattr(paper_service, "_get_storage_backend", lambda: _FakeBackend())
+
+    sources = paper_service._prepare_structured_insight_sources(
+        "task-1",
+        preview_asset={
+            "storage_backend": "object_storage",
+            "file_path": "paperx/data/community_papers/paper-1/preview/preview.html",
+            "mime_type": "text/html",
+        },
+    )
+
+    assert "结构化 LaTeX 翻译" in sources["problem"]
+    assert "多智能体协同流程" in sources["solution"]
+    assert "统一 pipeline" in sources["innovation"]
+    assert "稳定优于对比基线" in sources["experiment"]
+    assert "扩展到更多模板" in sources["future"]
+
+
 def test_validate_structured_insight_sections_rejects_failure_placeholder_content():
     invalid_sections = _valid_sections()
     invalid_sections[0]["content"] = "暂时无法生成"

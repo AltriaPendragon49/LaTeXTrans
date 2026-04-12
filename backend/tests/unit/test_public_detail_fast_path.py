@@ -72,3 +72,46 @@ def test_public_detail_returns_fast_path_and_schedules_metadata_repairs(monkeypa
     assert result["paper"]["title"] == "arXiv:2503.01010"
     assert result["reader_state"] == "warming"
     assert scheduled["count"] >= 1
+
+
+def test_public_detail_fast_path_skips_sanitized_source_html_fetch(monkeypatch):
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=_paper()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_map_for_paper",
+        lambda **_kwargs: asyncio.sleep(0, result={}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_viewer_state",
+        lambda _paper_ids, user_id=None: asyncio.sleep(
+            0, result={"paper-1": {"liked": False, "favorited": False}}
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service.asyncio,
+        "create_task",
+        lambda coro: coro.close(),
+    )
+
+    async def _unexpected_source_fetch(_arxiv_id):
+        raise AssertionError("fast path should not fetch sanitized source HTML")
+
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_sanitized_arxiv_html",
+        _unexpected_source_fetch,
+    )
+
+    result = asyncio.run(
+        paper_service.get_community_paper_detail(
+            paper_id="paper-1",
+            fast_path=True,
+        )
+    )
+
+    assert result["reader"]["source"]["kind"] == "source_pdf"
