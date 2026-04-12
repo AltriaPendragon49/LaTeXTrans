@@ -207,3 +207,38 @@ The active OpenSpec change now has both the original formal proposal/design/spec
 - Restart `latextrans-backend`.
 - Redeploy the frontend bundle.
 - Re-run live acceptance on homepage preview speed, detail PDF load speed, and bilingual compare first-open fit.
+
+## 2026-04-13 PDF Loading Follow-Up
+
+### Problems targeted in this pass
+- Homepage source/translated preview thumbnails were still heavy enough to make the feed feel slow.
+- Detail pages still had an avoidable first-open delay because the browser could end up opening the translated PDF path too early.
+- Source-PDF preview for retained local files did not honor `Range` requests, so the browser could be forced into full-file reads.
+- The bilingual compare reader needed a stronger "fit full page on first open" PDF fragment without changing the page layout width.
+
+### Code changes completed
+- Updated frontend detail-mode resolution so a backend `preferred_mode = translated` no longer forces the public page into translated PDF first; when public translated HTML is unavailable, the first-open path now falls back to source.
+- Updated detail PDF URL resolution so source PDFs can use the reader-provided absolute source URL directly when available, instead of always routing back through `/api/papers/{paper_id}/source-pdf`.
+- Changed PDF iframe fragments from `zoom=page-fit` to `view=Fit` plus hidden viewer chrome parameters, preserving the existing dual-column layout while biasing the embedded viewer toward full-page fit on first open.
+- Added local-file `Range` support to both `GET /api/papers/{paper_id}/source-pdf` and `GET /api/papers/{paper_id}/translated-pdf`, so retained local previews now return `206 Partial Content` when the browser asks for byte ranges.
+- Reworked thumbnail generation to produce smaller first-page PNGs directly at rasterization time and bumped the thumbnail cache version so production regenerated lighter cached previews.
+
+### Production rollout completed
+- Pushed `614e6f2` `fix: improve paper pdf loading behavior`.
+- Pushed `2883d5d` `fix: shrink community paper thumbnails`.
+- Pushed `8bdf398` `fix: regenerate lighter pdf thumbnails`.
+- Pulled the updated `main` branch on `82.156.76.218`.
+- Restarted `latextrans-backend.service`.
+- Redeployed the Cloudflare Pages frontend; deployment URL for this pass was `https://a0066e3d.latextrans-bu2.pages.dev`.
+
+### Live validation captured
+- Backend health re-verified after restart through both `127.0.0.1:9001/api/health` on the host and `https://api.latextrans.online/api/health`.
+- `GET /api/papers/{paper_id}/source-pdf` now returns `206 Partial Content` with `Accept-Ranges: bytes` for range requests.
+- `GET /api/papers/{paper_id}/translated-pdf` continues to return `206 Partial Content` for range requests against COS-backed translated PDFs.
+- Homepage thumbnail payloads for paper `2508.18791` were reduced from roughly `443860`/`551645` bytes to roughly `132552`/`147457` bytes.
+- Browser automation against `https://latextrans.niutrans.com/paper/f5d8d23e96214d02ad4f21c23ebf0d4f` confirmed that the default visible reader is now the source PDF and that the source iframe opens directly against `https://arxiv.org/pdf/2508.18791.pdf#page=1&view=Fit...`.
+- Browser automation confirmed bilingual compare still uses the existing dual-column layout while both iframes now carry the stronger `view=Fit` PDF fragment.
+
+### Evidence and caveats
+- Acceptance screenshots for this pass were saved locally under `artifacts/live-acceptance/`.
+- Headless-browser screenshots do not render embedded PDF page contents faithfully; they are useful for verifying layout shell, active mode selection, iframe URLs, and the absence of unexpected UI regressions, but not for visually judging the rendered PDF text itself.
