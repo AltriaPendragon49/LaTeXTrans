@@ -294,7 +294,7 @@ async def import_paper(request: PaperImportRequest):
     return PaperImportResponse(**result)
 
 
-@router.get("", response_model=PaperListResponse)
+@router.get("", response_model=PaperListResponse, response_model_exclude_none=True)
 async def list_papers(
     response: Response,
     sort: str = "latest",

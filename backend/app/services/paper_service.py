@@ -172,6 +172,8 @@ STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS = {
     "experiment": ["核心指标", "对比结果", "实验结论"],
     "future": ["当前局限", "可改进方向", "研究启发"],
 }
+COMMUNITY_FEED_ABSTRACT_MAX_CHARS = 320
+COMMUNITY_FEED_PUBLIC_ASSET_TYPES = {"source_archive", "translated_pdf"}
 
 STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT = """
 You are the paper-guide writer for PaperX community papers.
@@ -2484,6 +2486,41 @@ def _public_asset_map(asset_map: Optional[Dict[str, Dict[str, Any]]]) -> Optiona
         for asset_type, asset in asset_map.items()
         if (serialized := _serialize_public_asset(asset)) is not None
     }
+
+
+def _compact_abstract_for_feed(value: Optional[str]) -> Optional[str]:
+    text = _normalize_metadata_text(value)
+    if not text:
+        return None
+    if len(text) <= COMMUNITY_FEED_ABSTRACT_MAX_CHARS:
+        return text
+    return text[: COMMUNITY_FEED_ABSTRACT_MAX_CHARS - 3].rstrip() + "..."
+
+
+def _compact_asset_map_for_feed(
+    asset_map: Optional[Dict[str, Dict[str, Any]]],
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    public_map = _public_asset_map(asset_map)
+    if not public_map:
+        return None
+    compact_map = {
+        asset_type: asset
+        for asset_type, asset in public_map.items()
+        if asset_type in COMMUNITY_FEED_PUBLIC_ASSET_TYPES
+    }
+    return compact_map or None
+
+
+def _paper_feed_summary(
+    paper: Dict[str, Any],
+    *,
+    asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    summary = _paper_summary(paper, asset_map=asset_map)
+    summary["abstract_raw"] = _compact_abstract_for_feed(summary.get("abstract_raw"))
+    summary["abstract_translated"] = _compact_abstract_for_feed(summary.get("abstract_translated"))
+    summary["assets"] = _compact_asset_map_for_feed(asset_map)
+    return summary
 
 
 async def _fetch_viewer_state(
@@ -5234,7 +5271,7 @@ async def list_community_papers(
     paper_ids = [paper["id"] for paper in papers]
     asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if paper_ids else {}
     items = [
-        _paper_summary(
+        _paper_feed_summary(
             paper,
             asset_map=asset_maps.get(paper["id"]),
         )
