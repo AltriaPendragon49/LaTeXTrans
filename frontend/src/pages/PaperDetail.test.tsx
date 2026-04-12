@@ -436,36 +436,37 @@ describe("PaperDetailPage", () => {
     expect(screen.getAllByRole("button", { name: "English" })).toHaveLength(1)
     expect(screen.getAllByRole("button", { name: "Chinese translation (HTML)" })).toHaveLength(1)
     expect(screen.getAllByRole("button", { name: "Chinese translation (PDF)" })).toHaveLength(1)
-    expect(screen.getByTestId("paper-translated-pdf-reader")).toBeInTheDocument()
+    expect(screen.getByTestId("paper-preview-reader")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "English" }))
     expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/source-pdf`,
+      `${API_BASE_URL}/api/papers/paper-1/source-pdf#page=1&zoom=page-fit`,
     )
 
     await user.click(screen.getByRole("button", { name: "Chinese translation (PDF)" }))
     expect(screen.getByTestId("paper-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&zoom=page-fit`,
     )
   })
 
-  it("defaults to translated pdf first and exposes bilingual compare mode in the new mode order", async () => {
+  it("defaults to source first when translated html is unavailable and preserves bilingual compare mode", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
+        preview: null,
         reader: {
           preferred_mode: "translated_html",
-          available_modes: ["source", "translated_html", "translated_pdf"],
+          available_modes: ["source", "translated_pdf"],
           source: {
             kind: "source_pdf",
             html_content: null,
             url: "https://arxiv.org/pdf/2503.01010",
           },
           translated: {
-            kind: "preview_html",
-            html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
+            kind: "translated_pdf",
+            html_content: null,
             url: null,
           },
           state: "translated_ready",
@@ -495,17 +496,20 @@ describe("PaperDetailPage", () => {
       "Chinese translation (HTML)",
       "Bilingual compare",
     ])
-    expect(screen.getByTestId("paper-translated-pdf-reader")).toBeInTheDocument()
+    expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/source-pdf#page=1&zoom=page-fit`,
+    )
 
     await user.click(screen.getByRole("button", { name: "Bilingual compare" }))
 
     expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/source-pdf`,
+      `${API_BASE_URL}/api/papers/paper-1/source-pdf#page=1&zoom=page-fit`,
     )
     expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&zoom=page-fit`,
     )
   })
 

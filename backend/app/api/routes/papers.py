@@ -1,21 +1,29 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import hashlib
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from backend.app.api.routes import download as download_route
 from backend.app.api.routes.translate import TranslateRequest
 from backend.app.core.auth import optional_current_user, require_current_user
+from backend.app.core.config import get_settings
 from backend.app.policies import authorize
-from backend.app.services import community_content_pool_service, paper_service
+from backend.app.services import community_content_pool_service, paper_preview_service, paper_service
 
 router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
+settings = get_settings()
 
 
 def _ensure_paper_authorized(
@@ -230,18 +238,24 @@ def _ensure_local_admin(current_user: Optional[Dict[str, Any]]) -> None:
 
 
 async def _proxy_remote_pdf_preview(*, url: str, filename: str, request: Request) -> Response:
-    upstream_headers: Dict[str, str] = {}
+    upstream_headers: Dict[str, str] = {
+        "User-Agent": "LaTeXTrans-Preview/1.0",
+    }
     range_header = request.headers.get("range")
     if range_header:
-        upstream_headers["range"] = range_header
+        upstream_headers["Range"] = range_header
 
+    client = httpx.AsyncClient(follow_redirects=True, timeout=60.0)
+    upstream_request = client.build_request("GET", url, headers=upstream_headers)
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-            upstream_response = await client.get(url, headers=upstream_headers)
+        upstream_response = await client.send(upstream_request, stream=True)
     except httpx.HTTPError as exc:
+        await client.aclose()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Translated PDF upstream fetch failed") from exc
 
-    if upstream_response.status_code >= 400:
+    if upstream_response.status_code not in (200, 206):
+        await upstream_response.aclose()
+        await client.aclose()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Translated PDF upstream response invalid")
 
     response_headers = {
@@ -260,11 +274,111 @@ async def _proxy_remote_pdf_preview(*, url: str, filename: str, request: Request
             response_headers[target_name] = value
 
     media_type = upstream_response.headers.get("content-type") or "application/pdf"
-    return Response(
-        content=upstream_response.content,
+
+    async def _stream():
+        async for chunk in upstream_response.aiter_bytes():
+            if chunk:
+                yield chunk
+
+    async def _close_stream() -> None:
+        await upstream_response.aclose()
+        await client.aclose()
+
+    return StreamingResponse(
+        _stream(),
         status_code=upstream_response.status_code,
         media_type=media_type,
         headers=response_headers,
+        background=BackgroundTask(_close_stream),
+    )
+
+
+def _paper_thumbnail_cache_dir() -> Path:
+    cache_dir = settings.storage_temp_dir / "paper_pdf_thumbnails"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _decode_png_data_uri(payload: Optional[str]) -> Optional[bytes]:
+    normalized = str(payload or "")
+    if not normalized.startswith("data:image/png;base64,"):
+        return None
+    encoded = normalized.split(",", 1)[1]
+    try:
+        return base64.b64decode(encoded)
+    except Exception:
+        return None
+
+
+def _thumbnail_cache_path(cache_seed: str) -> Path:
+    digest = hashlib.sha256(cache_seed.encode("utf-8")).hexdigest()
+    return _paper_thumbnail_cache_dir() / f"{digest}.png"
+
+
+def _render_pdf_thumbnail_bytes_from_path(pdf_path: Path) -> Optional[bytes]:
+    data_uri = paper_preview_service._inline_pdf_data_uri(pdf_path)
+    return _decode_png_data_uri(data_uri)
+
+
+async def _render_pdf_thumbnail_bytes_from_url(url: str) -> Optional[bytes]:
+    client = httpx.AsyncClient(follow_redirects=True, timeout=120.0)
+    upstream_request = client.build_request(
+        "GET",
+        url,
+        headers={"User-Agent": "LaTeXTrans-Preview/1.0"},
+    )
+    temp_path: Optional[Path] = None
+    upstream_response = None
+    try:
+        upstream_response = await client.send(upstream_request, stream=True)
+        if upstream_response.status_code >= 400:
+            return None
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
+            async for chunk in upstream_response.aiter_bytes():
+                if chunk:
+                    temp_file.write(chunk)
+
+        return await asyncio.to_thread(_render_pdf_thumbnail_bytes_from_path, temp_path)
+    except httpx.HTTPError:
+        return None
+    finally:
+        if upstream_response is not None:
+            await upstream_response.aclose()
+        await client.aclose()
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+
+async def _serve_pdf_thumbnail_response(
+    *,
+    cache_seed: str,
+    file_path: Optional[str] = None,
+    remote_url: Optional[str] = None,
+) -> Response:
+    cache_path = _thumbnail_cache_path(cache_seed)
+    if cache_path.exists():
+        return FileResponse(
+            path=cache_path,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
+        )
+
+    thumbnail_bytes: Optional[bytes] = None
+    if file_path:
+        thumbnail_bytes = await asyncio.to_thread(_render_pdf_thumbnail_bytes_from_path, Path(file_path))
+    elif remote_url:
+        thumbnail_bytes = await _render_pdf_thumbnail_bytes_from_url(remote_url)
+
+    if not thumbnail_bytes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF thumbnail not available")
+
+    cache_path.write_bytes(thumbnail_bytes)
+    return FileResponse(
+        path=cache_path,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
     )
 
 
@@ -530,6 +644,22 @@ async def preview_translated_paper_pdf(paper_id: str, request: Request):
     )
 
 
+@router.get("/{paper_id}/translated-thumbnail")
+async def preview_translated_paper_thumbnail(paper_id: str):
+    payload = await paper_service.resolve_paper_translated_pdf_preview(paper_id=paper_id)
+    asset = payload["asset"]
+    cache_seed = f"translated:{paper_id}:{asset.get('id') or asset.get('file_name') or paper_id}"
+    if payload.get("signed_url"):
+        return await _serve_pdf_thumbnail_response(
+            cache_seed=cache_seed,
+            remote_url=payload["signed_url"],
+        )
+    return await _serve_pdf_thumbnail_response(
+        cache_seed=cache_seed,
+        file_path=payload["file_path"],
+    )
+
+
 @router.get("/{paper_id}/source-pdf")
 async def preview_source_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
@@ -555,6 +685,29 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
             "Content-Disposition": f"inline; filename=\"{filename}\"",
         },
     )
+
+
+@router.get("/{paper_id}/source-thumbnail")
+async def preview_source_paper_thumbnail(paper_id: str):
+    payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
+
+    if payload.get("file_path"):
+        file_path = str(payload["file_path"])
+        resolved_path = Path(file_path)
+        stat = resolved_path.stat()
+        return await _serve_pdf_thumbnail_response(
+            cache_seed=f"source-file:{resolved_path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}",
+            file_path=file_path,
+        )
+
+    arxiv_id = str(payload.get("arxiv_id") or "").strip()
+    if arxiv_id:
+        return await _serve_pdf_thumbnail_response(
+            cache_seed=f"source-arxiv:{arxiv_id}",
+            remote_url=f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+        )
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source PDF thumbnail not available")
 
 
 @router.post("/{paper_id}/download-session", response_model=PaperDownloadSessionResponse)

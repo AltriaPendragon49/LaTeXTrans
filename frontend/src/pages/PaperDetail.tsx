@@ -174,14 +174,20 @@ function resolvePreferredMode(
   if (preferredMode === "translated" && availableModes.includes("translated_pdf")) {
     return "translated_pdf"
   }
-  if (availableModes.includes("translated_pdf")) {
-    return "translated_pdf"
-  }
   if (preferredMode && availableModes.includes(preferredMode)) {
     return preferredMode
   }
+  if (availableModes.includes("source")) {
+    return "source"
+  }
+  if (availableModes.includes("translated_pdf")) {
+    return "translated_pdf"
+  }
   if (availableModes.includes("translated_html")) {
     return "translated_html"
+  }
+  if (availableModes.includes("bilingual_compare")) {
+    return "bilingual_compare"
   }
   return "source"
 }

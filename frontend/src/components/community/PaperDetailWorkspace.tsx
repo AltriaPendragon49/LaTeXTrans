@@ -22,7 +22,7 @@ import type {
 } from "@/types/community"
 
 const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v2"
-const DEFAULT_SPLIT_RATIO = 0.65
+const DEFAULT_SPLIT_RATIO = 0.7
 const MIN_READER_WIDTH = 720
 const MIN_SIDEBAR_WIDTH = 260
 const GUIDE_SECTION_ORDER = [
@@ -56,6 +56,10 @@ function isTranslatedPdfMode(mode: CommunityPaperReaderMode) {
 
 function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
   return mode === "bilingual_compare"
+}
+
+function buildPdfViewerUrl(url: string) {
+  return `${url}#page=1&zoom=page-fit`
 }
 
 function clampSplitRatio(ratio: number, width: number) {
@@ -482,6 +486,8 @@ export function PaperDetailWorkspace({
     (Boolean(preview?.html_content) || reader?.translated?.kind === "preview_html")
   const sourceDocumentUrl = `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`
   const translatedPdfUrl = `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`
+  const sourcePdfViewerUrl = buildPdfViewerUrl(sourceDocumentUrl)
+  const translatedPdfViewerUrl = buildPdfViewerUrl(translatedPdfUrl)
   const sanitizedSourceHtml = useMemo(
     () =>
       sourceHtmlContent
@@ -541,7 +547,7 @@ export function PaperDetailWorkspace({
               <iframe
                 data-testid="paper-source-pdf-reader"
                 title={`${paper.title} PDF`}
-                src={sourceDocumentUrl}
+                src={sourcePdfViewerUrl}
                 className="h-full w-full border-0 bg-surface-container-lowest"
               />
             ) : sanitizedSourceHtml ? (
@@ -581,21 +587,21 @@ export function PaperDetailWorkspace({
             <iframe
               data-testid="paper-translated-pdf-reader"
               title={`${paper.title} Translated PDF`}
-              src={translatedPdfUrl}
-              className="h-[720px] w-full border-0 bg-surface-container-lowest"
+              src={translatedPdfViewerUrl}
+              className="h-full w-full border-0 bg-surface-container-lowest"
             />
           ) : isBilingualCompareMode(preferredMode) && canDownload ? (
-            <div className="grid h-full min-h-0 grid-cols-2 gap-4 bg-surface-container-lowest p-4">
+            <div className="grid h-full min-h-0 grid-cols-2 gap-3 bg-surface-container-lowest p-3">
               <iframe
                 data-testid="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}
-                src={sourceDocumentUrl}
+                src={sourcePdfViewerUrl}
                 className="h-full w-full border-0 bg-surface-container-lowest"
               />
               <iframe
                 data-testid="paper-bilingual-translated-pdf-reader"
                 title={`${paper.title} Translated PDF Compare`}
-                src={translatedPdfUrl}
+                src={translatedPdfViewerUrl}
                 className="h-full w-full border-0 bg-surface-container-lowest"
               />
             </div>

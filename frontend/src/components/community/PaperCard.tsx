@@ -1,5 +1,5 @@
 import { Trash2 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
@@ -9,29 +9,6 @@ import type { CommunityPaper } from "@/types/community"
 import { API_BASE_URL } from "@/api-base"
 
 import { PaperStatusBadge } from "./PaperStatusBadge"
-import { Document, Page, pdfjs } from "react-pdf"
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
-
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
-
-const PDF_PREVIEW_OPTIONS_BASE = Object.freeze({
-  cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
-  cMapPacked: true,
-})
-
-const PDF_PREVIEW_OPTIONS_SOURCE = Object.freeze({
-  ...PDF_PREVIEW_OPTIONS_BASE,
-  disableStream: true,
-  disableAutoFetch: true,
-  rangeChunkSize: 128 * 1024,
-})
-
-const PDF_PREVIEW_OPTIONS_TRANSLATED = Object.freeze({
-  ...PDF_PREVIEW_OPTIONS_BASE,
-  disableStream: true,
-  disableAutoFetch: true,
-  rangeChunkSize: 128 * 1024,
-})
 
 interface PaperCardProps {
   paper: CommunityPaper
@@ -40,80 +17,40 @@ interface PaperCardProps {
 }
 
 interface PdfPreviewFrameProps {
-  label: string
-  pdfUrl: string | null
+  imageUrl: string | null
   unavailableIcon: string
   placeholderTone: "neutral" | "accent"
-  pdfOptions: Record<string, unknown>
+  testId: string
 }
 
 function PdfPreviewFrame({
-  label,
-  pdfUrl,
+  imageUrl,
   unavailableIcon,
   placeholderTone,
-  pdfOptions,
+  testId,
 }: PdfPreviewFrameProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const [containerHeight, setContainerHeight] = useState(0)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    const element = containerRef.current
-    if (!element) {
-      return
-    }
-
-    const refresh = () => {
-      setContainerHeight(Math.max(120, Math.floor(element.clientHeight)))
-    }
-
-    refresh()
-
-    if (typeof ResizeObserver === "undefined") {
-      return
-    }
-
-    const observer = new ResizeObserver(() => refresh())
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
     setLoaded(false)
-  }, [pdfUrl])
-
-  const pageHeight = Math.max(120, containerHeight - 8)
-  const canRenderPdf = Boolean(pdfUrl && containerHeight > 0)
+  }, [imageUrl])
 
   return (
     <div
-      ref={containerRef}
       className="w-full aspect-[3/4] bg-white rounded-lg shadow-md border border-outline-variant/20 overflow-hidden relative transition-transform duration-300 z-10 hover:z-50 hover:scale-[1.5] origin-center"
     >
-      {canRenderPdf ? (
-        <Document
-          file={pdfUrl}
-          className="absolute inset-0 z-20 overflow-hidden flex items-center justify-center pointer-events-none bg-white"
-          loading={null}
-          error={
-            <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center text-slate-400 p-2 z-30">
-              <span className="material-symbols-outlined text-2xl mb-1 opacity-50">description</span>
-              <span className="text-[8px] font-bold uppercase tracking-widest text-center">Unavailable</span>
-            </div>
-          }
-          onLoadSuccess={() => setLoaded(true)}
-          onLoadError={(error) => console.error(`${label} PDF Load Error:`, error)}
-          options={pdfOptions}
-        >
-          <Page
-            pageNumber={1}
-            height={pageHeight}
-            renderTextLayer={false}
-            renderAnnotationLayer={false}
-            className="h-full w-full flex items-center justify-center bg-white [&>canvas]:!h-full [&>canvas]:!w-auto [&>canvas]:!max-w-full"
-          />
-        </Document>
+      {imageUrl ? (
+        <img
+          data-testid={testId}
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          className={`absolute inset-0 z-20 h-full w-full object-cover bg-white transition-opacity duration-300 ${
+            loaded ? "opacity-100" : "opacity-0"
+          }`}
+          onLoad={() => setLoaded(true)}
+          onError={() => setLoaded(false)}
+        />
       ) : null}
 
       <div
@@ -128,7 +65,7 @@ function PdfPreviewFrame({
         <div className={`h-24 w-full rounded mt-auto ${placeholderTone === "accent" ? "bg-blue-50/50" : "bg-slate-50"}`}></div>
       </div>
 
-      {!pdfUrl && (
+      {!imageUrl && (
         <div className="absolute inset-0 bg-primary/5 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center z-30 pointer-events-none">
           <span className="material-symbols-outlined text-primary scale-125">{unavailableIcon}</span>
         </div>
@@ -158,11 +95,6 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
-  cancelIdleCallback?: (handle: number) => void
-}
-
 export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps) {
   const { t } = useTranslation()
   const [showTranslatedAbstract, setShowTranslatedAbstract] = useState(true)
@@ -177,12 +109,12 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
 
   const sourcePdfUrl =
     paper.source === "arxiv" || Boolean(paper.assets?.source_archive) || Boolean(paper.community_selected_task_id)
-      ? `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`
+      ? `${API_BASE_URL}/api/papers/${paper.id}/source-thumbnail`
       : null
   const transPdfUrl =
     paper.trans_status === "completed" &&
     (Boolean(paper.assets?.translated_pdf) || Boolean(paper.community_selected_task_id))
-      ? `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`
+      ? `${API_BASE_URL}/api/papers/${paper.id}/translated-thumbnail`
       : null
 
   const authorsLabel = useMemo(
@@ -195,22 +127,6 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   useEffect(() => {
     if (!transPdfUrl) {
       setTranslatedPreviewReady(false)
-      return
-    }
-
-    const idleWindow = window as IdleWindow
-    if (typeof idleWindow.requestIdleCallback !== "function") {
-      setTranslatedPreviewReady(true)
-      return
-    }
-
-    const handle = idleWindow.requestIdleCallback(
-      () => setTranslatedPreviewReady(true),
-      { timeout: 1500 },
-    )
-
-    return () => {
-      idleWindow.cancelIdleCallback?.(handle)
     }
   }, [transPdfUrl])
 
@@ -309,22 +225,20 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
       <div className="md:w-2/5 flex gap-5 bg-slate-50/50 p-6 rounded-2xl items-center justify-center border border-slate-100 dark:bg-surface-container-low dark:border-outline-variant/5 order-1 md:order-2 shrink-0">
         <div className="flex-1 flex flex-col items-center gap-3">
           <PdfPreviewFrame
-            label="Source"
-            pdfUrl={sourcePdfUrl}
+            imageUrl={sourcePdfUrl}
             unavailableIcon="picture_as_pdf"
             placeholderTone="neutral"
-            pdfOptions={PDF_PREVIEW_OPTIONS_SOURCE}
+            testId="paper-card-source-preview-image"
           />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{paper.source === "arxiv" ? "Original" : "Source"}</span>
         </div>
 
         <div className="flex-1 flex flex-col items-center gap-3">
           <PdfPreviewFrame
-            label="Translated"
-            pdfUrl={translatedPreviewReady ? transPdfUrl : null}
+            imageUrl={translatedPreviewReady ? transPdfUrl : null}
             unavailableIcon="translate"
             placeholderTone="accent"
-            pdfOptions={PDF_PREVIEW_OPTIONS_TRANSLATED}
+            testId="paper-card-translated-preview-image"
           />
           <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] bg-blue-50 px-2 py-0.5 rounded-sm dark:bg-blue-900/30 dark:text-blue-300">ZH-CN</span>
         </div>

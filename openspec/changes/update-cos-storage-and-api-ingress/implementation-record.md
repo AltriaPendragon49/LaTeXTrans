@@ -172,3 +172,38 @@ The active OpenSpec change now has both the original formal proposal/design/spec
 - the final production architecture,
 - the exact rollout actions,
 - the operational state required to keep the deployment stable.
+
+## 2026-04-12 PDF Reader Performance Tuning
+
+### Regressions addressed in this pass
+- Homepage paper-card previews were still expensive because they relied on `react-pdf` canvas rendering inside every visible card.
+- Detail pages still defaulted into translated PDF when translated HTML was unavailable in production, which made the first open feel slower than necessary.
+- The translated PDF proxy path for COS-backed assets still buffered the full upstream file before responding, weakening the benefit of object storage for iframe viewing.
+- The standalone and bilingual PDF readers opened without an explicit page-fit fragment, and the translated PDF reader still used a fixed height, which contributed to the "page does not fully fit on first open" regression.
+
+### Code changes completed
+- Replaced homepage paper-card PDF canvas previews with lightweight thumbnail images served from new backend routes:
+  - `GET /api/papers/{paper_id}/source-thumbnail`
+  - `GET /api/papers/{paper_id}/translated-thumbnail`
+- Added temporary thumbnail caching under `backend/data/tmp_storage/paper_pdf_thumbnails/` so first-page PNGs are reused instead of regenerated on every request.
+- Changed the homepage translated preview to load only after explicit user intent on the card, while preserving the existing visual layout with placeholder frames.
+- Updated detail-page reader mode resolution so the page falls back to `source` before `translated_pdf` when the preferred mode is unavailable.
+- Updated PDF iframe URLs to include `#page=1&zoom=page-fit` and changed the translated PDF reader to fill the available height again.
+- Increased the default reader/sidebar split ratio from `0.65` to `0.7` to give the PDF workspace more room without materially changing the surrounding layout.
+- Reworked the COS translated-PDF proxy into a true streaming response that forwards Range requests and no longer buffers the full upstream PDF in memory before responding.
+
+### Validation completed
+- Frontend targeted tests passed:
+  - `src/components/community/PaperCard.test.tsx`
+  - `src/pages/PaperDetail.test.tsx`
+  - `src/pages/PaperDetail.reader-first.test.tsx`
+- Frontend production build passed with `npm run build`.
+- Backend targeted route tests passed:
+  - `backend/tests/unit/test_papers_route_asset_redirects.py`
+
+### Deployment intent for this pass
+- Push the updated `main` branch.
+- Pull `main` on `82.156.76.218`.
+- Restart `latextrans-backend`.
+- Redeploy the frontend bundle.
+- Re-run live acceptance on homepage preview speed, detail PDF load speed, and bilingual compare first-open fit.

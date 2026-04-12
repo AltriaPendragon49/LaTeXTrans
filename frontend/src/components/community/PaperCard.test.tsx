@@ -24,25 +24,6 @@ vi.mock("@/lib/paper-preview-enhancer", () => ({
   preloadPaperPreviewEnhancer: (...args: unknown[]) => preloadPaperPreviewEnhancerMock(...args),
 }))
 
-vi.mock("react-pdf", () => ({
-  Document: ({ file, options }: { file: string | null; options?: Record<string, unknown> }) => (
-    <div
-      data-testid="pdf-document"
-      data-file={file ?? ""}
-      data-disable-stream={String(options?.disableStream ?? "")}
-      data-disable-auto-fetch={String(options?.disableAutoFetch ?? "")}
-      data-range-chunk-size={String(options?.rangeChunkSize ?? "")}
-    />
-  ),
-  Page: () => <div data-testid="pdf-page" />,
-  pdfjs: {
-    version: "test",
-    GlobalWorkerOptions: {
-      workerSrc: "",
-    },
-  },
-}))
-
 const paper: CommunityPaper = {
   id: "paper-1",
   source: "arxiv",
@@ -107,7 +88,11 @@ describe("PaperCard", () => {
     expect(screen.getByText("Completed")).toBeInTheDocument()
     expect(screen.getByText("Ada Lovelace, Alan Turing")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /attention residuals/i })).toHaveAttribute("href", "/paper/paper-1")
-    expect(screen.getAllByTestId("pdf-document")).toHaveLength(2)
+    expect(screen.getByTestId("paper-card-source-preview-image")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/source-thumbnail`,
+    )
+    expect(screen.queryByTestId("paper-card-translated-preview-image")).not.toBeInTheDocument()
   })
 
   it("prefetches route code and detail payload on intent signals", () => {
@@ -172,23 +157,27 @@ describe("PaperCard", () => {
       </MemoryRouter>,
     )
 
-    const pdfDocuments = screen.getAllByTestId("pdf-document")
-    expect(pdfDocuments[0]).toHaveAttribute("data-file", `${API_BASE_URL}/api/papers/paper-1/source-pdf`)
-    expect(pdfDocuments[1]).toHaveAttribute("data-file", `${API_BASE_URL}/api/papers/paper-1/translated-pdf`)
+    expect(screen.getByTestId("paper-card-source-preview-image")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/source-thumbnail`,
+    )
   })
 
-  it("uses range-friendly PDF preview options for both source and translated thumbnails", () => {
+  it("loads the translated preview only after user intent to keep feed rendering light", () => {
     render(
       <MemoryRouter>
         <PaperCard paper={paper} />
       </MemoryRouter>,
     )
 
-    const pdfDocuments = screen.getAllByTestId("pdf-document")
-    for (const document of pdfDocuments) {
-      expect(document).toHaveAttribute("data-disable-stream", "true")
-      expect(document).toHaveAttribute("data-disable-auto-fetch", "true")
-      expect(document).toHaveAttribute("data-range-chunk-size", String(128 * 1024))
-    }
+    const cardLink = screen.getByRole("link", { name: /attention residuals/i })
+    expect(screen.queryByTestId("paper-card-translated-preview-image")).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(cardLink)
+
+    expect(screen.getByTestId("paper-card-translated-preview-image")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/translated-thumbnail`,
+    )
   })
 })
