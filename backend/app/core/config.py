@@ -225,6 +225,17 @@ class Settings(BaseSettings):
     terms_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "terms")
     task_configs_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "task_configs")
     failed_tasks_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "failed_tasks")
+    storage_backend_mode: str = Field(default="local_disk", validation_alias="STORAGE_BACKEND_MODE")
+    storage_temp_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "tmp_storage",
+        validation_alias="STORAGE_TEMP_DIR",
+        description="Temporary staging directory for storage-backed workflows such as COS uploads.",
+    )
+    cos_bucket: Optional[str] = Field(default=None, validation_alias="COS_BUCKET")
+    cos_region: Optional[str] = Field(default=None, validation_alias="COS_REGION")
+    cos_secret_id: Optional[str] = Field(default=None, validation_alias="COS_SECRET_ID")
+    cos_secret_key: Optional[str] = Field(default=None, validation_alias="COS_SECRET_KEY")
+    cos_base_prefix: str = Field(default="latextrans-prod", validation_alias="COS_BASE_PREFIX")
     enable_task_config_capture: bool = Field(default=True, validation_alias="ENABLE_TASK_CONFIG_CAPTURE")
     
     # File Upload Settings
@@ -398,6 +409,12 @@ class Settings(BaseSettings):
         self.terms_dir.mkdir(parents=True, exist_ok=True)
         self.task_configs_dir.mkdir(parents=True, exist_ok=True)
         self.failed_tasks_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_temp_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def local_storage_root(self) -> Path:
+        """Expose the durable root the local disk backend uses for dev/local fallback."""
+        return self.base_dir
     
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM API configuration as a dictionary"""

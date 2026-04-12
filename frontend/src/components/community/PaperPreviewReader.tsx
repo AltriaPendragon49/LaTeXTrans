@@ -19,7 +19,7 @@ interface PaperPreviewReaderProps {
   readerState?: "ready" | "warming" | "unavailable"
 }
 
-function getPreviewSignature(preview: CommunityPaperPreviewResponse | null | undefined): string | null {
+function getPreviewIdentity(preview: CommunityPaperPreviewResponse | null | undefined): string | null {
   if (!preview) {
     return null
   }
@@ -27,7 +27,18 @@ function getPreviewSignature(preview: CommunityPaperPreviewResponse | null | und
   return [
     preview.asset.id,
     preview.generated_at ?? preview.asset.created_at ?? "",
-    preview.html_content,
+    preview.fetch_url ?? "",
+  ].join("::")
+}
+
+function getPreviewSignature(preview: CommunityPaperPreviewResponse | null | undefined): string | null {
+  if (!preview) {
+    return null
+  }
+
+  return [
+    getPreviewIdentity(preview),
+    preview.html_content ?? "",
   ].join("::")
 }
 
@@ -99,12 +110,14 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
     const contentRef = useRef<HTMLDivElement | null>(null)
     const preparedPreviewRef = useRef<{ signature: string; html: string } | null>(null)
     const [preview, setPreview] = useState<CommunityPaperPreviewResponse | null>(initialPreview)
-    const [loading, setLoading] = useState(!initialPreview && readerState !== "warming")
+    const [loading, setLoading] = useState(
+      (!initialPreview || !initialPreview.html_content) && readerState !== "warming",
+    )
     const [error, setError] = useState<string | null>(null)
     const [expandedTable, setExpandedTable] = useState<{ caption: string | null; html: string } | null>(null)
 
     useEffect(() => {
-      if (initialPreview) {
+      if (initialPreview?.html_content) {
         const nextSignature = getPreviewSignature(initialPreview)
         setPreview((current) => {
           if (nextSignature && nextSignature === getPreviewSignature(current)) {
@@ -117,8 +130,22 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
         return
       }
 
+      if (initialPreview) {
+        const nextIdentity = getPreviewIdentity(initialPreview)
+        setPreview((current) => {
+          if (
+            current?.html_content &&
+            nextIdentity &&
+            nextIdentity === getPreviewIdentity(current)
+          ) {
+            return current
+          }
+          return initialPreview
+        })
+      }
+
       if (readerState === "warming") {
-        setPreview(null)
+        setPreview(initialPreview ?? null)
         setLoading(false)
         setError(null)
         return
@@ -146,7 +173,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
           if (cancelled) {
             return
           }
-          setPreview(null)
+          setPreview((current) => current?.html_content ? current : null)
           setLoading(false)
           setError(fetchError instanceof Error ? fetchError.message : "unknown_error")
         }

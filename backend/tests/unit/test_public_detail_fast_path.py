@@ -70,5 +70,5 @@ def test_public_detail_returns_fast_path_and_schedules_metadata_repairs(monkeypa
     )
 
     assert result["paper"]["title"] == "arXiv:2503.01010"
-    assert result["reader_state"] == "unavailable"
+    assert result["reader_state"] == "warming"
     assert scheduled["count"] >= 1

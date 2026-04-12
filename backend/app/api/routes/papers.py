@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -119,7 +119,7 @@ class ContentPoolJobEventResponse(BaseModel):
 
 class PaperDetailResponse(BaseModel):
     paper: PaperSummary
-    preview: Optional["PaperPreviewResponse"] = None
+    preview: Optional["PaperPreviewBootstrapResponse"] = None
     reader_state: str = "unavailable"
     reader: Optional[Dict[str, Any]] = None
     experience: Optional[Dict[str, Any]] = None
@@ -158,6 +158,14 @@ class PaperPreviewResponse(BaseModel):
     asset: AssetSummary
     html_content: str
     generated_at: Optional[str] = None
+
+
+class PaperPreviewBootstrapResponse(BaseModel):
+    paper_id: str
+    task_id: Optional[str] = None
+    asset: AssetSummary
+    generated_at: Optional[str] = None
+    fetch_url: str
 
 
 class PaperDownloadSessionResponse(BaseModel):
@@ -286,7 +294,7 @@ async def import_paper(request: PaperImportRequest):
     return PaperImportResponse(**result)
 
 
-@router.get("", response_model=PaperListResponse)
+@router.get("", response_model=PaperListResponse, response_model_exclude_none=True)
 async def list_papers(
     response: Response,
     sort: str = "latest",
@@ -466,6 +474,15 @@ async def preview_translated_paper_pdf(paper_id: str):
     payload = await paper_service.resolve_paper_translated_pdf_preview(paper_id=paper_id)
     asset = payload["asset"]
     filename = asset.get("file_name") or f"{paper_id}.pdf"
+    if payload.get("signed_url"):
+        return RedirectResponse(
+            url=payload["signed_url"],
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={
+                "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+                "Content-Disposition": f"inline; filename=\"{filename}\"",
+            },
+        )
     return FileResponse(
         path=payload["file_path"],
         media_type=asset.get("mime_type") or "application/pdf",
@@ -515,6 +532,11 @@ async def download_paper(
 ):
     payload = await paper_service.resolve_paper_download(paper_id=paper_id, token=token)
     asset = payload["asset"]
+    if payload.get("signed_url"):
+        return RedirectResponse(
+            url=payload["signed_url"],
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        )
     return FileResponse(
         path=payload["file_path"],
         media_type=asset.get("mime_type") or "application/octet-stream",

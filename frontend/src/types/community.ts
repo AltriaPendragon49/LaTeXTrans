@@ -329,8 +329,9 @@ export interface CommunityPaperPreviewResponse {
   paper_id: string
   task_id: string | null
   asset: PaperAssetSummary
-  html_content: string
+  html_content?: string | null
   generated_at: string | null
+  fetch_url?: string | null
 }
 
 export interface CommunityPaperDownloadSessionResponse {

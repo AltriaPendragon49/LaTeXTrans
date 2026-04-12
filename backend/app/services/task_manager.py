@@ -45,6 +45,68 @@ def get_auth_repository() -> AuthRepository:
     return AuthRepository()
 
 
+def _delete_local_cache_path(path: Path) -> None:
+    if not path.exists():
+        return
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=False)
+        return
+    path.unlink()
+
+
+def _is_within_cleanup_roots(candidate: Path, allowed_roots: List[Path]) -> bool:
+    """Guardrail: only allow cache cleanup under known runtime roots."""
+    try:
+        resolved_candidate = candidate.resolve(strict=False)
+    except Exception:
+        return False
+
+    for root in allowed_roots:
+        try:
+            resolved_root = root.resolve(strict=False)
+        except Exception:
+            continue
+        if resolved_candidate == resolved_root or resolved_candidate.is_relative_to(resolved_root):
+            return True
+    return False
+
+
+def clear_cached_runtime_artifacts(task_id: str, retained_paths: List[Path]) -> List[str]:
+    settings = get_settings()
+    allowed_roots = [Path(settings.outputs_dir), Path(settings.storage_temp_dir)]
+    cleared_paths: List[str] = []
+    for candidate in retained_paths:
+        if not isinstance(candidate, Path):
+            candidate = Path(candidate)
+        if not candidate.exists():
+            continue
+        if not _is_within_cleanup_roots(candidate, allowed_roots):
+            logger.warning(
+                "[TaskManager] Skipped unsafe cache cleanup outside allowed roots for task %s: %s",
+                task_id,
+                candidate,
+            )
+            continue
+        try:
+            _delete_local_cache_path(candidate)
+        except Exception as exc:
+            logger.warning(
+                "[TaskManager] Failed to clear cached artifact for task %s (%s): %s",
+                task_id,
+                candidate,
+                exc,
+            )
+            continue
+        cleared_paths.append(str(candidate))
+    if cleared_paths:
+        logger.info(
+            "[TaskManager] Cleared local cache artifacts for task %s after durable persistence: %s",
+            task_id,
+            cleared_paths,
+        )
+    return cleared_paths
+
+
 
 def set_runtime_shutting_down(value: bool) -> None:
     """Set global runtime shutdown flag for task execution guards."""

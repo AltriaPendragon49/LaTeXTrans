@@ -287,6 +287,93 @@ def test_list_papers_serializes_datetime_fields_from_local_repository(monkeypatc
     assert result["items"][0]["latest_asset"]["created_at"] == "2026-03-18 04:00:00"
 
 
+def test_list_papers_trims_heavy_fields_for_feed_payload(monkeypatch):
+    long_abstract = "A" * 900
+    translated_abstract = "中" * 500
+    papers = [
+        {
+            "id": "paper-compact",
+            "source": "upload",
+            "arxiv_id": None,
+            "title": "Compact payload paper",
+            "authors": [],
+            "categories": ["cs.CL"],
+            "abstract_raw": long_abstract,
+            "abstract_translated": translated_abstract,
+            "visibility": "public",
+            "status": "published",
+            "trans_status": "completed",
+            "created_by": "admin-1",
+            "trans_latest_task_id": "task-compact",
+            "trans_latest_asset_pdf_id": "asset-translated",
+            "like_count": 0,
+            "favorite_count": 0,
+            "comment_count": 0,
+            "view_count": 0,
+            "download_count": 0,
+            "created_at": "2026-03-18T02:00:00+00:00",
+            "updated_at": "2026-03-18T02:00:00+00:00",
+            "community_status": "official",
+            "community_selected_task_id": "task-compact",
+            "community_selected_asset_id": "asset-preview",
+            "official_published_at": "2026-03-18T04:00:00+00:00",
+        }
+    ]
+
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return papers
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(
+            0,
+            result={
+                "paper-compact": {
+                    "preview_html": {
+                        "id": "asset-preview",
+                        "task_id": "task-compact",
+                        "asset_type": "preview_html",
+                        "file_path": "/tmp/preview.html",
+                        "file_name": "preview.html",
+                        "mime_type": "text/html",
+                        "created_at": "2026-03-18T04:00:00+00:00",
+                    },
+                    "source_archive": {
+                        "id": "asset-source",
+                        "task_id": "task-source",
+                        "asset_type": "source_archive",
+                        "file_path": "/tmp/source.zip",
+                        "file_name": "source.zip",
+                        "mime_type": "application/zip",
+                        "created_at": "2026-03-18T04:00:00+00:00",
+                    },
+                    "translated_pdf": {
+                        "id": "asset-translated",
+                        "task_id": "task-compact",
+                        "asset_type": "translated_pdf",
+                        "file_path": "/tmp/translated.pdf",
+                        "file_name": "translated.pdf",
+                        "mime_type": "application/pdf",
+                        "created_at": "2026-03-18T04:00:00+00:00",
+                    },
+                }
+            },
+        ),
+    )
+
+    result = asyncio.run(paper_service.list_community_papers(sort="latest"))
+
+    item = result["items"][0]
+    assert len(item["abstract_raw"]) < len(long_abstract)
+    assert item["abstract_raw"].endswith("...")
+    assert len(item["abstract_translated"]) < len(translated_abstract)
+    assert item["abstract_translated"].endswith("...")
+    assert set(item["assets"].keys()) == {"source_archive", "translated_pdf"}
+
+
 def test_detail_returns_selected_version_and_viewer_state(monkeypatch):
     paper = {
         "id": "paper-detail",
@@ -353,6 +440,71 @@ def test_detail_returns_selected_version_and_viewer_state(monkeypatch):
     assert result["paper"]["community_selected_task_id"] == "task-detail"
     assert result["paper"]["community_selected_asset_id"] == "asset-detail"
     assert result["paper"]["viewer_state"] == {"liked": True, "favorited": False}
+
+
+def test_detail_returns_preview_locator_instead_of_inline_html(monkeypatch, tmp_path):
+    preview_file = tmp_path / "preview.html"
+    preview_file.write_text(
+        "<article><section id='intro' data-section-id='intro'><h2>Intro</h2></section></article>",
+        encoding="utf-8",
+    )
+    paper = {
+        "id": "paper-preview",
+        "source": "arxiv",
+        "arxiv_id": "2501.33333",
+        "title": "Detail paper",
+        "authors": [],
+        "categories": [],
+        "visibility": "public",
+        "status": "published",
+        "trans_status": "completed",
+        "created_by": "admin-1",
+        "trans_latest_task_id": "task-detail",
+        "trans_latest_asset_pdf_id": None,
+        "like_count": 10,
+        "favorite_count": 2,
+        "comment_count": 1,
+        "view_count": 99,
+        "download_count": 4,
+        "created_at": "2026-03-18T02:00:00+00:00",
+        "updated_at": "2026-03-18T02:00:00+00:00",
+        "community_status": "official",
+        "community_selected_task_id": "task-detail",
+        "community_selected_asset_id": "asset-preview",
+        "official_published_at": "2026-03-18T04:00:00+00:00",
+    }
+    asset_map = {
+        "preview_html": {
+            "id": "asset-preview",
+            "task_id": "task-detail",
+            "asset_type": "preview_html",
+            "file_path": str(preview_file),
+            "file_name": "preview.html",
+            "mime_type": "text/html",
+            "created_at": "2026-03-18T04:00:00+00:00",
+        }
+    }
+
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_id", lambda _paper_id: asyncio.sleep(0, result=paper))
+    monkeypatch.setattr(paper_service, "_hydrate_arxiv_metadata_if_needed", lambda payload: asyncio.sleep(0, result=payload))
+    monkeypatch.setattr(paper_service, "_hydrate_translated_abstract_if_needed", lambda payload, asset_map=None: asyncio.sleep(0, result=payload))
+    monkeypatch.setattr(paper_service, "_fetch_asset_map_for_paper", lambda **_kwargs: asyncio.sleep(0, result=asset_map))
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_viewer_state",
+        lambda _paper_ids, user_id=None: asyncio.sleep(0, result={"paper-preview": {"liked": False, "favorited": False}}),
+    )
+
+    result = asyncio.run(
+        paper_service.get_community_paper_detail(
+            paper_id="paper-preview",
+            viewer_user_id=None,
+        )
+    )
+
+    assert result["preview"]["fetch_url"] == "/api/papers/paper-preview/preview"
+    assert result["reader"]["translated"]["url"] == "/api/papers/paper-preview/preview"
+    assert result["reader"]["translated"]["html_content"] is None
 
 
 def test_detail_hides_stale_preview_and_marks_reader_warming(monkeypatch):

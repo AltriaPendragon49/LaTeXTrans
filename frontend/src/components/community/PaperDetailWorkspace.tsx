@@ -563,7 +563,9 @@ export function PaperDetailWorkspace({
       preview
         ? {
             ...preview,
-            html_content: stripLeadingDuplicatePaperHeaderHtml(preview.html_content, paper) ?? preview.html_content,
+            html_content:
+              stripLeadingDuplicatePaperHeaderHtml(preview.html_content ?? null, paper) ??
+              preview.html_content,
           }
         : null,
     [paper, preview],
