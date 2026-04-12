@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
-import { API_BASE_URL } from "@/api-base"
+import { API_BASE_URL, ENABLE_TRANSLATED_HTML_READER } from "@/api-base"
 import { PaperDetailSkeleton } from "@/components/community/PaperDetailSkeleton"
 import { PaperDetailWorkspace } from "@/components/community/PaperDetailWorkspace"
 import { usePaperDetail } from "@/hooks/use-paper-detail"
@@ -145,9 +145,10 @@ function resolveAvailableModes(
   const modes: CommunityPaperReaderMode[] = ["source"]
   const rawModes = reader?.available_modes ?? []
   const allowTranslatedHtml =
-    rawModes.includes("translated_html") ||
-    rawModes.includes("translated") ||
-    hasTranslatedHtmlResource(paper, preview, reader)
+    ENABLE_TRANSLATED_HTML_READER &&
+    (rawModes.includes("translated_html") ||
+      rawModes.includes("translated") ||
+      hasTranslatedHtmlResource(paper, preview, reader))
   const allowTranslatedPdf =
     rawModes.includes("translated_pdf") ||
     (rawModes.includes("translated") && hasTranslatedPdfResource(paper, reader)) ||

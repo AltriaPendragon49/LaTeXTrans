@@ -143,6 +143,29 @@ Those files were directionally correct, but they did not fully preserve the fina
 - The translated PDF preview path now intentionally uses first-party proxying for object-storage assets because COS default-domain browser preview behavior was not sufficient for iframe rendering.
 - The frontend Pages deployment warning about `wrangler.toml` missing `pages_build_output_dir` does not block deployment, but the config can be cleaned up later.
 
+## 2026-04-12 Regression Follow-Up
+
+### Problems re-verified after the COS and ingress rollout
+- Public structured analysis for the curated paper regressed to fallback placeholder copy.
+- Community detail pages were still eagerly pulling translated PDF resources on first entry.
+- The homepage was still triggering translated PDF thumbnail work too early.
+- The translated HTML reader remained the slowest public path because it depends on a multi-megabyte preview payload.
+
+### Additional fixes and operator actions completed
+- Regenerated `community_structured_insights` in production for paper `2508.18791` by running the structured-insight rebuild flow inside the backend container against the persisted COS-backed preview asset. The live API now returns five readable analysis sections instead of fallback text.
+- Added a dedicated frontend preview-origin setting so translated HTML preview fetches can bypass the Pages same-origin proxy when enabled, while still falling back to the existing route if the direct fetch fails.
+- Delayed homepage translated-PDF thumbnail rendering until browser idle time or user intent, so the homepage no longer immediately starts large translated-PDF range requests during the first paint.
+- Disabled the translated HTML reader in production UI via environment configuration while keeping preview HTML generation intact on the backend. This preserves structured-analysis generation and any future internal preview recovery flows, but removes the slow public entrypoint from normal production usage.
+
+### Acceptance evidence captured
+- Homepage re-check: within the first several seconds after load, the only community resource request observed was `GET /api/papers?sort=latest`; the translated PDF thumbnail request no longer fires immediately.
+- Detail re-check: the structured-analysis panel renders real section prompts and content again for paper `2508.18791`.
+- Detail re-check: the translated HTML mode button is present but disabled in production, preventing users from entering the slow public HTML reader path while backend preview assets remain available for analysis.
+- Screenshot and browser-capture artifacts were saved locally under:
+  - `artifacts/selenium/`
+  - `artifacts/selenium-post-deploy/`
+  - `artifacts/selenium-final/`
+
 ## Conclusion
 The active OpenSpec change now has both the original formal proposal/design/spec deltas and this concrete implementation record. That means the repository preserves:
 - the intended architecture,

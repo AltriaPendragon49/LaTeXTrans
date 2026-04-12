@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/api-base"
+import { API_BASE_URL, PAPER_PREVIEW_API_BASE_URL } from "@/api-base"
 import api from "@/lib/api"
 import { getAccessToken } from "@/lib/local-auth"
 import { retryOnTransientNetworkError } from "@/lib/network-retry"
@@ -362,11 +362,40 @@ export async function translateCommunityPaper(
 export async function getCommunityPaperPreview(
   paperId: string,
 ): Promise<CommunityPaperPreviewResponse> {
-  const response = await retryOnTransientNetworkError(
-    () => api.get<CommunityPaperPreviewResponse>(`/papers/${paperId}/preview`),
-    { attempts: 3, baseDelayMs: 150 },
-  )
-  return response.data
+  const relativePath = `/api/papers/${paperId}/preview`
+  const preferredUrl = `${PAPER_PREVIEW_API_BASE_URL}${relativePath}`
+  const fallbackUrl = `${API_BASE_URL}${relativePath}`
+
+  const fetchPreview = async (url: string): Promise<CommunityPaperPreviewResponse> => {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch paper preview: ${response.status}`)
+    }
+
+    return (await response.json()) as CommunityPaperPreviewResponse
+  }
+
+  try {
+    return await retryOnTransientNetworkError(
+      () => fetchPreview(preferredUrl),
+      { attempts: 3, baseDelayMs: 150 },
+    )
+  } catch (error) {
+    if (preferredUrl === fallbackUrl) {
+      throw error
+    }
+
+    return await retryOnTransientNetworkError(
+      () => fetchPreview(fallbackUrl),
+      { attempts: 3, baseDelayMs: 150 },
+    )
+  }
 }
 
 export async function createCommunityPaperDownloadSession(

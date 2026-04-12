@@ -158,11 +158,18 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  cancelIdleCallback?: (handle: number) => void
+}
+
 export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps) {
   const { t } = useTranslation()
   const [showTranslatedAbstract, setShowTranslatedAbstract] = useState(true)
+  const [translatedPreviewReady, setTranslatedPreviewReady] = useState(false)
 
   function prefetchDetailNavigation() {
+    setTranslatedPreviewReady(true)
     void preloadPaperDetailRoute()
     void prefetchCommunityPaperDetail(paper.id)
     void preloadPaperPreviewEnhancer()
@@ -184,6 +191,28 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   )
 
   const titleLabel = showTranslatedAbstract ? t("community.detail.mode.source") : t("community.detail.mode.translated")
+
+  useEffect(() => {
+    if (!transPdfUrl) {
+      setTranslatedPreviewReady(false)
+      return
+    }
+
+    const idleWindow = window as IdleWindow
+    if (typeof idleWindow.requestIdleCallback !== "function") {
+      setTranslatedPreviewReady(true)
+      return
+    }
+
+    const handle = idleWindow.requestIdleCallback(
+      () => setTranslatedPreviewReady(true),
+      { timeout: 1500 },
+    )
+
+    return () => {
+      idleWindow.cancelIdleCallback?.(handle)
+    }
+  }, [transPdfUrl])
 
   return (
     <Link
@@ -292,7 +321,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         <div className="flex-1 flex flex-col items-center gap-3">
           <PdfPreviewFrame
             label="Translated"
-            pdfUrl={transPdfUrl}
+            pdfUrl={translatedPreviewReady ? transPdfUrl : null}
             unavailableIcon="translate"
             placeholderTone="accent"
             pdfOptions={PDF_PREVIEW_OPTIONS_TRANSLATED}
