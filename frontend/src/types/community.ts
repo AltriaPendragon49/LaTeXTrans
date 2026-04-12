@@ -259,8 +259,16 @@ export interface PaperAnnotationOverlayRect {
 export interface StructuredInsightSection {
   section_key: StructuredInsightSectionKey
   content?: string | null
+  raw_content?: string | null
+  summary?: string | null
+  blocks?: StructuredInsightBlock[] | null
   status?: string | null
   updated_at?: string | null
+}
+
+export interface StructuredInsightBlock {
+  heading: string
+  content: string
 }
 
 export const STRUCTURED_INSIGHT_SECTION_KEYS = [

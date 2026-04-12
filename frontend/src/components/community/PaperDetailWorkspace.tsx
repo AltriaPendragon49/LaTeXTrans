@@ -14,6 +14,7 @@ import type {
   CommunityPaperReader,
   CommunityPaperReaderMode,
   CommunityPaperSimilarItem,
+  StructuredInsightBlock,
   StructuredInsightSection,
   StructuredInsightSectionKey,
   StructuredInsightsPayload,
@@ -238,6 +239,36 @@ function extractHeuristicTitledBlock(block: string) {
       },
     ],
   }
+}
+
+function normalizeStructuredInsightBlock(block: StructuredInsightBlock | null | undefined) {
+  const heading = block?.heading?.trim()
+  const content = block?.content?.trim()
+  if (!heading || !content) {
+    return null
+  }
+  return {
+    title: heading,
+    body: content,
+  }
+}
+
+function resolveInsightContent(section: StructuredInsightSection): ParsedInsightContent | null {
+  const normalizedBlocks = (section.blocks ?? [])
+    .map((block) => normalizeStructuredInsightBlock(block))
+    .filter((block): block is NonNullable<ReturnType<typeof normalizeStructuredInsightBlock>> => Boolean(block))
+  const normalizedSummary = section.summary?.trim() ?? null
+
+  if (normalizedSummary || normalizedBlocks.length > 0) {
+    return {
+      summary: normalizedSummary,
+      sections: normalizedBlocks,
+      paragraphs: [],
+    }
+  }
+
+  const fallbackContent = section.content?.trim() || section.raw_content?.trim() || ""
+  return fallbackContent ? parseInsightContent(fallbackContent) : null
 }
 
 function extractLineTitledSections(block: string) {
@@ -698,9 +729,8 @@ export function PaperDetailWorkspace({
               </div>
             ) : hasGuideSections ? (
               selectedInsights.map((section) => {
-                const content = section.content?.trim() ?? ""
                 const expanded = expandedInsightKey === section.section_key
-                const parsedContent = content ? parseInsightContent(content) : null
+                const parsedContent = resolveInsightContent(section)
 
                 return (
                   <div

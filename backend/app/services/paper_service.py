@@ -60,6 +60,16 @@ _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
 _delete_job_tasks: Dict[str, asyncio.Task] = {}
+ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 900
+ADMIN_CURATION_CLEANUP_PAPER_TABLES = (
+    "comments",
+    "paper_assets",
+    "paper_likes",
+    "paper_favorites",
+    "community_structured_insights",
+    "community_similar_recommendations",
+    "papers",
+)
 STRUCTURED_INSIGHT_SECTION_KEYS = (
     "problem",
     "solution",
@@ -73,6 +83,7 @@ STRUCTURED_INSIGHT_READY_STATUS = "ready"
 STRUCTURED_INSIGHT_PROCESSING_STATUS = "processing"
 STRUCTURED_INSIGHT_NOT_READY_STATUS = "not_ready"
 STRUCTURED_INSIGHT_SOURCE_MAX_CHARS = 2400
+STRUCTURED_INSIGHT_DEFAULT_BLOCK_HEADING = "核心内容"
 STRUCTURED_INSIGHT_FAILURE_PLACEHOLDERS = (
     "暂时无法生成",
     "生成失败",
@@ -1854,8 +1865,118 @@ def _empty_structured_insight_section(section_key: str) -> Dict[str, Any]:
     return {
         "section_key": section_key,
         "content": None,
+        "raw_content": None,
+        "summary": None,
+        "blocks": [],
         "status": STRUCTURED_INSIGHT_NOT_READY_STATUS,
         "updated_at": None,
+    }
+
+
+def _normalize_multiline_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[^\S\n]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    normalized = text.strip()
+    return normalized or None
+
+
+def _structured_insight_known_titles(section_key: str) -> List[str]:
+    ordered_titles: List[str] = []
+    for title in STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS.get(section_key, []):
+        normalized = _normalize_metadata_text(title)
+        if normalized and normalized not in ordered_titles:
+            ordered_titles.append(normalized)
+    for titles in STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS.values():
+        for title in titles:
+            normalized = _normalize_metadata_text(title)
+            if normalized and normalized not in ordered_titles:
+                ordered_titles.append(normalized)
+    return ordered_titles
+
+
+def _split_structured_insight_content(section_key: str, content: Optional[str]) -> Dict[str, Any]:
+    raw_content = _normalize_multiline_text(content)
+    if not raw_content:
+        return {
+            "raw_content": None,
+            "summary": None,
+            "blocks": [],
+        }
+
+    titles = _structured_insight_known_titles(section_key)
+    if not titles:
+        return {
+            "raw_content": raw_content,
+            "summary": None,
+            "blocks": [
+                {
+                    "heading": STRUCTURED_INSIGHT_DEFAULT_BLOCK_HEADING,
+                    "content": raw_content,
+                }
+            ],
+        }
+
+    title_pattern = "|".join(re.escape(title) for title in sorted(titles, key=len, reverse=True))
+    matcher = re.compile(
+        rf"(?:(?<=^)|(?<=\n)|(?<=\s))(?:\*\*|__)?(?P<title>{title_pattern})(?:\*\*|__)?(?:\s*[：:])?",
+        flags=re.MULTILINE,
+    )
+    matches = list(matcher.finditer(raw_content))
+    if not matches:
+        return {
+            "raw_content": raw_content,
+            "summary": None,
+            "blocks": [
+                {
+                    "heading": STRUCTURED_INSIGHT_DEFAULT_BLOCK_HEADING,
+                    "content": raw_content,
+                }
+            ],
+        }
+
+    summary = raw_content[: matches[0].start()].strip() or None
+    blocks: List[Dict[str, str]] = []
+    for index, match in enumerate(matches):
+        heading = _normalize_metadata_text(match.group("title"))
+        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(raw_content)
+        body = raw_content[match.end() : body_end].strip()
+        if not heading or not body:
+            continue
+        blocks.append(
+            {
+                "heading": heading,
+                "content": body,
+            }
+        )
+
+    if not blocks:
+        blocks = [
+            {
+                "heading": STRUCTURED_INSIGHT_DEFAULT_BLOCK_HEADING,
+                "content": raw_content,
+            }
+        ]
+
+    return {
+        "raw_content": raw_content,
+        "summary": summary,
+        "blocks": blocks,
+    }
+
+
+def _build_structured_insight_response_section(section: Dict[str, Any]) -> Dict[str, Any]:
+    normalized_section = _normalize_structured_insight_section(section)
+    normalized_content = _split_structured_insight_content(
+        normalized_section["section_key"],
+        normalized_section.get("content"),
+    )
+    return {
+        **normalized_section,
+        **normalized_content,
     }
 
 
@@ -1863,7 +1984,7 @@ def _build_structured_insights_payload(
     sections: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     section_map = {
-        str(section.get("section_key") or "").strip(): dict(section)
+        str(section.get("section_key") or "").strip(): _build_structured_insight_response_section(dict(section))
         for section in sections
         if str(section.get("section_key") or "").strip()
     }
@@ -3350,10 +3471,12 @@ def _serialize_curation_batch_status(items: List[Dict[str, Any]]) -> str:
         return "queued"
     if statuses == {"completed"}:
         return "completed"
-    if statuses.issubset({"failed"}):
+    if statuses.issubset({"failed", "retry"}):
         return "failed"
-    if "processing" in statuses or "translating" in statuses or "publishing" in statuses:
+    if any(status in statuses for status in {"processing", "translating", "publishing"}):
         return "processing"
+    if "failed" in statuses or "retry" in statuses:
+        return "failed"
     return "queued"
 
 
@@ -3434,10 +3557,10 @@ def _expand_structured_insight_placeholders(text: str, placeholder_map: Dict[str
 
 
 def _normalize_structured_insight_text(text: str) -> Optional[str]:
-    plain = _normalize_metadata_text(extract_text_from_tex(str(text or "")))
+    plain = _normalize_multiline_text(extract_text_from_tex(str(text or "")))
     if plain:
         return plain
-    return _normalize_metadata_text(text)
+    return _normalize_multiline_text(text)
 
 
 def _load_structured_insight_translated_sections(task_id: str) -> List[Dict[str, Any]]:
@@ -3629,7 +3752,7 @@ def _prepare_structured_insight_sources(task_id: str) -> Dict[str, str]:
 def _normalize_structured_insight_section(section: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "section_key": str(section.get("section_key") or "").strip(),
-        "content": _normalize_metadata_text(section.get("content")),
+        "content": _normalize_multiline_text(section.get("content")),
         "status": str(section.get("status") or STRUCTURED_INSIGHT_READY_STATUS).strip() or STRUCTURED_INSIGHT_READY_STATUS,
         "updated_at": section.get("updated_at") or _utc_now_iso(),
     }
@@ -3958,8 +4081,157 @@ async def _publish_admin_curation_job(
     return updated
 
 
+def _is_private_curating_placeholder_paper(paper: Optional[Dict[str, Any]]) -> bool:
+    if not paper:
+        return False
+    return (
+        str(paper.get("status") or "").strip() == "curating"
+        and str(paper.get("visibility") or "").strip() == "private"
+    )
+
+
+def _is_task_scoped_upload_source(source_path: Path, task_ids: List[str]) -> bool:
+    try:
+        resolved_source = source_path.resolve()
+        uploads_root = Path(settings.uploads_dir).resolve()
+    except Exception:
+        return False
+    if resolved_source.parent != uploads_root:
+        return False
+    return resolved_source.name in {task_id for task_id in task_ids if task_id}
+
+
+def _delete_local_artifact_path(path: Path) -> Optional[str]:
+    if not path.exists():
+        return None
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    return str(path)
+
+
+async def _cleanup_failed_admin_curation_artifacts(
+    *,
+    repository: Any,
+    job: Dict[str, Any],
+    translated_task_id: str = "",
+    cancel_running_task: bool,
+) -> Dict[str, Any]:
+    ordered_candidates = [
+        str(translated_task_id or "").strip(),
+        str(job.get("task_id") or "").strip(),
+    ]
+    task_ids = [task_id for task_id in dict.fromkeys(ordered_candidates) if task_id]
+    deleted_paths: List[str] = []
+    errors: List[str] = []
+
+    for task_id in task_ids:
+        if cancel_running_task:
+            try:
+                task_manager.cancel_task(task_id)
+            except Exception as exc:
+                errors.append(f"Failed to cancel task {task_id}: {exc}")
+
+        task_snapshot = task_manager.get_task(task_id) if hasattr(task_manager, "get_task") else None
+        failed_output_path = str((task_snapshot or {}).get("failed_output_path") or "").strip()
+        if failed_output_path:
+            try:
+                deleted = _delete_local_artifact_path(Path(failed_output_path))
+                if deleted:
+                    deleted_paths.append(deleted)
+            except Exception as exc:
+                errors.append(f"Failed to delete failed task output for {task_id}: {exc}")
+        else:
+            fallback_failed_path = Path(settings.failed_tasks_dir) / task_id
+            try:
+                deleted = _delete_local_artifact_path(fallback_failed_path)
+                if deleted:
+                    deleted_paths.append(deleted)
+            except Exception as exc:
+                errors.append(f"Failed to delete fallback failed task output for {task_id}: {exc}")
+
+        try:
+            cleanup_result = task_manager.delete_task_full(task_id)
+        except Exception as exc:
+            errors.append(f"Failed to delete task artifacts for {task_id}: {exc}")
+        else:
+            deleted_paths.extend(
+                [str(path) for path in cleanup_result.get("deleted_dirs", []) if str(path or "").strip()]
+            )
+            errors.extend(
+                [str(error) for error in cleanup_result.get("errors", []) if str(error or "").strip()]
+            )
+
+        try:
+            await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
+        except Exception as exc:
+            errors.append(f"Failed to delete translation task row for {task_id}: {exc}")
+
+    source_type = str(job.get("source_type") or "").strip()
+    source_path_raw = str(job.get("source_path") or "").strip()
+    if source_type == "upload" and source_path_raw:
+        source_path = _resolve_storage_path(source_path_raw)
+        if _is_task_scoped_upload_source(source_path, task_ids):
+            try:
+                deleted = _delete_local_artifact_path(source_path)
+                if deleted:
+                    deleted_paths.append(deleted)
+            except Exception as exc:
+                errors.append(f"Failed to delete upload source path {source_path}: {exc}")
+
+    paper_id = str(job.get("paper_id") or "").strip()
+    if paper_id:
+        try:
+            paper = await _fetch_paper_by_id(paper_id)
+        except Exception as exc:
+            paper = None
+            errors.append(f"Failed to load paper {paper_id} for cleanup: {exc}")
+        if _is_private_curating_placeholder_paper(paper):
+            _RUNTIME_PAPER_OVERRIDES.pop(paper_id, None)
+            for table_name in ADMIN_CURATION_CLEANUP_PAPER_TABLES:
+                try:
+                    await _run_local_repo(
+                        lambda table_name=table_name, paper_id=paper_id: repository.delete_rows_for_papers(table_name, [paper_id])
+                    )
+                except Exception as exc:
+                    errors.append(f"Failed to delete {table_name} rows for paper {paper_id}: {exc}")
+
+    return {
+        "deleted_paths": deleted_paths,
+        "errors": errors,
+    }
+
+
+async def _mark_admin_curation_job_failed(
+    *,
+    repository: Any,
+    job_id: str,
+    job: Dict[str, Any],
+    translated_task_id: str,
+    failure_message: str,
+    cancel_running_task: bool,
+) -> None:
+    cleanup_result = await _cleanup_failed_admin_curation_artifacts(
+        repository=repository,
+        job=job,
+        translated_task_id=translated_task_id,
+        cancel_running_task=cancel_running_task,
+    )
+    final_error = str(failure_message or "Curation translation failed")
+    cleanup_errors = [str(error) for error in cleanup_result.get("errors", []) if str(error or "").strip()]
+    if cleanup_errors:
+        final_error = f"{final_error} | cleanup_warnings: {'; '.join(cleanup_errors)}"
+    await _run_local_repo(
+        lambda: repository.update_curation_job(
+            job_id,
+            {"status": "failed", "error": final_error, "updated_at": _utc_now_iso()},
+        )
+    )
+
+
 async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
-    for _ in range(600):
+    for _ in range(ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS):
         task = task_manager.get_task(task_id)
         if task and task.get("status") in TERMINAL_TASK_STATUSES:
             return task
@@ -3977,6 +4249,9 @@ def _schedule_curation_job(job_id: str) -> None:
 async def _run_curation_job(job_id: str) -> None:
     repository = get_community_paper_repository()
     async with _get_curation_semaphore():
+        job: Dict[str, Any] = {}
+        metadata: Dict[str, Any] = {}
+        translated_task_id = ""
         try:
             job = await _run_local_repo(lambda: repository.get_curation_job(job_id))
             if not job:
@@ -3992,22 +4267,34 @@ async def _run_curation_job(job_id: str) -> None:
                 source_language=str(job.get("source_language") or "en"),
                 target_language=str(job.get("target_language") or "zh"),
             )
-            metadata: Dict[str, Any]
-            translated_task_id: str
+            translated_task_id = str(job.get("task_id") or "").strip()
             if str(job.get("source_type") or "") == "arxiv":
                 metadata = await _fetch_arxiv_metadata(str(job.get("arxiv_id") or ""))
-                await _run_local_repo(
-                    lambda: repository.update_curation_job(
-                        job_id,
-                        {"status": "translating", "updated_at": _utc_now_iso()},
+                if translated_task_id:
+                    await _run_local_repo(
+                        lambda: repository.update_curation_job(
+                            job_id,
+                            {
+                                "task_id": translated_task_id,
+                                "status": "publishing",
+                                "error": None,
+                                "updated_at": _utc_now_iso(),
+                            },
+                        )
                     )
-                )
-                translation_result = await _start_arxiv_paper_translation(
-                    paper={"source": "arxiv", "arxiv_id": job.get("arxiv_id")},
-                    request=request,
-                    context=context,
-                )
-                translated_task_id = translation_result["task_id"]
+                else:
+                    await _run_local_repo(
+                        lambda: repository.update_curation_job(
+                            job_id,
+                            {"status": "translating", "updated_at": _utc_now_iso()},
+                        )
+                    )
+                    translation_result = await _start_arxiv_paper_translation(
+                        paper={"source": "arxiv", "arxiv_id": job.get("arxiv_id")},
+                        request=request,
+                        context=context,
+                    )
+                    translated_task_id = translation_result["task_id"]
             else:
                 source_path = _resolve_storage_path(str(job.get("source_path") or ""))
                 metadata = _archive_metadata_from_source_path(
@@ -4039,15 +4326,13 @@ async def _run_curation_job(job_id: str) -> None:
             )
             task = await _wait_for_task_terminal_state(translated_task_id)
             if task.get("status") not in {"completed", "completed_with_warnings"}:
-                await _run_local_repo(
-                    lambda: repository.update_curation_job(
-                        job_id,
-                        {
-                            "status": "failed",
-                            "error": str(task.get("error") or task.get("message") or "Curation translation failed"),
-                            "updated_at": _utc_now_iso(),
-                        },
-                    )
+                await _mark_admin_curation_job_failed(
+                    repository=repository,
+                    job_id=job_id,
+                    job=job,
+                    translated_task_id=translated_task_id,
+                    failure_message=str(task.get("error") or task.get("message") or "Curation translation failed"),
+                    cancel_running_task=False,
                 )
                 return
 
@@ -4067,14 +4352,59 @@ async def _run_curation_job(job_id: str) -> None:
                     },
                 )
             )
-        except Exception as exc:
-            logger.warning("Admin curation job %s failed: %s", job_id, exc, exc_info=True)
-            try:
+        except TimeoutError as exc:
+            logger.warning("Admin curation job %s timed out while waiting for %s", job_id, translated_task_id)
+            latest_task = task_manager.get_task(translated_task_id) if translated_task_id else None
+            if latest_task and latest_task.get("status") in {"completed", "completed_with_warnings"}:
+                published = await _publish_admin_curation_job(
+                    job=job,
+                    metadata=metadata,
+                    translated_task_id=translated_task_id,
+                )
                 await _run_local_repo(
                     lambda: repository.update_curation_job(
                         job_id,
-                        {"status": "failed", "error": str(exc), "updated_at": _utc_now_iso()},
+                        {
+                            "paper_id": published.get("id"),
+                            "status": "completed",
+                            "error": None,
+                            "updated_at": _utc_now_iso(),
+                        },
                     )
+                )
+                return
+            if latest_task and latest_task.get("status") in TERMINAL_TASK_STATUSES:
+                await _mark_admin_curation_job_failed(
+                    repository=repository,
+                    job_id=job_id,
+                    job=job,
+                    translated_task_id=translated_task_id,
+                    failure_message=str(
+                        latest_task.get("error")
+                        or latest_task.get("message")
+                        or exc
+                    ),
+                    cancel_running_task=False,
+                )
+                return
+            await _mark_admin_curation_job_failed(
+                repository=repository,
+                job_id=job_id,
+                job=job,
+                translated_task_id=translated_task_id,
+                failure_message=str(exc),
+                cancel_running_task=True,
+            )
+        except Exception as exc:
+            logger.warning("Admin curation job %s failed: %s", job_id, exc, exc_info=True)
+            try:
+                await _mark_admin_curation_job_failed(
+                    repository=repository,
+                    job_id=job_id,
+                    job=job,
+                    translated_task_id=translated_task_id,
+                    failure_message=str(exc),
+                    cancel_running_task=bool(translated_task_id),
                 )
             except Exception:
                 logger.warning("Failed to persist curation job failure for %s", job_id, exc_info=True)

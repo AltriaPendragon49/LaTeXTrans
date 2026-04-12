@@ -74,6 +74,18 @@ describe("CommunityFeedPage", () => {
     expect(screen.queryByRole("textbox", { name: "Ask the paper agent" })).not.toBeInTheDocument()
   })
 
+  it("does not render the translated sort tab", () => {
+    render(
+      <MemoryRouter>
+        <CommunityFeedPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("Hot")).toBeInTheDocument()
+    expect(screen.getByText("Latest")).toBeInTheDocument()
+    expect(screen.queryByText("Translated")).not.toBeInTheDocument()
+  })
+
   it("updates the queried feed when the search is submitted", async () => {
     const user = userEvent.setup()
 

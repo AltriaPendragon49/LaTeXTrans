@@ -356,6 +356,53 @@ describe("PaperDetailPage", () => {
     ).toBeInTheDocument()
   })
 
+  it("renders normalized structured insight blocks from the backend contract", async () => {
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        structuredInsights: {
+          state: "ready",
+          sections: [
+            {
+              section_key: "problem",
+              content: null,
+              raw_content:
+                "This raw string should no longer be needed by the main renderer once normalized blocks exist.",
+              summary: "A stable backend contract should let the UI render without reparsing raw model text.",
+              blocks: [
+                {
+                  heading: "Problem essence",
+                  content: "The backend already isolated the core problem description.",
+                },
+                {
+                  heading: "Why it matters",
+                  content: "The frontend can now render deterministic sections directly.",
+                },
+              ],
+              updated_at: "2026-03-18T03:00:00Z",
+            },
+          ],
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await userEvent.setup().click(screen.getByText(i18n.t("community.detail.insights.section.problem")))
+    expect(
+      screen.getByText("A stable backend contract should let the UI render without reparsing raw model text."),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Problem essence")).toBeInTheDocument()
+    expect(screen.getByText("Why it matters")).toBeInTheDocument()
+    expect(screen.getByText("The backend already isolated the core problem description.")).toBeInTheDocument()
+    expect(screen.getByText("The frontend can now render deterministic sections directly.")).toBeInTheDocument()
+  })
+
   it("preserves source pdf, translated html, and translated pdf preview modes", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(

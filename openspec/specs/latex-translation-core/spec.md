@@ -227,7 +227,7 @@ The system SHALL implement a globally shared concurrency limit for all outbound 
 
 #### Scenario: Enforcing global LLM concurrency
 - **WHEN** multiple tasks or sub-tasks trigger LLM requests
-- **THEN** they MUST acquire a global `asyncio.Semaphore` (default: 30)
+- **THEN** they MUST acquire a global `asyncio.Semaphore` with a default ceiling of `3`
 - **AND** excess requests SHALL queue without blocking or timing out.
 
 ### Requirement: Translation Completeness Validation

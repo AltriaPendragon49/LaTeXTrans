@@ -110,13 +110,6 @@ export default function CommunityFeedPage() {
               <span className="material-symbols-outlined text-sm">schedule</span>
               {t("community.feed.sort.latest")}
             </button>
-            <button
-              onClick={() => setActiveTab("translated")}
-              className={`font-bold pb-4 flex items-center gap-2 transition-colors ${activeTab === "translated" ? "text-primary border-b-2 border-primary" : "text-tertiary hover:text-primary"}`}
-            >
-              <span className="material-symbols-outlined text-sm">translate</span>
-              {t("community.feed.sort.translated")}
-            </button>
           </div>
 
           <div className="flex gap-4 pb-4">

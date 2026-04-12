@@ -722,9 +722,11 @@ class CommunityPaperRepository:
                     + _placeholder(1)
                     + ", "
                     + _placeholder(2)
+                    + ", "
+                    + _placeholder(3)
                     + ") order by created_at asc"
                 ),
-                ("queued", "processing", "retry"),
+                ("queued", "processing", "translating", "publishing"),
             )
             return [
                 normalized

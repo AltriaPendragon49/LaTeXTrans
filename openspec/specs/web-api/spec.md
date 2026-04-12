@@ -331,7 +331,7 @@ The web API SHALL pass the effective backend runtime parity configuration into t
 
 #### Scenario: Task-level LLM concurrency is bounded for parity
 - **WHEN** the backend computes the per-task LLM concurrency passed into orchestration
-- **THEN** it MUST cap the task-level value to the parity-safe ceiling used by the current runtime contract
+- **THEN** it MUST cap the task-level value to the parity-safe ceiling of `3`
 - **AND** MUST record the effective bounded value in the task-start/runtime snapshot.
 
 ### Requirement: Community agent run API returns a natural assistant message
