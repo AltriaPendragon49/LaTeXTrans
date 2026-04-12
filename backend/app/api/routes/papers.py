@@ -26,6 +26,7 @@ router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
 settings = get_settings()
 LOCAL_PDF_PREVIEW_CHUNK_SIZE = 64 * 1024
+THUMBNAIL_CACHE_VERSION = "v2"
 
 
 def _ensure_paper_authorized(
@@ -405,7 +406,7 @@ def _decode_png_data_uri(payload: Optional[str]) -> Optional[bytes]:
 
 
 def _thumbnail_cache_path(cache_seed: str) -> Path:
-    digest = hashlib.sha256(cache_seed.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{THUMBNAIL_CACHE_VERSION}:{cache_seed}".encode("utf-8")).hexdigest()
     return _paper_thumbnail_cache_dir() / f"{digest}.jpg"
 
 
@@ -421,14 +422,14 @@ def _optimize_thumbnail_bytes(payload: Optional[bytes]) -> Optional[bytes]:
     try:
         with Image.open(io.BytesIO(payload)) as image:
             page = image.convert("RGB")
-            max_width = 720
+            max_width = 480
             if page.width > max_width:
                 height = max(1, int(page.height * (max_width / page.width)))
                 resampling = getattr(Image, "Resampling", Image)
                 page = page.resize((max_width, height), resampling.LANCZOS)
 
             buffer = io.BytesIO()
-            page.save(buffer, format="JPEG", quality=72, optimize=True, progressive=True)
+            page.save(buffer, format="JPEG", quality=58, optimize=True, progressive=True)
             return buffer.getvalue()
     except Exception:
         return payload
