@@ -47,6 +47,7 @@ MANIFEST
 *.swp
 *.swo
 .superpowers/
+.worktrees/
 
 # OS
 .DS_Store
