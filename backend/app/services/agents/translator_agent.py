@@ -88,6 +88,7 @@ class TranslatorAgent(BaseToolAgent):
     FALLBACK_SUBTYPE_OTHER_ENV = "other_env_fallback"
     GENERIC_TEXT_ENVS = frozenset({
         "abstract",
+        "promptbox",
         "quote",
         "quotation",
         "remark",
