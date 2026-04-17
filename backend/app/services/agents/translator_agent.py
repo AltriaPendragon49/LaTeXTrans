@@ -587,12 +587,33 @@ class TranslatorAgent(BaseToolAgent):
         session: aiohttp.ClientSession,
         error_message: Optional[str] = None,
     ) -> Optional[str]:
+        return await self._rescue_plain_text_by_paragraph(
+            text=text,
+            identifier=placeholder,
+            part_type="env",
+            session=session,
+            error_message=error_message,
+            prompt_key="section_system_prompt",
+            prompt_key_with_terms="section_system_prompt_with_dict",
+        )
+
+    async def _rescue_plain_text_by_paragraph(
+        self,
+        *,
+        text: str,
+        identifier: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+        prompt_key: str = "section_system_prompt",
+        prompt_key_with_terms: Optional[str] = None,
+    ) -> Optional[str]:
         normalized = (text or "").replace("\r\n", "\n")
         if not normalized.strip():
             return None
 
         paragraph_hint = (
-            "Previous attempts preserved the source text. "
+            "Previous attempts preserved the source text or violated protected-token invariants. "
             "Translate each paragraph into the target language. "
             "Do not copy the English source. Keep LaTeX commands unchanged."
         )
@@ -612,13 +633,36 @@ class TranslatorAgent(BaseToolAgent):
                 rescued.append(piece)
                 continue
 
-            rescued_piece = await self._request_llm_for_trans(
-                self.prompts["section_system_prompt"] + prompt_suffix,
-                piece,
-                fail_part=f"{placeholder}:paragraph:{idx}",
-                type="env",
-                session=session,
-            )
+            part_fail_key = f"{identifier}:paragraph:{idx}"
+            if self.trans_mode == 1:
+                retry_part = {
+                    "content": piece,
+                    "trans_content": piece,
+                }
+                rescued_piece = await self._request_llm_for_retrans_error_parts(
+                    self.prompts["retrans_error_parts_system_prompt"],
+                    part=retry_part,
+                    error_message=paragraph_hint if not error_message else f"{error_message}\n{paragraph_hint}",
+                    fail_part=part_fail_key,
+                    type=part_type,
+                    session=session,
+                )
+            elif self.trans_mode == 2 and prompt_key_with_terms and self.term_dict:
+                rescued_piece = await self._request_llm_for_trans_with_terms(
+                    self.prompts[prompt_key_with_terms] + prompt_suffix,
+                    piece,
+                    fail_part=part_fail_key,
+                    type=part_type,
+                    session=session,
+                )
+            else:
+                rescued_piece = await self._request_llm_for_trans(
+                    self.prompts[prompt_key] + prompt_suffix,
+                    piece,
+                    fail_part=part_fail_key,
+                    type=part_type,
+                    session=session,
+                )
             if not isinstance(rescued_piece, str) or not rescued_piece.strip():
                 return None
             if self._has_unrestored_env_artifacts(rescued_piece):
@@ -736,6 +780,14 @@ class TranslatorAgent(BaseToolAgent):
         if self._is_payload_invariant_reason(reason):
             return self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
         return self.STATUS_FALLBACK_SOURCE_API_FAILURE
+
+    def _should_skip_fail_part_retry(self, part: Dict[str, Any]) -> bool:
+        status = str(part.get("translation_status") or "")
+        return status in {
+            self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+            self.STATUS_SOURCE_PASS_THROUGH,
+            self.STATUS_IMMUTABLE_PASSTHROUGH,
+        }
 
     def _update_caption_metadata(
         self,
@@ -1254,6 +1306,9 @@ class TranslatorAgent(BaseToolAgent):
                     # Document-root / preamble chunks are never retranslatable.
                     if self._is_document_root_section_chunk(secs[i]):
                         continue
+                    if self._should_skip_fail_part_retry(secs[i]):
+                        logger.info("Maxtry guard: skipping payload-safe section %s", sec_num)
+                        continue
                     # Section 0 should be translated only if it has translatable content.
                     if sec_num == "0" and not self._section_has_translatable_content(secs[i]["content"]):
                         continue
@@ -1272,6 +1327,9 @@ class TranslatorAgent(BaseToolAgent):
             for cap_ph in cap_phs:
                 if cap_ph in cap_dict:
                     i = cap_dict[cap_ph]
+                    if self._should_skip_fail_part_retry(caps[i]):
+                        logger.info("Maxtry guard: skipping payload-safe caption %s", cap_ph)
+                        continue
                     # ── Phase 3 Guard: skip deterministically downgraded captions ──
                     if caps[i].get("translation_status") == DOWNGRADE_STATUS:
                         logger.info("Maxtry guard: skipping downgraded caption %s", cap_ph)
@@ -1284,6 +1342,9 @@ class TranslatorAgent(BaseToolAgent):
             for env_ph in env_phs:
                 if env_ph in env_dict:
                     i = env_dict[env_ph]
+                    if self._should_skip_fail_part_retry(envs[i]):
+                        logger.info("Maxtry guard: skipping payload-safe env %s", env_ph)
+                        continue
                     # ── Phase 3 Guard: skip deterministically downgraded envs ──────
                     # Envs with DOWNGRADE_STATUS are final (Phase 2 queue timeout or
                     # 429 limit). Maxtry MUST NOT re-consume their repair opportunity.
@@ -1837,6 +1898,24 @@ class TranslatorAgent(BaseToolAgent):
 
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
             payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+            if (
+                payload_invariant_passthrough
+                and self._is_source_preserved_translation(translatable_content, translated_text)
+            ):
+                rescued_text = await self._rescue_plain_text_by_paragraph(
+                    text=translatable_content,
+                    identifier=section_num,
+                    part_type="sec",
+                    session=session,
+                    error_message="Previous whole-section attempt violated protected-token invariants.",
+                    prompt_key="section_system_prompt",
+                    prompt_key_with_terms="section_system_prompt_with_dict",
+                )
+                if rescued_text is not None:
+                    translated_text = rescued_text
+                    self._clear_api_fallback("sec", section_num)
+                    api_fallback_reason = None
+                    payload_invariant_passthrough = False
 
             env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
             if env_restore_preserved_source:
@@ -1987,6 +2066,24 @@ class TranslatorAgent(BaseToolAgent):
                 return transed_caption
 
         api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("cap", placeholder))
+        if (
+            self._is_payload_invariant_reason(api_fallback_reason)
+            and self._is_source_preserved_translation(caption["content"], transed_caption.get("trans_content", ""))
+        ):
+            rescued_caption = await self._rescue_plain_text_by_paragraph(
+                text=caption["content"],
+                identifier=placeholder,
+                part_type="cap",
+                session=session,
+                error_message="Previous caption attempt violated protected-token invariants.",
+                prompt_key="caption_system_prompt",
+                prompt_key_with_terms="caption_system_prompt_with_dict",
+            )
+            if rescued_caption is not None:
+                transed_caption["trans_content"] = rescued_caption
+                self._clear_api_fallback("cap", placeholder)
+                api_fallback_reason = None
+
         self._update_caption_metadata(
             transed_caption,
             status=self._resolve_api_fallback_status(api_fallback_reason),
@@ -2351,16 +2448,7 @@ class TranslatorAgent(BaseToolAgent):
                     if retried_content is not None:
                         translated_content = retried_content
                 api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
-                if self._is_payload_invariant_reason(api_fallback_reason):
-                    transed_env["trans_content"] = source_text
-                    self._update_env_metadata(
-                        transed_env,
-                        status=self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
-                        fallback_reason=api_fallback_reason,
-                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
-                        row_fallback_count=0,
-                    )
-                    return transed_env
+                payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_content)
                     or bool(api_fallback_reason)
@@ -2395,11 +2483,19 @@ class TranslatorAgent(BaseToolAgent):
                     transed_env["trans_content"] = source_text
                     self._update_env_metadata(
                         transed_env,
-                        status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                        status=(
+                            self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
+                            if payload_invariant_passthrough
+                            else self.STATUS_FALLBACK_SOURCE_API_FAILURE
+                        ),
                         fallback_reason=(
-                            "env_plain_text_recovery_preserved_source"
-                            if source_preserved_after_recovery
-                            else "env_wrapper_restore_preserved_source"
+                            api_fallback_reason
+                            if payload_invariant_passthrough and api_fallback_reason
+                            else (
+                                "env_plain_text_recovery_preserved_source"
+                                if source_preserved_after_recovery
+                                else "env_wrapper_restore_preserved_source"
+                            )
                         ),
                         fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
                         row_fallback_count=0,
@@ -2434,16 +2530,7 @@ class TranslatorAgent(BaseToolAgent):
                     if retried_body is not None:
                         translated_body = retried_body
                 api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
-                if self._is_payload_invariant_reason(api_fallback_reason):
-                    transed_env["trans_content"] = env.get("content", "")
-                    self._update_env_metadata(
-                        transed_env,
-                        status=self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
-                        fallback_reason=api_fallback_reason,
-                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
-                        row_fallback_count=0,
-                    )
-                    return transed_env
+                payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_body)
                     or bool(api_fallback_reason)
@@ -2478,11 +2565,19 @@ class TranslatorAgent(BaseToolAgent):
                     translated_body = env_body
                     self._update_env_metadata(
                         transed_env,
-                        status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                        status=(
+                            self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
+                            if payload_invariant_passthrough
+                            else self.STATUS_FALLBACK_SOURCE_API_FAILURE
+                        ),
                         fallback_reason=(
-                            "env_plain_text_recovery_preserved_source"
-                            if source_preserved_after_recovery
-                            else "env_wrapper_restore_preserved_source"
+                            api_fallback_reason
+                            if payload_invariant_passthrough and api_fallback_reason
+                            else (
+                                "env_plain_text_recovery_preserved_source"
+                                if source_preserved_after_recovery
+                                else "env_wrapper_restore_preserved_source"
+                            )
                         ),
                         fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
                         row_fallback_count=0,

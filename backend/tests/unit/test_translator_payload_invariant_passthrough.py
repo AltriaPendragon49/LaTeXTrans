@@ -28,6 +28,28 @@ def _build_agent() -> TranslatorAgent:
 
 
 class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
+    def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
+        agent = _build_agent()
+        section = {
+            "section": "12",
+            "content": "This section should still become Chinese after an invariant hit.",
+            "previous_context": "",
+        }
+
+        async def fake_request(*args, **kwargs):
+            agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+            return section["content"]
+
+        agent._request_llm_for_trans = fake_request
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value="这一节在 invariant 后仍然被成功翻译。")
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["trans_content"], "这一节在 invariant 后仍然被成功翻译。")
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertNotIn("fallback_reason", translated)
+        agent._rescue_plain_text_by_paragraph.assert_awaited_once()
+
     def test_translate_caption_marks_payload_invariant_passthrough(self):
         agent = _build_agent()
         caption = {
@@ -53,7 +75,28 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
             "invariant_hard_freeze_protocol_violation",
         )
 
-    def test_translate_generic_text_env_marks_payload_invariant_passthrough(self):
+    def test_translate_caption_rescues_payload_invariant_source_preservation(self):
+        agent = _build_agent()
+        caption = {
+            "placeholder": "<PLACEHOLDER_CAP_8>",
+            "content": "Caption content should still be translated after invariant fallback.",
+        }
+
+        async def fake_request(*args, **kwargs):
+            agent._mark_api_fallback("cap", caption["placeholder"], "invariant_hard_freeze_protocol_violation")
+            return caption["content"]
+
+        agent._request_llm_for_trans = fake_request
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value="图注在 invariant 后也被翻译。")
+
+        translated = asyncio.run(agent._translate_caption(caption, MagicMock()))
+
+        self.assertEqual(translated["trans_content"], "图注在 invariant 后也被翻译。")
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertNotIn("fallback_reason", translated)
+        agent._rescue_plain_text_by_paragraph.assert_awaited_once()
+
+    def test_translate_generic_text_env_rescues_payload_invariant_source_preservation(self):
         agent = _build_agent()
         env = {
             "placeholder": "<PLACEHOLDER_ENV_44>",
@@ -64,18 +107,21 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
 
         agent._request_env_translation = AsyncMock(return_value=env["content"])
         agent._mark_api_fallback("env", env["placeholder"], "invariant_hard_freeze_protocol_violation")
+        agent._recover_generic_text_env_body_as_plain_text = AsyncMock(return_value="恢复后的中文定理内容。")
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=None)
 
         translated = asyncio.run(agent._translate_env(env, MagicMock()))
 
-        self.assertEqual(translated["trans_content"], env["content"])
+        self.assertEqual(
+            translated["trans_content"],
+            "\\begin{theorem}恢复后的中文定理内容。\\end{theorem}",
+        )
         self.assertEqual(
             translated["translation_status"],
-            agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+            agent.STATUS_TRANSLATED,
         )
-        self.assertEqual(
-            translated["fallback_reason"],
-            "invariant_hard_freeze_protocol_violation",
-        )
+        self.assertNotIn("fallback_reason", translated)
+        agent._recover_generic_text_env_body_as_plain_text.assert_awaited_once()
 
     def test_register_llm_part_failure_deduplicates_identifiers(self):
         agent = _build_agent()
@@ -87,6 +133,59 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
 
         self.assertEqual(agent.fail_env_phs, ["<PLACEHOLDER_ENV_44>"])
         self.assertEqual(agent.fail_caption_phs, ["<PLACEHOLDER_CAP_8>"])
+
+    def test_val_fail_parts_skips_payload_invariant_passthrough_retries(self):
+        agent = _build_agent()
+        agent.have_fail_parts = True
+        agent.fail_section_nums = ["9"]
+        agent.fail_caption_phs = ["<PLACEHOLDER_CAP_8>"]
+        agent.fail_env_phs = ["<PLACEHOLDER_ENV_44>"]
+
+        sections = [
+            {
+                "section": "9",
+                "content": "Section source content",
+                "trans_content": "Section source content",
+                "translation_status": agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+            }
+        ]
+        captions = [
+            {
+                "placeholder": "<PLACEHOLDER_CAP_8>",
+                "content": "Caption source content",
+                "trans_content": "Caption source content",
+                "translation_status": agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+            }
+        ]
+        envs = [
+            {
+                "placeholder": "<PLACEHOLDER_ENV_44>",
+                "env_name": "theorem",
+                "content": "\\begin{theorem}Stable body.\\end{theorem}",
+                "trans_content": "\\begin{theorem}Stable body.\\end{theorem}",
+                "translation_status": agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+                "need_trans": True,
+            }
+        ]
+
+        agent._translate_section = AsyncMock(side_effect=AssertionError("section should not retry"))
+        agent._translate_caption = AsyncMock(side_effect=AssertionError("caption should not retry"))
+        agent._translate_env = AsyncMock(side_effect=AssertionError("env should not retry"))
+        agent.save_file = MagicMock()
+
+        asyncio.run(
+            agent._val_fail_parts(
+                sections=sections,
+                captions=captions,
+                envs=envs,
+                Maxtry=3,
+                session=MagicMock(),
+            )
+        )
+
+        agent._translate_section.assert_not_awaited()
+        agent._translate_caption.assert_not_awaited()
+        agent._translate_env.assert_not_awaited()
 
 
 if __name__ == "__main__":

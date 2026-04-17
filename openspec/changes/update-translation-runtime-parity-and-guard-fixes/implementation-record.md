@@ -55,6 +55,11 @@ Conclusion:
 - Deduplicated failed-part tracking so the same section/caption/env identifier is not appended repeatedly
 - Propagated `payload_invariant_passthrough` handling to captions and environments
 - Short-circuited invariant-failed environment paths so they preserve source content and metadata instead of re-entering expensive recovery loops
+- Added a translator-internal Maxtry guard so parts already marked `payload_invariant_passthrough` are not re-enqueued into `_val_fail_parts()`
+- This specifically addresses real-paper retry amplification where hard-freeze violations were already safely downgraded to source passthrough, but the translator still spent extra LLM rounds retrying the same protected parts
+- Added paragraph-level rescue for sections and captions after hard-freeze invariant failures when the first-pass result merely preserves the English source
+- Removed the premature early-return in generic text env translation so invariant-hit envs now try existing plain-text/body rescue before settling on final passthrough
+- Preserved bounded fallback behavior: if rescue still cannot produce a safe translated result, the part remains in deterministic passthrough status instead of entering unbounded loops
 
 ## Verification Run
 
