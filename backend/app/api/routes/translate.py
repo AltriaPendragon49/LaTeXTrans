@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
-CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS = 3
+CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS = 10
 CLI_PARITY_MODEL_CONTEXT_TOKENS = 32000
 CLI_PARITY_PROMPT_RESERVE_TOKENS = 4096
 

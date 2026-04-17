@@ -33,8 +33,8 @@ def test_resolve_task_llm_max_concurrent_requests_caps_to_cli_parity_limit():
     assert llm_runtime.resolve_task_llm_max_concurrent_requests(
         {"llm_max_concurrent_requests": 30},
         default=30,
-        cap=3,
-    ) == 3
+        cap=10,
+    ) == 10
 
 
 def test_resolve_task_llm_max_concurrent_requests_keeps_lower_values():
@@ -43,13 +43,18 @@ def test_resolve_task_llm_max_concurrent_requests_keeps_lower_values():
     assert llm_runtime.resolve_task_llm_max_concurrent_requests(
         {"llm_max_concurrent_requests": 2},
         default=30,
-        cap=3,
+        cap=10,
     ) == 2
 
 
 def test_backend_settings_match_cli_safe_limit_defaults():
     config = _load_module("backend_config_test", "backend/app/core/config.py")
-    settings = config.get_settings()
+    settings = config.Settings(
+        _env_file=None,
+        llm_api_key="dummy-key",
+        llm_base_url="http://dummy",
+        llm_model="gpt-4o",
+    )
     assert settings.model_context_tokens == 32000
     assert settings.prompt_reserve_tokens == 4096
-    assert settings.llm_max_concurrent_requests == 3
+    assert settings.llm_max_concurrent_requests == 10

@@ -716,11 +716,44 @@ class TranslatorAgent(BaseToolAgent):
     def _register_llm_part_failure(self, part_type: str, identifier: str) -> None:
         self.have_fail_parts = True
         if part_type == "sec":
-            self.fail_section_nums.append(identifier)
+            if identifier not in self.fail_section_nums:
+                self.fail_section_nums.append(identifier)
         elif part_type == "cap":
-            self.fail_caption_phs.append(identifier)
+            if identifier not in self.fail_caption_phs:
+                self.fail_caption_phs.append(identifier)
         else:
-            self.fail_env_phs.append(identifier)
+            if identifier not in self.fail_env_phs:
+                self.fail_env_phs.append(identifier)
+
+    def _resolve_api_fallback_status(
+        self,
+        reason: Optional[str],
+        *,
+        default_success_status: str = STATUS_TRANSLATED,
+    ) -> str:
+        if not reason:
+            return default_success_status
+        if self._is_payload_invariant_reason(reason):
+            return self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
+        return self.STATUS_FALLBACK_SOURCE_API_FAILURE
+
+    def _update_caption_metadata(
+        self,
+        caption: Dict[str, Any],
+        *,
+        status: Optional[str] = None,
+        fallback_reason: Optional[str] = None,
+    ) -> None:
+        if status:
+            caption["translation_status"] = status
+        if fallback_reason:
+            caption["fallback_reason"] = fallback_reason
+        elif status in {
+            self.STATUS_TRANSLATED,
+            self.STATUS_TRANSLATED_AFTER_NOOP_RETRY,
+            self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+        }:
+            caption.pop("fallback_reason", None)
 
     @staticmethod
     def _sanitize_retrans_error_message(error_message: str) -> str:
@@ -1953,6 +1986,13 @@ class TranslatorAgent(BaseToolAgent):
             except Exception as e:
                 return transed_caption
 
+        api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("cap", placeholder))
+        self._update_caption_metadata(
+            transed_caption,
+            status=self._resolve_api_fallback_status(api_fallback_reason),
+            fallback_reason=api_fallback_reason,
+        )
+
         return transed_caption
 
     async def _request_env_translation(
@@ -2042,7 +2082,7 @@ class TranslatorAgent(BaseToolAgent):
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
             self._update_env_metadata(
                 transed_env,
-                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                status=self._resolve_api_fallback_status(api_fallback_reason),
                 fallback_reason=api_fallback_reason,
                 fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
                 row_fallback_count=0,
@@ -2147,7 +2187,7 @@ class TranslatorAgent(BaseToolAgent):
         if api_fallback_reason:
             self._update_env_metadata(
                 transed_env,
-                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                status=self._resolve_api_fallback_status(api_fallback_reason),
                 fallback_reason=api_fallback_reason,
                 fallback_subtype=self.FALLBACK_SUBTYPE_MATH_ENV,
                 row_fallback_count=row_fallback_count,
@@ -2193,7 +2233,7 @@ class TranslatorAgent(BaseToolAgent):
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
             self._update_env_metadata(
                 transed_env,
-                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                status=self._resolve_api_fallback_status(api_fallback_reason),
                 fallback_reason=api_fallback_reason,
                 fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
                 row_fallback_count=0,
@@ -2234,7 +2274,7 @@ class TranslatorAgent(BaseToolAgent):
                 api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
                 self._update_env_metadata(
                     transed_env,
-                    status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                    status=self._resolve_api_fallback_status(api_fallback_reason),
                     fallback_reason=api_fallback_reason,
                     fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
                     row_fallback_count=0,
@@ -2311,6 +2351,16 @@ class TranslatorAgent(BaseToolAgent):
                     if retried_content is not None:
                         translated_content = retried_content
                 api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                if self._is_payload_invariant_reason(api_fallback_reason):
+                    transed_env["trans_content"] = source_text
+                    self._update_env_metadata(
+                        transed_env,
+                        status=self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+                        fallback_reason=api_fallback_reason,
+                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
+                        row_fallback_count=0,
+                    )
+                    return transed_env
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_content)
                     or bool(api_fallback_reason)
@@ -2359,7 +2409,7 @@ class TranslatorAgent(BaseToolAgent):
                 api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
                 self._update_env_metadata(
                     transed_env,
-                    status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                    status=self._resolve_api_fallback_status(api_fallback_reason),
                     fallback_reason=api_fallback_reason,
                     fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
                     row_fallback_count=0,
@@ -2384,6 +2434,16 @@ class TranslatorAgent(BaseToolAgent):
                     if retried_body is not None:
                         translated_body = retried_body
                 api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                if self._is_payload_invariant_reason(api_fallback_reason):
+                    transed_env["trans_content"] = env.get("content", "")
+                    self._update_env_metadata(
+                        transed_env,
+                        status=self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+                        fallback_reason=api_fallback_reason,
+                        fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV,
+                        row_fallback_count=0,
+                    )
+                    return transed_env
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_body)
                     or bool(api_fallback_reason)
@@ -2432,7 +2492,7 @@ class TranslatorAgent(BaseToolAgent):
                     api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
                     self._update_env_metadata(
                         transed_env,
-                        status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                        status=self._resolve_api_fallback_status(api_fallback_reason),
                         fallback_reason=api_fallback_reason,
                         fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
                         row_fallback_count=0,
@@ -2448,7 +2508,7 @@ class TranslatorAgent(BaseToolAgent):
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
             self._update_env_metadata(
                 transed_env,
-                status=self.STATUS_FALLBACK_SOURCE_API_FAILURE if api_fallback_reason else self.STATUS_TRANSLATED,
+                status=self._resolve_api_fallback_status(api_fallback_reason),
                 fallback_reason=api_fallback_reason,
                 fallback_subtype=self.FALLBACK_SUBTYPE_OTHER_ENV if api_fallback_reason else self.FALLBACK_SUBTYPE_NONE,
                 row_fallback_count=0,

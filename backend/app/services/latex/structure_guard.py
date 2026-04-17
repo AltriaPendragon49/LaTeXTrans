@@ -410,39 +410,45 @@ def _check_latexwalker(full_text: str) -> Optional[StructureGuardResult]:
     return None
 
 
-def _resolve_input_path(project_root: Path, raw_ref: str) -> Optional[Path]:
+def _resolve_input_path(base_dir: Path, raw_ref: str) -> Optional[Path]:
     candidate = raw_ref.strip()
     if not candidate:
         return None
     p = Path(candidate)
     if p.suffix == "":
         p = p.with_suffix(".tex")
-    abs_path = (project_root / p).resolve()
+    abs_path = (base_dir / p).resolve()
     if abs_path.exists():
         return abs_path
     return None
 
 
 def _collect_project_text(main_tex_path: Path) -> str:
-    project_root = main_tex_path.parent
-    visited: Set[Path] = set()
-    pieces: List[str] = []
+    active_stack: Set[Path] = set()
     input_re = re.compile(r"\\(?:input|include)\s*\{([^\{\}]+)\}")
 
-    def visit(tex_path: Path) -> None:
+    def visit(tex_path: Path) -> str:
         resolved = tex_path.resolve()
-        if resolved in visited or not resolved.exists():
-            return
-        visited.add(resolved)
-        text = resolved.read_text(encoding="utf-8", errors="replace")
-        pieces.append(text)
-        for m in input_re.finditer(text):
-            child = _resolve_input_path(project_root, m.group(1))
-            if child is not None:
-                visit(child)
+        if not resolved.exists():
+            return ""
+        if resolved in active_stack:
+            return ""
 
-    visit(main_tex_path)
-    return "\n\n".join(pieces)
+        active_stack.add(resolved)
+        text = resolved.read_text(encoding="utf-8", errors="replace")
+        current_dir = resolved.parent
+
+        def replace_input(match: re.Match[str]) -> str:
+            child = _resolve_input_path(current_dir, match.group(1))
+            if child is None:
+                return match.group(0)
+            return visit(child)
+
+        expanded = input_re.sub(replace_input, text)
+        active_stack.remove(resolved)
+        return expanded
+
+    return visit(main_tex_path)
 
 
 def validate_project_structure(main_tex_path: str) -> Dict[str, Any]:

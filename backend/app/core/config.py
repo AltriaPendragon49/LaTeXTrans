@@ -292,7 +292,7 @@ class Settings(BaseSettings):
     # - OpenAI Tier 1: ~500 RPM → use 50-100
     # - Self-hosted Triton NIM: no hard limit → use 100-200
     llm_max_concurrent_requests: int = Field(
-        default=3,
+        default=10,
         validation_alias="LLM_MAX_CONCURRENT_REQUESTS",
         description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
     )
