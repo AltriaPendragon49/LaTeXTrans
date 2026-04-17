@@ -99,6 +99,49 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         )
         self.assertGreaterEqual(agent._request_llm_for_trans.await_count, 3)
 
+    def test_rescue_plain_text_by_paragraph_fragment_rescue_masks_commands_and_placeholders(self):
+        agent = _build_agent()
+        text = (
+            "With the reverse process defined in \\cref{eq:test}, "
+            "we optimize <PLACEHOLDER_ENV_16> for sample quality."
+        )
+
+        seen_fragment_inputs = []
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            user_text = args[1]
+            if fail_part == "3:paragraph:0":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return text
+            seen_fragment_inputs.append(user_text)
+            if "\\cref{" in user_text:
+                raise AssertionError("fragment rescue should not expose raw cref commands")
+            if "<PLACEHOLDER_ENV_16>" in user_text:
+                raise AssertionError("fragment rescue should not expose raw placeholders")
+            mapping = {
+                "3:paragraph:0:fragment:0": "The translated discussion ",
+                "3:paragraph:0:fragment:2": " explains the optimization target ",
+                "3:paragraph:0:fragment:4": " and preserves sample quality.",
+            }
+            return mapping.get(fail_part, user_text)
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="3",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertIn("\\cref{eq:test}", rescued)
+        self.assertIn("<PLACEHOLDER_ENV_16>", rescued)
+        self.assertNotEqual(rescued, text)
+        self.assertGreaterEqual(len(seen_fragment_inputs), 3)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {

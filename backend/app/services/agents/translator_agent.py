@@ -102,6 +102,9 @@ class TranslatorAgent(BaseToolAgent):
         "corollary",
     })
     _RESCUE_PLACEHOLDER_RE = re.compile(r"(<PLACEHOLDER_[A-Z0-9_]+>)")
+    _RESCUE_TOKEN_RE = re.compile(
+        r"(<(?:PLACEHOLDER|PROTECTED_CMD|ENV(?:_BEGIN|_END)?|ITEM|EQROW|EQCOMMENT|INLMATH)_[^>]+>)"
+    )
     _RESCUE_FRAGMENT_RE = re.compile(
         r".+?(?:[。！？!?;；](?:\s+|$)|[.:：](?=\s|$)(?:\s+|$)|\n|$)",
         re.S,
@@ -724,12 +727,48 @@ class TranslatorAgent(BaseToolAgent):
             return None
         return combined
 
+    @staticmethod
+    def _prepare_plain_text_rescue_text(text: str) -> Tuple[str, Dict[str, Any]]:
+        isolated_math_text, math_map = isolate_math_spans(text)
+        isolated_env_text, env_map = isolate_env_blocks(isolated_math_text)
+        masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
+        masked_text, mask_mapping = mask_residual_structure_tokens(
+            masked_text,
+            mapping=mask_mapping,
+        )
+        preprocessed_text = preprocess_risky_tokens(masked_text, math_map)
+        return preprocessed_text, {
+            "math_map": math_map,
+            "env_map": env_map,
+            "mask_mapping": mask_mapping,
+        }
+
+    @staticmethod
+    def _restore_plain_text_rescue_text(text: str, context: Dict[str, Any]) -> str:
+        math_map = context.get("math_map", {}) if context else {}
+        env_map = context.get("env_map", {}) if context else {}
+        mask_mapping = context.get("mask_mapping", {}) if context else {}
+        try:
+            unmasked = unmask_sensitive_commands(text, mask_mapping)
+        except Exception:
+            unmasked = text
+
+        try:
+            env_restored = restore_env_blocks(unmasked, env_map)
+        except Exception:
+            env_restored = unmasked
+
+        try:
+            return restore_inline_math(env_restored, math_map)
+        except Exception:
+            return env_restored
+
     @classmethod
     def _should_passthrough_rescue_fragment(cls, piece: str) -> bool:
         stripped = (piece or "").strip()
         if not stripped:
             return True
-        if cls._RESCUE_PLACEHOLDER_RE.fullmatch(stripped):
+        if cls._RESCUE_TOKEN_RE.fullmatch(stripped):
             return True
         return re.search(r"[A-Za-z\u4e00-\u9fff]", stripped) is None
 
@@ -738,10 +777,10 @@ class TranslatorAgent(BaseToolAgent):
         if not text:
             return []
         pieces: List[str] = []
-        for chunk in cls._RESCUE_PLACEHOLDER_RE.split(text):
+        for chunk in cls._RESCUE_TOKEN_RE.split(text):
             if not chunk:
                 continue
-            if cls._RESCUE_PLACEHOLDER_RE.fullmatch(chunk):
+            if cls._RESCUE_TOKEN_RE.fullmatch(chunk):
                 pieces.append(chunk)
                 continue
             subchunks = [match.group(0) for match in cls._RESCUE_FRAGMENT_RE.finditer(chunk)]
@@ -822,7 +861,8 @@ class TranslatorAgent(BaseToolAgent):
         prompt_key: str,
         prompt_key_with_terms: Optional[str],
     ) -> Optional[str]:
-        fragments = self._split_plain_text_rescue_fragments(text)
+        masked_text, rescue_context = self._prepare_plain_text_rescue_text(text)
+        fragments = self._split_plain_text_rescue_fragments(masked_text)
         translatable_fragments = [
             fragment for fragment in fragments if not self._should_passthrough_rescue_fragment(fragment)
         ]
@@ -852,13 +892,14 @@ class TranslatorAgent(BaseToolAgent):
             rescued.append(rescued_fragment)
 
         combined = "".join(rescued)
+        restored = self._restore_plain_text_rescue_text(combined, rescue_context)
         if not translated_any:
             return None
-        if self._has_unrestored_env_artifacts(combined):
+        if self._has_unrestored_env_artifacts(restored):
             return None
-        if self._is_source_preserved_translation(text, combined):
+        if self._is_source_preserved_translation(text, restored):
             return None
-        return combined
+        return restored
 
     @staticmethod
     def _env_row_retry_key(placeholder: str, row_idx: int) -> str:
