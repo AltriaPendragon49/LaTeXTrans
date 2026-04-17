@@ -18,6 +18,8 @@ import re
 import json
 import zipfile
 import tarfile
+from hashlib import sha256
+import secrets
 from typing import Any, Dict, List, Optional, Tuple
 from tqdm import tqdm
 import regex
@@ -3526,6 +3528,134 @@ def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
         # print('Compiling:', pattern)
         restored_tex, count = regex.subn(replacement, restored_tex)
     return restored_tex
+
+
+_HARD_FREEZE_SOURCE_PATTERNS: List[Tuple[str, re.Pattern]] = [
+    ("PLACEHOLDER", re.compile(r"<PLACEHOLDER_[^>]+>")),
+    ("ENV", re.compile(r"<ENV(?:_BEGIN|_END)?_[^>]+>")),
+    ("ITEM", re.compile(r"<ITEM_[^>]+>")),
+    ("EQROW", re.compile(r"<EQROW_[^>]+>")),
+    ("EQCOMMENT", re.compile(r"<EQCOMMENT_[^>]+>")),
+    ("INLMATH", re.compile(r"<INLMATH_[^>]+>")),
+    ("PROTECTED", re.compile(r"<PROTECTED_CMD_\d+>")),
+]
+_HARD_FREEZE_TOKEN_RE = re.compile(r"@@HF:[A-Z]+:\d{4}:[0-9A-F]{8}:[0-9A-F]{8}@@")
+_HARD_FREEZE_KIND_MAP = {
+    "PLACEHOLDER_ENV": "ENVPH",
+    "PLACEHOLDER_CAP": "CAPPH",
+    "PLACEHOLDER_NEWCOMMAND": "NEWCMD",
+    "PLACEHOLDER": "PLACEHOLDER",
+    "ENV_BEGIN": "ENVBEGIN",
+    "ENV_END": "ENVEND",
+    "ENV": "ENV",
+    "ITEM": "ITEM",
+    "EQROW": "EQROW",
+    "EQCOMMENT": "EQCOMMENT",
+    "INLMATH": "INLMATH",
+    "PROTECTED_CMD": "CMD",
+}
+
+
+def _hard_freeze_kind_for_placeholder(value: str) -> str:
+    inner = (value or "").strip("<>")
+    for prefix, kind in _HARD_FREEZE_KIND_MAP.items():
+        if inner.startswith(prefix):
+            return kind
+    return "TOKEN"
+
+
+def freeze_protected_tokens(
+    content: str,
+    *,
+    request_nonce: Optional[str] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Replace all protected placeholder/sentinel families with request-local opaque tokens.
+    """
+    if not content:
+        return content, {
+            "request_nonce": request_nonce or "",
+            "token_map": {},
+            "token_sequence": [],
+            "audit_entries": [],
+        }
+
+    replacements: List[Tuple[int, int, str]] = []
+    for _label, pattern in _HARD_FREEZE_SOURCE_PATTERNS:
+        for match in pattern.finditer(content):
+            replacements.append((match.start(), match.end(), match.group(0)))
+
+    if not replacements:
+        return content, {
+            "request_nonce": request_nonce or "",
+            "token_map": {},
+            "token_sequence": [],
+            "audit_entries": [],
+        }
+
+    # Keep original order and avoid overlapping replacements.
+    replacements.sort(key=lambda item: item[0])
+    resolved_nonce = (request_nonce or secrets.token_hex(4)).upper()
+    out: List[str] = []
+    cursor = 0
+    token_map: Dict[str, str] = {}
+    token_sequence: List[str] = []
+    audit_entries: List[Dict[str, Any]] = []
+    ordinal = 0
+    for start, end, original in replacements:
+        if start < cursor:
+            continue
+        ordinal += 1
+        kind = _hard_freeze_kind_for_placeholder(original)
+        digest = sha256(
+            f"{resolved_nonce}:{ordinal}:{kind}:{original}".encode("utf-8")
+        ).hexdigest()[:8].upper()
+        token = f"@@HF:{kind}:{ordinal:04d}:{resolved_nonce}:{digest}@@"
+        out.append(content[cursor:start])
+        out.append(token)
+        cursor = end
+        token_map[token] = original
+        token_sequence.append(token)
+        audit_entries.append(
+            {
+                "token": token,
+                "original": original,
+                "kind": kind,
+                "ordinal": ordinal,
+                "request_nonce": resolved_nonce,
+                "digest": digest,
+            }
+        )
+    out.append(content[cursor:])
+    return "".join(out), {
+        "request_nonce": resolved_nonce,
+        "token_map": token_map,
+        "token_sequence": token_sequence,
+        "audit_entries": audit_entries,
+    }
+
+
+def verify_hard_freeze_token_stream(text: str, expected_tokens: List[str]) -> None:
+    actual_tokens = _HARD_FREEZE_TOKEN_RE.findall(text or "")
+    expected = list(expected_tokens or [])
+    if actual_tokens != expected:
+        raise ValueError(
+            f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
+        )
+
+
+def restore_hard_freeze_tokens(text: str, token_map: Dict[str, str]) -> str:
+    if not text or not token_map:
+        return text
+
+    def _restore(match: re.Match) -> str:
+        token = match.group(0)
+        original = token_map.get(token)
+        if original is None:
+            raise ValueError(f"hard_freeze_unknown_token: {token}")
+        return original
+
+    return _HARD_FREEZE_TOKEN_RE.sub(_restore, text)
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ from .base_tool_agent import BaseToolAgent
 from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ERROR_TYPE_C1, ERROR_TYPE_C2, ValidatorAgent
 from .pipeline_schema import FallbackReport
 from .pipeline_invariants import (
+    HardFreezeProtocolViolation,
     PipelineInvariantViolation,
     SpeculativeRepairForbiddenError,
     assert_no_raw_structure,
@@ -674,16 +675,32 @@ class TranslatorAgent(BaseToolAgent):
         )
         preprocessed_text = preprocess_risky_tokens(masked_text, math_map)
         masked_text = preprocessed_text
-        return masked_text, {"math_map": math_map, "env_map": env_map, "mask_mapping": mask_mapping}
+        frozen_text, hard_freeze_context = freeze_protected_tokens(masked_text)
+        return frozen_text, {
+            "math_map": math_map,
+            "env_map": env_map,
+            "mask_mapping": mask_mapping,
+            "hard_freeze_request_nonce": hard_freeze_context.get("request_nonce", ""),
+            "hard_freeze_token_map": hard_freeze_context.get("token_map", {}),
+            "hard_freeze_token_sequence": hard_freeze_context.get("token_sequence", []),
+            "hard_freeze_audit_entries": hard_freeze_context.get("audit_entries", []),
+        }
 
     def _restore_llm_output_text(self, raw_text: str, context: Dict[str, Any]) -> str:
         math_map = context.get("math_map", {}) if context else {}
         env_map = context.get("env_map", {}) if context else {}
         mask_mapping = context.get("mask_mapping", {}) if context else {}
+        hard_freeze_token_map = context.get("hard_freeze_token_map", {}) if context else {}
+        hard_freeze_token_sequence = context.get("hard_freeze_token_sequence", []) if context else []
         try:
-            unmasked = unmask_sensitive_commands(raw_text, mask_mapping)
+            verify_hard_freeze_token_stream(raw_text, hard_freeze_token_sequence)
+            hard_freeze_restored = restore_hard_freeze_tokens(raw_text, hard_freeze_token_map)
+        except Exception as exc:
+            raise HardFreezeProtocolViolation(str(exc)) from exc
+        try:
+            unmasked = unmask_sensitive_commands(hard_freeze_restored, mask_mapping)
         except Exception:
-            unmasked = raw_text
+            unmasked = hard_freeze_restored
 
         try:
             env_restored = restore_env_blocks(unmasked, env_map)
@@ -796,7 +813,11 @@ class TranslatorAgent(BaseToolAgent):
                             result = await response.json()
                             raw_result = result["choices"][0]["message"]["content"].strip()
                             restored = self._restore_llm_output_text(raw_result, llm_context)
-                            self._log_protection_actions(llm_context.get("mask_mapping", {}), fail_part)
+                            self._log_protection_actions(
+                                llm_context.get("mask_mapping", {}),
+                                fail_part,
+                                hard_freeze_entries=llm_context.get("hard_freeze_audit_entries", []),
+                            )
                             self._clear_api_fallback(part_type, str(fail_part))
                             return restored
             except PipelineInvariantViolation:
@@ -2957,6 +2978,8 @@ class TranslatorAgent(BaseToolAgent):
         self,
         mapping: Dict[str, str],
         fail_part: str,
+        *,
+        hard_freeze_entries: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         Task 12.5: Persist protection log entries to data/protection_log/<task_id>.json.
@@ -2964,14 +2987,17 @@ class TranslatorAgent(BaseToolAgent):
         Only writes when *mapping* is non-empty.  Entries are appended to an
         existing JSON array so the file accumulates across all translation calls.
         """
-        if not mapping or not self.output_dir:
+        if (not mapping and not hard_freeze_entries) or not self.output_dir:
             return
 
         try:
+            output_dir = Path(self.output_dir)
+            if not output_dir.exists():
+                return
             # Convention: output_dir is <data_root>/<task_id>/output  (or similar).
-            task_id = Path(self.output_dir).parent.name or Path(self.output_dir).name
+            task_id = output_dir.parent.name or output_dir.name
 
-            log_dir = Path(self.output_dir).parent.parent / "protection_log"
+            log_dir = output_dir.parent.parent / "protection_log"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / f"{task_id}.json"
 
@@ -2988,7 +3014,22 @@ class TranslatorAgent(BaseToolAgent):
                     "fail_part": fail_part,
                     "placeholder": placeholder,
                     "original_command": original,
+                    "type": "mask_mapping",
                 })
+
+            for item in hard_freeze_entries or []:
+                entries.append(
+                    {
+                        "fail_part": fail_part,
+                        "type": "hard_freeze",
+                        "token": item.get("token"),
+                        "original": item.get("original"),
+                        "kind": item.get("kind"),
+                        "ordinal": item.get("ordinal"),
+                        "request_nonce": item.get("request_nonce"),
+                        "digest": item.get("digest"),
+                    }
+                )
 
             with open(log_file, "w", encoding="utf-8") as fh:
                 json.dump(entries, fh, ensure_ascii=False, indent=2)

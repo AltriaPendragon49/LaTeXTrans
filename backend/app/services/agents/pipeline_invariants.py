@@ -35,6 +35,13 @@ class RawContentLeakageViolation(PipelineInvariantViolation):
         super().__init__(message, error_code="RAW_ENV_BODY_EXPOSED")
 
 
+class HardFreezeProtocolViolation(PipelineInvariantViolation):
+    """Raised when hard-freeze transport tokens are mutated by the model."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="HARD_FREEZE_PROTOCOL_VIOLATION")
+
+
 _RAW_STRUCTURE_PATTERNS = (
     (re.compile(r"\\begin\{"), r"\begin{"),
     (re.compile(r"\\end\{"), r"\end{"),
@@ -89,4 +96,3 @@ def is_absolute_path_like(value: str) -> bool:
     if os.path.isabs(value):
         return True
     return bool(re.match(r"^[A-Za-z]:[\\/]", value)) or value.startswith("\\\\")
-

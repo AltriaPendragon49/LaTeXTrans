@@ -1,8 +1,12 @@
 import asyncio
+import re
 import unittest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.app.services.agents.pipeline_invariants import assert_no_raw_structure
+from backend.app.services.agents.pipeline_invariants import (
+    PipelineInvariantViolation,
+    assert_no_raw_structure,
+)
 from backend.app.services.agents.translator_agent import TranslatorAgent
 
 
@@ -21,6 +25,8 @@ def _build_agent(trans_mode: int = 0) -> TranslatorAgent:
     )
     agent.prompts = {
         "section_system_prompt": "Translate section content.",
+        "caption_system_prompt": "Translate caption content.",
+        "env_system_prompt": "Translate environment content.",
         "retrans_error_parts_system_prompt": "Fix translated content.",
     }
     return agent
@@ -42,7 +48,54 @@ def _mock_success_session(return_text: str = "translated text") -> MagicMock:
     return session
 
 
+def _mock_echo_user_payload_session() -> MagicMock:
+    session = MagicMock()
+
+    def _post(*args, **kwargs):
+        response = MagicMock()
+        response.status = 200
+        response.headers = {}
+        response.raise_for_status = MagicMock()
+        response.json = AsyncMock(
+            return_value={
+                "choices": [
+                    {"message": {"content": kwargs["json"]["messages"][1]["content"]}}
+                ]
+            }
+        )
+        ctx = AsyncMock()
+        ctx.__aenter__.return_value = response
+        return ctx
+
+    session.post.side_effect = _post
+    return session
+
+
 class TestTranslatorPayloadGuard(unittest.TestCase):
+    def test_prepare_llm_payload_text_replaces_all_protected_placeholder_families_with_hard_freeze_tokens(self):
+        agent = _build_agent()
+        text = (
+            "<PLACEHOLDER_ENV_3>\n"
+            "<PLACEHOLDER_CAP_1>\n"
+            "<PLACEHOLDER_NEWCOMMAND_2>\n"
+            "<PLACEHOLDER_sec_intro_begin>\n"
+            "Body @@ should stay textual.\n"
+            "<PLACEHOLDER_sec_intro_end>\n"
+        )
+
+        prepared, context = agent._prepare_llm_payload_text(text)
+
+        self.assertNotIn("<PLACEHOLDER_ENV_3>", prepared)
+        self.assertNotIn("<PLACEHOLDER_CAP_1>", prepared)
+        self.assertNotIn("<PLACEHOLDER_NEWCOMMAND_2>", prepared)
+        self.assertNotIn("<PLACEHOLDER_sec_intro_begin>", prepared)
+        self.assertNotIn("<PLACEHOLDER_sec_intro_end>", prepared)
+        self.assertGreaterEqual(prepared.count("@@HF:"), 5)
+        self.assertRegex(prepared, r"@@HF:[A-Z]+:\d{4}:[0-9A-F]{8}:[0-9A-F]{8}@@")
+        self.assertTrue(context["hard_freeze_request_nonce"])
+        self.assertEqual(len(context["hard_freeze_token_sequence"]), 5)
+        self.assertEqual(agent._restore_llm_output_text(prepared, context), text)
+
     def test_prepare_llm_payload_text_masks_preamble_command_arguments(self):
         agent = _build_agent()
         text = (
@@ -54,7 +107,7 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
 
         prepared, context = agent._prepare_llm_payload_text(text)
 
-        self.assertIn("<PROTECTED_CMD_", prepared)
+        self.assertIn("@@HF:CMD:", prepared)
         self.assertNotIn("\\documentclass{article}", prepared)
         self.assertNotIn("\\usepackage{iclr2022_conference,times}", prepared)
         self.assertNotIn("\\input{math_commands.tex}", prepared)
@@ -78,33 +131,37 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
 
         self.assertEqual(prepared_1, prepared_2)
         assert_no_raw_structure(prepared_1, context="translator-payload-guard")
-        self.assertIn("<PROTECTED_CMD_", prepared_1)
+        self.assertIn("@@HF:CMD:", prepared_1)
         self.assertNotIn("<ENV_BEGIN_1>", prepared_1)
         self.assertNotIn("<ENV_END_1>", prepared_1)
 
     def test_call_llm_with_freeze_masks_structure_before_send_and_restores_response(self):
         agent = _build_agent()
         user_text = "\\begin{document}\n\\end{document}\n\\endinput\n\\bibliography{refs}"
-        prepared_text, _ = agent._prepare_llm_payload_text(user_text)
-        session = _mock_success_session(prepared_text)
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="56A34CE8",
+        ):
+            prepared_text, _ = agent._prepare_llm_payload_text(user_text)
+            session = _mock_success_session(prepared_text)
 
-        result = asyncio.run(
-            agent._call_llm_with_freeze(
-                system_prompt="prompt",
-                user_text=user_text,
-                fail_part="7",
-                part_type="sec",
-                session=session,
-                fallback_text="fallback-text",
+            result = asyncio.run(
+                agent._call_llm_with_freeze(
+                    system_prompt="prompt",
+                    user_text=user_text,
+                    fail_part="7",
+                    part_type="sec",
+                    session=session,
+                    fallback_text="fallback-text",
+                )
             )
-        )
 
         self.assertEqual(result, user_text)
         self.assertEqual(session.post.call_count, 1)
         payload = session.post.call_args.kwargs["json"]
         user_payload = payload["messages"][1]["content"]
         assert_no_raw_structure(user_payload, context="translator:sec:7")
-        self.assertIn("<PROTECTED_CMD_", user_payload)
+        self.assertIn("@@HF:CMD:", user_payload)
         self.assertNotIn("<ENV_BEGIN_1>", user_payload)
         self.assertNotIn("<ENV_END_1>", user_payload)
 
@@ -119,26 +176,30 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
             f"[Translation]:\n{part['trans_content']}\n"
             "[Error]:\n"
         )
-        prepared_prompt, _ = agent._prepare_llm_payload_text(raw_user_prompt)
-        session = _mock_success_session(prepared_prompt)
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="71CD7F8F",
+        ):
+            prepared_prompt, _ = agent._prepare_llm_payload_text(raw_user_prompt)
+            session = _mock_success_session(prepared_prompt)
 
-        result = asyncio.run(
-            agent._request_llm_for_retrans_error_parts(
-                "retry prompt",
-                part=part,
-                error_message="",
-                fail_part="7",
-                type="sec",
-                session=session,
+            result = asyncio.run(
+                agent._request_llm_for_retrans_error_parts(
+                    "retry prompt",
+                    part=part,
+                    error_message="",
+                    fail_part="7",
+                    type="sec",
+                    session=session,
+                )
             )
-        )
 
         self.assertEqual(result, raw_user_prompt.rstrip("\n"))
         self.assertEqual(session.post.call_count, 1)
         payload = session.post.call_args.kwargs["json"]
         user_payload = payload["messages"][1]["content"]
         assert_no_raw_structure(user_payload, context="translator:sec:7")
-        self.assertIn("<PROTECTED_CMD_", user_payload)
+        self.assertIn("@@HF:CMD:", user_payload)
         self.assertNotIn("<ENV_BEGIN_1>", user_payload)
         self.assertNotIn("<ENV_END_2>", user_payload)
 
@@ -149,10 +210,14 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
             "content": "\\begin{document}\n<PLACEHOLDER_CAP_1>\n\\end{document}\n\\endinput",
             "previous_context": "",
         }
-        prepared_section, _ = agent._prepare_llm_payload_text(section["content"])
-        session = _mock_success_session(prepared_section)
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="2C4CA12B",
+        ):
+            prepared_section, _ = agent._prepare_llm_payload_text(section["content"])
+            session = _mock_success_session(prepared_section)
 
-        translated = asyncio.run(agent._translate_section(section, session))
+            translated = asyncio.run(agent._translate_section(section, session))
 
         self.assertEqual(translated["trans_content"], section["content"])
         self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
@@ -160,10 +225,91 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         payload = session.post.call_args.kwargs["json"]
         user_payload = payload["messages"][1]["content"]
         assert_no_raw_structure(user_payload, context="translator:sec:7")
-        self.assertIn("<PROTECTED_CMD_", user_payload)
+        self.assertIn("@@HF:CMD:", user_payload)
         self.assertNotIn("<PLACEHOLDER_CAP_1>", user_payload)
         self.assertNotIn("<ENV_BEGIN_1>", user_payload)
         self.assertNotIn("<ENV_END_1>", user_payload)
+
+    def test_call_llm_with_freeze_rejects_reordered_hard_freeze_tokens(self):
+        agent = _build_agent(trans_mode=0)
+        user_text = "Alpha <PLACEHOLDER_ENV_1> Beta <PLACEHOLDER_CAP_2>"
+        prepared_text, _ = agent._prepare_llm_payload_text(user_text)
+        hard_freeze_tokens = [chunk for chunk in prepared_text.split() if chunk.startswith("@@HF:")]
+        self.assertEqual(len(hard_freeze_tokens), 2)
+        session = _mock_success_session(
+            f"Alpha {hard_freeze_tokens[1]} Beta {hard_freeze_tokens[0]}"
+        )
+
+        with self.assertRaises(PipelineInvariantViolation):
+            asyncio.run(
+                agent._call_llm_with_freeze(
+                    system_prompt="prompt",
+                    user_text=user_text,
+                    fail_part="reordered",
+                    part_type="sec",
+                    session=session,
+                    fallback_text="fallback-text",
+                )
+            )
+
+    def test_call_llm_with_freeze_rejects_unknown_hard_freeze_token(self):
+        agent = _build_agent(trans_mode=0)
+        user_text = "Alpha <PLACEHOLDER_ENV_1> Beta"
+        prepared_text, _ = agent._prepare_llm_payload_text(user_text)
+        hard_freeze_token = next(chunk for chunk in prepared_text.split() if chunk.startswith("@@HF:"))
+        session = _mock_success_session(
+            f"Alpha {hard_freeze_token} Beta {hard_freeze_token.replace(':0001:', ':9999:', 1)}"
+        )
+
+        with self.assertRaises(PipelineInvariantViolation):
+            asyncio.run(
+                agent._call_llm_with_freeze(
+                    system_prompt="prompt",
+                    user_text=user_text,
+                    fail_part="unknown",
+                    part_type="sec",
+                    session=session,
+                    fallback_text="fallback-text",
+                )
+            )
+
+    def test_call_llm_with_freeze_rejects_missing_hard_freeze_token(self):
+        agent = _build_agent(trans_mode=0)
+        user_text = "Alpha <PLACEHOLDER_ENV_1> Beta <PLACEHOLDER_CAP_2>"
+        session = _mock_success_session("Alpha Beta")
+
+        with self.assertRaises(PipelineInvariantViolation):
+            asyncio.run(
+                agent._call_llm_with_freeze(
+                    system_prompt="prompt",
+                    user_text=user_text,
+                    fail_part="missing",
+                    part_type="sec",
+                    session=session,
+                    fallback_text="fallback-text",
+                )
+            )
+
+    def test_call_llm_with_freeze_rejects_duplicate_hard_freeze_token(self):
+        agent = _build_agent(trans_mode=0)
+        user_text = "Alpha <PLACEHOLDER_ENV_1> Beta"
+        prepared_text, _ = agent._prepare_llm_payload_text(user_text)
+        hard_freeze_token = next(chunk for chunk in prepared_text.split() if chunk.startswith("@@HF:"))
+        session = _mock_success_session(
+            f"Alpha {hard_freeze_token} {hard_freeze_token} Beta"
+        )
+
+        with self.assertRaises(PipelineInvariantViolation):
+            asyncio.run(
+                agent._call_llm_with_freeze(
+                    system_prompt="prompt",
+                    user_text=user_text,
+                    fail_part="duplicate",
+                    part_type="sec",
+                    session=session,
+                    fallback_text="fallback-text",
+                )
+            )
 
     def test_translate_section_still_calls_llm_for_normal_content(self):
         agent = _build_agent(trans_mode=0)
@@ -190,7 +336,7 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         self.assertNotIn("\\end{snugshade*}", prepared)
         self.assertNotIn("\\begin{appendix}", prepared)
         self.assertNotIn("Residual $ token", prepared)
-        self.assertIn("<PROTECTED_CMD_", prepared)
+        self.assertIn("@@HF:CMD:", prepared)
 
     def test_prepare_llm_payload_text_masks_display_math_and_restores_it(self):
         agent = _build_agent()
@@ -201,7 +347,7 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
 
         assert_no_raw_structure(prepared, context="translator:sec:display-math")
         self.assertEqual(restored, raw_text)
-        self.assertGreaterEqual(prepared.count("<INLMATH_"), 2)
+        self.assertGreaterEqual(len(re.findall(r"@@HF:INLMATH:", prepared)), 2)
         self.assertNotIn("$$x_i = y_i$$", prepared)
         self.assertNotIn("\\[z = 1\\]", prepared)
 
@@ -254,6 +400,120 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         self.assertNotIn("9", agent.noop_sections)
         self.assertIn("9", agent.payload_invariant_sections)
         self.assertFalse(translated.get("no_op_detected", False))
+
+    def test_translate_section_rejects_mutated_hard_freeze_output_without_persisting_it(self):
+        agent = _build_agent(trans_mode=0)
+        section = {
+            "section": "13",
+            "content": "Alpha <PLACEHOLDER_ENV_1> Beta <PLACEHOLDER_CAP_2>",
+            "previous_context": "",
+        }
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="EE11AA22",
+        ):
+            prepared_text, _ = agent._prepare_llm_payload_text(section["content"])
+            hard_freeze_tokens = [
+                chunk for chunk in prepared_text.split() if chunk.startswith("@@HF:")
+            ]
+            session = _mock_success_session(
+                f"Alpha {hard_freeze_tokens[1]} Beta {hard_freeze_tokens[0]}"
+            )
+            translated = asyncio.run(agent._translate_section(section, session))
+
+        self.assertEqual(translated["trans_content"], section["content"])
+        self.assertEqual(
+            translated["translation_status"],
+            agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+        )
+        self.assertEqual(
+            translated["fallback_reason"],
+            "invariant_hard_freeze_protocol_violation",
+        )
+        self.assertNotIn("@@HF:", translated["trans_content"])
+        self.assertIn("13", agent.payload_invariant_sections)
+
+    def test_translate_caption_round_trips_hard_freeze_tokens(self):
+        agent = _build_agent(trans_mode=0)
+        caption = {
+            "placeholder": "<PLACEHOLDER_CAP_9>",
+            "content": "Caption uses $x_i$ in the figure.",
+        }
+        session = _mock_echo_user_payload_session()
+
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="A1B2C3D4",
+        ):
+            translated = asyncio.run(agent._translate_caption(caption, session))
+
+        self.assertEqual(translated["trans_content"], caption["content"])
+        user_payload = session.post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("@@HF:INLMATH:", user_payload)
+        self.assertNotIn("$x_i$", user_payload)
+
+    def test_translate_generic_text_env_round_trips_hard_freeze_tokens(self):
+        agent = _build_agent(trans_mode=0)
+        env = {
+            "placeholder": "<PLACEHOLDER_ENV_10>",
+            "env_name": "theorem",
+            "content": "\\begin{theorem}Keep $x_i$ stable.\\end{theorem}",
+            "need_trans": True,
+        }
+        session = _mock_echo_user_payload_session()
+
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="B1C2D3E4",
+        ):
+            translated = asyncio.run(agent._translate_env(env, session))
+
+        self.assertEqual(translated["trans_content"], env["content"])
+        user_payload = session.post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("@@HF:INLMATH:", user_payload)
+        self.assertNotIn("\\begin{theorem}", user_payload)
+
+    def test_translate_list_env_round_trips_hard_freeze_tokens(self):
+        agent = _build_agent(trans_mode=0)
+        env = {
+            "placeholder": "<PLACEHOLDER_ENV_11>",
+            "env_name": "itemize",
+            "content": "\\begin{itemize}\n\\item First item\n\\item Second item\n\\end{itemize}",
+            "need_trans": True,
+        }
+        session = _mock_echo_user_payload_session()
+
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="C1D2E3F4",
+        ):
+            translated = asyncio.run(agent._translate_env(env, session))
+
+        self.assertEqual(translated["trans_content"], env["content"])
+        user_payload = session.post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("@@HF:CMD:", user_payload)
+        self.assertNotIn("\\item", user_payload)
+
+    def test_translate_eqnarray_env_round_trips_hard_freeze_tokens(self):
+        agent = _build_agent(trans_mode=0)
+        env = {
+            "placeholder": "<PLACEHOLDER_ENV_12>",
+            "env_name": "eqnarray",
+            "content": "\\begin{eqnarray}where x is stable\\\\a&=&b\\end{eqnarray}",
+            "need_trans": True,
+        }
+        session = _mock_echo_user_payload_session()
+
+        with patch(
+            "backend.app.services.latex.utils.secrets.token_hex",
+            return_value="D1E2F3A4",
+        ):
+            translated = asyncio.run(agent._translate_env(env, session))
+
+        self.assertIn("where x is stable", translated["trans_content"])
+        user_payload = session.post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("@@HF:CMD:", user_payload)
+        self.assertNotIn("<EQROW_0>", user_payload)
 
     def test_translate_section_falls_back_when_env_restore_marker_leaks(self):
         agent = _build_agent(trans_mode=0)

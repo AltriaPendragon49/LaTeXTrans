@@ -365,15 +365,20 @@ class ValidatorAgent(BaseToolAgent):
         """Validate placeholders are preserved in translation"""
         original_placeholders = self._extract_placeholders(part.get("content") or "")
         translated_placeholders = self._extract_placeholders(part.get("trans_content") or "")
-        missing = original_placeholders - translated_placeholders
-        extra = translated_placeholders - original_placeholders
+        missing = sorted(set(original_placeholders) - set(translated_placeholders))
+        extra = sorted(set(translated_placeholders) - set(original_placeholders))
         errors = []
-        
+
+        if original_placeholders != translated_placeholders:
+            errors.append(
+                "Placeholder sequence mismatch: "
+                f"expected {original_placeholders}, found {translated_placeholders}"
+            )
         if missing:
-            errors.append(f"Missing placeholders: {', '.join(sorted(missing))} translation error or is missing!") 
+            errors.append(f"Missing placeholders: {', '.join(missing)} translation error or is missing!")
         if extra:
-            errors.append(f"Extra placeholders: {', '.join(sorted(extra))} translation error or is redundant")
-        
+            errors.append(f"Extra placeholders: {', '.join(extra)} translation error or is redundant")
+
         return "\n".join(errors) if errors else None
         
     def _validate_escaped_dollar_leak(self, part: Dict[str, Any]) -> Optional[str]:
@@ -1031,9 +1036,12 @@ class ValidatorAgent(BaseToolAgent):
         input_pattern = re.compile(r"<PLACEHOLDER_[^>]+?_begin>|<PLACEHOLDER_[^>]+?_end>")
         placeholder_pattern_cap = re.compile(r"<PLACEHOLDER_CAP_\d+>")
         placeholder_pattern_env = re.compile(r"<PLACEHOLDER_ENV_\d+>")
-        placeholders = set()
-        for pattern in [input_pattern, placeholder_pattern_cap, placeholder_pattern_env]:
-            placeholders.update(pattern.findall(content))
+        placeholder_pattern_newcommand = re.compile(r"<PLACEHOLDER_NEWCOMMAND_\d+>")
+        combined_pattern = re.compile(
+            rf"{input_pattern.pattern}|{placeholder_pattern_cap.pattern}|"
+            rf"{placeholder_pattern_env.pattern}|{placeholder_pattern_newcommand.pattern}"
+        )
+        placeholders = combined_pattern.findall(content)
         return placeholders
 
     def _extract_parts_need_validate(self, secs, caps, envs):
