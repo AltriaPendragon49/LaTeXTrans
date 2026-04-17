@@ -142,6 +142,38 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertNotEqual(rescued, text)
         self.assertGreaterEqual(len(seen_fragment_inputs), 3)
 
+    def test_translate_plain_text_rescue_piece_retries_when_fragment_stays_source_preserved(self):
+        agent = _build_agent()
+        piece = "Diffusion models still need a translated rescue fragment."
+        fail_part = "3:paragraph:0:fragment:0"
+
+        async def fake_request(*args, **kwargs):
+            current_fail_part = kwargs["fail_part"]
+            if current_fail_part == fail_part:
+                return piece
+            if current_fail_part == f"{fail_part}:force":
+                return "Translated fragment after force retry."
+            return piece
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._translate_plain_text_rescue_piece(
+                piece=piece,
+                fail_part=fail_part,
+                part_type="sec",
+                session=MagicMock(),
+                error_message=None,
+                paragraph_hint="force translation",
+                prompt_suffix="\n[Paragraph Rescue]",
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms=None,
+            )
+        )
+
+        self.assertEqual(rescued, "Translated fragment after force retry.")
+        self.assertEqual(agent._request_llm_for_trans.await_count, 2)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {

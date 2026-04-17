@@ -838,6 +838,53 @@ class TranslatorAgent(BaseToolAgent):
                 session=session,
             )
 
+        allow_force_retry = (
+            ":fragment:" in str(fail_part)
+            or (
+                "\\" not in piece
+                and "<PLACEHOLDER_" not in piece
+                and "<PROTECTED_CMD_" not in piece
+            )
+        )
+        if allow_force_retry and self._is_source_preserved_translation(piece, rescued_piece):
+            force_retry_hint = (
+                f"{prompt_suffix}\n"
+                "[Force Translation]\n"
+                "The previous fragment remained in the source language. "
+                "Translate this fragment into the target language now. "
+                "Do not copy the English source text."
+            )
+            retry_fail_part = f"{fail_part}:force"
+            if self.trans_mode == 1:
+                retry_part = {
+                    "content": piece,
+                    "trans_content": piece,
+                }
+                rescued_piece = await self._request_llm_for_retrans_error_parts(
+                    self.prompts["retrans_error_parts_system_prompt"],
+                    part=retry_part,
+                    error_message=force_retry_hint if not error_message else f"{error_message}\n{force_retry_hint}",
+                    fail_part=retry_fail_part,
+                    type=part_type,
+                    session=session,
+                )
+            elif self.trans_mode == 2 and prompt_key_with_terms and self.term_dict:
+                rescued_piece = await self._request_llm_for_trans_with_terms(
+                    self.prompts[prompt_key_with_terms] + force_retry_hint,
+                    piece,
+                    fail_part=retry_fail_part,
+                    type=part_type,
+                    session=session,
+                )
+            else:
+                rescued_piece = await self._request_llm_for_trans(
+                    self.prompts[prompt_key] + force_retry_hint,
+                    piece,
+                    fail_part=retry_fail_part,
+                    type=part_type,
+                    session=session,
+                )
+
         if not isinstance(rescued_piece, str) or not rescued_piece.strip():
             return None
         if leading_ws or trailing_ws:
