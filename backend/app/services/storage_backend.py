@@ -40,6 +40,14 @@ class StorageBackend(ABC):
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
         raise NotImplementedError
 
+    @abstractmethod
+    def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def download_file(self, *, object_key: str, local_path: Path) -> Path:
+        raise NotImplementedError
+
     def build_download_url(
         self,
         *,
@@ -124,6 +132,35 @@ class LocalDiskStorageBackend(StorageBackend):
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
         return self.resolve_local_path(ref).read_text(encoding=encoding)
 
+    def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
+        target = self._build_target_path(prefix)
+        if not target.exists():
+            return []
+
+        files: list[Path]
+        if target.is_file():
+            files = [target]
+        else:
+            files = sorted(path for path in target.rglob("*") if path.is_file())
+
+        results: list[StoredObjectRef] = []
+        for file_path in files:
+            relative = file_path.relative_to(self._root).as_posix()
+            results.append(
+                StoredObjectRef(
+                    storage_backend="local_disk",
+                    object_key=relative,
+                    size_bytes=file_path.stat().st_size,
+                )
+            )
+        return results
+
+    def download_file(self, *, object_key: str, local_path: Path) -> Path:
+        source = self._build_target_path(object_key)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, local_path)
+        return local_path
+
 
 class CosStorageBackend(StorageBackend):
     """Tencent COS-backed storage for production object persistence."""
@@ -204,6 +241,62 @@ class CosStorageBackend(StorageBackend):
         return self._get_client().get_presigned_download_url(
             **request_kwargs,
         )
+
+    def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
+        full_prefix = self._full_object_key(prefix)
+        marker: Optional[str] = None
+        results: list[StoredObjectRef] = []
+
+        while True:
+            request_kwargs: dict[str, Any] = {
+                "Bucket": self.bucket,
+                "Prefix": full_prefix,
+            }
+            if marker:
+                request_kwargs["Marker"] = marker
+
+            response = self._get_client().list_objects(**request_kwargs) or {}
+            contents = response.get("Contents") or []
+            for item in contents:
+                key = str(item.get("Key") or "").strip()
+                if not key or key.endswith("/"):
+                    continue
+                results.append(
+                    StoredObjectRef(
+                        storage_backend="object_storage",
+                        object_key=key,
+                        size_bytes=item.get("Size"),
+                    )
+                )
+
+            truncated = response.get("IsTruncated")
+            if truncated not in {True, "true", "True"}:
+                break
+
+            marker = response.get("NextMarker")
+            if not marker and contents:
+                marker = contents[-1].get("Key")
+            if not marker:
+                break
+
+        return results
+
+    def download_file(self, *, object_key: str, local_path: Path) -> Path:
+        response = self._get_client().get_object(
+            Bucket=self.bucket,
+            Key=self._full_object_key(object_key),
+        )
+        stream = response["Body"].get_raw_stream()
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._fs_path(local_path), "wb") as target_handle:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                target_handle.write(chunk)
+        return local_path
 
     def _full_object_key(self, object_key: str) -> str:
         normalized = "/".join(self._normalize_object_key(object_key))

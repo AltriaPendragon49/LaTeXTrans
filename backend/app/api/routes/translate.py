@@ -16,9 +16,11 @@ import shutil
 from pathlib import Path
 
 from backend.app.services.task_manager import (
+    clear_cached_runtime_artifacts,
     get_task_manager,
     get_task_queue,
 )
+from backend.app.services import task_artifact_storage
 from backend.app.services import task_manager as task_manager_module
 from backend.app.services.agents.coordinator_agent import CoordinatorAgent
 from backend.app.services.latex_validator import find_main_tex_file
@@ -371,6 +373,10 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
         reusable_task_id = str(record.get("task_id") or "").strip()
         output_path_value = str(record.get("output_path") or "").strip()
 
+        if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos" and output_path_value:
+            logger.info(f"Found reusable object-storage output: {output_path_value}")
+            return output_path_value
+
         candidate_paths = []
         if output_path_value:
             candidate_paths.append(Path(output_path_value))
@@ -425,6 +431,19 @@ async def copy_output(source_output: str, task_id: str) -> str:
     Returns:
         新的 output 目录路径
     """
+    if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+        dest = Path(settings.outputs_dir) / task_id
+        task_artifact_storage.materialize_task_directory(
+            source_output,
+            destination=dest,
+            force=True,
+        )
+        return task_artifact_storage.persist_task_output_directory(
+            task_id=task_id,
+            local_output_dir=dest,
+            delete_local=True,
+        )
+
     dest = settings.outputs_dir / task_id
     if dest.exists():
         shutil.rmtree(dest)
@@ -480,6 +499,16 @@ async def run_translation(
                 p = Path(raw_source_path)
                 if p.exists():
                     return p
+                if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+                    hydrated_path = task_artifact_storage.resolve_local_task_path(raw_source_path)
+                    try:
+                        return task_artifact_storage.materialize_task_directory(
+                            raw_source_path,
+                            destination=hydrated_path,
+                            force=True,
+                        )
+                    except FileNotFoundError:
+                        logger.warning(f"Stored source path not found in object storage: {raw_source_path}")
                 logger.warning(f"Source path on disk not found: {p}")
             else:
                 logger.warning(f"Task {task_id} has no source_path recorded")
@@ -502,13 +531,20 @@ async def run_translation(
                 if not source_dirs:
                     raise Exception(f"Re-download failed for arXiv {arxiv_id}: no source returned")
                 new_path = Path(source_dirs[0])
+                stored_source_path = str(new_path)
+                if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+                    stored_source_path = task_artifact_storage.persist_task_directory(
+                        new_path,
+                        stored_path=task_artifact_storage.normalize_stored_task_path(new_path),
+                        delete_local=False,
+                    )
                 task_manager.update_task(
                     task_id=task_id,
-                    source_path=str(new_path),
+                    source_path=stored_source_path,
                     source_available=True,
                     user_id=user_id
                 )
-                logger.info(f"Re-download succeeded, source_path updated to: {new_path}")
+                logger.info(f"Re-download succeeded, source_path updated to: {stored_source_path}")
                 return new_path
 
             raise Exception(f"Source path not found: {raw_source_path}")
@@ -530,6 +566,7 @@ async def run_translation(
         # Create output directory
         output_dir = settings.outputs_dir / task_id
         output_dir.mkdir(parents=True, exist_ok=True)
+        durable_output_path = str(output_dir)
         
         task_manager.update_task(
             task_id=task_id,
@@ -572,6 +609,8 @@ async def run_translation(
                 user_id=user_id
             )
             logger.info(f"Task {task_id} completed via output reuse")
+            if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+                clear_cached_runtime_artifacts(task_id, [source_path])
             return
         
         # 没有找到可复用的,继续正常翻译
@@ -696,6 +735,13 @@ async def run_translation(
             error_summary = error_summary or f"Compilation returned a missing PDF path: {pdf_path}"
             pdf_path = None
 
+        if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos" and output_dir.exists():
+            durable_output_path = task_artifact_storage.persist_task_output_directory(
+                task_id=task_id,
+                local_output_dir=output_dir,
+                delete_local=True,
+            )
+
         if workflow_status == "structure_invalid":
             error_text = error_summary or "LaTeX structure guard rejected bundle before compilation"
             task_manager.update_task(
@@ -705,7 +751,7 @@ async def run_translation(
                 message=error_text,
                 error=error_text,
                 warnings=warning_summary,
-                output_path=str(output_dir),
+                output_path=durable_output_path,
                 failure_reason_code=failure_reason_code,
                 failure_class=failure_class or "structural",
                 guard_phase=guard_phase,
@@ -722,6 +768,8 @@ async def run_translation(
                     task_id,
                     exc_info=True,
                 )
+            if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+                clear_cached_runtime_artifacts(task_id, [source_path])
             logger.warning(f"Translation aborted by structure guard: {task_id}")
             return
 
@@ -735,7 +783,7 @@ async def run_translation(
                 message=failure_msg,
                 error=error_text,
                 warnings=warning_summary,
-                output_path=str(output_dir),
+                output_path=durable_output_path,
                 failure_reason_code=failure_reason_code,
                 failure_class=failure_class,
                 guard_phase=guard_phase,
@@ -752,6 +800,8 @@ async def run_translation(
                     task_id,
                     exc_info=True,
                 )
+            if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+                clear_cached_runtime_artifacts(task_id, [source_path])
             logger.warning(f"Translation finished with compilation failure: {task_id}")
             return
 
@@ -763,7 +813,7 @@ async def run_translation(
                 message="Translation completed with compilation warnings",
                 detail_code="compile_complete",
                 warnings=warning_summary or "Compilation completed with warnings",
-                output_path=str(output_dir),
+                output_path=durable_output_path,
                 user_id=user_id
             )
             logger.info(f"Translation completed with compilation warnings: {task_id}")
@@ -774,10 +824,12 @@ async def run_translation(
                 progress=100,
                 message="Translation completed successfully",
                 detail_code="compile_complete",
-                output_path=str(output_dir),
+                output_path=durable_output_path,
                 user_id=user_id
             )
             logger.info(f"Translation completed: {task_id}")
+        if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+            clear_cached_runtime_artifacts(task_id, [source_path])
     
     except asyncio.CancelledError:
         is_user_cancelled = task_manager.is_cancelled(task_id)
@@ -1183,6 +1235,13 @@ async def _download_and_enqueue(
             raise ValueError(f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码")
 
         source_path = source_dirs[0]
+        stored_source_path = source_path
+        if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+            stored_source_path = task_artifact_storage.persist_task_directory(
+                Path(source_path),
+                stored_path=task_artifact_storage.normalize_stored_task_path(source_path),
+                delete_local=True,
+            )
 
         # Step 3: Mark source as available
         task_manager.update_task(
@@ -1191,7 +1250,7 @@ async def _download_and_enqueue(
             progress=100,
             message=f"arXiv 论文 {arxiv_id} 下载完成，等待翻译",
             detail_code="download_source_complete",
-            source_path=source_path,
+            source_path=stored_source_path,
             source_available=True,
             user_id=user_id,
         )

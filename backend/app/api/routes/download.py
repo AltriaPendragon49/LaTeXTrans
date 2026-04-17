@@ -5,7 +5,7 @@ Provides endpoints for downloading translated PDFs and source files.
 """
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from starlette.background import BackgroundTask
 import httpx
 import logging
@@ -18,6 +18,7 @@ import shutil
 
 from typing import Optional
 from backend.app.services.task_manager import get_task_manager
+from backend.app.services import task_artifact_storage
 from backend.app.services.latex.compiler import compile_with_intelligent_fallback
 from backend.app.core.config import get_settings, TaskStatus
 
@@ -344,6 +345,61 @@ async def _proxy_arxiv_pdf(
     )
 
 
+async def _proxy_remote_asset(
+    url: str,
+    *,
+    filename: str,
+    media_type: str,
+    request: Optional[Request] = None,
+) -> StreamingResponse:
+    client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
+    forward_headers = {"User-Agent": "LaTeXTrans-Preview/1.0"}
+    range_header = request.headers.get("range") if request else None
+    if range_header:
+        forward_headers["Range"] = range_header
+
+    upstream_request = client.build_request("GET", url, headers=forward_headers)
+    upstream = await client.send(upstream_request, stream=True)
+
+    if upstream.status_code not in (200, 206):
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(
+            status_code=upstream.status_code if upstream.status_code >= 400 else 502,
+            detail=f"Failed to fetch remote asset ({upstream.status_code})",
+        )
+
+    async def _stream():
+        async for chunk in upstream.aiter_bytes():
+            if chunk:
+                yield chunk
+
+    async def _close_stream() -> None:
+        await upstream.aclose()
+        await client.aclose()
+
+    headers = {"Content-Disposition": f'inline; filename="{filename}"'}
+    for source_name, target_name in (
+        ("content-length", "Content-Length"),
+        ("accept-ranges", "Accept-Ranges"),
+        ("content-range", "Content-Range"),
+        ("etag", "ETag"),
+        ("last-modified", "Last-Modified"),
+        ("cache-control", "Cache-Control"),
+    ):
+        value = upstream.headers.get(source_name)
+        if value:
+            headers[target_name] = value
+
+    return StreamingResponse(
+        _stream(),
+        status_code=upstream.status_code,
+        media_type=media_type,
+        headers=headers,
+        background=BackgroundTask(_close_stream),
+    )
+
+
 @router.get("/download/{task_id}/pdf")
 async def download_pdf(task_id: str):
     """
@@ -374,6 +430,19 @@ async def download_pdf(task_id: str):
             status_code=400,
             detail=f"Translation not completed. Current status: {task['status']}"
         )
+
+    if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+        signed_url = task_artifact_storage.build_task_output_download_url(
+            task.get("output_path", ""),
+            "translated_pdf",
+            filename=f"translated_{task_id}.pdf",
+            content_type="application/pdf",
+            inline=False,
+            expires_in=600,
+        )
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="Translated PDF not found")
+        return RedirectResponse(url=signed_url, status_code=307)
     
     # Find PDF file in output directory
     output_dir = Path(task.get("output_path", ""))
@@ -455,6 +524,23 @@ async def preview_pdf(task_id: str):
         raise HTTPException(
             status_code=400,
             detail=f"Translation not completed. Current status: {task['status']}"
+        )
+
+    if task and str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+        signed_url = task_artifact_storage.build_task_output_download_url(
+            task.get("output_path", ""),
+            "translated_pdf",
+            filename=f"preview_{task_id}.pdf",
+            content_type="application/pdf",
+            inline=True,
+            expires_in=300,
+        )
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="Translated PDF not found")
+        return await _proxy_remote_asset(
+            signed_url,
+            filename=f"preview_{task_id}.pdf",
+            media_type="application/pdf",
         )
 
     pdf_file: Optional[Path] = None
@@ -577,6 +663,16 @@ async def preview_source_pdf(task_id: str, request: Request):
     source_candidates: list[Path] = []
     if source_path:
         source_candidates.append(Path(source_path))
+        if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+            try:
+                hydrated_source = task_artifact_storage.materialize_task_directory(
+                    source_path,
+                    destination=task_artifact_storage.resolve_local_task_path(source_path),
+                    force=False,
+                )
+                source_candidates.insert(0, hydrated_source)
+            except FileNotFoundError:
+                logger.warning("Source path not found in object storage for preview: %s", source_path)
     source_candidates.append(settings.uploads_dir / task_id)
     source_dir = next((candidate for candidate in source_candidates if candidate.exists() and candidate.is_dir()), None)
     if source_dir is None:
@@ -740,6 +836,19 @@ async def download_source(task_id: str):
             status_code=400,
             detail=f"Translation not completed. Current status: {task['status']}"
         )
+
+    if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+        signed_url = task_artifact_storage.build_task_output_download_url(
+            task.get("output_path", ""),
+            "translated_source_archive",
+            filename=f"translated_source_{task_id}.zip",
+            content_type="application/zip",
+            inline=False,
+            expires_in=600,
+        )
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="Source archive not found")
+        return RedirectResponse(url=signed_url, status_code=307)
     
     # Get output directory
     output_dir = Path(task.get("output_path", ""))
@@ -808,6 +917,19 @@ async def download_logs(task_id: str):
             status_code=404,
             detail=f"Task not found: {task_id}"
         )
+
+    if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+        signed_url = task_artifact_storage.build_task_output_download_url(
+            task.get("output_path", ""),
+            "logs",
+            filename=f"compilation_log_{task_id}.log",
+            content_type="text/plain",
+            inline=False,
+            expires_in=600,
+        )
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="Log files not found")
+        return RedirectResponse(url=signed_url, status_code=307)
     
     # Get output directory
     output_dir = Path(task.get("output_path", ""))
@@ -866,6 +988,22 @@ async def download_terminology(task_id: str):
             status_code=400,
             detail=f"Translation not completed. Current status: {task['status']}"
         )
+
+    if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+        signed_url = task_artifact_storage.build_task_output_download_url(
+            task.get("output_path", ""),
+            "terminology_csv",
+            filename=f"terminology_{task_id}.csv",
+            content_type="text/csv",
+            inline=False,
+            expires_in=600,
+        )
+        if not signed_url:
+            raise HTTPException(
+                status_code=404,
+                detail="Terminology table not found. Make sure 'Generate Terminology Table' was enabled during translation.",
+            )
+        return RedirectResponse(url=signed_url, status_code=307)
     
     # Get output directory
     output_dir = Path(task.get("output_path", ""))

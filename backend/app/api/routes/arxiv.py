@@ -10,8 +10,10 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import logging
 import asyncio
+from pathlib import Path
 
 from backend.app.core.auth import optional_current_user, resolve_current_user_id
+from backend.app.services import task_artifact_storage
 from backend.app.services.latex.utils import (
     batch_download_arxiv_tex,
     extract_arxiv_ids,
@@ -70,6 +72,13 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
             raise ArxivNoSourceAvailableError(f"arXiv 论文 {arxiv_id} 没有可用的 TeX 源码")
         
         source_path = source_dirs[0]
+        stored_source_path = source_path
+        if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+            stored_source_path = task_artifact_storage.persist_task_directory(
+                Path(source_path),
+                stored_path=task_artifact_storage.normalize_stored_task_path(source_path),
+                delete_local=True,
+            )
         
         # Update task as completed
         task_manager.update_task(
@@ -78,11 +87,11 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
             progress=100,
             message=f"arXiv paper {arxiv_id} downloaded successfully",
             detail_code="download_source_complete",
-            source_path=source_path,
+            source_path=stored_source_path,
             source_available=True
         )
         
-        logger.info(f"Successfully downloaded arXiv {arxiv_id} to {source_path}")
+        logger.info(f"Successfully downloaded arXiv {arxiv_id} to {stored_source_path}")
         
     except ArxivNoSourceAvailableError as e:
         # 404 - No TeX source available for this paper

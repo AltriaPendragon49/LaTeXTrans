@@ -18,6 +18,7 @@ from pathlib import Path
 
 from backend.app.core.auth import optional_current_user, resolve_current_user_id
 from backend.app.services.task_manager import get_task_manager
+from backend.app.services import task_artifact_storage
 from backend.app.services.latex_validator import validate_latex_directory
 from backend.app.core.config import get_settings, TaskStatus
 from backend.app.models.config_models import LatexValidation
@@ -282,12 +283,20 @@ async def upload_file(
         
         # Update task with validation results
         if validation.is_valid:
+            stored_source_path = str(final_source_path)
+            if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
+                stored_source_path = task_artifact_storage.persist_task_directory(
+                    Path(final_source_path),
+                    stored_path=task_artifact_storage.normalize_stored_task_path(final_source_path),
+                    delete_local=True,
+                )
+
             task_manager.update_task(
                 task_id=task_id,
                 status=TaskStatus.PENDING.value,
                 progress=100,
                 message=f"File {file.filename} uploaded and validated successfully",
-                source_path=str(final_source_path),
+                source_path=stored_source_path,
                 source_available=True,
                 latex_validation=validation.model_dump(),
                 user_id=user_id
@@ -299,7 +308,7 @@ async def upload_file(
                 task_id=task_id,
                 status="success",
                 message=f"File {file.filename} uploaded successfully. Main file: {validation.main_file}",
-                source_path=str(final_source_path),
+                source_path=stored_source_path,
                 latex_validation=validation_response
             )
         else:

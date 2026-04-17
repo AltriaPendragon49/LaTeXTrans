@@ -73,7 +73,7 @@ def _is_within_cleanup_roots(candidate: Path, allowed_roots: List[Path]) -> bool
 
 def clear_cached_runtime_artifacts(task_id: str, retained_paths: List[Path]) -> List[str]:
     settings = get_settings()
-    allowed_roots = [Path(settings.outputs_dir), Path(settings.storage_temp_dir)]
+    allowed_roots = [Path(settings.outputs_dir), Path(settings.uploads_dir), Path(settings.storage_temp_dir)]
     cleared_paths: List[str] = []
     for candidate in retained_paths:
         if not isinstance(candidate, Path):
