@@ -262,19 +262,25 @@ The system SHALL maintain a structural JSON log of critical task state transitio
 - **THEN** the system SHALL append a JSON entry to `task_log.json` containing a timestamp, event name, and auxiliary data.
 
 ### Requirement: Placeholder Integrity and Recovery
+The translation pipeline MUST aggressively protect and recover all injected placeholders and synthetic structural sentinels. For structural-risk LLM calls, this protection MUST happen through a unified hard-freeze transport protocol rather than relying on prompt compliance or fuzzy placeholder repair at the LLM boundary.
 
-The translation pipeline MUST aggressively protect and recover all injected placeholders (e.g., `<PLACEHOLDER_ENV_{ID}>`) to ensure zero leakage of placeholder tags into the final compiled PDF and zero misfires of translation reassembly logic.
+#### Scenario: Structural-risk payload uses opaque hard-freeze transport tokens
+1. Given a section, caption, or environment payload that contains protected placeholders or sentinels
+2. When the system prepares that payload for the LLM
+3. Then the text sent to the LLM MUST contain opaque hard-freeze transport tokens instead of the original protected strings
+4. And the transport tokens MUST remain the only acceptable protected-token representation in the raw model response.
 
-#### Scenario: LLM escapes placeholders natively
-- **Given** an LLM translates a segment and outputs `<$PLACEHOLDER_ENV_10$>` or `\textless PLACEHOLDER\_CAP\_1\textgreater` instead of the exact expected tag.
-- **When** the coordinator processes the translated text prior to checking for missing placeholders (`_fix_missing_placeholders`) and prior to the environment/caption substitution step (`reconstruct.py`).
-- **Then** the `restore_mangled_placeholders` utility MUST execute a fuzzy regex scan against the list of known original placeholders for that segment.
-- **And** it MUST perfectly restore the escaped/wrapped text back into the standard exact string (e.g. `<PLACEHOLDER_ENV_10>`) to proceed normally.
+#### Scenario: Exact transport-token preservation allows downstream decode
+1. Given a model response whose hard-freeze token stream exactly matches the prepared request stream
+2. When the boundary verifier accepts the response
+3. Then the system MUST decode the transport tokens back to their original protected strings
+4. And MUST continue through the existing validation and reconstruction pipeline.
 
-#### Scenario: Proper tags remain untouched
-- **Given** an LLM correctly preserves the exact tag `<PLACEHOLDER_ENV_10>`.
-- **When** the translated text is processed by `restore_mangled_placeholders`.
-- **Then** the text MUST remain completely untouched and valid, preventing any double-formatting or greedy-regex collateral damage.
+#### Scenario: Boundary corruption does not enter fuzzy placeholder recovery
+1. Given a model response whose hard-freeze token stream is missing, duplicated, reordered, or contains an unknown token
+2. When the system evaluates the response
+3. Then the system MUST reject the response before decoded translation state is updated
+4. And MUST NOT invoke fuzzy placeholder recovery as a substitute for exact boundary verification.
 
 ### Requirement: API Fatal Error Fast-Fail
 
@@ -732,4 +738,28 @@ The system SHALL resolve `\input` and `\include` targets only to existing files,
 - **WHEN** an `\input` or `\include` target resolves to an existing file path directly or through an added `.tex` suffix
 - **THEN** the system SHALL load that file normally
 - **AND** the directory-skip guard SHALL NOT break healthy include resolution for valid files
+
+### Requirement: Unified Hard-Freeze Coverage Across Structural-Risk Translation Paths
+Every structural-risk LLM translation path MUST use the same hard-freeze preparation and verification contract.
+
+#### Scenario: First-pass section translation uses unified hard-freeze
+1. Given a normal section translation request
+2. When the translator sends the request to the LLM
+3. Then the request MUST pass through the unified hard-freeze boundary
+4. And direct raw placeholder-bearing submission MUST NOT occur.
+
+#### Scenario: Retranslation and environment recovery use unified hard-freeze
+1. Given a retranslation, environment recovery, list rescue, or eqnarray row-safe translation request
+2. When the translator sends the request to the LLM
+3. Then the request MUST pass through the same unified hard-freeze boundary
+4. And protocol rejection semantics MUST remain identical to first-pass translation.
+
+### Requirement: Exact Token-Stream Equality for Accepted LLM Responses
+Accepted LLM responses MUST preserve the exact request token stream for every hard-frozen protected artifact occurrence.
+
+#### Scenario: Accepted output preserves occurrence order
+1. Given a request with two occurrences of the same logical placeholder family
+2. When the model response is accepted
+3. Then the preserved hard-freeze token stream MUST match the original occurrence order exactly
+4. And acceptance MUST NOT be based only on placeholder set equality or family-level equality.
 
