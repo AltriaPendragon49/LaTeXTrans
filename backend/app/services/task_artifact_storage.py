@@ -110,11 +110,18 @@ def materialize_task_directory(
         raise FileNotFoundError(f"No stored objects found for prefix: {normalized_root}")
 
     prefix = normalized_root.rstrip("/")
+    prefixed_prefix = None
+    if str(getattr(settings, "cos_base_prefix", "")).strip():
+        prefixed_prefix = f"{str(settings.cos_base_prefix).strip().strip('/')}/{prefix}"
     for ref in sorted(refs, key=lambda item: item.object_key):
         object_key = str(ref.object_key or "").replace("\\", "/")
         if object_key.startswith(f"{prefix}/"):
             relative = object_key[len(prefix) + 1 :]
+        elif prefixed_prefix and object_key.startswith(f"{prefixed_prefix}/"):
+            relative = object_key[len(prefixed_prefix) + 1 :]
         elif object_key == prefix:
+            relative = Path(object_key).name
+        elif prefixed_prefix and object_key == prefixed_prefix:
             relative = Path(object_key).name
         else:
             continue

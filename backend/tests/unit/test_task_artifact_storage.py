@@ -98,6 +98,58 @@ def test_materialize_task_directory_downloads_object_storage_tree(monkeypatch, t
     assert (destination / "figures" / "plot.png").read_bytes() == b"png-bytes"
 
 
+def test_materialize_task_directory_accepts_full_prefixed_object_keys(monkeypatch, tmp_path: Path):
+    from backend.app.services import task_artifact_storage as storage
+
+    downloaded: list[str] = []
+    payloads = {
+        "latextrans-prod/data/uploads/task-1/main.tex": b"\\documentclass{article}",
+        "latextrans-prod/data/uploads/task-1/figures/plot.png": b"png-bytes",
+    }
+
+    class _FakeBackend:
+        def list_files(self, *, prefix: str):
+            assert prefix == "data/uploads/task-1"
+            return [
+                StoredObjectRef(storage_backend="object_storage", object_key=key)
+                for key in sorted(payloads)
+            ]
+
+        def download_file(self, *, object_key: str, local_path: Path):
+            downloaded.append(object_key)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(payloads[object_key])
+            return local_path
+
+    settings = SimpleNamespace(
+        base_dir=tmp_path / "backend",
+        uploads_dir=tmp_path / "backend" / "data" / "uploads",
+        outputs_dir=tmp_path / "backend" / "data" / "outputs",
+        storage_backend_mode="cos",
+        storage_temp_dir=tmp_path / "backend" / "data" / "tmp_storage",
+        cos_base_prefix="latextrans-prod",
+    )
+    settings.storage_temp_dir.mkdir(parents=True, exist_ok=True)
+
+    destination = settings.storage_temp_dir / "hydrate" / "task-1"
+
+    monkeypatch.setattr(storage, "settings", settings)
+    monkeypatch.setattr(storage, "_get_storage_backend", lambda: _FakeBackend())
+
+    materialized = storage.materialize_task_directory(
+        "data/uploads/task-1",
+        destination=destination,
+        force=True,
+    )
+
+    assert materialized == destination
+    assert downloaded == [
+        "latextrans-prod/data/uploads/task-1/figures/plot.png",
+        "latextrans-prod/data/uploads/task-1/main.tex",
+    ]
+    assert (destination / "main.tex").read_text(encoding="utf-8") == "\\documentclass{article}"
+
+
 def test_persist_task_output_directory_writes_manifest_and_source_archive(monkeypatch, tmp_path: Path):
     from backend.app.services import task_artifact_storage as storage
 
