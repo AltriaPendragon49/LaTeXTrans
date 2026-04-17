@@ -34,6 +34,7 @@ from backend.app.repositories import CommunityPaperRepository
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_preview_service
+from backend.app.services import task_artifact_storage
 from backend.app.services.storage_backend import (
     LocalDiskStorageBackend,
     StorageBackend,
@@ -2695,6 +2696,7 @@ async def _resolve_translated_pdf_asset(
     paper_id: str,
     task_id: str,
 ) -> Optional[Dict[str, Any]]:
+    task = task_manager.get_task(task_id) if task_id else None
     for output_dir in _candidate_output_directories_for_task(task_id):
         pdf_path = download_route._find_translated_pdf(output_dir)
         if not pdf_path or not pdf_path.exists():
@@ -2727,6 +2729,47 @@ async def _resolve_translated_pdf_asset(
             },
         )
         return asset
+
+    output_path = str((task or {}).get("output_path") or "").strip()
+    if output_path:
+        try:
+            recovered_pdf = task_artifact_storage.materialize_task_output_asset(
+                output_path,
+                "translated_pdf",
+                destination_dir=Path(settings.storage_temp_dir) / "task_output_asset_recovery" / task_id / "translated_pdf",
+                force=True,
+            )
+        except Exception:
+            recovered_pdf = None
+
+        if recovered_pdf and recovered_pdf.exists():
+            stored_ref, stored_name = _persist_retained_artifact(
+                local_path=recovered_pdf,
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_type="translated_pdf",
+                source_name=recovered_pdf.name,
+                content_type="application/pdf",
+            )
+            asset = await _upsert_latest_asset(
+                paper_id=paper_id,
+                task_id=task_id,
+                asset_type="translated_pdf",
+                file_path=stored_ref.object_key,
+                file_name=stored_name,
+                mime_type=stored_ref.content_type or "application/pdf",
+                storage_backend=stored_ref.storage_backend,
+            )
+            if stored_ref.storage_backend != "local_disk":
+                clear_cached_runtime_artifacts(task_id, [recovered_pdf])
+            await _update_paper(
+                paper_id,
+                {
+                    "trans_latest_asset_pdf_id": asset.get("id"),
+                    "updated_at": _utc_now_iso(),
+                },
+            )
+            return asset
 
     return None
 

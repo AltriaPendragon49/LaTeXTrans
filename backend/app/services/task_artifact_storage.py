@@ -132,6 +132,42 @@ def materialize_task_directory(
     return destination
 
 
+def materialize_task_output_asset(
+    output_path: str,
+    asset_name: str,
+    *,
+    destination_dir: Path,
+    force: bool = False,
+) -> Optional[Path]:
+    manifest = read_task_output_manifest(output_path)
+    relative_path = _manifest_relative_path_for_asset(manifest, asset_name)
+    if not relative_path:
+        return None
+
+    destination_dir = Path(destination_dir)
+    file_name = Path(relative_path).name
+    if not file_name:
+        return None
+
+    destination = destination_dir / file_name
+    if destination.exists() and not force:
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    backend = _get_storage_backend()
+    if not _storage_uses_object_store(backend):
+        local_output_dir = resolve_local_task_path(output_path)
+        local_asset = local_output_dir / relative_path
+        if not local_asset.exists():
+            raise FileNotFoundError(f"Task output asset not found: {local_asset}")
+        shutil.copy2(local_asset, destination)
+        return destination
+
+    object_key = f"{_normalize_stored_path(output_path).rstrip('/')}/{relative_path}"
+    backend.download_file(object_key=object_key, local_path=destination)
+    return destination
+
+
 def _iter_task_log_candidates(output_dir: Path) -> list[Path]:
     candidates: list[Path] = []
     root_log = output_dir / "task_log.json"
