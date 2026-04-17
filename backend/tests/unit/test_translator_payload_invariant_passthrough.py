@@ -174,6 +174,47 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertEqual(rescued, "Translated fragment after force retry.")
         self.assertEqual(agent._request_llm_for_trans.await_count, 2)
 
+    def test_rescue_plain_text_by_paragraph_tries_masked_paragraph_before_fragment_rescue(self):
+        agent = _build_agent()
+        text = (
+            "We discuss \\cref{eq:test} and optimize <PLACEHOLDER_ENV_16> for better samples."
+        )
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            user_text = args[1]
+            if fail_part == "8:paragraph:0":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return text
+            if fail_part == "8:paragraph:0:masked":
+                if "\\cref{" in user_text:
+                    raise AssertionError("masked paragraph rescue should not expose raw cref commands")
+                if "<PLACEHOLDER_ENV_16>" in user_text:
+                    raise AssertionError("masked paragraph rescue should only expose masked placeholders")
+                return user_text.replace(
+                    "We discuss ",
+                    "Translated masked paragraph ",
+                    1,
+                )
+            raise AssertionError(f"unexpected fail_part {fail_part}")
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="8",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertEqual(
+            rescued,
+            "Translated masked paragraph \\cref{eq:test} and optimize <PLACEHOLDER_ENV_16> for better samples.",
+        )
+        self.assertEqual(agent._request_llm_for_trans.await_count, 2)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {

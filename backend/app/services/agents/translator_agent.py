@@ -701,6 +701,17 @@ class TranslatorAgent(BaseToolAgent):
                 prompt_key_with_terms=prompt_key_with_terms,
             )
             if rescued_piece is None:
+                rescued_piece = await self._translate_masked_plain_text_rescue_piece(
+                    piece=piece,
+                    fail_part=f"{part_fail_key}:masked",
+                    part_type=part_type,
+                    session=session,
+                    error_message=error_message,
+                    prompt_suffix=prompt_suffix,
+                    prompt_key=prompt_key,
+                    prompt_key_with_terms=prompt_key_with_terms,
+                )
+            if rescued_piece is None:
                 rescued_piece = await self._rescue_plain_text_by_fragment(
                     text=piece,
                     identifier=part_fail_key,
@@ -894,6 +905,65 @@ class TranslatorAgent(BaseToolAgent):
         if self._is_source_preserved_translation(piece, rescued_piece):
             return None
         return rescued_piece
+
+    async def _translate_masked_plain_text_rescue_piece(
+        self,
+        *,
+        piece: str,
+        fail_part: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str],
+        prompt_suffix: str,
+        prompt_key: str,
+        prompt_key_with_terms: Optional[str],
+    ) -> Optional[str]:
+        masked_piece, rescue_context = self._prepare_plain_text_rescue_text(piece)
+        if not masked_piece.strip():
+            return None
+
+        if self.trans_mode == 1:
+            retry_part = {
+                "content": masked_piece,
+                "trans_content": masked_piece,
+            }
+            translated_masked_piece = await self._request_llm_for_retrans_error_parts(
+                self.prompts["retrans_error_parts_system_prompt"],
+                part=retry_part,
+                error_message=error_message or prompt_suffix,
+                fail_part=fail_part,
+                type=part_type,
+                session=session,
+            )
+        elif self.trans_mode == 2 and prompt_key_with_terms and self.term_dict:
+            translated_masked_piece = await self._request_llm_for_trans_with_terms(
+                self.prompts[prompt_key_with_terms] + prompt_suffix,
+                masked_piece,
+                fail_part=fail_part,
+                type=part_type,
+                session=session,
+            )
+        else:
+            translated_masked_piece = await self._request_llm_for_trans(
+                self.prompts[prompt_key] + prompt_suffix,
+                masked_piece,
+                fail_part=fail_part,
+                type=part_type,
+                session=session,
+            )
+
+        if not isinstance(translated_masked_piece, str) or not translated_masked_piece.strip():
+            return None
+
+        restored_piece = self._restore_plain_text_rescue_text(
+            translated_masked_piece,
+            rescue_context,
+        )
+        if self._has_unrestored_env_artifacts(restored_piece):
+            return None
+        if self._is_source_preserved_translation(piece, restored_piece):
+            return None
+        return restored_piece
 
     async def _rescue_plain_text_by_fragment(
         self,
