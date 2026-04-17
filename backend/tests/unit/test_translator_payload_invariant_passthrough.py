@@ -28,6 +28,43 @@ def _build_agent() -> TranslatorAgent:
 
 
 class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
+    def test_rescue_plain_text_by_paragraph_falls_back_to_fragment_rescue(self):
+        agent = _build_agent()
+        text = (
+            "First sentence stays in English on the coarse retry. "
+            "<PLACEHOLDER_ENV_3> "
+            "Second sentence should still be translated."
+        )
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            user_text = args[1]
+            if fail_part == "7:paragraph:0":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "7:paragraph:0:fragment:0":
+                return "绗竴鍙ヨ鏇寸粏绮掑害 rescue 鎴愬姛缈昏瘧銆? "
+            if fail_part == "7:paragraph:0:fragment:2":
+                return "绗簩鍙ヤ篃琚垚鍔熺炕璇戙€?"
+            return user_text
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="7",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertEqual(
+            rescued,
+            "绗竴鍙ヨ鏇寸粏绮掑害 rescue 鎴愬姛缈昏瘧銆? <PLACEHOLDER_ENV_3> 绗簩鍙ヤ篃琚垚鍔熺炕璇戙€?",
+        )
+        self.assertGreaterEqual(agent._request_llm_for_trans.await_count, 3)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {

@@ -101,6 +101,11 @@ class TranslatorAgent(BaseToolAgent):
         "proposition",
         "corollary",
     })
+    _RESCUE_PLACEHOLDER_RE = re.compile(r"(<PLACEHOLDER_[A-Z0-9_]+>)")
+    _RESCUE_FRAGMENT_RE = re.compile(
+        r".+?(?:[。！？!?;；](?:\s+|$)|[.:：](?=\s|$)(?:\s+|$)|\n|$)",
+        re.S,
+    )
 
     @staticmethod
     def _coerce_bool(value: Any, default: bool = False) -> bool:
@@ -634,44 +639,170 @@ class TranslatorAgent(BaseToolAgent):
                 continue
 
             part_fail_key = f"{identifier}:paragraph:{idx}"
-            if self.trans_mode == 1:
-                retry_part = {
-                    "content": piece,
-                    "trans_content": piece,
-                }
-                rescued_piece = await self._request_llm_for_retrans_error_parts(
-                    self.prompts["retrans_error_parts_system_prompt"],
-                    part=retry_part,
-                    error_message=paragraph_hint if not error_message else f"{error_message}\n{paragraph_hint}",
-                    fail_part=part_fail_key,
-                    type=part_type,
+            rescued_piece = await self._translate_plain_text_rescue_piece(
+                piece=piece,
+                fail_part=part_fail_key,
+                part_type=part_type,
+                session=session,
+                error_message=error_message,
+                paragraph_hint=paragraph_hint,
+                prompt_suffix=prompt_suffix,
+                prompt_key=prompt_key,
+                prompt_key_with_terms=prompt_key_with_terms,
+            )
+            if rescued_piece is None:
+                rescued_piece = await self._rescue_plain_text_by_fragment(
+                    text=piece,
+                    identifier=part_fail_key,
+                    part_type=part_type,
                     session=session,
+                    error_message=error_message,
+                    paragraph_hint=paragraph_hint,
+                    prompt_suffix=prompt_suffix,
+                    prompt_key=prompt_key,
+                    prompt_key_with_terms=prompt_key_with_terms,
                 )
-            elif self.trans_mode == 2 and prompt_key_with_terms and self.term_dict:
-                rescued_piece = await self._request_llm_for_trans_with_terms(
-                    self.prompts[prompt_key_with_terms] + prompt_suffix,
-                    piece,
-                    fail_part=part_fail_key,
-                    type=part_type,
-                    session=session,
-                )
-            else:
-                rescued_piece = await self._request_llm_for_trans(
-                    self.prompts[prompt_key] + prompt_suffix,
-                    piece,
-                    fail_part=part_fail_key,
-                    type=part_type,
-                    session=session,
-                )
-            if not isinstance(rescued_piece, str) or not rescued_piece.strip():
-                return None
-            if self._has_unrestored_env_artifacts(rescued_piece):
-                return None
-            if self._is_source_preserved_translation(piece, rescued_piece):
+            if rescued_piece is None:
                 return None
 
             rescued.append(rescued_piece)
-            translated_any = True
+            translated_any = translated_any or not self._is_source_preserved_translation(piece, rescued_piece)
+
+        combined = "".join(rescued)
+        if not translated_any:
+            return None
+        if self._has_unrestored_env_artifacts(combined):
+            return None
+        if self._is_source_preserved_translation(text, combined):
+            return None
+        return combined
+
+    @classmethod
+    def _should_passthrough_rescue_fragment(cls, piece: str) -> bool:
+        stripped = (piece or "").strip()
+        if not stripped:
+            return True
+        if cls._RESCUE_PLACEHOLDER_RE.fullmatch(stripped):
+            return True
+        return re.search(r"[A-Za-z\u4e00-\u9fff]", stripped) is None
+
+    @classmethod
+    def _split_plain_text_rescue_fragments(cls, text: str) -> List[str]:
+        if not text:
+            return []
+        pieces: List[str] = []
+        for chunk in cls._RESCUE_PLACEHOLDER_RE.split(text):
+            if not chunk:
+                continue
+            if cls._RESCUE_PLACEHOLDER_RE.fullmatch(chunk):
+                pieces.append(chunk)
+                continue
+            subchunks = [match.group(0) for match in cls._RESCUE_FRAGMENT_RE.finditer(chunk)]
+            pieces.extend(subchunks or [chunk])
+        return pieces
+
+    async def _translate_plain_text_rescue_piece(
+        self,
+        *,
+        piece: str,
+        fail_part: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str],
+        paragraph_hint: str,
+        prompt_suffix: str,
+        prompt_key: str,
+        prompt_key_with_terms: Optional[str],
+    ) -> Optional[str]:
+        if self._should_passthrough_rescue_fragment(piece):
+            return piece
+
+        leading_ws_match = re.match(r"^\s*", piece)
+        trailing_ws_match = re.search(r"\s*$", piece)
+        leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
+        trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
+
+        if self.trans_mode == 1:
+            retry_part = {
+                "content": piece,
+                "trans_content": piece,
+            }
+            rescued_piece = await self._request_llm_for_retrans_error_parts(
+                self.prompts["retrans_error_parts_system_prompt"],
+                part=retry_part,
+                error_message=paragraph_hint if not error_message else f"{error_message}\n{paragraph_hint}",
+                fail_part=fail_part,
+                type=part_type,
+                session=session,
+            )
+        elif self.trans_mode == 2 and prompt_key_with_terms and self.term_dict:
+            rescued_piece = await self._request_llm_for_trans_with_terms(
+                self.prompts[prompt_key_with_terms] + prompt_suffix,
+                piece,
+                fail_part=fail_part,
+                type=part_type,
+                session=session,
+            )
+        else:
+            rescued_piece = await self._request_llm_for_trans(
+                self.prompts[prompt_key] + prompt_suffix,
+                piece,
+                fail_part=fail_part,
+                type=part_type,
+                session=session,
+            )
+
+        if not isinstance(rescued_piece, str) or not rescued_piece.strip():
+            return None
+        if leading_ws or trailing_ws:
+            rescued_piece = f"{leading_ws}{rescued_piece.strip()}{trailing_ws}"
+        if self._has_unrestored_env_artifacts(rescued_piece):
+            return None
+        if self._is_source_preserved_translation(piece, rescued_piece):
+            return None
+        return rescued_piece
+
+    async def _rescue_plain_text_by_fragment(
+        self,
+        *,
+        text: str,
+        identifier: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str],
+        paragraph_hint: str,
+        prompt_suffix: str,
+        prompt_key: str,
+        prompt_key_with_terms: Optional[str],
+    ) -> Optional[str]:
+        fragments = self._split_plain_text_rescue_fragments(text)
+        translatable_fragments = [
+            fragment for fragment in fragments if not self._should_passthrough_rescue_fragment(fragment)
+        ]
+        if len(translatable_fragments) <= 1:
+            return None
+
+        rescued: List[str] = []
+        translated_any = False
+        for idx, fragment in enumerate(fragments):
+            if self._should_passthrough_rescue_fragment(fragment):
+                rescued.append(fragment)
+                continue
+            rescued_fragment = await self._translate_plain_text_rescue_piece(
+                piece=fragment,
+                fail_part=f"{identifier}:fragment:{idx}",
+                part_type=part_type,
+                session=session,
+                error_message=error_message,
+                paragraph_hint=paragraph_hint,
+                prompt_suffix=prompt_suffix,
+                prompt_key=prompt_key,
+                prompt_key_with_terms=prompt_key_with_terms,
+            )
+            if rescued_fragment is None:
+                return None
+            translated_any = translated_any or not self._is_source_preserved_translation(fragment, rescued_fragment)
+            rescued.append(rescued_fragment)
 
         combined = "".join(rescued)
         if not translated_any:
