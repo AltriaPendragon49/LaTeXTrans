@@ -28,6 +28,40 @@ def _build_agent() -> TranslatorAgent:
 
 
 class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
+    def test_register_llm_part_failure_normalizes_nested_identifiers(self):
+        agent = _build_agent()
+
+        agent._register_llm_part_failure("sec", "4_1:paragraph:6")
+        agent._register_llm_part_failure("sec", "4_1:paragraph:0:fragment:1")
+        agent._register_llm_part_failure("cap", "<PLACEHOLDER_CAP_8>:paragraph:0")
+        agent._register_llm_part_failure("env", "part:env:<PLACEHOLDER_ENV_44>:row:0")
+
+        self.assertEqual(agent.fail_section_nums, ["4_1"])
+        self.assertEqual(agent.fail_caption_phs, ["<PLACEHOLDER_CAP_8>"])
+        self.assertEqual(agent.fail_env_phs, ["<PLACEHOLDER_ENV_44>"])
+
+    def test_translate_section_successful_rescue_clears_fail_queue(self):
+        agent = _build_agent()
+        section = {
+            "section": "12",
+            "content": "This section should leave no stale fail queue entry after rescue.",
+            "previous_context": "",
+        }
+
+        async def fake_request(*args, **kwargs):
+            agent._register_llm_part_failure("sec", section["section"])
+            agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+            return section["content"]
+
+        agent._request_llm_for_trans = fake_request
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value="Recovered Chinese content.")
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertEqual(agent.fail_section_nums, [])
+        self.assertFalse(agent.have_fail_parts)
+
     def test_rescue_plain_text_by_paragraph_falls_back_to_fragment_rescue(self):
         agent = _build_agent()
         text = (

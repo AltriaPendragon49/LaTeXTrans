@@ -106,6 +106,14 @@ class TranslatorAgent(BaseToolAgent):
         r".+?(?:[。！？!?;；](?:\s+|$)|[.:：](?=\s|$)(?:\s+|$)|\n|$)",
         re.S,
     )
+    _TERMINAL_NO_RETRY_STATUSES = frozenset({
+        STATUS_TRANSLATED,
+        STATUS_TRANSLATED_AFTER_NOOP_RETRY,
+        STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+        STATUS_SOURCE_PASS_THROUGH,
+        STATUS_IMMUTABLE_PASSTHROUGH,
+        STATUS_MATH_PRESERVED,
+    })
 
     @staticmethod
     def _coerce_bool(value: Any, default: bool = False) -> bool:
@@ -351,6 +359,39 @@ class TranslatorAgent(BaseToolAgent):
         key = self._part_retry_key(part_type, identifier)
         self._api_fallback_parts.pop(key, None)
 
+    @staticmethod
+    def _normalize_llm_failure_identifier(part_type: str, identifier: str) -> str:
+        normalized = str(identifier or "").strip()
+        if not normalized:
+            return normalized
+        if part_type == "env":
+            env_row_match = re.match(r"part:env:(<[^>]+>):", normalized)
+            if env_row_match:
+                return env_row_match.group(1)
+        return normalized.split(":", 1)[0]
+
+    def _recompute_have_fail_parts(self) -> None:
+        self.have_fail_parts = bool(
+            self.fail_section_nums or self.fail_caption_phs or self.fail_env_phs
+        )
+
+    def _clear_llm_part_failure(self, part_type: str, identifier: str) -> None:
+        normalized = self._normalize_llm_failure_identifier(part_type, identifier)
+        if not normalized:
+            self._recompute_have_fail_parts()
+            return
+        if part_type == "sec":
+            self.fail_section_nums = [item for item in self.fail_section_nums if item != normalized]
+        elif part_type == "cap":
+            self.fail_caption_phs = [item for item in self.fail_caption_phs if item != normalized]
+        else:
+            self.fail_env_phs = [item for item in self.fail_env_phs if item != normalized]
+        self._recompute_have_fail_parts()
+
+    def _clear_llm_part_failure_if_terminal(self, part_type: str, identifier: str, status: Optional[str]) -> None:
+        if status in self._TERMINAL_NO_RETRY_STATUSES:
+            self._clear_llm_part_failure(part_type, identifier)
+
     def _record_noop_section(self, section_id: str) -> None:
         if section_id not in self.noop_sections:
             self.noop_sections.append(section_id)
@@ -396,6 +437,7 @@ class TranslatorAgent(BaseToolAgent):
             self.STATUS_IMMUTABLE_PASSTHROUGH,
         }:
             section.pop("fallback_reason", None)
+        self._clear_llm_part_failure_if_terminal("sec", section_id, section.get("translation_status"))
 
     def _update_env_metadata(
         self,
@@ -418,6 +460,11 @@ class TranslatorAgent(BaseToolAgent):
             env["row_fallback_count"] = max(int(row_fallback_count), 0)
         elif "row_fallback_count" not in env:
             env["row_fallback_count"] = 0
+        self._clear_llm_part_failure_if_terminal(
+            "env",
+            str(env.get("placeholder", "")),
+            env.get("translation_status"),
+        )
 
     @staticmethod
     def _normalize_env_name(env_name: str) -> str:
@@ -889,16 +936,20 @@ class TranslatorAgent(BaseToolAgent):
             return env_restored
 
     def _register_llm_part_failure(self, part_type: str, identifier: str) -> None:
-        self.have_fail_parts = True
+        normalized = self._normalize_llm_failure_identifier(part_type, identifier)
+        if not normalized:
+            self._recompute_have_fail_parts()
+            return
         if part_type == "sec":
-            if identifier not in self.fail_section_nums:
-                self.fail_section_nums.append(identifier)
+            if normalized not in self.fail_section_nums:
+                self.fail_section_nums.append(normalized)
         elif part_type == "cap":
-            if identifier not in self.fail_caption_phs:
-                self.fail_caption_phs.append(identifier)
+            if normalized not in self.fail_caption_phs:
+                self.fail_caption_phs.append(normalized)
         else:
-            if identifier not in self.fail_env_phs:
-                self.fail_env_phs.append(identifier)
+            if normalized not in self.fail_env_phs:
+                self.fail_env_phs.append(normalized)
+        self._recompute_have_fail_parts()
 
     def _resolve_api_fallback_status(
         self,
@@ -937,6 +988,11 @@ class TranslatorAgent(BaseToolAgent):
             self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
         }:
             caption.pop("fallback_reason", None)
+        self._clear_llm_part_failure_if_terminal(
+            "cap",
+            str(caption.get("placeholder", "")),
+            caption.get("translation_status"),
+        )
 
     @staticmethod
     def _sanitize_retrans_error_message(error_message: str) -> str:
