@@ -1,10 +1,15 @@
-## ADDED Requirements
+# paper-source-feed-export Specification
+
+## Purpose
+Define the reusable export workflow for daily hot/new paper feeds and the evergreen core paper pool under `backend/arxiv_id/`.
+## Requirements
 ### Requirement: Reusable paper source export modes
 The repository SHALL provide one export workflow that supports hot-paper and new-paper source modes through a shared script entrypoint.
 
 #### Scenario: Export hot top papers
 - **WHEN** an operator runs the export script in `hot-top-n` mode
 - **THEN** the script SHALL read alphaXiv hot-feed data
+- **AND** the default hot interval for that mode SHALL be `All time`
 - **AND** it SHALL return the requested number of valid unique paper records in feed order.
 
 #### Scenario: Export hot papers from the last 24 hours
@@ -17,6 +22,11 @@ The repository SHALL provide one export workflow that supports hot-paper and new
 - **WHEN** an operator runs the export script in `new-24h` mode
 - **THEN** the script SHALL query arXiv by submitted date
 - **AND** it SHALL export the valid unique papers submitted in the last 24 hours.
+
+#### Scenario: Export an evergreen core paper pool
+- **WHEN** an operator runs the export script in `core-pool` mode
+- **THEN** the script SHALL build candidates from multiple long-window public signals rather than one momentum feed
+- **AND** it SHALL export a bounded high-value paper subset intended for pretranslation.
 
 ### Requirement: Server-ready source artifact layout
 The export workflow SHALL write source artifacts into the repository's server-oriented `backend/arxiv_id/` directory tree.
@@ -32,6 +42,16 @@ The export workflow SHALL write source artifacts into the repository's server-or
 - **AND** it SHALL write a human-readable Markdown artifact
 - **AND** both artifacts SHALL describe the same exported paper set.
 
+#### Scenario: Scheduled exports refresh the latest source view
+- **WHEN** the operator reruns the same source mode on the server
+- **THEN** the script SHALL overwrite that source directory's `latest.json` and `latest.md`
+- **AND** the artifacts SHALL reflect only the newest export results for that source mode.
+
+#### Scenario: Core pool artifacts live alongside daily feeds
+- **WHEN** the operator runs the `core-pool` export
+- **THEN** the script SHALL write the latest artifacts under `backend/arxiv_id/core_pool/`
+- **AND** missing directories SHALL not block the export.
+
 ### Requirement: Global paper identity and source priority
 The source export workflow SHALL treat `arxiv_id` as the canonical paper identity and SHALL preserve priority rules between `hot` and `new` sources.
 
@@ -44,3 +64,17 @@ The source export workflow SHALL treat `arxiv_id` as the canonical paper identit
 - **WHEN** upstream source data contains malformed IDs or non-primary paper routes
 - **THEN** the script SHALL exclude those records from the exported paper set
 - **AND** it SHALL continue exporting the remaining valid records.
+
+### Requirement: Core pool selection balances real distribution with minimum representation
+The core paper pool SHALL approximate the real research-category distribution while still preserving a minimum representation for lower-volume fields.
+
+#### Scenario: Core pool quotas are allocated
+- **WHEN** the script builds the `core-pool`
+- **THEN** it SHALL use an arXiv-led category distribution as the primary quota baseline
+- **AND** it SHALL allow auxiliary platform data to adjust that allocation
+- **AND** it SHALL enforce a minimum floor of 50 papers per included major category.
+
+#### Scenario: Very recent papers are not used as evergreen seed content
+- **WHEN** the script builds the `core-pool`
+- **THEN** it SHALL exclude papers inside the configured recent-paper cutoff from the evergreen pool
+- **AND** those papers SHALL remain eligible for the daily `hot` and `new` workflows instead.

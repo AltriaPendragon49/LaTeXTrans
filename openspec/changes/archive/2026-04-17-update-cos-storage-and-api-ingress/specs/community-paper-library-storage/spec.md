@@ -1,5 +1,5 @@
 ## MODIFIED Requirements
-### Requirement: Community papers own storage-backed copied assets
+### Requirement: Community papers own library-copied assets
 The system SHALL persist community-readable paper assets under one canonical community-owned storage namespace instead of treating task working directories as the long-term paper asset source.
 
 #### Scenario: Copy translated assets into the canonical community store
@@ -8,7 +8,7 @@ The system SHALL persist community-readable paper assets under one canonical com
 - **AND** production SHALL persist those assets in object storage while local development MAY persist them on local disk
 - **AND** the corresponding `paper_assets` rows SHALL record the active storage backend together with the canonical storage reference.
 
-### Requirement: Community preview and download resolve storage-backed asset references
+### Requirement: Community preview and download resolve library-relative paths
 The system SHALL resolve public preview and download reads from canonical asset references without assuming that published community assets live permanently on local disk.
 
 #### Scenario: Read preview HTML from an object-storage-backed asset
@@ -21,7 +21,7 @@ The system SHALL resolve public preview and download reads from canonical asset 
 - **THEN** the existing file-serving path SHALL continue to stream the PDF successfully
 - **AND** callers SHALL not need a different API contract for local-disk versus object-storage assets.
 
-### Requirement: Community hard delete removes storage-backed assets completely
+### Requirement: Community hard delete removes library assets completely
 The system SHALL remove a hard-deleted community paper from both persistent records and its canonical asset store.
 
 #### Scenario: Admin hard deletes an object-storage-backed community paper

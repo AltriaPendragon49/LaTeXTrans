@@ -1,0 +1,2034 @@
+{
+  "2504.02495": {
+    "citation_count": 1,
+    "title_key": "inferencetimescalingforgeneralistrewardmodeling"
+  },
+  "2503.13709": {
+    "citation_count": 19,
+    "title_key": "multimodaltimeseriesanalysisatutorialandsurvey"
+  },
+  "2502.08623": {
+    "citation_count": 0,
+    "title_key": "robotdatacurationwithmutualinformationestimators"
+  },
+  "2504.09858": {
+    "citation_count": 0,
+    "title_key": "reasoningmodelscanbeeffectivewithoutthinking"
+  },
+  "2306.15687": {
+    "citation_count": 45,
+    "title_key": "voiceboxtextguidedmultilingualuniversalspeechgenerationatscale"
+  },
+  "2503.14476": {
+    "citation_count": null,
+    "title_key": "dapoanopensourcellmreinforcementlearningsystematscale"
+  },
+  "2404.10981": {
+    "citation_count": 20,
+    "title_key": "asurveyonretrievalaugmentedtextgenerationforlargelanguagemodels"
+  },
+  "2105.05532": {
+    "citation_count": null,
+    "title_key": "generalizedautoregressivemovingaveragemodelswithgarcherrors"
+  },
+  "2502.21321": {
+    "citation_count": 1,
+    "title_key": "llmposttrainingadeepdiveintoreasoninglargelanguagemodels"
+  },
+  "2505.13379": {
+    "citation_count": 0,
+    "title_key": "thinklessllmlearnswhentothink"
+  },
+  "2501.18251": {
+    "citation_count": 0,
+    "title_key": "howtoselectdatapointsforefficienthumanevaluationofnlgmodels"
+  },
+  "2302.00487": {
+    "citation_count": 56,
+    "title_key": "acomprehensivesurveyofcontinuallearningtheorymethodandapplication"
+  },
+  "2502.05171": {
+    "citation_count": 0,
+    "title_key": "scalinguptesttimecomputewithlatentreasoningarecurrentdepthapproach"
+  },
+  "2503.05592": {
+    "citation_count": null,
+    "title_key": "r1searcherincentivizingthesearchcapabilityinllmsviareinforcementlearning"
+  },
+  "2505.11409": {
+    "citation_count": 0,
+    "title_key": "visualplanningletsthinkonlywithimages"
+  },
+  "2412.19437": {
+    "citation_count": 212,
+    "title_key": "deepseekv3technicalreport"
+  },
+  "2505.04588": {
+    "citation_count": 0,
+    "title_key": "zerosearchincentivizethesearchcapabilityofllmswithoutsearching"
+  },
+  "2502.03373": {
+    "citation_count": 3,
+    "title_key": "demystifyinglongchainofthoughtreasoninginllms"
+  },
+  "2505.00551": {
+    "citation_count": null,
+    "title_key": "100daysafterdeepseekr1asurveyonreplicationstudiesandmoredirectionsforreasoninglanguagemodels"
+  },
+  "2402.03300": {
+    "citation_count": null,
+    "title_key": "deepseekmathpushingthelimitsofmathematicalreasoninginopenlanguagemodels"
+  },
+  "2505.09568": {
+    "citation_count": 0,
+    "title_key": "blip3oafamilyoffullyopenunifiedmultimodalmodelsarchitecturetraininganddataset"
+  },
+  "2504.19678": {
+    "citation_count": 4,
+    "title_key": "fromllmreasoningtoautonomousaiagentsacomprehensivereview"
+  },
+  "2505.19590": {
+    "citation_count": 0,
+    "title_key": "learningtoreasonwithoutexternalrewards"
+  },
+  "2103.00020": {
+    "citation_count": 5296,
+    "title_key": "learningtransferablevisualmodelsfromnaturallanguagesupervision"
+  },
+  "2505.09388": {
+    "citation_count": 50,
+    "title_key": "qwen3technicalreport"
+  },
+  "2505.06120": {
+    "citation_count": 5,
+    "title_key": "llmsgetlostinmultiturnconversation"
+  },
+  "2505.06111": {
+    "citation_count": 0,
+    "title_key": "univlalearningtoactanywherewithtaskcentriclatentactions"
+  },
+  "2502.09992": {
+    "citation_count": 4,
+    "title_key": "largelanguagediffusionmodels"
+  },
+  "2303.04137": {
+    "citation_count": 13,
+    "title_key": "diffusionpolicyvisuomotorpolicylearningviaactiondiffusion"
+  },
+  "2505.10468": {
+    "citation_count": 95,
+    "title_key": "aiagentsvsagenticaiaconceptualtaxonomyapplicationsandchallenges"
+  },
+  "2501.19393": {
+    "citation_count": 10,
+    "title_key": "s1simpletesttimescaling"
+  },
+  "2503.14734": {
+    "citation_count": 4,
+    "title_key": "gr00tn1anopenfoundationmodelforgeneralisthumanoidrobots"
+  },
+  "2407.12818": {
+    "citation_count": 1,
+    "title_key": "iunderstandwhyigotthisgradeautomaticshortanswergradingwithfeedback"
+  },
+  "2504.16078": {
+    "citation_count": 0,
+    "title_key": "llmsaregreedyagentseffectsofrlfinetuningondecisionmakingabilities"
+  },
+  "2409.11686": {
+    "citation_count": null,
+    "title_key": "detectingunderdiagnosedmedicalconditionswithdeeplearningbasedopportunisticctimaging"
+  },
+  "2406.10759": {
+    "citation_count": 2,
+    "title_key": "humanoidparkourlearning"
+  },
+  "2504.06479": {
+    "citation_count": 0,
+    "title_key": "holisticfusiontaskandsetupagnosticrobotlocalizationandstateestimationwithfactorgraphs"
+  },
+  "2503.10518": {
+    "citation_count": 0,
+    "title_key": "whythebraincannotbeadigitalcomputerhistorydependenceandthecomputationallimitsofconsciousness"
+  },
+  "2312.00752": {
+    "citation_count": 970,
+    "title_key": "mambalineartimesequencemodelingwithselectivestatespaces"
+  },
+  "2504.07951": {
+    "citation_count": 0,
+    "title_key": "scalinglawsfornativemultimodalmodels"
+  },
+  "2412.06264": {
+    "citation_count": 8,
+    "title_key": "flowmatchingguideandcode"
+  },
+  "2505.14674": {
+    "citation_count": 1,
+    "title_key": "rewardreasoningmodel"
+  },
+  "2003.05620": {
+    "citation_count": 160,
+    "title_key": "cc2vecdistributedrepresentationsofcodechanges"
+  },
+  "2503.09516": {
+    "citation_count": 4,
+    "title_key": "searchr1trainingllmstoreasonandleveragesearchengineswithreinforcementlearning"
+  },
+  "2503.18866": {
+    "citation_count": 0,
+    "title_key": "reasoningtolearnfromlatentthoughts"
+  },
+  "2503.01785": {
+    "citation_count": 2,
+    "title_key": "visualrftvisualreinforcementfinetuning"
+  },
+  "2409.09337": {
+    "citation_count": 1,
+    "title_key": "waveumambaanendtoendframeworkforhighqualityandefficientspeechsuperresolution"
+  },
+  "2006.11239": {
+    "citation_count": 5593,
+    "title_key": "denoisingdiffusionprobabilisticmodels"
+  },
+  "2106.09685": {
+    "citation_count": 2402,
+    "title_key": "loralowrankadaptationoflargelanguagemodels"
+  },
+  "2404.01331": {
+    "citation_count": 1,
+    "title_key": "llavagemmaacceleratingmultimodalfoundationmodelswithacompactlanguagemodel"
+  },
+  "2502.13923": {
+    "citation_count": 47,
+    "title_key": "qwen25vltechnicalreport"
+  },
+  "2411.08745": {
+    "citation_count": 0,
+    "title_key": "separatingtonguefromthoughtactivationpatchingrevealslanguageagnosticconceptrepresentationsintransformers"
+  },
+  "2507.10524": {
+    "citation_count": null,
+    "title_key": "mixtureofrecursionslearningdynamicrecursivedepthsforadaptivetokenlevelcomputation"
+  },
+  "2504.15585": {
+    "citation_count": 0,
+    "title_key": "acomprehensivesurveyinllmagentfullstacksafetydatatraininganddeployment"
+  },
+  "2504.00206": {
+    "citation_count": 0,
+    "title_key": "springsystematicprofilingofrandomlyinterconnectedneuralnetworksgeneratedbyhls"
+  },
+  "2504.13171": {
+    "citation_count": 0,
+    "title_key": "sleeptimecomputebeyondinferencescalingattesttime"
+  },
+  "2305.18290": {
+    "citation_count": 271,
+    "title_key": "directpreferenceoptimizationyourlanguagemodelissecretlyarewardmodel"
+  },
+  "2503.20783": {
+    "citation_count": 4,
+    "title_key": "understandingr1zeroliketrainingacriticalperspective"
+  },
+  "2504.05118": {
+    "citation_count": 1,
+    "title_key": "vapoefficientandreliablereinforcementlearningforadvancedreasoningtasks"
+  },
+  "2504.21463": {
+    "citation_count": 0,
+    "title_key": "rwkvxalinearcomplexityhybridlanguagemodel"
+  },
+  "2104.09864": {
+    "citation_count": 229,
+    "title_key": "roformerenhancedtransformerwithrotarypositionembedding"
+  },
+  "2502.11089": {
+    "citation_count": 2,
+    "title_key": "nativesparseattentionhardwarealignedandnativelytrainablesparseattention"
+  },
+  "2410.18037": {
+    "citation_count": 0,
+    "title_key": "quantumoptomechanicalcontroloflonglivedbulkacousticphonons"
+  },
+  "2407.21783": {
+    "citation_count": 0,
+    "title_key": "thellama3herdofmodels"
+  },
+  "2502.03387": {
+    "citation_count": 1,
+    "title_key": "limolessismoreforreasoning"
+  },
+  "1910.10683": {
+    "citation_count": 3692,
+    "title_key": "exploringthelimitsoftransferlearningwithaunifiedtexttotexttransformer"
+  },
+  "2504.15777": {
+    "citation_count": 0,
+    "title_key": "tinatinyreasoningmodelsvialora"
+  },
+  "2210.15097": {
+    "citation_count": 7,
+    "title_key": "contrastivedecodingopenendedtextgenerationasoptimization"
+  },
+  "2210.03629": {
+    "citation_count": null,
+    "title_key": "reactsynergizingreasoningandactinginlanguagemodels"
+  },
+  "2505.04180": {
+    "citation_count": 0,
+    "title_key": "towardslargescalegenerativeranking"
+  },
+  "2010.11929": {
+    "citation_count": 21403,
+    "title_key": "animageisworth16x16wordstransformersforimagerecognitionatscale"
+  },
+  "2503.16248": {
+    "citation_count": null,
+    "title_key": "realaiagentswithfakememoriesfatalcontextmanipulationattacksonweb3agents"
+  },
+  "2401.18079": {
+    "citation_count": 9,
+    "title_key": "kvquanttowards10millioncontextlengthllminferencewithkvcachequantization"
+  },
+  "2505.05522": {
+    "citation_count": 1,
+    "title_key": "continuousthoughtmachines"
+  },
+  "2503.23463": {
+    "citation_count": 0,
+    "title_key": "opendrivevlatowardsendtoendautonomousdrivingwithlargevisionlanguageactionmodel"
+  },
+  "2503.13657": {
+    "citation_count": null,
+    "title_key": "whydomultiagentllmsystemsfail"
+  },
+  "2504.13173": {
+    "citation_count": 0,
+    "title_key": "itsallconnectedajourneythroughtesttimememorizationattentionalbiasretentionandonlineoptimization"
+  },
+  "2505.00949": {
+    "citation_count": 1,
+    "title_key": "llamanemotronefficientreasoningmodels"
+  },
+  "2505.17667": {
+    "citation_count": null,
+    "title_key": "qwenlongl1towardslongcontextlargereasoningmodelswithreinforcementlearning"
+  },
+  "1806.07366": {
+    "citation_count": 570,
+    "title_key": "neuralordinarydifferentialequations"
+  },
+  "2503.17856": {
+    "citation_count": null,
+    "title_key": "claravidaholisticscenereconstructionbenchmarkfromaerialperspectivewithdelentropybasedcomplexityprofiling"
+  },
+  "2212.09748": {
+    "citation_count": 40,
+    "title_key": "scalablediffusionmodelswithtransformers"
+  },
+  "2412.06769": {
+    "citation_count": null,
+    "title_key": "traininglargelanguagemodelstoreasoninacontinuouslatentspace"
+  },
+  "2410.11758": {
+    "citation_count": 0,
+    "title_key": "latentactionpretrainingfromvideos"
+  },
+  "2504.21801": {
+    "citation_count": 0,
+    "title_key": "deepseekproverv2advancingformalmathematicalreasoningviareinforcementlearningforsubgoaldecomposition"
+  },
+  "2501.00663": {
+    "citation_count": 6,
+    "title_key": "titanslearningtomemorizeattesttime"
+  },
+  "2506.09250": {
+    "citation_count": 2,
+    "title_key": "commentontheillusionofthinkingunderstandingthestrengthsandlimitationsofreasoningmodelsviathelensofproblemcomplexity"
+  },
+  "2505.05410": {
+    "citation_count": 4,
+    "title_key": "reasoningmodelsdontalwayssaywhattheythink"
+  },
+  "2503.18945": {
+    "citation_count": null,
+    "title_key": "aethergeometricawareunifiedworldmodeling"
+  },
+  "2406.09246": {
+    "citation_count": 37,
+    "title_key": "openvlaanopensourcevisionlanguageactionmodel"
+  },
+  "2502.17437": {
+    "citation_count": 0,
+    "title_key": "fractalgenerativemodels"
+  },
+  "2409.06289": {
+    "citation_count": 3,
+    "title_key": "automatestrategyfindingwithllminquantinvestment"
+  },
+  "2504.01017": {
+    "citation_count": null,
+    "title_key": "scalinglanguagefreevisualrepresentationlearning"
+  },
+  "2405.14093": {
+    "citation_count": 10,
+    "title_key": "asurveyonvisionlanguageactionmodelsforembodiedai"
+  },
+  "2504.16054": {
+    "citation_count": 2,
+    "title_key": "05avisionlanguageactionmodelwithopenworldgeneralization"
+  },
+  "2505.22954": {
+    "citation_count": null,
+    "title_key": "darwingodelmachineopenendedevolutionofselfimprovingagents"
+  },
+  "2504.16053": {
+    "citation_count": 0,
+    "title_key": "longmambaenhancingmambaslongcontextcapabilitiesviatrainingfreereceptivefieldenlargement"
+  },
+  "2503.07565": {
+    "citation_count": 0,
+    "title_key": "inductivemomentmatching"
+  },
+  "2501.07263": {
+    "citation_count": 0,
+    "title_key": "sensingwithnearinfraredlasertrappedfluorescentnanodiamonds"
+  },
+  "2504.11343": {
+    "citation_count": 0,
+    "title_key": "aminimalistapproachtollmreasoningfromrejectionsamplingtoreinforce"
+  },
+  "2502.07345": {
+    "citation_count": 0,
+    "title_key": "advancedzeroshottexttospeechforbackgroundremovalandpreservationwithcontrollablemaskedspeechprediction"
+  },
+  "2412.15115": {
+    "citation_count": 66,
+    "title_key": "qwen25technicalreport"
+  },
+  "2504.13079": {
+    "citation_count": 1,
+    "title_key": "retrievalaugmentedgenerationwithconflictingevidence"
+  },
+  "2404.19756": {
+    "citation_count": 486,
+    "title_key": "kankolmogorovarnoldnetworks"
+  },
+  "2201.11903": {
+    "citation_count": 209,
+    "title_key": "chainofthoughtpromptingelicitsreasoninginlargelanguagemodels"
+  },
+  "2502.20824": {
+    "citation_count": 0,
+    "title_key": "mfsrganmultiframesuperresolutionwithhandheldmotionmodeling"
+  },
+  "2508.21038": {
+    "citation_count": 1,
+    "title_key": "onthetheoreticallimitationsofembeddingbasedretrieval"
+  },
+  "2503.09573": {
+    "citation_count": null,
+    "title_key": "blockdiffusioninterpolatingbetweenautoregressiveanddiffusionlanguagemodels"
+  },
+  "2504.08528": {
+    "citation_count": 1,
+    "title_key": "onthelandscapeofspokenlanguagemodelsacomprehensivesurvey"
+  },
+  "2501.07800": {
+    "citation_count": 2,
+    "title_key": "bioposebiomechanicallyaccurate3dposeestimationfrommonocularvideos"
+  },
+  "2504.00698": {
+    "citation_count": 0,
+    "title_key": "commandaanenterprisereadylargelanguagemodel"
+  },
+  "2505.00687": {
+    "citation_count": 0,
+    "title_key": "guidesrrethinkingguidanceforonestephighfidelitydiffusionbasedsuperresolution"
+  },
+  "2507.15855": {
+    "citation_count": null,
+    "title_key": "winninggoldatimo2025withamodelagnosticverificationandrefinementpipeline"
+  },
+  "2210.02747": {
+    "citation_count": 86,
+    "title_key": "flowmatchingforgenerativemodeling"
+  },
+  "2404.04211": {
+    "citation_count": 3,
+    "title_key": "robustgaussiansplatting"
+  },
+  "2504.07491": {
+    "citation_count": 1,
+    "title_key": "kimivltechnicalreport"
+  },
+  "2504.18458": {
+    "citation_count": 0,
+    "title_key": "fastslowthinkinggrpoforlargevisionlanguagemodelreasoning"
+  },
+  "2502.12110": {
+    "citation_count": 6,
+    "title_key": "amemagenticmemoryforllmagents"
+  },
+  "2408.04863": {
+    "citation_count": 8,
+    "title_key": "codingptmshowtofindoptimalcodepretrainedmodelsforcodeembeddinginvulnerabilitydetection"
+  },
+  "2208.11970": {
+    "citation_count": 112,
+    "title_key": "understandingdiffusionmodelsaunifiedperspective"
+  },
+  "2112.10752": {
+    "citation_count": 705,
+    "title_key": "highresolutionimagesynthesiswithlatentdiffusionmodels"
+  },
+  "2410.06940": {
+    "citation_count": 4,
+    "title_key": "representationalignmentforgenerationtrainingdiffusiontransformersiseasierthanyouthink"
+  },
+  "2407.13278": {
+    "citation_count": 26,
+    "title_key": "deeptimeseriesmodelsacomprehensivesurveyandbenchmark"
+  },
+  "2503.07649": {
+    "citation_count": 1,
+    "title_key": "tsragretrievalaugmentedgenerationbasedtimeseriesfoundationmodelsarestrongerzeroshotforecaster"
+  },
+  "2203.03605": {
+    "citation_count": 749,
+    "title_key": "dinodetrwithimproveddenoisinganchorboxesforendtoendobjectdetection"
+  },
+  "2503.01307": {
+    "citation_count": null,
+    "title_key": "cognitivebehaviorsthatenableselfimprovingreasonersorfourhabitsofhighlyeffectivestars"
+  },
+  "2504.04338": {
+    "citation_count": 0,
+    "title_key": "datascalinglawsforendtoendautonomousdriving"
+  },
+  "2404.02905": {
+    "citation_count": 7,
+    "title_key": "visualautoregressivemodelingscalableimagegenerationvianextscaleprediction"
+  },
+  "2504.07439": {
+    "citation_count": null,
+    "title_key": "llm4rankinganeasytouseframeworkofutilizinglargelanguagemodelsfordocumentreranking"
+  },
+  "2309.06180": {
+    "citation_count": 40,
+    "title_key": "efficientmemorymanagementforlargelanguagemodelservingwithpagedattention"
+  },
+  "2505.16993": {
+    "citation_count": 0,
+    "title_key": "nativesegmentationvisiontransformers"
+  },
+  "2104.14294": {
+    "citation_count": 4722,
+    "title_key": "emergingpropertiesinselfsupervisedvisiontransformers"
+  },
+  "2503.21460": {
+    "citation_count": 2,
+    "title_key": "largelanguagemodelagentasurveyonmethodologyapplicationsandchallenges"
+  },
+  "2403.17881": {
+    "citation_count": 17,
+    "title_key": "deepfakegenerationanddetectionabenchmarkandsurvey"
+  },
+  "2503.06520": {
+    "citation_count": null,
+    "title_key": "segzeroreasoningchainguidedsegmentationviacognitivereinforcement"
+  },
+  "2510.04871": {
+    "citation_count": 4,
+    "title_key": "lessismorerecursivereasoningwithtinynetworks"
+  },
+  "2501.18630": {
+    "citation_count": 0,
+    "title_key": "deformablebetasplatting"
+  },
+  "2504.20996": {
+    "citation_count": 0,
+    "title_key": "xfusionintroducingnewmodalitytofrozenlargelanguagemodels"
+  },
+  "2505.04921": {
+    "citation_count": 1,
+    "title_key": "perceptionreasonthinkandplanasurveyonlargemultimodalreasoningmodels"
+  },
+  "2505.05470": {
+    "citation_count": 0,
+    "title_key": "flowgrpotrainingflowmatchingmodelsviaonlinerl"
+  },
+  "2405.13063": {
+    "citation_count": 35,
+    "title_key": "afoundationmodelfortheearthsystem"
+  },
+  "2407.11501": {
+    "citation_count": 0,
+    "title_key": "diffmtstemporalaugmentedconditionaldiffusionbasedaigcforindustrialtimeseriestowardsthelargemodelera"
+  },
+  "2503.20960": {
+    "citation_count": 0,
+    "title_key": "multimodalframinganalysisofnews"
+  },
+  "2504.16828": {
+    "citation_count": 0,
+    "title_key": "processrewardmodelsthatthink"
+  },
+  "2502.21074": {
+    "citation_count": 0,
+    "title_key": "codicompressingchainofthoughtintocontinuousspaceviaselfdistillation"
+  },
+  "2409.17421": {
+    "citation_count": null,
+    "title_key": "solaractiveregionsemergencepredictionusinglongshorttermmemorynetworks"
+  },
+  "2505.01996": {
+    "citation_count": 0,
+    "title_key": "alwaysskipattention"
+  },
+  "2005.14165": {
+    "citation_count": 3029,
+    "title_key": "languagemodelsarefewshotlearners"
+  },
+  "2504.07963": {
+    "citation_count": null,
+    "title_key": "pixelflowpixelspacegenerativemodelswithflow"
+  },
+  "2505.10320": {
+    "citation_count": 0,
+    "title_key": "j1incentivizingthinkinginllmasajudgeviareinforcementlearning"
+  },
+  "2407.21686": {
+    "citation_count": 1,
+    "title_key": "expressivewholebody3dgaussianavatar"
+  },
+  "2003.01200": {
+    "citation_count": 197,
+    "title_key": "naturallanguageprocessingadvancementsbydeeplearningasurvey"
+  },
+  "2503.20314": {
+    "citation_count": 7,
+    "title_key": "wanopenandadvancedlargescalevideogenerativemodels"
+  },
+  "2503.19786": {
+    "citation_count": null,
+    "title_key": "gemma3technicalreport"
+  },
+  "2503.16659": {
+    "citation_count": 1,
+    "title_key": "advancesinproteinrepresentationlearningmethodsapplicationsandfuturedirections"
+  },
+  "2503.09572": {
+    "citation_count": 0,
+    "title_key": "planandactimprovingplanningofagentsforlonghorizontasks"
+  },
+  "2505.15809": {
+    "citation_count": null,
+    "title_key": "mmadamultimodallargediffusionlanguagemodels"
+  },
+  "2208.13160": {
+    "citation_count": 1,
+    "title_key": "anefficientspatialtemporaltrajectoryplannerforautonomousvehiclesinunstructuredenvironments"
+  },
+  "2405.04434": {
+    "citation_count": 98,
+    "title_key": "deepseekv2astrongeconomicalandefficientmixtureofexpertslanguagemodel"
+  },
+  "2502.14837": {
+    "citation_count": 0,
+    "title_key": "towardseconomicalinferenceenablingdeepseeksmultiheadlatentattentioninanytransformerbasedllms"
+  },
+  "2502.07529": {
+    "citation_count": 0,
+    "title_key": "trainingdeeplearningmodelswithnormconstrainedlmos"
+  },
+  "2504.02670": {
+    "citation_count": 0,
+    "title_key": "affordableaiassistantswithknowledgegraphofthoughts"
+  },
+  "2504.11651": {
+    "citation_count": 0,
+    "title_key": "70size100accuracylosslessllmcompressionforefficientgpuinferenceviadynamiclengthfloatdfloat11"
+  },
+  "2401.01130": {
+    "citation_count": 0,
+    "title_key": "jointgenerativemodelingofgroundedscenegraphsandimagesviadiffusionmodels"
+  },
+  "2404.16710": {
+    "citation_count": 0,
+    "title_key": "layerskipenablingearlyexitinferenceandselfspeculativedecoding"
+  },
+  "2503.16416": {
+    "citation_count": 6,
+    "title_key": "surveyonevaluationofllmbasedagents"
+  },
+  "2504.13249": {
+    "citation_count": 0,
+    "title_key": "weaklysupervisedanomalydetectionwitheventlevelvariables"
+  },
+  "2505.07105": {
+    "citation_count": 1,
+    "title_key": "knowledgedistillationforenhancingwalmartecommercesearchrelevanceusinglargelanguagemodels"
+  },
+  "2512.24880": {
+    "citation_count": 0,
+    "title_key": "mhcmanifoldconstrainedhyperconnections"
+  },
+  "2505.15810": {
+    "citation_count": 0,
+    "title_key": "guig1understandingr1zeroliketrainingforvisualgroundinginguiagents"
+  },
+  "2411.07279": {
+    "citation_count": 4,
+    "title_key": "thesurprisingeffectivenessoftesttimetrainingforfewshotlearning"
+  },
+  "2505.13447": {
+    "citation_count": 2,
+    "title_key": "meanflowsforonestepgenerativemodeling"
+  },
+  "2304.08485": {
+    "citation_count": 671,
+    "title_key": "visualinstructiontuning"
+  },
+  "2203.02155": {
+    "citation_count": 4262,
+    "title_key": "traininglanguagemodelstofollowinstructionswithhumanfeedback"
+  },
+  "2504.16072": {
+    "citation_count": 0,
+    "title_key": "describeanythingdetailedlocalizedimageandvideocaptioning"
+  },
+  "2502.06703": {
+    "citation_count": 1,
+    "title_key": "can1bllmsurpass405bllmrethinkingcomputeoptimaltesttimescaling"
+  },
+  "2312.10997": {
+    "citation_count": 624,
+    "title_key": "retrievalaugmentedgenerationforlargelanguagemodelsasurvey"
+  },
+  "2402.16720": {
+    "citation_count": 2,
+    "title_key": "think2driveefficientreinforcementlearningbythinkinginlatentworldmodelforquasirealisticautonomousdrivingincarlav2"
+  },
+  "1810.04805": {
+    "citation_count": null,
+    "title_key": "bertpretrainingofdeepbidirectionaltransformersforlanguageunderstanding"
+  },
+  "2502.06608": {
+    "citation_count": 1,
+    "title_key": "triposghighfidelity3dshapesynthesisusinglargescalerectifiedflowmodels"
+  },
+  "2410.24164": {
+    "citation_count": 7,
+    "title_key": "0avisionlanguageactionflowmodelforgeneralrobotcontrol"
+  },
+  "2011.01387": {
+    "citation_count": 5,
+    "title_key": "simtoreallearningofallcommonbipedalgaitsviaperiodicrewardcomposition"
+  },
+  "2310.13807": {
+    "citation_count": null,
+    "title_key": "learningtolearnattesttime"
+  },
+  "2503.09567": {
+    "citation_count": 2,
+    "title_key": "towardsreasoningeraasurveyoflongchainofthoughtforreasoninglargelanguagemodels"
+  },
+  "2309.03409": {
+    "citation_count": 91,
+    "title_key": "largelanguagemodelsasoptimizers"
+  },
+  "2401.12070": {
+    "citation_count": 16,
+    "title_key": "spottingllmswithbinocularszeroshotdetectionofmachinegeneratedtext"
+  },
+  "2503.22020": {
+    "citation_count": 0,
+    "title_key": "cotvlavisualchainofthoughtreasoningforvisionlanguageactionmodels"
+  },
+  "2406.11717": {
+    "citation_count": 8,
+    "title_key": "refusalinlanguagemodelsismediatedbyasingledirection"
+  },
+  "2502.17149": {
+    "citation_count": 0,
+    "title_key": "programmingreallyissimplemathematics"
+  },
+  "2409.15751": {
+    "citation_count": 0,
+    "title_key": "apedagogicalintroductiontorestrictedschurpolynomialswithapplicationstoheavyoperators"
+  },
+  "2503.15558": {
+    "citation_count": null,
+    "title_key": "cosmosreason1fromphysicalcommonsensetoembodiedreasoning"
+  },
+  "2501.00103": {
+    "citation_count": 2,
+    "title_key": "ltxvideorealtimevideolatentdiffusion"
+  },
+  "2503.12496": {
+    "citation_count": 0,
+    "title_key": "doesyourvisionlanguagemodelgetlostinthelongvideosamplingdilemma"
+  },
+  "2311.16452": {
+    "citation_count": 165,
+    "title_key": "cangeneralistfoundationmodelsoutcompetespecialpurposetuningcasestudyinmedicine"
+  },
+  "2503.11647": {
+    "citation_count": 0,
+    "title_key": "recammastercameracontrolledgenerativerenderingfromasinglevideo"
+  },
+  "2504.02259": {
+    "citation_count": null,
+    "title_key": "trethinkingtemporalsearchforlongformvideounderstanding"
+  },
+  "2408.10234": {
+    "citation_count": 1,
+    "title_key": "theunbearableslownessofbeingwhydoweliveat10bitss"
+  },
+  "2103.14030": {
+    "citation_count": 376,
+    "title_key": "swintransformerhierarchicalvisiontransformerusingshiftedwindows"
+  },
+  "2310.08884": {
+    "citation_count": 2,
+    "title_key": "extendingmultimodalcontrastiverepresentations"
+  },
+  "2502.18449": {
+    "citation_count": 2,
+    "title_key": "swerladvancingllmreasoningviareinforcementlearningonopensoftwareevolution"
+  },
+  "2504.16084": {
+    "citation_count": 0,
+    "title_key": "ttrltesttimereinforcementlearning"
+  },
+  "2505.03335": {
+    "citation_count": 1,
+    "title_key": "absolutezeroreinforcedselfplayreasoningwithzerodata"
+  },
+  "2404.15272": {
+    "citation_count": 3,
+    "title_key": "ctglip3dgroundedlanguageimagepretrainingwithctscansandradiologyreportsforfullbodyscenarios"
+  },
+  "2504.13837": {
+    "citation_count": null,
+    "title_key": "doesreinforcementlearningreallyincentivizereasoningcapacityinllmsbeyondthebasemodel"
+  },
+  "2504.04736": {
+    "citation_count": null,
+    "title_key": "syntheticdatagenerationmultisteprlforreasoningtooluse"
+  },
+  "2304.11277": {
+    "citation_count": 12,
+    "title_key": "pytorchfsdpexperiencesonscalingfullyshardeddataparallel"
+  },
+  "2505.00675": {
+    "citation_count": null,
+    "title_key": "rethinkingmemoryinllmbasedagentsrepresentationsoperationsandemergingtopics"
+  },
+  "2503.19470": {
+    "citation_count": 2,
+    "title_key": "researchlearningtoreasonwithsearchforllmsviareinforcementlearning"
+  },
+  "2504.06261": {
+    "citation_count": 0,
+    "title_key": "hogwildinferenceparallelllmgenerationviaconcurrentattention"
+  },
+  "2209.03003": {
+    "citation_count": 75,
+    "title_key": "flowstraightandfastlearningtogenerateandtransferdatawithrectifiedflow"
+  },
+  "2503.10622": {
+    "citation_count": 2,
+    "title_key": "transformerswithoutnormalization"
+  },
+  "2401.05336": {
+    "citation_count": 3,
+    "title_key": "towardsonlinecontinuoussignlanguagerecognitionandtranslation"
+  },
+  "2505.07796": {
+    "citation_count": 0,
+    "title_key": "learningdynamicsincontinualpretrainingforlargelanguagemodels"
+  },
+  "2503.16419": {
+    "citation_count": null,
+    "title_key": "stopoverthinkingasurveyonefficientreasoningforlargelanguagemodels"
+  },
+  "2502.19645": {
+    "citation_count": 10,
+    "title_key": "finetuningvisionlanguageactionmodelsoptimizingspeedandsuccess"
+  },
+  "2504.05298": {
+    "citation_count": 0,
+    "title_key": "oneminutevideogenerationwithtesttimetraining"
+  },
+  "2504.20995": {
+    "citation_count": 0,
+    "title_key": "tesseractlearning4dembodiedworldmodels"
+  },
+  "2010.01370": {
+    "citation_count": 5,
+    "title_key": "lyapunovguideddeepreinforcementlearningforstableonlinecomputationoffloadinginmobileedgecomputingnetworks"
+  },
+  "2504.16929": {
+    "citation_count": 0,
+    "title_key": "iconaunifyingframeworkforrepresentationlearning"
+  },
+  "2504.20571": {
+    "citation_count": 1,
+    "title_key": "reinforcementlearningforreasoninginlargelanguagemodelswithonetrainingexample"
+  },
+  "2404.19702": {
+    "citation_count": 1,
+    "title_key": "gslrmlargereconstructionmodelfor3dgaussiansplatting"
+  },
+  "2503.08038": {
+    "citation_count": 1,
+    "title_key": "generalizedkullbackleiblerdivergenceloss"
+  },
+  "2410.22584": {
+    "citation_count": 0,
+    "title_key": "benchagentsmultiagentsystemsforstructuredbenchmarkcreation"
+  },
+  "2504.17033": {
+    "citation_count": 0,
+    "title_key": "breakingthesortingbarrierfordirectedsinglesourceshortestpaths"
+  },
+  "2503.18878": {
+    "citation_count": 0,
+    "title_key": "ihavecoveredallthebaseshereinterpretingreasoningfeaturesinlargelanguagemodelsviasparseautoencoders"
+  },
+  "2407.16691": {
+    "citation_count": 0,
+    "title_key": "automaticequalizationforindividualinstrumenttracksusingconvolutionalneuralnetworks"
+  },
+  "2403.19655": {
+    "citation_count": 2,
+    "title_key": "gaussiancubeastructuredandexplicitradiancerepresentationfor3dgenerativemodeling"
+  },
+  "2503.20215": {
+    "citation_count": 6,
+    "title_key": "qwen25omnitechnicalreport"
+  },
+  "2011.13456": {
+    "citation_count": 1267,
+    "title_key": "scorebasedgenerativemodelingthroughstochasticdifferentialequations"
+  },
+  "2506.01939": {
+    "citation_count": 1,
+    "title_key": "beyondthe8020rulehighentropyminoritytokensdriveeffectivereinforcementlearningforllmreasoning"
+  },
+  "2505.10289": {
+    "citation_count": 0,
+    "title_key": "msciaddressingclipsinherentlimitationsforcompositionalzeroshotlearning"
+  },
+  "2303.14679": {
+    "citation_count": 2,
+    "title_key": "zbszeroshotbackgroundsubtractionviainstancelevelbackgroundmodelingandforegroundselection"
+  },
+  "2504.07615": {
+    "citation_count": null,
+    "title_key": "vlmr1astableandgeneralizabler1stylelargevisionlanguagemodel"
+  },
+  "2503.07234": {
+    "citation_count": 6,
+    "title_key": "cotdriveefficientmotionforecastingforautonomousdrivingwithllmsandchainofthoughtprompting"
+  },
+  "2504.05299": {
+    "citation_count": 2,
+    "title_key": "smolvlmredefiningsmallandefficientmultimodalmodels"
+  },
+  "2502.05843": {
+    "citation_count": 2,
+    "title_key": "fromobjectstoeventsunlockingcomplexvisualunderstandinginobjectdetectorsviallmguidedsymbolicreasoning"
+  },
+  "2503.14858": {
+    "citation_count": null,
+    "title_key": "1000layernetworksforselfsupervisedrlscalingdepthcanenablenewgoalreachingcapabilities"
+  },
+  "2512.24601": {
+    "citation_count": null,
+    "title_key": "recursivelanguagemodels"
+  },
+  "2310.16834": {
+    "citation_count": null,
+    "title_key": "discretediffusionlanguagemodelingbyestimatingtheratiosofthedatadistribution"
+  },
+  "2411.15594": {
+    "citation_count": 20,
+    "title_key": "asurveyonllmasajudge"
+  },
+  "2502.14802": {
+    "citation_count": 2,
+    "title_key": "fromragtomemorynonparametriccontinuallearningforlargelanguagemodels"
+  },
+  "2504.20879": {
+    "citation_count": 0,
+    "title_key": "theleaderboardillusion"
+  },
+  "2505.01009": {
+    "citation_count": 0,
+    "title_key": "improvinglargelanguagemodelplanningwithactionsequencesimilarity"
+  },
+  "2304.07193": {
+    "citation_count": 1016,
+    "title_key": "dinov2learningrobustvisualfeatureswithoutsupervision"
+  },
+  "2410.07864": {
+    "citation_count": 5,
+    "title_key": "rdt1badiffusionfoundationmodelforbimanualmanipulation"
+  },
+  "2504.13958": {
+    "citation_count": null,
+    "title_key": "toolrlrewardisalltoollearningneeds"
+  },
+  "2503.03983": {
+    "citation_count": 0,
+    "title_key": "audioflamingo2anaudiolanguagemodelwithlongaudiounderstandingandexpertreasoningabilities"
+  },
+  "2504.15933": {
+    "citation_count": 0,
+    "title_key": "lowrankadaptationofneuralfields"
+  },
+  "2412.05265": {
+    "citation_count": null,
+    "title_key": "reinforcementlearninganoverview"
+  },
+  "2408.15664": {
+    "citation_count": 6,
+    "title_key": "auxiliarylossfreeloadbalancingstrategyformixtureofexperts"
+  },
+  "2303.12157": {
+    "citation_count": 0,
+    "title_key": "learningadepthcovariancefunction"
+  },
+  "2107.00651": {
+    "citation_count": 16,
+    "title_key": "autoformersearchingtransformersforvisualrecognition"
+  },
+  "2504.06958": {
+    "citation_count": 0,
+    "title_key": "videochatr1enhancingspatiotemporalperceptionviareinforcementfinetuning"
+  },
+  "2308.04079": {
+    "citation_count": 28,
+    "title_key": "3dgaussiansplattingforrealtimeradiancefieldrendering"
+  },
+  "2407.15795": {
+    "citation_count": 2,
+    "title_key": "adaclipadaptingclipwithhybridlearnablepromptsforzeroshotanomalydetection"
+  },
+  "2506.08007": {
+    "citation_count": null,
+    "title_key": "reinforcementpretraining"
+  },
+  "2504.17789": {
+    "citation_count": 0,
+    "title_key": "tokenshuffletowardshighresolutionimagegenerationwithautoregressivemodels"
+  },
+  "2410.05779": {
+    "citation_count": 17,
+    "title_key": "lightragsimpleandfastretrievalaugmentedgeneration"
+  },
+  "2501.12326": {
+    "citation_count": 5,
+    "title_key": "uitarspioneeringautomatedguiinteractionwithnativeagents"
+  },
+  "2411.05902": {
+    "citation_count": 2,
+    "title_key": "autoregressivemodelsinvisionasurvey"
+  },
+  "2504.02407": {
+    "citation_count": 0,
+    "title_key": "f5rttsimprovingflowmatchingbasedtexttospeechwithgrouprelativepolicyoptimization"
+  },
+  "2111.14330": {
+    "citation_count": 90,
+    "title_key": "sparsedetrefficientendtoendobjectdetectionwithlearnablesparsity"
+  },
+  "2001.08361": {
+    "citation_count": 1486,
+    "title_key": "scalinglawsforneurallanguagemodels"
+  },
+  "2503.02113": {
+    "citation_count": 2,
+    "title_key": "deeplearningisnotsomysteriousordifferent"
+  },
+  "2412.09871": {
+    "citation_count": 4,
+    "title_key": "bytelatenttransformerpatchesscalebetterthantokens"
+  },
+  "2504.08066": {
+    "citation_count": 14,
+    "title_key": "theaiscientistv2workshoplevelautomatedscientificdiscoveryviaagentictreesearch"
+  },
+  "2504.10479": {
+    "citation_count": 5,
+    "title_key": "internvl3exploringadvancedtrainingandtesttimerecipesforopensourcemultimodalmodels"
+  },
+  "2410.01131": {
+    "citation_count": 0,
+    "title_key": "ngptnormalizedtransformerwithrepresentationlearningonthehypersphere"
+  },
+  "2503.17673": {
+    "citation_count": 30,
+    "title_key": "dcevodiscriminativecrossdimensionalevolutionarylearningforinfraredandvisibleimagefusion"
+  },
+  "2504.06514": {
+    "citation_count": 0,
+    "title_key": "missingpremiseexacerbatesoverthinkingarereasoningmodelslosingcriticalthinkingskill"
+  },
+  "2405.18975": {
+    "citation_count": 0,
+    "title_key": "hierarchicalclassificationauxiliarynetworkfortimeseriesforecasting"
+  },
+  "2504.17192": {
+    "citation_count": 0,
+    "title_key": "paper2codeautomatingcodegenerationfromscientificpapersinmachinelearning"
+  },
+  "2503.10631": {
+    "citation_count": null,
+    "title_key": "hybridvlacollaborativediffusionandautoregressioninaunifiedvisionlanguageactionmodel"
+  },
+  "2412.12861": {
+    "citation_count": 0,
+    "title_key": "dynhamrrecovering4dinteractinghandmotionfromadynamiccamera"
+  },
+  "2311.06242": {
+    "citation_count": 11,
+    "title_key": "florence2advancingaunifiedrepresentationforavarietyofvisiontasks"
+  },
+  "2409.17146": {
+    "citation_count": 8,
+    "title_key": "molmoandpixmoopenweightsandopendataforstateoftheartvisionlanguagemodels"
+  },
+  "2509.20328": {
+    "citation_count": null,
+    "title_key": "videomodelsarezeroshotlearnersandreasoners"
+  },
+  "2504.00927": {
+    "citation_count": null,
+    "title_key": "multitokenattention"
+  },
+  "2303.09553": {
+    "citation_count": 5,
+    "title_key": "lerflanguageembeddedradiancefields"
+  },
+  "2505.14447": {
+    "citation_count": 8,
+    "title_key": "precisemeasurementsofthecosmicrayprotonenergyspectruminthekneeregion"
+  },
+  "2503.17024": {
+    "citation_count": 0,
+    "title_key": "ataleoftwoclassesadaptingsupervisedcontrastivelearningtobinaryimbalanceddatasets"
+  },
+  "2504.05462": {
+    "citation_count": 1,
+    "title_key": "quantummechanicsandneuralnetworks"
+  },
+  "2504.07079": {
+    "citation_count": 0,
+    "title_key": "skillweaverwebagentscanselfimprovebydiscoveringandhoningskills"
+  },
+  "2501.04519": {
+    "citation_count": 7,
+    "title_key": "rstarmathsmallllmscanmastermathreasoningwithselfevolveddeepthinking"
+  },
+  "2505.12540": {
+    "citation_count": 2,
+    "title_key": "harnessingtheuniversalgeometryofembeddings"
+  },
+  "2506.09985": {
+    "citation_count": 0,
+    "title_key": "vjepa2selfsupervisedvideomodelsenableunderstandingpredictionandplanning"
+  },
+  "2406.06608": {
+    "citation_count": 74,
+    "title_key": "thepromptreportasystematicsurveyofpromptengineeringtechniques"
+  },
+  "2506.21734": {
+    "citation_count": 2,
+    "title_key": "hierarchicalreasoningmodel"
+  },
+  "2404.16130": {
+    "citation_count": null,
+    "title_key": "fromlocaltoglobalagraphragapproachtoqueryfocusedsummarization"
+  },
+  "2303.17580": {
+    "citation_count": 264,
+    "title_key": "hugginggptsolvingaitaskswithchatgptanditsfriendsinhuggingface"
+  },
+  "2304.02643": {
+    "citation_count": 525,
+    "title_key": "segmentanything"
+  },
+  "2310.19736": {
+    "citation_count": 61,
+    "title_key": "evaluatinglargelanguagemodelsacomprehensivesurvey"
+  },
+  "2505.02567": {
+    "citation_count": 0,
+    "title_key": "unifiedmultimodalunderstandingandgenerationmodelsadvanceschallengesandopportunities"
+  },
+  "2401.11324": {
+    "citation_count": 4,
+    "title_key": "bangbillionscaleapproximatenearestneighborsearchusingasinglegpu"
+  },
+  "2511.21631": {
+    "citation_count": 4,
+    "title_key": "qwen3vltechnicalreport"
+  },
+  "2502.14786": {
+    "citation_count": 7,
+    "title_key": "siglip2multilingualvisionlanguageencoderswithimprovedsemanticunderstandinglocalizationanddensefeatures"
+  },
+  "2504.03553": {
+    "citation_count": 0,
+    "title_key": "agenticknowledgeableselfawareness"
+  },
+  "2511.13720": {
+    "citation_count": 1,
+    "title_key": "backtobasicsletdenoisinggenerativemodelsdenoise"
+  },
+  "2401.10304": {
+    "citation_count": 0,
+    "title_key": "onthereadinessofscientificdataforafairandtransparentuseinmachinelearning"
+  },
+  "2510.18234": {
+    "citation_count": 0,
+    "title_key": "deepseekocrcontextsopticalcompression"
+  },
+  "2406.12045": {
+    "citation_count": 5,
+    "title_key": "benchabenchmarkfortoolagentuserinteractioninrealworlddomains"
+  },
+  "2503.19397": {
+    "citation_count": null,
+    "title_key": "qualityfocusedactiveadversarialpolicyforsafegraspinginhumanrobotinteraction"
+  },
+  "2412.04463": {
+    "citation_count": 0,
+    "title_key": "megasamaccuratefastandrobuststructureandmotionfromcasualdynamicvideos"
+  },
+  "2403.12172": {
+    "citation_count": 0,
+    "title_key": "graphjigsawconditioneddiffusionmodelforskeletonbasedvideoanomalydetection"
+  },
+  "2406.10215": {
+    "citation_count": 3,
+    "title_key": "devbenchamultimodaldevelopmentalbenchmarkforlanguagelearning"
+  },
+  "2205.14135": {
+    "citation_count": 457,
+    "title_key": "flashattentionfastandmemoryefficientexactattentionwithioawareness"
+  },
+  "2503.07465": {
+    "citation_count": null,
+    "title_key": "yoloerealtimeseeinganything"
+  },
+  "2505.04997": {
+    "citation_count": 0,
+    "title_key": "foamagenttowardsautomatedintelligentcfdworkflows"
+  },
+  "2505.01425": {
+    "citation_count": 1,
+    "title_key": "genmoageneralistmodelforhumanmotion"
+  },
+  "2503.12605": {
+    "citation_count": null,
+    "title_key": "multimodalchainofthoughtreasoningacomprehensivesurvey"
+  },
+  "2504.16736": {
+    "citation_count": 4,
+    "title_key": "asurveyofaiagentprotocols"
+  },
+  "2206.10589": {
+    "citation_count": 19,
+    "title_key": "edgenextefficientlyamalgamatedcnntransformerarchitectureformobilevisionapplications"
+  },
+  "2408.03314": {
+    "citation_count": 17,
+    "title_key": "scalingllmtesttimecomputeoptimallycanbemoreeffectivethanscalingmodelparameters"
+  },
+  "2410.02355": {
+    "citation_count": 1,
+    "title_key": "alphaeditnullspaceconstrainedknowledgeeditingforlanguagemodels"
+  },
+  "2002.05709": {
+    "citation_count": 7318,
+    "title_key": "asimpleframeworkforcontrastivelearningofvisualrepresentations"
+  },
+  "2104.13921": {
+    "citation_count": 280,
+    "title_key": "openvocabularyobjectdetectionviavisionandlanguageknowledgedistillation"
+  },
+  "2501.09136": {
+    "citation_count": 17,
+    "title_key": "agenticretrievalaugmentedgenerationasurveyonagenticrag"
+  },
+  "2504.10483": {
+    "citation_count": 0,
+    "title_key": "repaeunlockingvaeforendtoendtuningwithlatentdiffusiontransformers"
+  },
+  "2310.05707": {
+    "citation_count": 2,
+    "title_key": "guidinglanguagemodelreasoningwithplanningtokens"
+  },
+  "2212.14784": {
+    "citation_count": 0,
+    "title_key": "neuralvolumetricblendshapescomputationallyefficientphysicsbasedfacialblendshapes"
+  },
+  "2404.03868": {
+    "citation_count": 6,
+    "title_key": "extractdefinecanonicalizeanllmbasedframeworkforknowledgegraphconstruction"
+  },
+  "2510.04618": {
+    "citation_count": 0,
+    "title_key": "agenticcontextengineeringevolvingcontextsforselfimprovinglanguagemodels"
+  },
+  "2402.05956": {
+    "citation_count": 35,
+    "title_key": "pathformermultiscaletransformerswithadaptivepathwaysfortimeseriesforecasting"
+  },
+  "2005.11401": {
+    "citation_count": 18,
+    "title_key": "retrievalaugmentedgenerationforknowledgeintensivenlptasks"
+  },
+  "2504.12285": {
+    "citation_count": 0,
+    "title_key": "bitnetb1582b4ttechnicalreport"
+  },
+  "2503.19044": {
+    "citation_count": null,
+    "title_key": "suppressingdcdriftinthinfilmlithiumniobatemodulatorsviamultiferroicskyrmionexcitation"
+  },
+  "2503.03064": {
+    "citation_count": 0,
+    "title_key": "improvingllmasajudgeinferencewiththejudgmentdistribution"
+  },
+  "2504.17068": {
+    "citation_count": null,
+    "title_key": "incontextlearningcandistorttherelationshipbetweensequencelikelihoodsandbiologicalfitness"
+  },
+  "2502.10731": {
+    "citation_count": null,
+    "title_key": "servicefunctionchaindynamicschedulinginspaceairgroundintegratednetworks"
+  },
+  "2504.13828": {
+    "citation_count": null,
+    "title_key": "generativeaiactiitesttimescalingdrivescognitionengineering"
+  },
+  "2502.17419": {
+    "citation_count": null,
+    "title_key": "fromsystem1tosystem2asurveyofreasoninglargelanguagemodels"
+  },
+  "2303.15343": {
+    "citation_count": null,
+    "title_key": "sigmoidlossforlanguageimagepretraining"
+  },
+  "2512.13564": {
+    "citation_count": null,
+    "title_key": "memoryintheageofaiagents"
+  },
+  "2504.21776": {
+    "citation_count": null,
+    "title_key": "webthinkerempoweringlargereasoningmodelswithdeepresearchcapability"
+  },
+  "2505.21497": {
+    "citation_count": null,
+    "title_key": "paper2postertowardsmultimodalposterautomationfromscientificpapers"
+  },
+  "2305.06456": {
+    "citation_count": null,
+    "title_key": "perpetualhumanoidcontrolforrealtimesimulatedavatars"
+  },
+  "2503.13789": {
+    "citation_count": null,
+    "title_key": "carbonicanhydraseiisimulatedwithauniversalneuralnetworkpotential"
+  },
+  "2411.10109": {
+    "citation_count": null,
+    "title_key": "generativeagentsimulationsof1000people"
+  },
+  "2508.10104": {
+    "citation_count": null,
+    "title_key": "dinov3"
+  },
+  "2405.17247": {
+    "citation_count": null,
+    "title_key": "anintroductiontovisionlanguagemodeling"
+  },
+  "2107.05223": {
+    "citation_count": null,
+    "title_key": "bertlikepretrainingforsymbolicpianomusicclassificationtasks"
+  },
+  "2301.04104": {
+    "citation_count": null,
+    "title_key": "masteringdiversedomainsthroughworldmodels"
+  },
+  "2503.23829": {
+    "citation_count": null,
+    "title_key": "crossingtherewardbridgeexpandingrlwithverifiablerewardsacrossdiversedomains"
+  },
+  "2410.17466": {
+    "citation_count": 0,
+    "title_key": "evolutionofsocietiesviareinforcementlearning"
+  },
+  "2504.10147": {
+    "citation_count": 1,
+    "title_key": "asurveyofpersonalizationfromragtoagent"
+  },
+  "2510.13786": {
+    "citation_count": 0,
+    "title_key": "theartofscalingreinforcementlearningcomputeforllms"
+  },
+  "2410.05258": {
+    "citation_count": null,
+    "title_key": "differentialtransformer"
+  },
+  "2504.09037": {
+    "citation_count": 1,
+    "title_key": "asurveyoffrontiersinllmreasoninginferencescalinglearningtoreasonandagenticsystems"
+  },
+  "1906.11172": {
+    "citation_count": null,
+    "title_key": "learningdataaugmentationstrategiesforobjectdetection"
+  },
+  "2407.10490": {
+    "citation_count": null,
+    "title_key": "learningdynamicsofllmfinetuning"
+  },
+  "2504.05741": {
+    "citation_count": null,
+    "title_key": "ddtdecoupleddiffusiontransformer"
+  },
+  "2503.15477": {
+    "citation_count": null,
+    "title_key": "whatmakesarewardmodelagoodteacheranoptimizationperspective"
+  },
+  "2503.09594": {
+    "citation_count": null,
+    "title_key": "simlingovisiononlyclosedloopautonomousdrivingwithlanguageactionalignment"
+  },
+  "2009.10297": {
+    "citation_count": null,
+    "title_key": "codebleuamethodforautomaticevaluationofcodesynthesis"
+  },
+  "2507.19457": {
+    "citation_count": null,
+    "title_key": "gepareflectivepromptevolutioncanoutperformreinforcementlearning"
+  },
+  "2503.16430": {
+    "citation_count": null,
+    "title_key": "bridgingcontinuousanddiscretetokensforautoregressivevisualgeneration"
+  },
+  "2009.00909": {
+    "citation_count": null,
+    "title_key": "asurveyonnegativetransfer"
+  },
+  "2504.01961": {
+    "citation_count": null,
+    "title_key": "learningfromstreamingvideowithorthogonalgradients"
+  },
+  "2506.01622": {
+    "citation_count": null,
+    "title_key": "generalagentscontainworldmodels"
+  },
+  "2301.12597": {
+    "citation_count": null,
+    "title_key": "blip2bootstrappinglanguageimagepretrainingwithfrozenimageencodersandlargelanguagemodels"
+  },
+  "2503.23278": {
+    "citation_count": null,
+    "title_key": "modelcontextprotocolmcplandscapesecuritythreatsandfutureresearchdirections"
+  },
+  "2405.21060": {
+    "citation_count": null,
+    "title_key": "transformersaressmsgeneralizedmodelsandefficientalgorithmsthroughstructuredstatespaceduality"
+  },
+  "2504.19077": {
+    "citation_count": null,
+    "title_key": "learningtodrivefromaworldmodel"
+  },
+  "2506.13585": {
+    "citation_count": null,
+    "title_key": "minimaxm1scalingtesttimecomputeefficientlywithlightningattention"
+  },
+  "2211.17246": {
+    "citation_count": null,
+    "title_key": "pexmemoryefficientmicrocontrollerdeeplearningthroughpartialexecution"
+  },
+  "2504.07448": {
+    "citation_count": null,
+    "title_key": "lorireducingcrosstaskinterferenceinmultitasklowrankadaptation"
+  },
+  "2502.20779": {
+    "citation_count": null,
+    "title_key": "triplephasetransitionsunderstandingthelearningdynamicsoflargelanguagemodelsfromaneuroscienceperspective"
+  },
+  "2501.06322": {
+    "citation_count": null,
+    "title_key": "multiagentcollaborationmechanismsasurveyofllms"
+  },
+  "2502.12150": {
+    "citation_count": null,
+    "title_key": "idiosyncrasiesinlargelanguagemodels"
+  },
+  "2005.12872": {
+    "citation_count": null,
+    "title_key": "endtoendobjectdetectionwithtransformers"
+  },
+  "2510.11690": {
+    "citation_count": null,
+    "title_key": "diffusiontransformerswithrepresentationautoencoders"
+  },
+  "2503.21223": {
+    "citation_count": null,
+    "title_key": "unlockinggraphstructurelearningwithtreeguidedlargelanguagemodels"
+  },
+  "2505.15389": {
+    "citation_count": null,
+    "title_key": "arevisionlanguagemodelssafeinthewildamemebasedbenchmarkstudy"
+  },
+  "2408.00714": {
+    "citation_count": null,
+    "title_key": "sam2segmentanythinginimagesandvideos"
+  },
+  "2012.04327": {
+    "citation_count": null,
+    "title_key": "settlingthecomplexityofnashequilibriumincongestiongames"
+  },
+  "2306.09305": {
+    "citation_count": null,
+    "title_key": "fasttrainingofdiffusionmodelswithmaskedtransformers"
+  },
+  "2507.18074": {
+    "citation_count": null,
+    "title_key": "alphagomomentformodelarchitecturediscovery"
+  },
+  "2412.04654": {
+    "citation_count": null,
+    "title_key": "mutationmitigatesfinitesizeeffectsinspatialevolutionarygames"
+  },
+  "2504.06256": {
+    "citation_count": null,
+    "title_key": "transferbetweenmodalitieswithmetaqueries"
+  },
+  "2010.02502": {
+    "citation_count": null,
+    "title_key": "denoisingdiffusionimplicitmodels"
+  },
+  "1912.09363": {
+    "citation_count": null,
+    "title_key": "temporalfusiontransformersforinterpretablemultihorizontimeseriesforecasting"
+  },
+  "2504.03871": {
+    "citation_count": null,
+    "title_key": "hetermoeefficienttrainingofmixtureofexpertsmodelsonheterogeneousgpus"
+  },
+  "2403.03206": {
+    "citation_count": null,
+    "title_key": "scalingrectifiedflowtransformersforhighresolutionimagesynthesis"
+  },
+  "2412.14171": {
+    "citation_count": null,
+    "title_key": "thinkinginspacehowmultimodallargelanguagemodelsseerememberandrecallspaces"
+  },
+  "2505.22617": {
+    "citation_count": null,
+    "title_key": "theentropymechanismofreinforcementlearningforreasoninglanguagemodels"
+  },
+  "2502.08788": {
+    "citation_count": null,
+    "title_key": "stopovervaluingmultiagentdebatewemustrethinkevaluationandembracemodelheterogeneity"
+  },
+  "2505.16839": {
+    "citation_count": null,
+    "title_key": "lavidaalargediffusionlanguagemodelformultimodalunderstanding"
+  },
+  "2503.01067": {
+    "citation_count": null,
+    "title_key": "allroadsleadtolikelihoodthevalueofreinforcementlearninginfinetuning"
+  },
+  "2504.14870": {
+    "citation_count": null,
+    "title_key": "actinglessisreasoningmoreteachingmodeltoactefficiently"
+  },
+  "2406.05946": {
+    "citation_count": null,
+    "title_key": "safetyalignmentshouldbemademorethanjustafewtokensdeep"
+  },
+  "2410.04659": {
+    "citation_count": null,
+    "title_key": "activiewevaluatingactiveperceptionabilityformultimodallargelanguagemodels"
+  },
+  "2504.08725": {
+    "citation_count": null,
+    "title_key": "docagentamultiagentsystemforautomatedcodedocumentationgeneration"
+  },
+  "2505.10559": {
+    "citation_count": 0,
+    "title_key": "neuralthermodynamiclawsforlargelanguagemodeltraining"
+  },
+  "2304.03442": {
+    "citation_count": 168,
+    "title_key": "generativeagentsinteractivesimulacraofhumanbehavior"
+  },
+  "2305.10601": {
+    "citation_count": 561,
+    "title_key": "treeofthoughtsdeliberateproblemsolvingwithlargelanguagemodels"
+  },
+  "2311.10764": {
+    "citation_count": 1,
+    "title_key": "deepgroupinterestmodelingoffulllifelonguserbehaviorsforctrprediction"
+  },
+  "2506.10943": {
+    "citation_count": null,
+    "title_key": "selfadaptinglanguagemodels"
+  },
+  "2310.16828": {
+    "citation_count": 8,
+    "title_key": "tdmpc2scalablerobustworldmodelsforcontinuouscontrol"
+  },
+  "2504.03160": {
+    "citation_count": 1,
+    "title_key": "deepresearcherscalingdeepresearchviareinforcementlearninginrealworldenvironments"
+  },
+  "2504.13161": {
+    "citation_count": 0,
+    "title_key": "nemotronclimbclusteringbasediterativedatamixturebootstrappingforlanguagemodelpretraining"
+  },
+  "2407.04620": {
+    "citation_count": 14,
+    "title_key": "learningtolearnattesttimernnswithexpressivehiddenstates"
+  },
+  "2503.21776": {
+    "citation_count": 0,
+    "title_key": "videor1reinforcingvideoreasoninginmllms"
+  },
+  "2505.12477": {
+    "citation_count": 1,
+    "title_key": "jointembeddingvsreconstructionprovablebenefitsoflatentspacepredictionforselfsupervisedlearning"
+  },
+  "2507.18071": {
+    "citation_count": null,
+    "title_key": "groupsequencepolicyoptimization"
+  },
+  "2404.18930": {
+    "citation_count": null,
+    "title_key": "hallucinationofmultimodallargelanguagemodelsasurvey"
+  },
+  "2502.18864": {
+    "citation_count": null,
+    "title_key": "towardsanaicoscientist"
+  },
+  "2303.14814": {
+    "citation_count": 12,
+    "title_key": "winclipzerofewshotanomalyclassificationandsegmentation"
+  },
+  "2406.19811": {
+    "citation_count": 0,
+    "title_key": "egogaussiandynamicsceneunderstandingfromegocentricvideowith3dgaussiansplatting"
+  },
+  "2505.20286": {
+    "citation_count": 0,
+    "title_key": "alitageneralistagentenablingscalableagenticreasoningwithminimalpredefinitionandmaximalselfevolution"
+  },
+  "2406.06484": {
+    "citation_count": 3,
+    "title_key": "parallelizinglineartransformerswiththedeltaruleoversequencelength"
+  },
+  "2504.18684": {
+    "citation_count": 2,
+    "title_key": "sort3dspatialobjectcentricreasoningtoolboxforzeroshot3dgroundingusinglargelanguagemodels"
+  },
+  "2503.03704": {
+    "citation_count": null,
+    "title_key": "memoryinjectionattacksonllmagentsviaqueryonlyinteraction"
+  },
+  "2504.10462": {
+    "citation_count": 0,
+    "title_key": "thescalabilityofsimplicityempiricalanalysisofvisionlanguagelearningwithasingletransformer"
+  },
+  "2503.01155": {
+    "citation_count": null,
+    "title_key": "natureinspiredpopulationbasedevolutionoflargelanguagemodels"
+  },
+  "2408.06292": {
+    "citation_count": 98,
+    "title_key": "theaiscientisttowardsfullyautomatedopenendedscientificdiscovery"
+  },
+  "2409.19256": {
+    "citation_count": 14,
+    "title_key": "hybridflowaflexibleandefficientrlhfframework"
+  },
+  "2503.18134": {
+    "citation_count": 0,
+    "title_key": "animagelikediffusionmethodforhumanobjectinteractiondetection"
+  },
+  "2002.04745": {
+    "citation_count": 109,
+    "title_key": "onlayernormalizationinthetransformerarchitecture"
+  },
+  "2503.06661": {
+    "citation_count": 16,
+    "title_key": "aaclipenhancingzeroshotanomalydetectionviaanomalyawareclip"
+  },
+  "2310.17813": {
+    "citation_count": null,
+    "title_key": "aspectralconditionforfeaturelearning"
+  },
+  "2403.09631": {
+    "citation_count": 14,
+    "title_key": "3dvlaa3dvisionlanguageactiongenerativeworldmodel"
+  },
+  "2402.02425": {
+    "citation_count": 0,
+    "title_key": "deeplagdiscoveringdeeplagrangiandynamicsforintuitivefluidprediction"
+  },
+  "2505.10527": {
+    "citation_count": 0,
+    "title_key": "worldpmscalinghumanpreferencemodeling"
+  },
+  "2505.10475": {
+    "citation_count": 0,
+    "title_key": "parallelscalinglawforlanguagemodels"
+  },
+  "2502.08524": {
+    "citation_count": 0,
+    "title_key": "llmpretrainingwithcontinuousconcepts"
+  },
+  "2601.20802": {
+    "citation_count": 0,
+    "title_key": "reinforcementlearningviaselfdistillation"
+  },
+  "2504.13055": {
+    "citation_count": 0,
+    "title_key": "noisyrolloutreinforcingvisualreasoningwithdataaugmentation"
+  },
+  "2410.06885": {
+    "citation_count": 1,
+    "title_key": "f5ttsafairytalerthatfakesfluentandfaithfulspeechwithflowmatching"
+  },
+  "2503.16219": {
+    "citation_count": 0,
+    "title_key": "reinforcementlearningforreasoninginsmallllmswhatworksandwhatdoesnt"
+  },
+  "2203.11171": {
+    "citation_count": 679,
+    "title_key": "selfconsistencyimproveschainofthoughtreasoninginlanguagemodels"
+  },
+  "2504.07086": {
+    "citation_count": 0,
+    "title_key": "asoberlookatprogressinlanguagemodelreasoningpitfallsandpathstoreproducibility"
+  },
+  "2503.03991": {
+    "citation_count": null,
+    "title_key": "uniformboundednessofhomogeneousincompressibleflowsinmathbbr3"
+  },
+  "2311.01977": {
+    "citation_count": 5,
+    "title_key": "rttrajectoryrobotictaskgeneralizationviahindsighttrajectorysketches"
+  },
+  "2603.15031": {
+    "citation_count": null,
+    "title_key": "attentionresiduals"
+  },
+  "2006.16144": {
+    "citation_count": 29,
+    "title_key": "estimatesonthegeneralizationerrorofphysicsinformedneuralnetworkspinnsforapproximatingpdes"
+  },
+  "2308.11432": {
+    "citation_count": 113,
+    "title_key": "asurveyonlargelanguagemodelbasedautonomousagents"
+  },
+  "2407.01392": {
+    "citation_count": 3,
+    "title_key": "diffusionforcingnexttokenpredictionmeetsfullsequencediffusion"
+  },
+  "2601.07372": {
+    "citation_count": 0,
+    "title_key": "conditionalmemoryviascalablelookupanewaxisofsparsityforlargelanguagemodels"
+  },
+  "1910.07467": {
+    "citation_count": 104,
+    "title_key": "rootmeansquarelayernormalization"
+  },
+  "2403.14404": {
+    "citation_count": 8,
+    "title_key": "physicsinformeddiffusionmodels"
+  },
+  "2401.03462": {
+    "citation_count": 2,
+    "title_key": "longcontextcompressionwithactivationbeacon"
+  },
+  "2312.03815": {
+    "citation_count": 2,
+    "title_key": "llmasosagentsasappsenvisioningaiosagentsandtheaiosagentecosystem"
+  },
+  "2503.24377": {
+    "citation_count": 0,
+    "title_key": "harnessingthereasoningeconomyasurveyofefficientreasoningforlargelanguagemodels"
+  },
+  "2502.04644": {
+    "citation_count": 5,
+    "title_key": "agenticreasoningastreamlinedframeworkforenhancingllmreasoningwithagentictools"
+  },
+  "2503.13323": {
+    "citation_count": null,
+    "title_key": "differenceindifferencesdesignsapractitionersguide"
+  },
+  "2211.00802": {
+    "citation_count": 4,
+    "title_key": "concretescorematchinggeneralizedscorematchingfordiscretedata"
+  },
+  "2407.11823": {
+    "citation_count": 1,
+    "title_key": "harmonizingsafetyandspeedahumanalgorithmapproachtoenhancethefdasmedicaldeviceclearancepolicy"
+  },
+  "2406.11838": {
+    "citation_count": 4,
+    "title_key": "autoregressiveimagegenerationwithoutvectorquantization"
+  },
+  "2601.19897": {
+    "citation_count": 0,
+    "title_key": "selfdistillationenablescontinuallearning"
+  },
+  "2507.20534": {
+    "citation_count": null,
+    "title_key": "kimik2openagenticintelligence"
+  },
+  "2602.04770": {
+    "citation_count": 0,
+    "title_key": "generativemodelingviadrifting"
+  },
+  "2504.15228": {
+    "citation_count": null,
+    "title_key": "aselfimprovingcodingagent"
+  },
+  "2501.12387": {
+    "citation_count": 0,
+    "title_key": "continuous3dperceptionmodelwithpersistentstate"
+  },
+  "2502.02013": {
+    "citation_count": 2,
+    "title_key": "layerbylayeruncoveringhiddenrepresentationsinlanguagemodels"
+  },
+  "2505.02214": {
+    "citation_count": 0,
+    "title_key": "anempiricalstudyofqwen3quantization"
+  },
+  "2411.12633": {
+    "citation_count": 1,
+    "title_key": "instantpolicyincontextimitationlearningviagraphdiffusion"
+  },
+  "2503.23674": {
+    "citation_count": 6,
+    "title_key": "largelanguagemodelspasstheturingtest"
+  },
+  "2010.04159": {
+    "citation_count": 1866,
+    "title_key": "deformabledetrdeformabletransformersforendtoendobjectdetection"
+  },
+  "2505.12549": {
+    "citation_count": null,
+    "title_key": "vggtslamdensergbslamoptimizedonthesl4manifold"
+  },
+  "2412.13663": {
+    "citation_count": 102,
+    "title_key": "smarterbetterfasterlongeramodernbidirectionalencoderforfastmemoryefficientandlongcontextfinetuningandinference"
+  },
+  "2512.02556": {
+    "citation_count": 1,
+    "title_key": "deepseekv32pushingthefrontierofopenlargelanguagemodels"
+  },
+  "2503.10968": {
+    "citation_count": 0,
+    "title_key": "combinatorialoptimizationforallusingllmstoaidnonexpertsinimprovingoptimizationalgorithms"
+  },
+  "2603.10165": {
+    "citation_count": 0,
+    "title_key": "openclawrltrainanyagentsimplybytalking"
+  },
+  "2405.14831": {
+    "citation_count": 20,
+    "title_key": "hipporagneurobiologicallyinspiredlongtermmemoryforlargelanguagemodels"
+  },
+  "2305.15404": {
+    "citation_count": 6,
+    "title_key": "romarobustdensefeaturematching"
+  },
+  "2503.17973": {
+    "citation_count": null,
+    "title_key": "phystwinphysicsinformedreconstructionandsimulationofdeformableobjectsfromvideos"
+  },
+  "2505.10978": {
+    "citation_count": 1,
+    "title_key": "groupingrouppolicyoptimizationforllmagenttraining"
+  },
+  "2312.11805": {
+    "citation_count": 796,
+    "title_key": "geminiafamilyofhighlycapablemultimodalmodels"
+  },
+  "2303.08774": {
+    "citation_count": 2283,
+    "title_key": "gpt4technicalreport"
+  },
+  "2402.17753": {
+    "citation_count": 3,
+    "title_key": "evaluatingverylongtermconversationalmemoryofllmagents"
+  },
+  "2507.23726": {
+    "citation_count": null,
+    "title_key": "seedproverdeepandbroadreasoningforautomatedtheoremproving"
+  },
+  "1907.04168": {
+    "citation_count": 82,
+    "title_key": "ams100thenextgenerationmagneticspectrometerinspaceaninternationalscienceplatformforphysicsandastrophysicsatlagrangepoint2"
+  },
+  "2503.06072": {
+    "citation_count": 1,
+    "title_key": "asurveyonposttrainingoflargelanguagemodels"
+  },
+  "2601.16175": {
+    "citation_count": null,
+    "title_key": "learningtodiscoverattesttime"
+  },
+  "2410.05260": {
+    "citation_count": 1,
+    "title_key": "dartcontroladiffusionbasedautoregressivemotionmodelforrealtimetextdrivenmotioncontrol"
+  },
+  "2302.05543": {
+    "citation_count": 207,
+    "title_key": "addingconditionalcontroltotexttoimagediffusionmodels"
+  },
+  "2504.02137": {
+    "citation_count": 0,
+    "title_key": "enhancingembeddingrepresentationstabilityinrecommendationsystemswithsemanticid"
+  },
+  "2405.15682": {
+    "citation_count": 1,
+    "title_key": "theroadlessscheduled"
+  },
+  "2301.08243": {
+    "citation_count": 16,
+    "title_key": "selfsupervisedlearningfromimageswithajointembeddingpredictivearchitecture"
+  },
+  "2505.13775": {
+    "citation_count": 0,
+    "title_key": "beyondsemanticstheunreasonableeffectivenessofreasonlessintermediatetokens"
+  },
+  "2509.08827": {
+    "citation_count": 2,
+    "title_key": "asurveyofreinforcementlearningforlargereasoningmodels"
+  },
+  "2311.15596": {
+    "citation_count": 1,
+    "title_key": "egothinkevaluatingfirstpersonperspectivethinkingcapabilityofvisionlanguagemodels"
+  },
+  "2501.03575": {
+    "citation_count": 7,
+    "title_key": "cosmosworldfoundationmodelplatformforphysicalai"
+  },
+  "2105.07476": {
+    "citation_count": 5,
+    "title_key": "dataaugmentationforsignlanguageglosstranslation"
+  },
+  "2212.08073": {
+    "citation_count": null,
+    "title_key": "constitutionalaiharmlessnessfromaifeedback"
+  },
+  "2406.08878": {
+    "citation_count": 0,
+    "title_key": "cimrlcombiningimitationandreinforcementlearningforsafeautonomousdriving"
+  },
+  "2401.18059": {
+    "citation_count": 23,
+    "title_key": "raptorrecursiveabstractiveprocessingfortreeorganizedretrieval"
+  },
+  "2502.02533": {
+    "citation_count": 0,
+    "title_key": "multiagentdesignoptimizingagentswithbetterpromptsandtopologies"
+  },
+  "2506.06941": {
+    "citation_count": null,
+    "title_key": "theillusionofthinkingunderstandingthestrengthsandlimitationsofreasoningmodelsviathelensofproblemcomplexity"
+  },
+  "2401.03568": {
+    "citation_count": 45,
+    "title_key": "agentaisurveyingthehorizonsofmultimodalinteraction"
+  },
+  "2306.13549": {
+    "citation_count": 85,
+    "title_key": "asurveyonmultimodallargelanguagemodels"
+  },
+  "2502.01061": {
+    "citation_count": 1,
+    "title_key": "omnihuman1rethinkingthescalingupofonestageconditionedhumananimationmodels"
+  },
+  "2507.21046": {
+    "citation_count": null,
+    "title_key": "asurveyofselfevolvingagentswhatwhenhowandwheretoevolveonthepathtoartificialsuperintelligence"
+  },
+  "2306.04144": {
+    "citation_count": 1,
+    "title_key": "uctbanurbancomputingtoolboxforbuildingspatiotemporalpredictionservices"
+  },
+  "2401.11338": {
+    "citation_count": 0,
+    "title_key": "ennsroadmapforprotonboronfusionbasedonsphericaltorus"
+  },
+  "2310.03744": {
+    "citation_count": 63,
+    "title_key": "improvedbaselineswithvisualinstructiontuning"
+  },
+  "2510.08558": {
+    "citation_count": 0,
+    "title_key": "agentlearningviaearlyexperience"
+  },
+  "2305.03495": {
+    "citation_count": 3,
+    "title_key": "automaticpromptoptimizationwithgradientdescentandbeamsearch"
+  },
+  "2402.09660": {
+    "citation_count": 9,
+    "title_key": "usermodelinganduserprofilingacomprehensivesurvey"
+  },
+  "2504.18872": {
+    "citation_count": 0,
+    "title_key": "latentadversarialtrainingimprovestherepresentationofrefusal"
+  },
+  "1707.06347": {
+    "citation_count": null,
+    "title_key": "proximalpolicyoptimizationalgorithms"
+  },
+  "1802.09568": {
+    "citation_count": 33,
+    "title_key": "shampoopreconditionedstochastictensoroptimization"
+  },
+  "1710.09829": {
+    "citation_count": 89,
+    "title_key": "dynamicroutingbetweencapsules"
+  },
+  "1712.01815": {
+    "citation_count": 1079,
+    "title_key": "masteringchessandshogibyselfplaywithageneralreinforcementlearningalgorithm"
+  },
+  "1802.01528": {
+    "citation_count": 12,
+    "title_key": "thematrixcalculusyouneedfordeeplearning"
+  },
+  "1701.07875": {
+    "citation_count": 609,
+    "title_key": "wassersteingan"
+  },
+  "1804.03999": {
+    "citation_count": 4538,
+    "title_key": "attentionunetlearningwheretolookforthepancreas"
+  },
+  "1704.06279": {
+    "citation_count": 190,
+    "title_key": "mutualinformationneuralnetworksandtherenormalizationgroup"
+  }
+}

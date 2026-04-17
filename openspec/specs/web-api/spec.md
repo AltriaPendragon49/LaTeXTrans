@@ -63,19 +63,25 @@ The system SHALL expose a health check endpoint to verify backend readiness.
 - **THEN** response includes `latex: false` and warning message "LaTeX compiler not detected"
 
 ### Requirement: PDF预览端点
-系统 SHALL 提供独立的PDF预览端点，支持在浏览器iframe中内嵌显示译文PDF。
+系统 SHALL 提供独立的 PDF 预览端点，支持在浏览器 iframe 中内嵌显示译文 PDF。  
+当普通任务启用 COS 主存储时，预览仍 SHALL 由后端代理，不直接把签名 URL 暴露为前端必须拼接的下载地址。
 
-#### Scenario: 获取PDF用于浏览器预览
+#### Scenario: 获取 PDF 用于浏览器预览
 - **WHEN** 前端请求 `GET /api/preview/{task_id}/pdf`
-- **THEN** 系统返回PDF文件，响应头包含 `Content-Disposition: inline; filename="preview_{task_id}.pdf"`，允许浏览器内嵌显示
+- **THEN** 系统返回 PDF 文件，响应头包含 `Content-Disposition: inline; filename="preview_{task_id}.pdf"`，允许浏览器内嵌显示
 
 #### Scenario: 预览未完成的任务
-- **WHEN** 用户请求preview端点但任务状态不是 `completed` 或 `completed_with_warnings`
-- **THEN** 系统返回 HTTP 400 错误，提示"Translation not completed"
+- **WHEN** 用户请求 preview 端点但任务状态不是 `completed` 或 `completed_with_warnings`
+- **THEN** 系统返回 HTTP 400 错误，提示 "Translation not completed"
 
 #### Scenario: 预览不存在的任务
-- **WHEN** 用户请求preview端点但task_id不存在
-- **THEN** 系统返回 HTTP 404 错误，提示"Task not found"
+- **WHEN** 用户请求 preview 端点但 `task_id` 不存在
+- **THEN** 系统返回 HTTP 404 错误，提示 "Task not found"
+
+#### Scenario: COS 模式普通任务 PDF 预览由后端代理
+- **WHEN** `STORAGE_BACKEND_MODE=cos` 且普通任务译文 PDF 已持久化到 COS
+- **THEN** `GET /api/preview/{task_id}/pdf` SHALL 通过后端代理返回内联 PDF 内容
+- **AND** 前端不需要自行拼接或解析 COS 签名下载地址
 
 ### Requirement: Advanced Configuration in Translation Request
 
@@ -90,7 +96,8 @@ The web API SHALL support advanced configuration overrides seamlessly. Prior use
 - **AND** 确保对 Nvidia NIM API 等包含完整路径的端点具有 100% 兼容性
 
 ### Requirement: Terminology Table Download Endpoint
-后端 SHALL 提供术语表下载端点。
+后端 SHALL 提供术语表下载端点。  
+当普通任务启用 COS 主存储时，下载类接口 SHALL 使用签名 URL 交付而不是依赖长期本地文件。
 
 #### Scenario: 下载术语表
 - **WHEN** 用户请求 `GET /download/{task_id}/terminology`
@@ -98,8 +105,13 @@ The web API SHALL support advanced configuration overrides seamlessly. Prior use
 - **AND** 响应头包含 `Content-Disposition: attachment`
 
 #### Scenario: 术语表不存在
-- **WHEN** 任务未生成术语表（generate_terminology_table = false）
+- **WHEN** 任务未生成术语表（`generate_terminology_table = false`）
 - **THEN** 系统返回 HTTP 404 错误
+
+#### Scenario: COS 模式术语表下载使用签名 URL
+- **WHEN** `STORAGE_BACKEND_MODE=cos` 且普通任务术语表已持久化到 COS
+- **THEN** `GET /download/{task_id}/terminology` SHALL 返回到签名 COS URL 的下载交付
+- **AND** 客户端无需依赖长期本地输出目录
 
 ### Requirement: Source PDF Preview Endpoint
 后端 SHALL 提供原文 PDF 预览端点，支持多种来源策略。
@@ -610,4 +622,48 @@ The API SHALL expose outward-facing service metadata using the current PaperX pr
 #### Scenario: Root metadata reflects the current brand
 - **WHEN** a client requests the API root endpoint
 - **THEN** the response message and descriptive service metadata SHALL identify the backend as PaperX rather than legacy LaTeXTrans branding.
+
+### Requirement: Ordinary Task Download Delivery Supports Signed COS URLs
+When ordinary-task object storage mode is enabled, download-class endpoints SHALL deliver ordinary-task artifacts through signed COS URLs while preserving the existing API entry points.
+
+#### Scenario: COS mode translated PDF download uses signed URL
+- **WHEN** `STORAGE_BACKEND_MODE=cos` and a completed ordinary task requests `GET /download/{task_id}/pdf`
+- **THEN** the backend SHALL resolve the durable translated PDF object from the stored output manifest
+- **AND** the response SHALL deliver the file through a short-lived signed COS URL with attachment semantics
+
+#### Scenario: COS mode translated source download uses signed URL
+- **WHEN** `STORAGE_BACKEND_MODE=cos` and a completed ordinary task requests `GET /download/{task_id}/source`
+- **THEN** the backend SHALL resolve the durable translated-source archive from the stored output manifest
+- **AND** the response SHALL deliver the file through a short-lived signed COS URL with attachment semantics
+
+#### Scenario: COS mode logs download uses signed URL
+- **WHEN** `STORAGE_BACKEND_MODE=cos` and an ordinary task requests `GET /download/{task_id}/logs`
+- **THEN** the backend SHALL resolve an available durable log artifact from the stored output manifest
+- **AND** the response SHALL deliver the file through a short-lived signed COS URL with attachment semantics
+
+### Requirement: Community paper detail bootstrap payload remains lightweight
+The web API SHALL keep community paper detail responses lightweight by returning reader bootstrap metadata and asset locators instead of embedding large reader bodies directly in the base detail response.
+
+#### Scenario: Detail response for a preview-ready paper
+- **WHEN** a client requests `GET /api/papers/{paper_id}` for a paper with translated preview assets
+- **THEN** the API SHALL return metadata, reader state, and stable locators for preview/PDF assets
+- **AND** it SHALL NOT require the base detail response to inline the full preview HTML body.
+
+#### Scenario: Dedicated reader asset fetch remains available
+- **WHEN** the client needs the actual preview HTML or PDF asset after loading paper detail bootstrap data
+- **THEN** the API contract SHALL provide a dedicated asset-fetch path or signed asset locator
+- **AND** the client SHALL not need to reconstruct asset paths from raw database fields.
+
+### Requirement: Community asset APIs support object-storage delivery with local fallback
+Community preview and download APIs SHALL support canonical assets that live either on object storage or on local disk.
+
+#### Scenario: Object-storage-backed translated PDF is requested
+- **WHEN** a client requests a translated community PDF whose canonical asset backend is object storage
+- **THEN** the API SHALL resolve that asset through a supported delivery mode such as redirect, signed URL, or first-party proxy response
+- **AND** the client-facing route contract SHALL remain stable.
+
+#### Scenario: Local-disk-backed translated PDF is requested
+- **WHEN** a client requests a translated community PDF whose canonical asset backend is local disk
+- **THEN** the API SHALL continue serving that file through the existing local file response path
+- **AND** local development SHALL remain functional without object storage.
 

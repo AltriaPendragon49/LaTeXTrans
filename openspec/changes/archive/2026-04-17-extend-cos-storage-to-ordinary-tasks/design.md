@@ -32,9 +32,25 @@ The approved direction is:
 - Manifest drift could break downloads if output sync misses final files
 - Some legacy local-disk-only recovery heuristics remain in the codebase and need careful branching so COS mode does not accidentally treat logical object paths as local directories
 
+## Production Findings
+- Production validation exposed a COS hydration bug in ordinary-task source reuse:
+  - `CosStorageBackend.list_files()` returned full object keys including `cos_base_prefix`
+  - the ordinary-task hydration helper initially assumed keys started directly at logical paths such as `data/uploads/...`
+  - this caused empty hydrated source directories and a false storage-layer failure during translation startup
+  - the fix was to accept both logical keys and fully prefixed object keys during materialization
+- Production validation then exposed a translation-kernel regression on text-heavy custom environments such as `promptbox`:
+  - the environment body was translated without preserving the original `\begin{...}` / `\end{...}` wrapper path used for generic text environments
+  - this produced `env_restore_failed` markers and precompile structure-guard failures for `2503.12345`
+  - the fix was to route `promptbox` through the same wrapper-preserving generic-text-environment flow as `abstract`-style blocks
+- After these two fixes, anonymous ordinary-task translation for `2503.12345` completed in production and reached durable COS-backed artifact delivery
+
 ## Migration Plan
 1. Add storage helper and backend capabilities for listing/downloading stored objects
 2. Update ordinary-task upload/arXiv ingestion to sync sources to COS
 3. Update translation/output-reuse to hydrate sources, sync terminal outputs, and clean local cache
 4. Update preview/download endpoints to consume stored manifests and signed URLs
 5. Verify focused unit tests in both helper and route layers
+
+## Out of Scope Findings
+- The validated COS migration does not eliminate existing translation-kernel or LaTeX-compilation quality issues
+- For `2503.12345`, the final production run completed with compilation warnings, which indicates remaining kernel/compiler quality work outside this storage migration change
