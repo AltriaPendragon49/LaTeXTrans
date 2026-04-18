@@ -11,7 +11,7 @@ USER_SETTINGS_DEFAULTS: dict[str, Any] = {
     "default_target_language": "zh",
     "translation_mode": "full",
     "compile_strategy": "auto",
-    "translation_model": None,
+    "translation_model": "deepseek-chat",
     "generate_glossary": True,
     "use_author_api": True,
     "custom_base_url": None,

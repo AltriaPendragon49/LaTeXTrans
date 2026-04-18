@@ -93,3 +93,21 @@ def test_settings_routes_use_central_authorization(monkeypatch: pytest.MonkeyPat
     assert get_response.status_code == 200
     assert put_response.status_code == 200
     assert authorize_calls == [("settings", "read"), ("settings", "update")]
+
+
+def test_settings_defaults_include_deepseek_chat_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.api.routes import settings as settings_route
+
+    fake_repo = _FakeSettingsRepository()
+    monkeypatch.setattr(settings_route, "get_user_settings_repository", lambda: fake_repo)
+    app.dependency_overrides[settings_route.require_current_user] = lambda: {"id": "usr_local_1", "roles": ["user"]}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get("/api/settings")
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["translation_model"] == "deepseek-chat"

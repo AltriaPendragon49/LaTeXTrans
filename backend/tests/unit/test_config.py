@@ -20,3 +20,9 @@ def test_cors_origins_accepts_comma_separated_string() -> None:
         "http://127.0.0.1:5173",
         "https://latextrans.online",
     ]
+
+
+def test_advanced_config_defaults_to_deepseek_chat() -> None:
+    from backend.app.models.config_models import AdvancedConfig
+
+    assert AdvancedConfig().translation_model == "deepseek-chat"

@@ -21,7 +21,7 @@ class UserSettingsResponse(BaseModel):
     default_target_language: str = "zh"
     translation_mode: str = "full"
     compile_strategy: str = "auto"
-    translation_model: Optional[str] = None
+    translation_model: Optional[str] = "deepseek-chat"
     generate_glossary: bool = True
     use_author_api: bool = True
     custom_base_url: Optional[str] = None
