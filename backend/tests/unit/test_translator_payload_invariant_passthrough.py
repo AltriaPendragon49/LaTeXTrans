@@ -257,6 +257,31 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         )
         self.assertGreaterEqual(agent._request_llm_for_trans.await_count, 5)
 
+    def test_rescue_plain_text_by_paragraph_stops_after_non_invariant_api_failure(self):
+        agent = _build_agent()
+        text = "This paragraph should not recurse into finer rescue levels after an API outage."
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            if fail_part != "15:paragraph:0":
+                raise AssertionError(f"unexpected nested rescue for {fail_part}")
+            agent._mark_api_fallback("sec", fail_part, "api_request_failed_after_3_attempts")
+            return text
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="15",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertIsNone(rescued)
+        self.assertEqual(agent._request_llm_for_trans.await_count, 1)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {
@@ -325,6 +350,39 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertNotIn("fallback_reason", translated)
         agent._rescue_plain_text_by_paragraph.assert_awaited_once()
 
+    def test_translate_list_env_skips_item_rescue_after_non_invariant_api_failure(self):
+        agent = _build_agent()
+        env = {
+            "placeholder": "<PLACEHOLDER_ENV_41>",
+            "env_name": "itemize",
+            "content": (
+                "\\begin{itemize}\n"
+                "    \\item The first item stays in English.\n"
+                "    \\item The second item stays in English.\n"
+                "\\end{itemize}"
+            ),
+            "need_trans": True,
+        }
+
+        async def fake_request_env_translation(*, text, placeholder, **kwargs):
+            agent._mark_api_fallback("env", placeholder, "api_request_failed_after_3_attempts")
+            return text
+
+        agent._request_env_translation = AsyncMock(side_effect=fake_request_env_translation)
+        agent._rescue_list_env_items = AsyncMock(return_value="should not be used")
+
+        translated = asyncio.run(agent._translate_list_env(env, MagicMock()))
+
+        self.assertEqual(
+            translated["translation_status"],
+            agent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+        )
+        self.assertEqual(
+            translated["fallback_reason"],
+            "api_request_failed_after_3_attempts",
+        )
+        agent._rescue_list_env_items.assert_not_awaited()
+
     def test_translate_list_env_rescues_payload_invariant_items_individually(self):
         agent = _build_agent()
         env = {
@@ -359,6 +417,33 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertIn("我们为 CIFAR10 调整了 dropout。", translated["trans_content"])
         self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
         self.assertNotIn("fallback_reason", translated)
+
+    def test_translate_generic_text_env_skips_plain_text_recovery_after_non_invariant_api_failure(self):
+        agent = _build_agent()
+        env = {
+            "placeholder": "<PLACEHOLDER_ENV_52>",
+            "env_name": "theorem",
+            "content": "\\begin{theorem}English theorem body.\\end{theorem}",
+            "need_trans": True,
+        }
+
+        agent._request_env_translation = AsyncMock(return_value=env["content"])
+        agent._mark_api_fallback("env", env["placeholder"], "api_request_failed_after_3_attempts")
+        agent._recover_generic_text_env_body_as_plain_text = AsyncMock(return_value="should not be used")
+        agent._rescue_generic_text_env_by_paragraph = AsyncMock(return_value="should not be used")
+
+        translated = asyncio.run(agent._translate_env(env, MagicMock()))
+
+        self.assertEqual(
+            translated["translation_status"],
+            agent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+        )
+        self.assertEqual(
+            translated["fallback_reason"],
+            "api_request_failed_after_3_attempts",
+        )
+        agent._recover_generic_text_env_body_as_plain_text.assert_not_awaited()
+        agent._rescue_generic_text_env_by_paragraph.assert_not_awaited()
 
     def test_translate_generic_text_env_rescues_payload_invariant_source_preservation(self):
         agent = _build_agent()

@@ -365,6 +365,13 @@ class TranslatorAgent(BaseToolAgent):
         key = self._part_retry_key(part_type, identifier)
         self._api_fallback_parts.pop(key, None)
 
+    def _get_api_fallback_reason(self, part_type: str, identifier: str) -> Optional[str]:
+        return self._api_fallback_parts.get(self._part_retry_key(part_type, identifier))
+
+    @classmethod
+    def _should_attempt_nested_rescue(cls, reason: Optional[str]) -> bool:
+        return not reason or cls._is_payload_invariant_reason(reason)
+
     @staticmethod
     def _normalize_llm_failure_identifier(part_type: str, identifier: str) -> str:
         normalized = str(identifier or "").strip()
@@ -592,6 +599,9 @@ class TranslatorAgent(BaseToolAgent):
             "Translate only the plain natural-language body into the target language. "
             "Do not output any synthetic placeholder tokens or environment boundary markers."
         )
+        api_fallback_reason = self._get_api_fallback_reason("env", placeholder)
+        if not self._should_attempt_nested_rescue(api_fallback_reason):
+            return None
         prompt_suffix = f"\n[Recovery Requirement]\n{recovery_hint}"
         if error_message:
             prompt_suffix += f"\n{error_message}"
@@ -703,6 +713,9 @@ class TranslatorAgent(BaseToolAgent):
                 prompt_key=prompt_key,
                 prompt_key_with_terms=prompt_key_with_terms,
             )
+            part_fallback_reason = self._get_api_fallback_reason(part_type, part_fail_key)
+            if rescued_piece is None and not self._should_attempt_nested_rescue(part_fallback_reason):
+                return None
             if rescued_piece is None:
                 rescued_piece = await self._translate_masked_plain_text_rescue_piece(
                     piece=piece,
@@ -714,6 +727,12 @@ class TranslatorAgent(BaseToolAgent):
                     prompt_key=prompt_key,
                     prompt_key_with_terms=prompt_key_with_terms,
                 )
+            masked_fallback_reason = self._get_api_fallback_reason(
+                part_type,
+                f"{part_fail_key}:masked",
+            )
+            if rescued_piece is None and not self._should_attempt_nested_rescue(masked_fallback_reason):
+                return None
             if rescued_piece is None:
                 rescued_piece = await self._rescue_plain_text_by_fragment(
                     text=piece,
@@ -863,6 +882,10 @@ class TranslatorAgent(BaseToolAgent):
         if rescued_piece is not None:
             return rescued_piece
 
+        api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
+        if not self._should_attempt_nested_rescue(api_fallback_reason):
+            return None
+
         if depth >= self._RESCUE_WINDOW_MAX_DEPTH:
             return None
 
@@ -963,6 +986,10 @@ class TranslatorAgent(BaseToolAgent):
                 type=part_type,
                 session=session,
             )
+
+        api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
+        if not self._should_attempt_nested_rescue(api_fallback_reason):
+            return None
 
         allow_force_retry = (
             ":fragment:" in str(fail_part)
@@ -1066,6 +1093,10 @@ class TranslatorAgent(BaseToolAgent):
                 type=part_type,
                 session=session,
             )
+
+        api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
+        if not self._should_attempt_nested_rescue(api_fallback_reason):
+            return None
 
         if not isinstance(translated_masked_piece, str) or not translated_masked_piece.strip():
             return None
@@ -2912,8 +2943,11 @@ class TranslatorAgent(BaseToolAgent):
                 return transed_env
             mismatch = validate_immutable_placeholder_sequence(candidate, expected_tokens, "ITEM")
             if not mismatch:
-                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
-                if self._is_source_preserved_translation(anchored_text, candidate):
+                api_fallback_reason = self._get_api_fallback_reason("env", placeholder)
+                if (
+                    self._is_source_preserved_translation(anchored_text, candidate)
+                    and self._should_attempt_nested_rescue(api_fallback_reason)
+                ):
                     rescued_candidate = await self._rescue_list_env_items(
                         anchored_text=anchored_text,
                         placeholder=placeholder,
@@ -3004,12 +3038,16 @@ class TranslatorAgent(BaseToolAgent):
                     )
                     if retried_content is not None:
                         translated_content = retried_content
-                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                api_fallback_reason = self._get_api_fallback_reason("env", placeholder)
                 payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+                allow_nested_rescue = self._should_attempt_nested_rescue(api_fallback_reason)
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_content)
-                    or bool(api_fallback_reason)
-                    or self._is_source_preserved_translation(source_text, translated_content)
+                    or payload_invariant_passthrough
+                    or (
+                        allow_nested_rescue
+                        and self._is_source_preserved_translation(source_text, translated_content)
+                    )
                 )
                 if needs_plain_text_recovery:
                     recovered_content = await self._recover_generic_text_env_body_as_plain_text(
@@ -3086,12 +3124,16 @@ class TranslatorAgent(BaseToolAgent):
                     )
                     if retried_body is not None:
                         translated_body = retried_body
-                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                api_fallback_reason = self._get_api_fallback_reason("env", placeholder)
                 payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+                allow_nested_rescue = self._should_attempt_nested_rescue(api_fallback_reason)
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_body)
-                    or bool(api_fallback_reason)
-                    or self._is_source_preserved_translation(env_body, translated_body)
+                    or payload_invariant_passthrough
+                    or (
+                        allow_nested_rescue
+                        and self._is_source_preserved_translation(env_body, translated_body)
+                    )
                 )
                 if needs_plain_text_recovery:
                     recovered_body = await self._recover_generic_text_env_body_as_plain_text(
