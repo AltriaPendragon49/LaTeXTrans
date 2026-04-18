@@ -217,6 +217,81 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertIn("各种基准线", translated["trans_content"])
         self.assertTrue(translated.get("sectioning_command_drift_sanitized"))
 
+    def test_translate_section_payload_invariant_rescues_section_titles_separately(self):
+        agent = _build_agent()
+        section = {
+            "section": "13+13_1",
+            "content": (
+                "\\section{Additional Empirical Results}\n\n"
+                "\\subsection{Performance of Best of $N$ baseline for Various $N$}\n"
+                "We find that the Best of $N$ baseline remains strong."
+            ),
+            "previous_context": "",
+        }
+        poor_rescue = (
+            "\\section{补充实证结果}\n\n"
+            "\\subsection{最佳表现} $N$ 各种任务的基线 $N$}\n"
+            "我们发现，Best of $N$ 基线依然很强。"
+        )
+
+        async def fake_request(system_prompt, text, fail_part, type, session, previous_context=None):
+            if fail_part == section["section"]:
+                agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+                return section["content"]
+            if fail_part == "13+13_1:title:0":
+                return "其他实证结果"
+            if fail_part == "13+13_1:title:1":
+                return "不同 $N$ 下 Best of $N$ 基线的表现"
+            return text
+
+        agent._request_llm_for_trans = fake_request
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=poor_rescue)
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertIn("\\subsection{不同 $N$ 下 Best of $N$ 基线的表现}", translated["trans_content"])
+        self.assertNotIn("\\subsection{最佳表现} $N$ 各种任务的基线 $N$}", translated["trans_content"])
+        self.assertTrue(translated.get("sectioning_title_rescued"))
+
+    def test_translate_section_retrans_mode_rescues_section_titles_separately(self):
+        agent = _build_agent()
+        agent.trans_mode = 1
+        section = {
+            "section": "13+13_1",
+            "content": (
+                "\\section{Additional Empirical Results}\n\n"
+                "\\subsection{Performance of Best of $N$ baseline for Various $N$}\n"
+                "We find that the Best of $N$ baseline remains strong."
+            ),
+            "previous_context": "",
+        }
+        poor_rescue = (
+            "\\section{补充实证结果}\n\n"
+            "\\subsection{最佳表现} $N$ 各种任务的基线 $N$}\n"
+            "我们发现，Best of $N$ 基线依然很强。"
+        )
+
+        async def fake_retrans(system_prompt, part, error_message, fail_part, type, session):
+            if fail_part == section["section"]:
+                agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+                return part["content"]
+            if fail_part == "13+13_1:title:0":
+                return "其他实证结果"
+            if fail_part == "13+13_1:title:1":
+                return "不同 $N$ 下 Best of $N$ 基线的表现"
+            return part["content"]
+
+        agent._request_llm_for_retrans_error_parts = fake_retrans
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=poor_rescue)
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertIn("\\subsection{不同 $N$ 下 Best of $N$ 基线的表现}", translated["trans_content"])
+        self.assertNotIn("\\subsection{最佳表现} $N$ 各种任务的基线 $N$}", translated["trans_content"])
+        self.assertTrue(translated.get("sectioning_title_rescued"))
+
     def test_rescue_plain_text_by_paragraph_falls_back_to_fragment_rescue(self):
         agent = _build_agent()
         text = (

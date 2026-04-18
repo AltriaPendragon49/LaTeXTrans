@@ -28,6 +28,12 @@ The system SHALL parse LaTeX source files into an Abstract Syntax Tree (AST), tr
 - **THEN** the system MUST demote those extra sectioning commands back to plain target-language text before persisting the translated section
 - **AND** it MUST keep the translated section content instead of reverting the whole chunk to source solely because of that body-level drift.
 
+#### Scenario: Section invariant rescue can repair titles independently of the body
+- **WHEN** a section-level hard-freeze or repair retry falls back to a structurally safe target-language rescue
+- **AND** the rescued body content is acceptable but the leading section title text remains badly degraded
+- **THEN** the system MUST be allowed to rescue the leading section titles independently before persisting the section
+- **AND** it MUST preserve the sectioning command structure while preferring the repaired target-language title text over degraded rescue output.
+
 ### Requirement: CJK Font Compatibility Fix
 The system MUST dynamically neutralize incompatible pdfLaTeX-specific font packages and explicit pdfTeX driver locks to ensure correct XeLaTeX/LuaLaTeX rendering of CJK characters.
 

@@ -4,7 +4,7 @@
 
 ## 2. Section Rescue Priority Fix
 - [x] 2.1 Update section-level payload-invariant handling so target-language paragraph/fragment downgrade is preferred over full source passthrough whenever rescue succeeds materially.
-- [x] 2.2 Ensure rescued section output does not persist hallucinated sectioning commands in prose after payload-invariant recovery or normal translation.
+- [x] 2.2 Ensure rescued section output does not persist hallucinated sectioning commands in prose after payload-invariant recovery or normal translation, and allow heading-only rescue when body rescue succeeds but titles remain degraded.
 - [x] 2.3 Add regression tests covering known affected section patterns from `2006.11239` and `2305.18290`.
 
 ## 3. Template Compatibility Fix

@@ -21,6 +21,8 @@
   - Rationale: this matches `openspec/project.md` and the user's explicit quality requirement.
 - Decision: When a translated section keeps the expected leading section hierarchy, any extra sectioning commands hallucinated into the prose body must be demoted back to plain target-language text before persistence.
   - Rationale: `2305.18290` exposed a narrower post-rescue regression where stray `\section{...}` commands survived inside body text, hurting preview readability even when compile-time recovery remained possible.
+- Decision: When a section-level invariant rescue succeeds but leaves degraded heading text, the leading section titles should be rescued independently before the section is persisted.
+  - Rationale: `2305.18290` still showed badly degraded Chinese subsection titles after the unsafe passthrough bug was fixed; the body was acceptable, but the heading quality remained much worse than the product rule allows.
 - Decision: Normalize explicit pdfTeX package driver declarations before modern CJK compilation.
   - Rationale: `2010.11929` is a concrete failure caused by template engine assumptions, not by translation semantics.
 
@@ -35,5 +37,6 @@
 ## Validation Plan
 - Add regression tests for section rescue so payload-invariant failures do not revert whole sections to source when paragraph/fragment rescue produced acceptable target-language output.
 - Add a regression test for translated section bodies that hallucinate extra `\section` / `\subsection` commands even though the source body has none.
+- Add regression coverage for section-level invariant recovery where headings need a separate title-only rescue pass.
 - Add compile sanitization tests for explicit `pdftex` graphics driver declarations under zh/CJK compilation.
 - Re-run focused paper tests for `2006.11239`, `2305.18290`, and `2010.11929`.

@@ -591,6 +591,88 @@ class TranslatorAgent(BaseToolAgent):
         demoted = re.sub(r"\n{3,}", "\n\n", demoted)
         return demoted
 
+    @staticmethod
+    def _rebuild_sectioning_command_with_title(
+        source_text: str,
+        entry: Dict[str, Any],
+        title_text: str,
+    ) -> Optional[str]:
+        rebuilt = (
+            f"{source_text[entry['start']:entry['arg_start'] + 1]}"
+            f"{title_text}"
+            f"{source_text[entry['arg_end'] - 1:entry['end']]}"
+        )
+        parsed = _extract_sectioning_commands(rebuilt)
+        if len(parsed) != 1:
+            return None
+        return rebuilt
+
+    async def _rescue_leading_section_titles_after_invariant_recovery(
+        self,
+        *,
+        original_text: str,
+        translated_text: str,
+        identifier: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+    ) -> Tuple[str, bool]:
+        original_leading, _ = self._split_leading_sectioning_commands(original_text)
+        translated_leading, _ = self._split_leading_sectioning_commands(translated_text)
+        if not original_leading or len(translated_leading) < len(original_leading):
+            return translated_text, False
+
+        original_names = [
+            self._get_sectioning_command_name(entry.get("full", ""))
+            for entry in original_leading
+        ]
+        translated_names = [
+            self._get_sectioning_command_name(entry.get("full", ""))
+            for entry in translated_leading[: len(original_leading)]
+        ]
+        if translated_names != original_names:
+            return translated_text, False
+
+        prompt_suffix = (
+            "\n[Title Rescue]\n"
+            "Translate only this section heading text into the target language. "
+            "Keep LaTeX commands, placeholders, and math unchanged. "
+            "Return only the translated heading text without wrapping it in "
+            "section commands."
+        )
+        rebuilt_parts: List[str] = []
+        last = 0
+        changed = False
+
+        for idx, original_entry in enumerate(original_leading):
+            translated_entry = translated_leading[idx]
+            rebuilt_parts.append(translated_text[last : translated_entry["start"]])
+            rescued_title = await self._translate_masked_plain_text_rescue_piece(
+                piece=original_entry.get("arg_inner", ""),
+                fail_part=f"{identifier}:title:{idx}",
+                part_type=part_type,
+                session=session,
+                error_message="Previous section-level rescue left the heading text degraded.",
+                prompt_suffix=prompt_suffix,
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms="section_system_prompt_with_dict",
+            )
+            preferred_title = rescued_title or translated_entry.get("arg_inner", "")
+            rebuilt_command = self._rebuild_sectioning_command_with_title(
+                original_text,
+                original_entry,
+                preferred_title,
+            )
+            if rebuilt_command is None:
+                rebuilt_command = translated_entry.get("full", "") or original_entry.get("full", "")
+            else:
+                changed = changed or preferred_title != translated_entry.get("arg_inner", "")
+            rebuilt_parts.append(rebuilt_command)
+            last = translated_entry["end"]
+
+        rebuilt_parts.append(translated_text[last:])
+        rebuilt_text = "".join(rebuilt_parts)
+        return rebuilt_text, changed
+
     @classmethod
     def _sanitize_sectioning_command_drift(
         cls,
@@ -2662,6 +2744,15 @@ class TranslatorAgent(BaseToolAgent):
                 )
                 if rescued_text is not None:
                     translated_text = rescued_text
+                    translated_text, titles_rescued = await self._rescue_leading_section_titles_after_invariant_recovery(
+                        original_text=translatable_content,
+                        translated_text=translated_text,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                    )
+                    if titles_rescued:
+                        transed_section["sectioning_title_rescued"] = True
                     self._clear_api_fallback("sec", section_num)
                     api_fallback_reason = None
                     payload_invariant_passthrough = False
@@ -2733,6 +2824,15 @@ class TranslatorAgent(BaseToolAgent):
                 )
                 if rescued_text is not None:
                     translated_text = rescued_text
+                    translated_text, titles_rescued = await self._rescue_leading_section_titles_after_invariant_recovery(
+                        original_text=translatable_content,
+                        translated_text=translated_text,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                    )
+                    if titles_rescued:
+                        transed_section["sectioning_title_rescued"] = True
                     self._clear_api_fallback("sec", section_num)
                     api_fallback_reason = None
                     payload_invariant_passthrough = False
