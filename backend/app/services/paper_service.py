@@ -14,7 +14,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -93,6 +93,7 @@ STRUCTURED_INSIGHT_SECTION_KEYS = (
 )
 STRUCTURED_INSIGHT_MIN_TEXT_LENGTH = 80
 STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS = 2
+STRUCTURED_INSIGHT_BASE_503_SWITCH_THRESHOLD = 3
 STRUCTURED_INSIGHT_READY_STATUS = "ready"
 STRUCTURED_INSIGHT_PROCESSING_STATUS = "processing"
 STRUCTURED_INSIGHT_NOT_READY_STATUS = "not_ready"
@@ -3934,17 +3935,21 @@ def _load_task_artifact_json(output_dir: Path, artifact_name: str) -> List[Dict[
     return payload if isinstance(payload, list) else []
 
 
-def _build_structured_insight_placeholder_map(output_dir: Path) -> Dict[str, str]:
-    placeholder_map: Dict[str, str] = {}
+def _build_structured_insight_placeholder_maps(output_dir: Path) -> tuple[Dict[str, str], Dict[str, str]]:
+    source_placeholder_map: Dict[str, str] = {}
+    translated_placeholder_map: Dict[str, str] = {}
     for artifact_name in ("envs_map.json", "captions_map.json"):
         for item in _load_task_artifact_json(output_dir, artifact_name):
             placeholder = str(item.get("placeholder") or "").strip()
             if not placeholder:
                 continue
-            translated = str(item.get("trans_content") or item.get("content") or "").strip()
-            if translated:
-                placeholder_map[placeholder] = translated
-    return placeholder_map
+            source_text = str(item.get("content") or item.get("trans_content") or "").strip()
+            translated_text = str(item.get("trans_content") or item.get("content") or "").strip()
+            if source_text:
+                source_placeholder_map[placeholder] = source_text
+            if translated_text:
+                translated_placeholder_map[placeholder] = translated_text
+    return source_placeholder_map, translated_placeholder_map
 
 
 def _expand_structured_insight_placeholders(text: str, placeholder_map: Dict[str, str]) -> str:
@@ -3961,20 +3966,23 @@ def _normalize_structured_insight_text(text: str) -> Optional[str]:
     return _normalize_multiline_text(text)
 
 
-def _load_structured_insight_translated_sections(task_id: str) -> List[Dict[str, Any]]:
+def _load_structured_insight_runtime_sections(task_id: str) -> List[Dict[str, Any]]:
     for output_dir in _candidate_output_directories_for_task(task_id):
         sections = _load_task_artifact_json(output_dir, "sections_map.json")
         if not sections:
             continue
-        placeholder_map = _build_structured_insight_placeholder_map(output_dir)
+        source_placeholder_map, translated_placeholder_map = _build_structured_insight_placeholder_maps(output_dir)
         normalized_sections: List[Dict[str, Any]] = []
         for index, section in enumerate(sections):
             translated = str(section.get("trans_content") or section.get("content") or "").strip()
-            if not translated:
+            source = str(section.get("content") or section.get("trans_content") or "").strip()
+            if not translated and not source:
                 continue
-            expanded = _expand_structured_insight_placeholders(translated, placeholder_map)
-            normalized = _normalize_structured_insight_text(expanded)
-            if not normalized:
+            expanded_translated = _expand_structured_insight_placeholders(translated, translated_placeholder_map)
+            expanded_source = _expand_structured_insight_placeholders(source, source_placeholder_map)
+            normalized_translated = _normalize_structured_insight_text(expanded_translated)
+            normalized_source = _normalize_structured_insight_text(expanded_source)
+            if not normalized_translated and not normalized_source:
                 continue
             title = _normalize_metadata_text(section.get("title"))
             normalized_sections.append(
@@ -3982,8 +3990,10 @@ def _load_structured_insight_translated_sections(task_id: str) -> List[Dict[str,
                     "index": index,
                     "section": str(section.get("section") or "").strip() or str(index + 1),
                     "title": title,
-                    "content": normalized,
-                    "raw_content": expanded,
+                    "content": normalized_translated or normalized_source,
+                    "translated_content": normalized_translated or normalized_source or "",
+                    "source_content": normalized_source or normalized_translated or "",
+                    "raw_content": expanded_translated or expanded_source,
                 }
             )
         if normalized_sections:
@@ -4037,6 +4047,8 @@ def _load_structured_insight_sections_from_preview_asset(
                 "section": str(index + 1),
                 "title": title,
                 "content": content,
+                "translated_content": content,
+                "source_content": content,
                 "raw_content": content,
             }
         )
@@ -4104,12 +4116,13 @@ def _compose_structured_insight_excerpt(
     sections: List[Dict[str, Any]],
     *,
     max_chars: int,
+    content_key: str = "content",
 ) -> str:
     chunks: List[str] = []
     total = 0
     for section in _dedupe_structured_insight_sections(sections):
         title = _normalize_metadata_text(section.get("title"))
-        content = _normalize_metadata_text(section.get("content"))
+        content = _normalize_metadata_text(section.get(content_key) or section.get("content"))
         if not content:
             continue
         chunk = f"【{title}】\n{content}" if title else content
@@ -4125,16 +4138,83 @@ def _compose_structured_insight_excerpt(
     return "\n\n".join(chunk for chunk in chunks if chunk).strip()
 
 
-def _prepare_structured_insight_sources(
+def _build_structured_insight_source_packet(
+    sections: List[Dict[str, Any]],
+    *,
+    max_chars: int,
+) -> Dict[str, str]:
+    source_excerpt = _compose_structured_insight_excerpt(
+        sections,
+        max_chars=max_chars,
+        content_key="source_content",
+    )
+    translated_excerpt = _compose_structured_insight_excerpt(
+        sections,
+        max_chars=max_chars,
+        content_key="translated_content",
+    )
+    combined_parts = []
+    if translated_excerpt:
+        combined_parts.append(f"中文摘录：\n{translated_excerpt}")
+    if source_excerpt:
+        combined_parts.append(f"原文线索：\n{source_excerpt}")
+    combined_excerpt = "\n\n".join(part for part in combined_parts if part).strip()
+    return {
+        "translated_excerpt": translated_excerpt,
+        "source_excerpt": source_excerpt,
+        "combined_excerpt": combined_excerpt or translated_excerpt or source_excerpt,
+    }
+
+
+def _normalize_structured_insight_source_packet(source: Any) -> Dict[str, str]:
+    if isinstance(source, dict):
+        translated_excerpt = _normalize_multiline_text(
+            str(source.get("translated_excerpt") or source.get("content") or source.get("combined_excerpt") or "")
+        ) or ""
+        source_excerpt = _normalize_multiline_text(
+            str(source.get("source_excerpt") or "")
+        ) or ""
+        combined_excerpt = _normalize_multiline_text(
+            str(source.get("combined_excerpt") or "")
+        ) or ""
+        if not combined_excerpt:
+            combined_parts = []
+            if translated_excerpt:
+                combined_parts.append(f"中文摘录：\n{translated_excerpt}")
+            if source_excerpt:
+                combined_parts.append(f"原文线索：\n{source_excerpt}")
+            combined_excerpt = "\n\n".join(part for part in combined_parts if part).strip()
+        return {
+            "translated_excerpt": translated_excerpt,
+            "source_excerpt": source_excerpt,
+            "combined_excerpt": combined_excerpt or translated_excerpt or source_excerpt,
+        }
+
+    normalized = _normalize_multiline_text(str(source or "")) or ""
+    return {
+        "translated_excerpt": normalized,
+        "source_excerpt": "",
+        "combined_excerpt": normalized,
+    }
+
+
+def _prepare_structured_insight_source_packets(
     task_id: str,
     *,
     preview_asset: Optional[Dict[str, Any]] = None,
-) -> Dict[str, str]:
-    sections = _load_structured_insight_translated_sections(task_id)
+) -> Dict[str, Dict[str, str]]:
+    sections = _load_structured_insight_runtime_sections(task_id)
     if not sections and preview_asset:
         sections = _load_structured_insight_sections_from_preview_asset(preview_asset)
     if not sections:
-        return {section_key: "" for section_key in STRUCTURED_INSIGHT_SECTION_KEYS}
+        return {
+            section_key: {
+                "translated_excerpt": "",
+                "source_excerpt": "",
+                "combined_excerpt": "",
+            }
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+        }
 
     classified = [
         {
@@ -4183,26 +4263,41 @@ def _prepare_structured_insight_sources(
     )
 
     return {
-        "problem": _compose_structured_insight_excerpt(
+        "problem": _build_structured_insight_source_packet(
             problem_sections or by_index(0, min(2, total_sections)),
             max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
         ),
-        "solution": _compose_structured_insight_excerpt(
+        "solution": _build_structured_insight_source_packet(
             solution_sections,
             max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
         ),
-        "innovation": _compose_structured_insight_excerpt(
+        "innovation": _build_structured_insight_source_packet(
             innovation_sections,
             max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
         ),
-        "experiment": _compose_structured_insight_excerpt(
+        "experiment": _build_structured_insight_source_packet(
             experiment_sections_with_anchor,
             max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
         ),
-        "future": _compose_structured_insight_excerpt(
+        "future": _build_structured_insight_source_packet(
             future_sections,
             max_chars=STRUCTURED_INSIGHT_SOURCE_MAX_CHARS,
         ),
+    }
+
+
+def _prepare_structured_insight_sources(
+    task_id: str,
+    *,
+    preview_asset: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    packets = _prepare_structured_insight_source_packets(
+        task_id,
+        preview_asset=preview_asset,
+    )
+    return {
+        section_key: _normalize_structured_insight_source_packet(packet).get("combined_excerpt") or ""
+        for section_key, packet in packets.items()
     }
 
 
@@ -4284,6 +4379,78 @@ def _validate_structured_insight_sections(sections: List[Dict[str, Any]]) -> Lis
     return [section_map[section_key] for section_key in STRUCTURED_INSIGHT_SECTION_KEYS]
 
 
+def _collect_invalid_structured_insight_section_keys(sections: List[Dict[str, Any]]) -> List[str]:
+    invalid_keys: set[str] = set()
+    seen_contents: Dict[str, str] = {}
+    seen_keys: set[str] = set()
+
+    for raw_section in sections:
+        section = _normalize_structured_insight_section(raw_section)
+        section_key = section["section_key"]
+        if section_key not in STRUCTURED_INSIGHT_SECTION_KEYS:
+            invalid_keys.add(section_key)
+            continue
+        seen_keys.add(section_key)
+        normalized_content = _normalize_metadata_text(section.get("content")) or ""
+        if not _is_structured_insight_content_readable(normalized_content):
+            invalid_keys.add(section_key)
+            continue
+        duplicate_key = seen_contents.get(normalized_content)
+        if duplicate_key is not None:
+            invalid_keys.add(section_key)
+            continue
+        seen_contents[normalized_content] = section_key
+
+    for section_key in STRUCTURED_INSIGHT_SECTION_KEYS:
+        if section_key not in seen_keys:
+            invalid_keys.add(section_key)
+
+    return [section_key for section_key in STRUCTURED_INSIGHT_SECTION_KEYS if section_key in invalid_keys]
+
+
+class _StructuredInsightBasePreferenceTracker:
+    def __init__(self, llm_config: Dict[str, Any], *, threshold: int = STRUCTURED_INSIGHT_BASE_503_SWITCH_THRESHOLD) -> None:
+        members = list(llm_config.get("pool_members") or [])
+        self._threshold = max(1, int(threshold))
+        self._known_bases: List[str] = []
+        self._base_503_counts: Dict[str, int] = {}
+        for member in members:
+            base_url = str(member.get("base_url") or "").strip()
+            if base_url and base_url not in self._known_bases:
+                self._known_bases.append(base_url)
+
+    def preferred_base_urls(self) -> tuple[str, ...]:
+        if len(self._known_bases) <= 1:
+            return ()
+        counts = {base_url: self._base_503_counts.get(base_url, 0) for base_url in self._known_bases}
+        worst_count = max(counts.values(), default=0)
+        if worst_count < self._threshold:
+            return ()
+        ordered = sorted(
+            self._known_bases,
+            key=lambda base_url: (counts.get(base_url, 0), self._known_bases.index(base_url)),
+        )
+        best_count = counts.get(ordered[0], 0)
+        if best_count >= worst_count:
+            return ()
+        return tuple(base_url for base_url in ordered if counts.get(base_url, 0) < worst_count)
+
+    def record_retryable_status(self, *, member_id: str, base_url: str, status_code: int) -> tuple[str, ...]:
+        before = self.preferred_base_urls()
+        normalized_base = str(base_url or "").strip()
+        if status_code == 503 and normalized_base:
+            self._base_503_counts[normalized_base] = self._base_503_counts.get(normalized_base, 0) + 1
+        after = self.preferred_base_urls()
+        if after != before and after:
+            logger.warning(
+                "Structured insight pool now prefers bases %s after repeated 503 on %s via %s",
+                list(after),
+                normalized_base,
+                member_id,
+            )
+        return after
+
+
 async def _build_structured_insight_llm_config(user_id: Optional[str]) -> Dict[str, Any]:
     default_request = translate_route.TranslateRequest(source_language="en", target_language="zh")
     return await translate_route.build_llm_config_async(default_request.advanced_config, user_id)
@@ -4296,6 +4463,8 @@ async def _call_structured_insight_llm(
     user_payload: Dict[str, Any],
     temperature: float = 0.1,
     max_tokens: int = 3000,
+    preferred_base_urls_getter: Optional[Callable[[], List[str] | tuple[str, ...]]] = None,
+    on_retryable_status: Optional[Callable[[str, str, int], None]] = None,
 ) -> str:
     provider_url = _resolve_chat_completions_url(
         str(llm_config.get("base_url") or settings.llm_base_url or "")
@@ -4328,6 +4497,8 @@ async def _call_structured_insight_llm(
                     "Structured insight LLM pool retry: %s",
                     message,
                 ),
+                preferred_base_urls_getter=preferred_base_urls_getter,
+                on_retryable_status=on_retryable_status,
             )
         else:
             async with session.post(
@@ -4352,6 +4523,129 @@ async def _call_structured_insight_llm(
     return content
 
 
+def _build_structured_insight_source_briefs(
+    sources: Dict[str, Dict[str, str]],
+) -> Dict[str, List[str]]:
+    briefs: Dict[str, List[str]] = {}
+    running_briefs: List[str] = []
+    for section_key in STRUCTURED_INSIGHT_SECTION_KEYS:
+        briefs[section_key] = list(running_briefs)
+        packet = _normalize_structured_insight_source_packet(sources.get(section_key))
+        brief_body = _normalize_metadata_text(packet.get("translated_excerpt") or packet.get("combined_excerpt")) or ""
+        if brief_body:
+            running_briefs.append(f"{section_key}: {brief_body[:120]}")
+    return briefs
+
+
+async def _generate_single_structured_insight_section(
+    *,
+    task_id: str,
+    section_key: str,
+    source_packet: Dict[str, str],
+    llm_config: Dict[str, Any],
+    title: str,
+    abstract_raw: Optional[str],
+    prior_section_summaries: List[str],
+    disallowed_contents: Optional[set[str]] = None,
+    allow_fallback: bool,
+    base_preference_tracker: Optional[_StructuredInsightBasePreferenceTracker] = None,
+) -> Dict[str, Any]:
+    packet = _normalize_structured_insight_source_packet(source_packet)
+    translated_excerpt = _normalize_metadata_text(packet.get("translated_excerpt")) or ""
+    source_excerpt = _normalize_metadata_text(packet.get("source_excerpt")) or ""
+    combined_excerpt = _normalize_metadata_text(packet.get("combined_excerpt")) or translated_excerpt or source_excerpt
+
+    content: Optional[str] = None
+    last_error: Optional[Exception] = None
+    boundaries = STRUCTURED_INSIGHT_SECTION_BOUNDARIES.get(section_key, {})
+    banned_contents = set(disallowed_contents or set())
+
+    if translated_excerpt or source_excerpt or combined_excerpt:
+        for attempt in range(STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1):
+            try:
+                raw_content = await _call_structured_insight_llm(
+                    llm_config=llm_config,
+                    system_prompt=STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT,
+                    user_payload={
+                        "title": _normalize_metadata_text(title),
+                        "abstract_raw": _normalize_metadata_text(abstract_raw),
+                        "section_key": section_key,
+                        "question": STRUCTURED_INSIGHT_SECTION_QUESTIONS[section_key],
+                        "must_cover": boundaries.get("must_cover"),
+                        "avoid": boundaries.get("avoid"),
+                        "section_focus": boundaries.get("section_focus"),
+                        "grounding_requirements": STRUCTURED_INSIGHT_GROUNDING_REQUIREMENTS,
+                        "style_requirements": STRUCTURED_INSIGHT_STYLE_REQUIREMENTS,
+                        "density_requirements": STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS.get(
+                            section_key,
+                            STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS["default"],
+                        ),
+                        "structure_requirements": STRUCTURED_INSIGHT_STRUCTURE_REQUIREMENTS,
+                        "suggested_subheadings": STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS.get(section_key, []),
+                        "anti_repetition_requirements": STRUCTURED_INSIGHT_ANTI_REPETITION_REQUIREMENTS,
+                        "avoid_repeat_hint": "避免重复前面模块已经讲清的内容，重点回答当前问题。",
+                        "previous_module_briefs": list(prior_section_summaries),
+                        "source_excerpt_zh": translated_excerpt or combined_excerpt,
+                        "source_excerpt_original": source_excerpt,
+                    },
+                    temperature=0.1,
+                    max_tokens=1200,
+                    preferred_base_urls_getter=(
+                        (lambda: list(base_preference_tracker.preferred_base_urls()))
+                        if base_preference_tracker is not None
+                        else None
+                    ),
+                    on_retryable_status=(
+                        (
+                            lambda member_id, base_url, status_code: base_preference_tracker.record_retryable_status(
+                                member_id=member_id,
+                                base_url=base_url,
+                                status_code=status_code,
+                            )
+                        )
+                        if base_preference_tracker is not None
+                        else None
+                    ),
+                )
+                normalized_content = _normalize_metadata_text(raw_content)
+                if not _is_structured_insight_content_readable(normalized_content):
+                    raise ValueError(f"Structured insight section {section_key} returned unreadable content")
+                if normalized_content in banned_contents:
+                    raise ValueError(f"Structured insight section {section_key} duplicated another module")
+                content = normalized_content
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Structured insight generation failed for task %s section %s (attempt %s/%s): %s",
+                    task_id,
+                    section_key,
+                    attempt + 1,
+                    STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1,
+                    exc,
+                )
+
+    if not content and allow_fallback:
+        content = _build_structured_insight_fallback_content(
+            section_key=section_key,
+            excerpt=translated_excerpt or combined_excerpt,
+        )
+        if last_error is not None:
+            logger.warning(
+                "Using fallback structured insight content for task %s section %s after generation failure: %s",
+                task_id,
+                section_key,
+                last_error,
+            )
+
+    return {
+        "section_key": section_key,
+        "content": content or "",
+        "status": STRUCTURED_INSIGHT_READY_STATUS,
+        "updated_at": _utc_now_iso(),
+    }
+
+
 async def _generate_structured_insight_sections_from_task(
     *,
     task_id: str,
@@ -4360,90 +4654,123 @@ async def _generate_structured_insight_sections_from_task(
     created_by: Optional[str],
     preview_asset: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    sources = (
-        _prepare_structured_insight_sources(task_id, preview_asset=preview_asset)
+    source_packets = (
+        _prepare_structured_insight_source_packets(task_id, preview_asset=preview_asset)
         if preview_asset
-        else _prepare_structured_insight_sources(task_id)
+        else _prepare_structured_insight_source_packets(task_id)
     )
     llm_config = await _build_structured_insight_llm_config(created_by)
-    generated_sections: List[Dict[str, Any]] = []
-    prior_section_summaries: List[str] = []
+    has_packet_content = any(
+        _normalize_structured_insight_source_packet(source_packets.get(section_key)).get("combined_excerpt")
+        for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+    )
+    if has_packet_content:
+        normalized_sources = {
+            section_key: _normalize_structured_insight_source_packet(source_packets.get(section_key))
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+        }
+    else:
+        legacy_sources = (
+            _prepare_structured_insight_sources(task_id, preview_asset=preview_asset)
+            if preview_asset
+            else _prepare_structured_insight_sources(task_id)
+        )
+        normalized_sources = {
+            section_key: _normalize_structured_insight_source_packet(legacy_sources.get(section_key))
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+        }
+    source_briefs = _build_structured_insight_source_briefs(normalized_sources)
+    base_preference_tracker = (
+        _StructuredInsightBasePreferenceTracker(llm_config)
+        if llm_config.get("pool_mode") == "system_managed" and list(llm_config.get("pool_members") or [])
+        else None
+    )
 
-    for section_key in STRUCTURED_INSIGHT_SECTION_KEYS:
-        excerpt = _normalize_metadata_text(sources.get(section_key)) or ""
-        content: Optional[str] = None
-        last_error: Optional[Exception] = None
-        boundaries = STRUCTURED_INSIGHT_SECTION_BOUNDARIES.get(section_key, {})
+    first_pass = await asyncio.gather(
+        *[
+            _generate_single_structured_insight_section(
+                task_id=task_id,
+                section_key=section_key,
+                source_packet=normalized_sources.get(section_key, {}),
+                llm_config=llm_config,
+                title=title,
+                abstract_raw=abstract_raw,
+                prior_section_summaries=source_briefs.get(section_key, []),
+                allow_fallback=False,
+                base_preference_tracker=base_preference_tracker,
+            )
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+        ]
+    )
+    generated_by_key = {
+        section["section_key"]: section
+        for section in first_pass
+    }
 
-        if excerpt:
-            for attempt in range(STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1):
-                try:
-                    raw_content = await _call_structured_insight_llm(
-                        llm_config=llm_config,
-                        system_prompt=STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT,
-                        user_payload={
-                            "title": _normalize_metadata_text(title),
-                            "abstract_raw": _normalize_metadata_text(abstract_raw),
-                            "section_key": section_key,
-                            "question": STRUCTURED_INSIGHT_SECTION_QUESTIONS[section_key],
-                            "must_cover": boundaries.get("must_cover"),
-                            "avoid": boundaries.get("avoid"),
-                            "section_focus": boundaries.get("section_focus"),
-                            "grounding_requirements": STRUCTURED_INSIGHT_GROUNDING_REQUIREMENTS,
-                            "style_requirements": STRUCTURED_INSIGHT_STYLE_REQUIREMENTS,
-                            "density_requirements": STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS.get(
-                                section_key,
-                                STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS["default"],
-                            ),
-                            "structure_requirements": STRUCTURED_INSIGHT_STRUCTURE_REQUIREMENTS,
-                            "suggested_subheadings": STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS.get(section_key, []),
-                            "anti_repetition_requirements": STRUCTURED_INSIGHT_ANTI_REPETITION_REQUIREMENTS,
-                            "avoid_repeat_hint": "避免重复前面模块已经讲清的内容，重点回答当前问题。",
-                            "previous_module_briefs": list(prior_section_summaries),
-                            "source_excerpt_zh": excerpt,
-                        },
-                        temperature=0.1,
-                        max_tokens=1200,
-                    )
-                    normalized_content = _normalize_metadata_text(raw_content)
-                    if not _is_structured_insight_content_readable(normalized_content):
-                        raise ValueError(f"Structured insight section {section_key} returned unreadable content")
-                    content = normalized_content
-                    break
-                except Exception as exc:
-                    last_error = exc
-                    logger.warning(
-                        "Structured insight generation failed for task %s section %s (attempt %s/%s): %s",
-                        task_id,
-                        section_key,
-                        attempt + 1,
-                        STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1,
-                        exc,
-                    )
+    for repair_round in range(STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS):
+        ordered_sections = [
+            generated_by_key.get(
+                section_key,
+                {
+                    "section_key": section_key,
+                    "content": "",
+                    "status": STRUCTURED_INSIGHT_READY_STATUS,
+                    "updated_at": _utc_now_iso(),
+                },
+            )
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+        ]
+        invalid_keys = _collect_invalid_structured_insight_section_keys(ordered_sections)
+        if not invalid_keys:
+            return _validate_structured_insight_sections(ordered_sections)
 
-        if not content:
-            content = _build_structured_insight_fallback_content(section_key=section_key, excerpt=excerpt)
-            if last_error is not None:
-                logger.warning(
-                    "Using fallback structured insight content for task %s section %s after generation failure: %s",
-                    task_id,
-                    section_key,
-                    last_error,
+        valid_briefs = [
+            f"{section_key}: {(_normalize_metadata_text(generated_by_key[section_key].get('content')) or '')[:120]}"
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+            if section_key not in invalid_keys
+            and section_key in generated_by_key
+            and _is_structured_insight_content_readable(generated_by_key[section_key].get("content"))
+        ]
+        disallowed_contents = {
+            _normalize_metadata_text(generated_by_key[section_key].get("content")) or ""
+            for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+            if section_key not in invalid_keys
+            and section_key in generated_by_key
+            and _is_structured_insight_content_readable(generated_by_key[section_key].get("content"))
+        }
+        repaired_sections = await asyncio.gather(
+            *[
+                _generate_single_structured_insight_section(
+                    task_id=task_id,
+                    section_key=section_key,
+                    source_packet=normalized_sources.get(section_key, {}),
+                    llm_config=llm_config,
+                    title=title,
+                    abstract_raw=abstract_raw,
+                    prior_section_summaries=valid_briefs or source_briefs.get(section_key, []),
+                    disallowed_contents=disallowed_contents,
+                    allow_fallback=repair_round == (STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS - 1),
+                    base_preference_tracker=base_preference_tracker,
                 )
+                for section_key in invalid_keys
+            ]
+        )
+        for section in repaired_sections:
+            generated_by_key[section["section_key"]] = section
 
-        generated_sections.append(
+    final_sections = [
+        generated_by_key.get(
+            section_key,
             {
                 "section_key": section_key,
-                "content": content,
+                "content": "",
                 "status": STRUCTURED_INSIGHT_READY_STATUS,
                 "updated_at": _utc_now_iso(),
-            }
+            },
         )
-        normalized_content = _normalize_metadata_text(content) or ""
-        if normalized_content:
-            prior_section_summaries.append(f"{section_key}: {normalized_content[:120]}")
-
-    return _validate_structured_insight_sections(generated_sections)
+        for section_key in STRUCTURED_INSIGHT_SECTION_KEYS
+    ]
+    return _validate_structured_insight_sections(final_sections)
 
 
 def _archive_metadata_from_source_path(source_path: Path, fallback_title: str) -> Dict[str, Any]:

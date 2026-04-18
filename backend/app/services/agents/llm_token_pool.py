@@ -13,7 +13,9 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 _RETRYABLE_STATUS_CODES = frozenset({429, 503})
-_STATUS_503_FAILOVER_THRESHOLD = 2
+_STATUS_503_FAILOVER_THRESHOLD = 3
+_STATUS_503_COOLDOWN_SECONDS = 8
+_ALL_MEMBERS_UNAVAILABLE_503_RETRY_SECONDS = 2
 
 
 def build_pool_members_from_groups(groups: Iterable[Mapping[str, Any]]) -> list[dict[str, str]]:
@@ -96,7 +98,13 @@ class _PoolRegistry:
                 state.pop(member_id, None)
             return dict(state)
 
-    def choose_member(self, pool_id: str, *, exclude: Optional[set[str]] = None) -> Optional[_MemberState]:
+    def choose_member(
+        self,
+        pool_id: str,
+        *,
+        exclude: Optional[set[str]] = None,
+        preferred_base_urls: Optional[Iterable[str]] = None,
+    ) -> Optional[_MemberState]:
         now = time.monotonic()
         with self._lock:
             state = self._pools.get(pool_id, {})
@@ -107,6 +115,23 @@ class _PoolRegistry:
             ]
             if not healthy:
                 return None
+            normalized_preferences = [
+                str(base_url or "").strip()
+                for base_url in (preferred_base_urls or [])
+                if str(base_url or "").strip()
+            ]
+            if normalized_preferences:
+                preferred_rank = {base_url: index for index, base_url in enumerate(normalized_preferences)}
+                preferred_members = [
+                    member
+                    for member in healthy
+                    if member.base_url in preferred_rank
+                ]
+                if preferred_members:
+                    return min(
+                        preferred_members,
+                        key=lambda item: (preferred_rank[item.base_url], item.last_used_at, item.member_id),
+                    )
             return min(healthy, key=lambda item: (item.last_used_at, item.member_id))
 
     def mark_attempt(self, pool_id: str, member_id: str) -> None:
@@ -141,7 +166,7 @@ class _PoolRegistry:
                 member.consecutive_503 += 1
                 member.consecutive_429 = 0
                 if member.consecutive_503 >= _STATUS_503_FAILOVER_THRESHOLD:
-                    member.cooldown_until = max(member.cooldown_until, now + 1)
+                    member.cooldown_until = max(member.cooldown_until, now + _STATUS_503_COOLDOWN_SECONDS)
                 return member.consecutive_503, member.consecutive_503 >= _STATUS_503_FAILOVER_THRESHOLD
             member.consecutive_429 = 0
             member.consecutive_503 = 0
@@ -192,6 +217,8 @@ async def post_chat_completion_with_pool(
     payload: Dict[str, Any],
     timeout: aiohttp.ClientTimeout,
     on_retry_message: Optional[Callable[[str], None]] = None,
+    preferred_base_urls_getter: Optional[Callable[[], Iterable[str]]] = None,
+    on_retryable_status: Optional[Callable[[str, str, int], None]] = None,
 ) -> Dict[str, Any]:
     members = list(llm_config.get("pool_members") or [])
     if llm_config.get("pool_mode") != "system_managed" or not members:
@@ -210,7 +237,10 @@ async def post_chat_completion_with_pool(
 
     pool_id = str(llm_config.get("pool_routing_key") or compute_pool_routing_key(members))
     _POOL_REGISTRY.ensure_pool(pool_id, members)
-    current = _POOL_REGISTRY.choose_member(pool_id) or next(iter(_POOL_REGISTRY.ensure_pool(pool_id, members).values()))
+    current = _POOL_REGISTRY.choose_member(
+        pool_id,
+        preferred_base_urls=(preferred_base_urls_getter() if preferred_base_urls_getter is not None else ()),
+    ) or next(iter(_POOL_REGISTRY.ensure_pool(pool_id, members).values()))
 
     while True:
         _POOL_REGISTRY.mark_attempt(pool_id, current.member_id)
@@ -224,6 +254,8 @@ async def post_chat_completion_with_pool(
         )
 
         if status_code in _RETRYABLE_STATUS_CODES:
+            if on_retryable_status is not None:
+                on_retryable_status(current.member_id, current.base_url, status_code)
             retry_after_seconds = _parse_retry_after_seconds(headers)
             streak, may_failover = _POOL_REGISTRY.record_status(
                 pool_id,
@@ -231,11 +263,31 @@ async def post_chat_completion_with_pool(
                 status_code,
                 retry_after_seconds=retry_after_seconds,
             )
-            alternative = _POOL_REGISTRY.choose_member(pool_id, exclude={current.member_id})
+            preferred_base_urls = preferred_base_urls_getter() if preferred_base_urls_getter is not None else ()
+            alternative = _POOL_REGISTRY.choose_member(
+                pool_id,
+                exclude={current.member_id},
+                preferred_base_urls=preferred_base_urls,
+            )
+            preferred_alternative_available = (
+                status_code == 503
+                and alternative is not None
+                and any(
+                    str(base_url or "").strip() == alternative.base_url and current.base_url != alternative.base_url
+                    for base_url in (preferred_base_urls or ())
+                )
+            )
             if may_failover and alternative is not None:
                 if on_retry_message is not None:
                     on_retry_message(
                         f"LLM pool member {current.member_id} returned {status_code}; fail over to {alternative.member_id}"
+                    )
+                current = alternative
+                continue
+            if preferred_alternative_available:
+                if on_retry_message is not None:
+                    on_retry_message(
+                        f"LLM pool member {current.member_id} returned {status_code}; prefer base fail over to {alternative.member_id}"
                     )
                 current = alternative
                 continue
@@ -247,7 +299,7 @@ async def post_chat_completion_with_pool(
                 current = alternative
                 continue
 
-            wait_seconds = retry_after_seconds if status_code == 429 else 1
+            wait_seconds = retry_after_seconds if status_code == 429 else _ALL_MEMBERS_UNAVAILABLE_503_RETRY_SECONDS
             if on_retry_message is not None:
                 on_retry_message(
                     f"LLM pool all members unavailable on {status_code}; retry current member {current.member_id} in {wait_seconds}s"

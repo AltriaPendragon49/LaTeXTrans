@@ -16,6 +16,15 @@ from backend.app.models.config_models import AdvancedConfig
 from backend.app.services.agents.translator_agent import TranslatorAgent
 
 
+@pytest.fixture(autouse=True)
+def _reset_pool_registry():
+    from backend.app.services.agents import llm_token_pool
+
+    llm_token_pool._POOL_REGISTRY._pools.clear()
+    yield
+    llm_token_pool._POOL_REGISTRY._pools.clear()
+
+
 class _FakeResponse:
     def __init__(self, status: int, json_data: Dict[str, Any] | None = None, headers: Dict[str, str] | None = None):
         self.status = status
@@ -181,6 +190,50 @@ async def test_pool_switches_after_consecutive_503():
         [
             _FakeResponse(status=503),
             _FakeResponse(status=503),
+            _FakeResponse(status=503),
+            _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    sleep_calls: list[float] = []
+
+    async def _fake_sleep(seconds: float):
+        sleep_calls.append(seconds)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("backend.app.services.agents.llm_token_pool.asyncio.sleep", _fake_sleep)
+
+    try:
+        result = await post_chat_completion_with_pool(
+            session=session,
+            llm_config=llm_config,
+            payload={"model": "test-model", "messages": []},
+            timeout=aiohttp.ClientTimeout(total=5),
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert len(session.calls) == 4
+    assert session.calls[0]["api_key"] == session.calls[1]["api_key"]
+    assert session.calls[1]["api_key"] == session.calls[2]["api_key"]
+    assert session.calls[2]["api_key"] != session.calls[3]["api_key"]
+    assert sleep_calls == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_pool_prefers_requested_base_when_healthy():
+    from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
+
+    llm_config = {
+        "model": "test-model",
+        "pool_mode": "system_managed",
+        "pool_members": [
+            {"member_id": "a1", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k1"},
+            {"member_id": "b1", "base_url": "https://relay-b.example/v1/chat/completions", "api_key": "k3"},
+        ],
+    }
+    session = _FakeSession(
+        [
             _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok"}}]}),
         ]
     )
@@ -190,12 +243,12 @@ async def test_pool_switches_after_consecutive_503():
         llm_config=llm_config,
         payload={"model": "test-model", "messages": []},
         timeout=aiohttp.ClientTimeout(total=5),
+        preferred_base_urls_getter=lambda: ["https://relay-b.example/v1/chat/completions"],
     )
 
     assert result["choices"][0]["message"]["content"] == "ok"
-    assert len(session.calls) == 3
-    assert session.calls[0]["api_key"] == session.calls[1]["api_key"]
-    assert session.calls[1]["api_key"] != session.calls[2]["api_key"]
+    assert len(session.calls) == 1
+    assert session.calls[0]["api_key"] == "k3"
 
 
 @pytest.mark.asyncio
@@ -226,6 +279,48 @@ async def test_pool_sticks_to_current_member_when_all_members_exhausted():
 
     assert result["choices"][0]["message"]["content"] == "ok"
     assert len({call["api_key"] for call in session.calls}) == 1
+
+
+@pytest.mark.asyncio
+async def test_pool_sticks_to_current_member_when_all_members_exhausted_on_503():
+    from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
+
+    llm_config = {
+        "model": "test-model",
+        "pool_mode": "system_managed",
+        "pool_members": [
+            {"member_id": "solo", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k1"},
+        ],
+    }
+    session = _FakeSession(
+        [
+            _FakeResponse(status=503),
+            _FakeResponse(status=503),
+            _FakeResponse(status=503),
+            _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    sleep_calls: list[float] = []
+
+    async def _fake_sleep(seconds: float):
+        sleep_calls.append(seconds)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("backend.app.services.agents.llm_token_pool.asyncio.sleep", _fake_sleep)
+
+    try:
+        result = await post_chat_completion_with_pool(
+            session=session,
+            llm_config=llm_config,
+            payload={"model": "test-model", "messages": []},
+            timeout=aiohttp.ClientTimeout(total=5),
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert len({call["api_key"] for call in session.calls}) == 1
+    assert sleep_calls == [2, 2, 2]
 
 
 @pytest.mark.asyncio

@@ -257,6 +257,37 @@ def test_prepare_structured_insight_sources_falls_back_to_preview_asset_when_run
     assert "扩展到更多模板" in sources["future"]
 
 
+def test_load_structured_insight_runtime_sections_preserves_source_and_translation(monkeypatch, tmp_path):
+    output_dir = tmp_path / "task-runtime" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "sections_map.json").write_text(
+        json.dumps(
+            [
+                {
+                    "section": "1",
+                    "title": "Introduction",
+                    "content": "Original problem statement with motivation and limitations.",
+                    "trans_content": "中文问题描述，说明研究动机与现有方法局限。",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        paper_service,
+        "_candidate_output_directories_for_task",
+        lambda _task_id: [output_dir],
+    )
+
+    sections = paper_service._load_structured_insight_runtime_sections("task-runtime")
+
+    assert len(sections) == 1
+    assert "Original problem statement" in sections[0]["source_content"]
+    assert "中文问题描述" in sections[0]["translated_content"]
+
+
 def test_validate_structured_insight_sections_rejects_failure_placeholder_content():
     invalid_sections = _valid_sections()
     invalid_sections[0]["content"] = "暂时无法生成"
