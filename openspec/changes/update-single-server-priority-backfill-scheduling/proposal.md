@@ -7,11 +7,11 @@
 ## What Changes
 - Introduce a single-machine dual-lane scheduler with `interactive` high priority and `backfill` opportunistic capacity borrowing.
 - Add cooperative backfill yield/resume behavior that pauses only at safe checkpoints and resumes from the last durable position.
-- Add a health-aware token pool with short request-local retries, quick failover to other healthy tokens, and explicit all-token-exhausted behavior.
+- Add a health-aware system token pool with two configured `base_url` groups and five independent system-managed credentials, plus quick failover on consecutive `429` or `503` failures.
 - Keep one-paper LangGraph orchestration intact; do not split graph nodes for the same paper across multiple workers in this change.
 - Allow non-critical post-success artifacts such as terminology-table generation and successful-compilation diagnostics to move behind resumable sidecar execution under feature flags.
 - Preserve the existing validation, repair, compile, and target-language fallback guardrails.
 
 ## Impact
 - Affected specs: `task-queue`, `queue-token-isolation`, `translation-orchestration`, `latex-translation-core`
-- Affected code: `backend/app/services/task_manager.py`, `backend/app/services/agents/langgraph_orchestrator.py`, `backend/app/services/agents/generator_agent.py`, `backend/app/services/agents/translator_agent.py`, `backend/app/services/translation/repair_scheduler.py`, `backend/app/main.py`
+- Affected code: `backend/app/api/routes/translate.py`, `backend/app/core/config.py`, `backend/app/services/task_manager.py`, `backend/app/services/agents/langgraph_orchestrator.py`, `backend/app/services/agents/generator_agent.py`, `backend/app/services/agents/translator_agent.py`, `backend/app/services/translation/repair_scheduler.py`, `backend/app/main.py`

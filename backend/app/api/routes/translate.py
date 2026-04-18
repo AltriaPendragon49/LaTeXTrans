@@ -35,6 +35,10 @@ from backend.app.repositories import TranslationTaskRepository, UserSettingsRepo
 from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
+from backend.app.services.agents.llm_token_pool import (
+    build_pool_members_from_groups,
+    compute_pool_routing_key,
+)
 from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids, get_arxiv_category
 from backend.app.utils.async_blocking import run_db_blocking
 
@@ -191,10 +195,28 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
     Returns:
         LLM configuration dictionary for agent
     """
+    def _system_pool_config() -> Dict[str, Any]:
+        members = build_pool_members_from_groups(settings.get_llm_system_pool_groups())
+        if not members:
+            return {}
+        routing_key = compute_pool_routing_key(members)
+        primary = members[0]
+        return {
+            "base_url": primary["base_url"],
+            "api_key": primary["api_key"],
+            "model": advanced_config.translation_model,
+            "timeout": settings.llm_timeout,
+            "model_context_tokens": settings.model_context_tokens,
+            "prompt_reserve_tokens": settings.prompt_reserve_tokens,
+            "pool_mode": "system_managed",
+            "pool_members": members,
+            "pool_routing_key": routing_key,
+        }
+
     # Priority 0: Default: use author's API if explicitly requested
     if advanced_config.use_author_api:
         logger.info("Using author's API configuration (use_author_api=True)")
-        return settings.get_llm_config()
+        return _system_pool_config() or settings.get_llm_config()
     
     logger.info(f"Custom API mode: user_id={user_id}, has_custom_api_key_in_request={bool(advanced_config.custom_api_key)}")
     
@@ -213,7 +235,7 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
             "base_url": base_url if base_url else None,
             "api_key": advanced_config.custom_api_key,
             "model": advanced_config.translation_model,
-            "timeout": settings.llm_timeout
+            "timeout": settings.llm_timeout,
         }
 
     # Priority 2: Try to get user's stored API config from system settings
@@ -235,23 +257,41 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
                 "base_url": base_url if base_url else None,
                 "api_key": user_api_config["api_key"],
                 "model": advanced_config.translation_model,
-                "timeout": settings.llm_timeout
+                "timeout": settings.llm_timeout,
             }
         else:
             logger.warning(f"No API key found in system settings for user {user_id}")
-    
+
     # Final fallback to author's API
     logger.warning("No custom API configuration available, falling back to author's API")
-    return settings.get_llm_config()
+    return _system_pool_config() or settings.get_llm_config()
 
 
 async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str = None) -> Dict[str, Any]:
     """
     Async-safe variant of build_llm_config for async request paths.
     """
+    def _system_pool_config() -> Dict[str, Any]:
+        members = build_pool_members_from_groups(settings.get_llm_system_pool_groups())
+        if not members:
+            return {}
+        routing_key = compute_pool_routing_key(members)
+        primary = members[0]
+        return {
+            "base_url": primary["base_url"],
+            "api_key": primary["api_key"],
+            "model": advanced_config.translation_model,
+            "timeout": settings.llm_timeout,
+            "model_context_tokens": settings.model_context_tokens,
+            "prompt_reserve_tokens": settings.prompt_reserve_tokens,
+            "pool_mode": "system_managed",
+            "pool_members": members,
+            "pool_routing_key": routing_key,
+        }
+
     if advanced_config.use_author_api:
         logger.info("Using author's API configuration (use_author_api=True)")
-        return settings.get_llm_config()
+        return _system_pool_config() or settings.get_llm_config()
 
     logger.info(f"Custom API mode: user_id={user_id}, has_custom_api_key_in_request={bool(advanced_config.custom_api_key)}")
 
@@ -283,7 +323,7 @@ async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str =
         logger.warning(f"No API key found in system settings for user {user_id}")
 
     logger.warning("No custom API configuration available, falling back to author's API")
-    return settings.get_llm_config()
+    return _system_pool_config() or settings.get_llm_config()
 
 def compute_config_hash(
     arxiv_id: Optional[str],
@@ -971,8 +1011,12 @@ async def start_translation(
     if tq:
         # Compute token_hash for per-bucket routing isolation
         _llm_cfg = await build_llm_config_async(request.advanced_config, user_id)
-        _api_key = (_llm_cfg.get("api_key") or "").encode()
-        token_hash = hashlib.md5(_api_key).hexdigest()
+        pool_routing_key = str(_llm_cfg.get("pool_routing_key") or "").strip()
+        if pool_routing_key:
+            token_hash = hashlib.md5(pool_routing_key.encode()).hexdigest()
+        else:
+            _api_key = (_llm_cfg.get("api_key") or "").encode()
+            token_hash = hashlib.md5(_api_key).hexdigest()
 
         async def translation_factory():
             await run_translation(
@@ -1150,9 +1194,13 @@ async def batch_translate(
             # downloading arXiv source packages over the network.
             # Compute token_hash for bucket routing (same key as for single-task enqueue)
             _batch_llm_cfg = await build_llm_config_async(request.advanced_config, user_id)
-            _batch_token_hash = hashlib.md5(
-                (_batch_llm_cfg.get("api_key") or "").encode()
-            ).hexdigest()
+            _pool_routing_key = str(_batch_llm_cfg.get("pool_routing_key") or "").strip()
+            if _pool_routing_key:
+                _batch_token_hash = hashlib.md5(_pool_routing_key.encode()).hexdigest()
+            else:
+                _batch_token_hash = hashlib.md5(
+                    (_batch_llm_cfg.get("api_key") or "").encode()
+                ).hexdigest()
             asyncio.create_task(
                 _download_and_enqueue(
                     task_id=task_id,

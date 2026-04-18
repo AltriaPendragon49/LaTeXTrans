@@ -23,6 +23,7 @@ from .llm_runtime import (
     resolve_llm_max_concurrent_requests,
     resolve_llm_timeout,
 )
+from .llm_token_pool import post_chat_completion_with_pool
 from pathlib import Path
 import os
 import re
@@ -240,6 +241,9 @@ class TranslatorAgent(BaseToolAgent):
         )
         safe_input_limit = safe_limit_v1(model_context_tokens, prompt_reserve_tokens)
         return model_context_tokens, prompt_reserve_tokens, safe_input_limit
+
+    def _uses_system_pool(self) -> bool:
+        return str(self.config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
 
     @staticmethod
     def _extract_chunk_index(section_id: str) -> Optional[int]:
@@ -1447,6 +1451,23 @@ class TranslatorAgent(BaseToolAgent):
         while rate_limit_hits <= MAX_429_RETRIES and network_failures <= 3:
             try:
                 async with global_llm_semaphore:  # Infra Guard — system survival only
+                    if self._uses_system_pool():
+                        result = await post_chat_completion_with_pool(
+                            session=session,
+                            llm_config=self.config.get("llm_config", {}),
+                            payload=payload,
+                            timeout=_timeout,
+                            on_retry_message=lambda message: self.update_progress(-1, message),
+                        )
+                        raw_result = result["choices"][0]["message"]["content"].strip()
+                        restored = self._restore_llm_output_text(raw_result, llm_context)
+                        self._log_protection_actions(
+                            llm_context.get("mask_mapping", {}),
+                            fail_part,
+                            hard_freeze_entries=llm_context.get("hard_freeze_audit_entries", []),
+                        )
+                        self._clear_api_fallback(part_type, str(fail_part))
+                        return restored
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
                             rate_limit_hits += 1
@@ -3356,6 +3377,14 @@ class TranslatorAgent(BaseToolAgent):
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
+                    if self._uses_system_pool():
+                        result = await post_chat_completion_with_pool(
+                            session=session,
+                            llm_config=self.config.get("llm_config", {}),
+                            payload=payload,
+                            timeout=_timeout,
+                        )
+                        return result["choices"][0]["message"]["content"].strip()
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
                             retry_after = int(response.headers.get("Retry-After", 10 * attempt))
@@ -3408,6 +3437,14 @@ class TranslatorAgent(BaseToolAgent):
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
+                    if self._uses_system_pool():
+                        result = await post_chat_completion_with_pool(
+                            session=session,
+                            llm_config=self.config.get("llm_config", {}),
+                            payload=payload,
+                            timeout=_timeout,
+                        )
+                        return result["choices"][0]["message"]["content"].strip()
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
                             retry_after = int(response.headers.get("Retry-After", 10 * attempt))
@@ -3455,6 +3492,14 @@ class TranslatorAgent(BaseToolAgent):
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
+                    if self._uses_system_pool():
+                        result = await post_chat_completion_with_pool(
+                            session=session,
+                            llm_config=self.config.get("llm_config", {}),
+                            payload=payload,
+                            timeout=_timeout,
+                        )
+                        return result["choices"][0]["message"]["content"].strip()
                     async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
                         if response.status == 429:
                             retry_after = int(response.headers.get("Retry-After", 10 * attempt))

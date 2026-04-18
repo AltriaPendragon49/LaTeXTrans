@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Literal, Optional
 import aiohttp
 from pydantic import BaseModel, field_validator, model_validator
 from .llm_runtime import build_llm_client_timeout, resolve_llm_timeout
+from .llm_token_pool import post_chat_completion_with_pool
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,9 @@ class CompilationDiagnosticNode:
             "max_new_tokens": 1024,
         }
 
+    def _uses_system_pool(self) -> bool:
+        return str(self._config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
+
     def _parse_llm_response(
         self,
         raw: str,
@@ -228,6 +232,15 @@ class CompilationDiagnosticNode:
         raw = ""
         try:
             async with aiohttp.ClientSession() as session:
+                if self._uses_system_pool():
+                    result = await post_chat_completion_with_pool(
+                        session=session,
+                        llm_config=self._config.get("llm_config", {}),
+                        payload=payload,
+                        timeout=timeout,
+                    )
+                    raw = result["choices"][0]["message"]["content"].strip()
+                    return self._parse_llm_response(raw, self._task_id, error_count)
                 async with session.post(
                     self._base_url, json=payload, headers=headers, timeout=timeout
                 ) as resp:

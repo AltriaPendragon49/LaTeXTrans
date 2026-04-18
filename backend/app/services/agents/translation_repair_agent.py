@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 from .llm_runtime import build_llm_client_timeout, resolve_llm_timeout
+from .llm_token_pool import post_chat_completion_with_pool
 
 from .pipeline_schema import FallbackReport
 
@@ -158,6 +159,9 @@ class TranslationRepairAgent:
         self.timeout_seconds = resolve_llm_timeout(config, default=120)
         self.target_language = config.get("target_language", "zh")
         self.source_language = config.get("source_language", "en")
+
+    def _uses_system_pool(self) -> bool:
+        return str(self.config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
 
     @staticmethod
     def _normalized_failure_signature(report: FallbackReport) -> str:
@@ -302,6 +306,14 @@ class TranslationRepairAgent:
             }
             timeout = build_llm_client_timeout(self.config, default=self.timeout_seconds)
             async with aiohttp.ClientSession() as session:
+                if self._uses_system_pool():
+                    result = await post_chat_completion_with_pool(
+                        session=session,
+                        llm_config=self.config.get("llm_config", {}),
+                        payload=payload,
+                        timeout=timeout,
+                    )
+                    return result["choices"][0]["message"]["content"].strip()
                 async with session.post(
                     self.base_url, json=payload, headers=headers, timeout=timeout
                 ) as resp:

@@ -19,6 +19,7 @@ from typing import Any, Dict
 
 import aiohttp
 from .llm_runtime import build_llm_client_timeout, resolve_llm_timeout
+from .llm_token_pool import post_chat_completion_with_pool
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,9 @@ class ControlledRepairAgent:
             "Content-Type": "application/json",
         }
 
+    def _uses_system_pool(self) -> bool:
+        return str(self._config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
+
     async def attempt_repair(
         self,
         env: Dict[str, Any],
@@ -143,6 +147,14 @@ class ControlledRepairAgent:
         On a second 429, raise RepairRateLimitExceededError.
         """
         for attempt in range(2):  # attempt 0 = initial, attempt 1 = single retry
+            if self._uses_system_pool():
+                result = await post_chat_completion_with_pool(
+                    session=session,
+                    llm_config=self._config.get("llm_config", {}),
+                    payload=payload,
+                    timeout=timeout,
+                )
+                return result["choices"][0]["message"]["content"].strip()
             async with session.post(
                 self._base_url, json=payload, headers=headers, timeout=timeout
             ) as resp:

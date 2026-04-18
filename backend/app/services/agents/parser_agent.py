@@ -26,6 +26,7 @@ from backend.app.services.latex.utils import (
 )
 from backend.app.core.config import get_settings
 from .llm_runtime import build_llm_client_timeout, resolve_llm_max_concurrent_requests, resolve_llm_timeout
+from .llm_token_pool import post_chat_completion_with_pool
 from pathlib import Path
 import os
 import requests
@@ -94,6 +95,9 @@ class ParserAgent(BaseToolAgent):
             config,
             default=settings.llm_max_concurrent_requests,
         )
+
+    def _uses_system_pool(self) -> bool:
+        return str(self.config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
 
     @staticmethod
     def _prepare_llm_payload_text(text: str) -> str:
@@ -275,6 +279,19 @@ class ParserAgent(BaseToolAgent):
         async with semaphore:
             for attempt in range(1, 4):
                 try:
+                    if self._uses_system_pool():
+                        result = await post_chat_completion_with_pool(
+                            session=session,
+                            llm_config=self.config.get("llm_config", {}),
+                            payload=payload,
+                            timeout=build_llm_client_timeout(self.config, default=self.request_timeout_seconds),
+                        )
+                        output = result["choices"][0]["message"]["content"].strip()
+                        if output.lower() == "true":
+                            return True
+                        if output.lower() == "false":
+                            return False
+                        return True
                     async with session.post(
                         self.base_url, 
                         json=payload, 

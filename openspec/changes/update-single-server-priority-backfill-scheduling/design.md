@@ -85,21 +85,36 @@ Backfill may occupy both translation slots when the interactive lane is empty. W
 
 ### 5. Add a health-aware token pool instead of naive round-robin
 
-The user has multiple API keys from different accounts on the same relay provider. A simple round-robin strategy is not enough. The pool needs per-token state:
+The user has multiple API keys from different accounts on the same relay provider. In phase 1, the system-managed pool is explicitly:
+
+- `base_url_A` with `2` independent keys
+- `base_url_B` with `3` independent keys
+
+These five endpoint-credential pairs are the pool members. A simple round-robin strategy is not enough. The pool needs per-member state:
 
 - cooldown-until timestamp
-- recent 429 streak / transient failure state
+- recent `429` streak
+- recent `503` streak
+- transient network failure state
 - last successful use
 - optional lease ownership while a request is active
 
 Request policy:
 
-- if the current token hits 429 and another healthy token exists, retry locally only for a short window measured in seconds, then fail over quickly
+- if the current pool member hits consecutive `429` or consecutive `503` and another healthy member exists, retry locally only for a short window measured in seconds, then fail over quickly
 - if every token in the pool is rate-limited, keep retrying on the current token instead of thrashing across equally exhausted tokens
 - interactive tasks may keep waiting/retrying during pool exhaustion
 - backfill admission becomes more conservative when the entire pool is exhausted, so interactive tasks are not forced to queue behind useless retry churn
 
 This matches the user's requirement that the token pool exists to shorten waits, not to create longer sleeps per request.
+
+Important scope boundary for phase 1:
+
+- only system-managed credentials participate in this pool
+- user-supplied `custom_api_key/custom_base_url` requests keep the current single-credential behavior
+- persisted user custom credentials from settings also keep the current single-credential behavior in phase 1
+
+This isolates the rollout and avoids silently changing user-owned API routing behavior.
 
 ### 6. Defer only non-critical post-success artifacts
 
@@ -140,10 +155,10 @@ Redis remains a future option if the system later needs:
 
 ## Migration Plan
 
-1. Add scheduler abstractions, token-pool state, and checkpoint metadata behind feature flags.
-2. Preserve current default behavior while adding tests that prove behavior-equivalent results when the flags are off.
-3. Enable priority scheduling and cooperative yield first.
-4. Enable token-pool failover next.
+1. Implement phase-1 token-pool support for system-managed credentials only.
+2. Preserve current behavior for request-supplied and user-stored custom credentials.
+3. Add tests that prove `429/503` failover and all-members-exhausted behavior.
+4. Enable priority scheduling and cooperative yield in a later phase.
 5. Enable deferred post-success artifacts for backfill only after parity testing passes.
 
 ## Validation Plan
@@ -160,7 +175,9 @@ Add targeted automated checks for:
 
 - interactive priority over backfill
 - checkpointed cooperative yield/resume
-- token failover to another healthy key
+- token failover to another healthy system-managed member
+- consecutive `503` failover behavior
+- custom user key bypassing the system-managed pool
 - all-token-exhausted retry behavior
 - compile-slot protection
 - feature-flag rollback to legacy behavior

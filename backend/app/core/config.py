@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     llm_model: str = Field(
         validation_alias="LLM_MODEL"
     )
+    llm_system_pool_groups_json: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_SYSTEM_POOL_GROUPS_JSON", "llm_system_pool_groups_json"),
+        description="Optional JSON array describing system-managed LLM pool groups: [{base_url, api_keys: []}, ...]",
+    )
     llm_timeout: int = Field(
         default=120,
         validation_alias="LLM_TIMEOUT"
@@ -426,6 +431,51 @@ class Settings(BaseSettings):
             "model_context_tokens": self.model_context_tokens,
             "prompt_reserve_tokens": self.prompt_reserve_tokens,
         }
+
+    @staticmethod
+    def _normalize_chat_completions_url(value: Optional[str]) -> str:
+        normalized = str(value or "").strip().rstrip("/")
+        if not normalized:
+            return ""
+        if normalized.endswith("/chat/completions"):
+            return normalized
+        if normalized.endswith("/v1"):
+            return f"{normalized}/chat/completions"
+        return f"{normalized}/v1/chat/completions"
+
+    def get_llm_system_pool_groups(self) -> list[dict[str, Any]]:
+        raw = str(self.llm_system_pool_groups_json or "").strip()
+        if not raw:
+            return []
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+
+        if not isinstance(parsed, list):
+            return []
+
+        groups: list[dict[str, Any]] = []
+        for index, item in enumerate(parsed):
+            if not isinstance(item, dict):
+                continue
+            base_url = self._normalize_chat_completions_url(item.get("base_url"))
+            api_keys = [
+                str(key).strip()
+                for key in (item.get("api_keys") or [])
+                if str(key).strip()
+            ]
+            if not base_url or not api_keys:
+                continue
+            groups.append(
+                {
+                    "group_id": str(item.get("group_id") or f"group-{index}"),
+                    "base_url": base_url,
+                    "api_keys": api_keys,
+                }
+            )
+        return groups
     
     def load_toml_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """

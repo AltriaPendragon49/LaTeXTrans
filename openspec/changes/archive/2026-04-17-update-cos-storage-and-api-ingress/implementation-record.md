@@ -239,3 +239,38 @@ The active OpenSpec change now has both the original formal proposal/design/spec
 ### Evidence and caveats
 - Acceptance screenshots for this pass were saved locally under `artifacts/live-acceptance/`.
 - Headless-browser screenshots do not render embedded PDF page contents faithfully; they are useful for verifying layout shell, active mode selection, iframe URLs, and the absence of unexpected UI regressions, but not for visually judging the rendered PDF text itself.
+
+## 2026-04-18 COS Manifest Asset-Recovery Follow-Up
+
+### Problem discovered after the original archive
+
+Published community papers could retain a valid translated task and object-storage-backed output directory, but later public paper flows still failed to recover the expected published assets in some cases. The missing link was that the persisted task output directory already contained enough information to reconstruct key assets, but the public-paper recovery path was not fully using that manifest metadata.
+
+This showed up most clearly when a published task still existed in storage, yet downstream public-paper resolution needed a stronger way to rediscover:
+
+- translated PDF paths
+- translated-source archive paths
+- task-log-derived asset locations
+
+### Follow-up implementation completed
+
+Commit:
+
+- `b15c90d` `Recover published task assets from COS manifest`
+
+Key code changes:
+
+- `backend/app/services/task_artifact_storage.py`
+- `backend/app/services/paper_service.py`
+- `backend/tests/unit/test_papers_publish_object_storage_cleanup.py`
+
+What changed:
+
+- Added task-output manifest helpers that can read persisted `storage_manifest.json` metadata and recover canonical asset-relative paths from a retained task output directory
+- Added materialization helpers for manifest-declared assets so object-storage-backed task outputs can be rehydrated when later public-paper flows need them
+- Updated community paper asset-recovery logic to use manifest-derived information instead of assuming only the originally published asset rows are sufficient
+- Added regression coverage so published-paper cleanup and recovery continue to work with object-storage-backed task outputs
+
+### Why this matters
+
+The original COS storage rollout made object storage the canonical durable store. This follow-up closed a practical gap: durable task-output manifests are now part of the recovery path for already-published papers, so public-paper asset resolution is less fragile when the live runtime directory is gone but the retained persisted task output still exists.
