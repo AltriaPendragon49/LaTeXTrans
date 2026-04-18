@@ -21,7 +21,7 @@ The parser and translation agents MUST physically isolate structural LaTeX conte
 5. And the transport tokens MUST be scoped so a token from one request cannot be decoded in another request.
 
 ### Requirement: Strict Validation (Fail-Fast)
-The validator and hard-freeze boundary MUST reject any LLM output where the protected-token stream does not identically match the prepared input stream in quantity, order, and type.
+The validator and hard-freeze boundary MUST reject any LLM output where the protected-token stream does not identically match the prepared input stream in quantity, order, and type. Rejection at this boundary MUST preserve the transport safety guarantee, but it MUST leave downstream orchestration free to attempt target-language rescue before any full source passthrough is persisted.
 
 #### Scenario: Immutable chunk never reaches the LLM
 1. Given a chunk whose payload is entirely immutable placeholders or non-translatable structural tokens
@@ -52,7 +52,13 @@ The validator and hard-freeze boundary MUST reject any LLM output where the prot
 1. Given a prepared request whose hard-freeze token stream is `[T1, T2, T3]`
 2. When the raw model output contains `[T1, T2]` or `[T1, T2, T2, T3]`
 3. Then the boundary verifier MUST reject the response as a hard-freeze protocol violation
-4. And MUST leave downstream retry/fallback semantics to orchestration rather than attempting speculative placeholder repair at the boundary.
+4. And MUST leave downstream retry, rescue, and fallback semantics to orchestration rather than attempting speculative placeholder repair at the boundary.
+
+#### Scenario: Payload-invariant rejection still prefers target-language rescue
+1. Given a section-level translation request is rejected for a hard-freeze protocol violation
+2. When downstream orchestration handles that rejection
+3. Then the orchestration MUST preserve the boundary rejection semantics
+4. And it MUST attempt approved target-language rescue or downgrade flows before persisting a full source-language section fallback.
 
 ### Requirement: Raw Structure Payload Guard
 Before a structural-risk LLM request is sent, the system MUST enforce a hard payload guard and reject payloads containing forbidden raw structure tokens.

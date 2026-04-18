@@ -13,8 +13,8 @@
 ## 3. Verification
 - [x] 3.1 Add or update focused unit tests for concurrency-parity defaults, structure-guard include ordering, and hard-freeze invariant passthrough behavior.
 - [x] 3.2 Run focused verification locally and capture any known unrelated test blockers.
-- [ ] 3.3 Commit the change, sync it to the production server, restart the backend, and validate admin ingest / translation for `2006.11239`.
-- [ ] 3.4 Re-check the live paper against provider health evidence before attributing any remaining slowdown to placeholder protection.
+- [x] 3.3 Commit the change, sync it to the production server, restart the backend, and validate admin ingest / translation for `2006.11239`.
+- [x] 3.4 Re-check the live paper against provider health evidence before attributing any remaining slowdown to placeholder protection.
 
 ## 4. Documentation
 - [x] 4.1 Record the implementation details for this worktree under the change directory so the fixes are traceable before archive.
