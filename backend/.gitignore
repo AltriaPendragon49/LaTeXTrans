@@ -188,6 +188,8 @@ backend\app\services\agents\__pycache__
 *secret*
 *credential*
 *token*
+!app/services/agents/llm_token_pool.py
+!tests/unit/test_system_llm_token_pool.py
 service-account.json
 credentials.json
 client_secret.json
