@@ -86,6 +86,13 @@ When the request is a bug fix restoring intended behavior, a test-only change, a
 - `vercel-react-best-practices`
   Use when writing or refactoring React or Next.js code where performance and modern patterns matter.
 
+## Backend Index Discipline
+
+- When the task needs backend file lookup, backend structure orientation, or fast module discovery, read `backend/file.md` first.
+- Treat `backend/file.md` as the preferred backend path index for AI scanning before doing broader backend file searches.
+- If any backend production file is added, deleted, moved, or renamed, updating `backend/file.md` in the same change is mandatory.
+- If a backend file's real responsibility changes materially, update its description in `backend/file.md` as part of the same work, use Chinese in UTF-8.
+
 ## Documentation Lookup Skills
 
 - `documentation-lookup` or `context7-docs-lookup`

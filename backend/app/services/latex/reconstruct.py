@@ -115,7 +115,7 @@ class LatexConstructor:
 
     @staticmethod
     def _sanitize_section_translation(section: Dict[str, Any], translated: str) -> str:
-        if not translated or not bool(section.get("contains_structure_shell")):
+        if not translated:
             return translated
 
         leading_shell = section.get("leading_structure_shell", "") or ""
@@ -129,7 +129,8 @@ class LatexConstructor:
             return translated
 
         section["document_boundary_leak_detected"] = True
-        section["shell_token_deduped"] = True
+        if bool(section.get("contains_structure_shell")):
+            section["shell_token_deduped"] = True
         return f"{leading_shell}{sanitized_body}{trailing_shell}"
 
     def _merge_sections(self) -> str:

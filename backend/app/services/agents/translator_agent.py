@@ -25,6 +25,7 @@ from .llm_runtime import (
     resolve_llm_timeout,
 )
 from .llm_token_pool import post_chat_completion_with_pool
+from backend.app.services.translation.ultimate_downgrade import sanitize_section_translation_shells
 from pathlib import Path
 import os
 import re
@@ -535,15 +536,28 @@ class TranslatorAgent(BaseToolAgent):
         if cls._get_section_chunk_role(section) == "document_root":
             return True
         content = section.get("content", "") or ""
-        return bool(re.search(r"\\document(?:class|style)\b", content))
+        return bool(re.search(r"\\document(?:class|style)\b|\\(?:begin|end)\s*\{document\}", content))
 
     @classmethod
     def _reassemble_section_translation(cls, section: Dict[str, Any], translated_core: str) -> str:
+        if cls._is_document_root_section_chunk(section):
+            if not cls._section_has_structure_shell(section):
+                return translated_core
+            return (
+                f"{section.get('leading_structure_shell', '') or ''}"
+                f"{translated_core or ''}"
+                f"{section.get('trailing_structure_shell', '') or ''}"
+            )
+        sanitized_core = sanitize_section_translation_shells(
+            translated_core,
+            leading_structure_shell=section.get("leading_structure_shell", "") or "",
+            trailing_structure_shell=section.get("trailing_structure_shell", "") or "",
+        )
         if not cls._section_has_structure_shell(section):
-            return translated_core
+            return sanitized_core
         return (
             f"{section.get('leading_structure_shell', '') or ''}"
-            f"{translated_core or ''}"
+            f"{sanitized_core or ''}"
             f"{section.get('trailing_structure_shell', '') or ''}"
         )
 

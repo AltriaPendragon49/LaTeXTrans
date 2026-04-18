@@ -290,6 +290,8 @@ def _wrap_structure_shells(
 def _strip_document_boundary_tokens(text: str) -> str:
     if not text:
         return ""
+    if not _DOCUMENT_BOUNDARY_RE.search(text):
+        return text
     stripped = _DOCUMENT_BOUNDARY_RE.sub("", text)
     stripped = re.sub(r"\n{3,}", "\n\n", stripped)
     return stripped.strip()

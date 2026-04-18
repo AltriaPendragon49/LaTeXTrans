@@ -19,16 +19,27 @@ from backend.app.services.latex.compiler import (
     find_main_tex_file,
 )
 from backend.app.services.agents.compile_runtime import get_compile_semaphore
-from backend.app.services.latex.structure_guard import validate_project_structure
+from backend.app.services.latex.structure_guard import (
+    REASON_WALKER_EOF_MACRO_ARGS,
+    REASON_WALKER_UNEXPECTED_CLOSING,
+    validate_project_structure,
+)
 from backend.app.services.latex.utils import apply_formatting_config
 from pathlib import Path
 import os
+import re
 import shutil
 import logging
 import json
 from hashlib import sha256
 
 logger = logging.getLogger(__name__)
+
+_SOURCE_BASELINE_GUARD_REASON_CODES = {
+    REASON_WALKER_UNEXPECTED_CLOSING,
+    REASON_WALKER_EOF_MACRO_ARGS,
+}
+_STRUCTURE_GUARD_OFFSET_RE = re.compile(r"@\(\d+,\d+\)")
 
 
 class GeneratorAgent(BaseToolAgent):
@@ -145,6 +156,10 @@ class GeneratorAgent(BaseToolAgent):
 
         self.update_progress(80, "Checking project structure...")
         structure_result = validate_project_structure(str(main_tex))
+        structure_result = self._downgrade_source_equivalent_guard_failure(
+            main_tex=main_tex,
+            structure_result=structure_result,
+        )
         self._structure_guard_warning = None
         if not structure_result.get("ok", False):
             reason_code = str(structure_result.get("reason_code") or "structure_env_stack_mismatch")
@@ -204,6 +219,73 @@ class GeneratorAgent(BaseToolAgent):
             logger.warning("Structure guard emitted warning only: %s (%s)", message, reason_code)
 
         return Path(main_tex), None
+
+    @staticmethod
+    def _normalize_structure_guard_message(message: str) -> str:
+        normalized = _STRUCTURE_GUARD_OFFSET_RE.sub("@(?,?)", message or "")
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        return normalized
+
+    def _downgrade_source_equivalent_guard_failure(
+        self,
+        *,
+        main_tex: Path,
+        structure_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if structure_result.get("ok", False):
+            return structure_result
+
+        reason_code = str(structure_result.get("reason_code") or "")
+        if reason_code not in _SOURCE_BASELINE_GUARD_REASON_CODES:
+            return structure_result
+
+        if not self.project_dir:
+            return structure_result
+
+        source_main_tex = find_main_tex_file(self.project_dir)
+        if not source_main_tex:
+            return structure_result
+
+        if str(Path(source_main_tex).resolve()) == str(Path(main_tex).resolve()):
+            return structure_result
+
+        source_result = validate_project_structure(str(source_main_tex))
+        if source_result.get("ok", False):
+            return structure_result
+
+        if str(source_result.get("reason_code") or "") != reason_code:
+            return structure_result
+
+        translated_signature = self._normalize_structure_guard_message(
+            str(structure_result.get("message") or "")
+        )
+        source_signature = self._normalize_structure_guard_message(
+            str(source_result.get("message") or "")
+        )
+        if translated_signature != source_signature:
+            return structure_result
+
+        details = dict(structure_result.get("details") or {})
+        details.update(
+            {
+                "source_baseline_guard_reason_code": source_result.get("reason_code"),
+                "source_baseline_guard_message": source_result.get("message"),
+                "source_baseline_main_tex": str(source_main_tex),
+            }
+        )
+        logger.warning(
+            "Structure guard downgraded to warning because translated bundle matches source baseline guard failure: %s",
+            reason_code,
+        )
+        return {
+            "ok": True,
+            "reason_code": reason_code,
+            "message": "Structure guard warning only: translated bundle matches source baseline walker failure",
+            "details": details,
+            "warning_only": True,
+            "guard_blocking": False,
+            "guard_scope": structure_result.get("guard_scope") or "project",
+        }
 
     def _augment_result_with_guard_warning(self, result: Dict[str, Any]) -> Dict[str, Any]:
         warning = self._structure_guard_warning

@@ -617,7 +617,7 @@ class ValidatorAgent(BaseToolAgent):
         trans_dollars = _count_inline_dollars(translated)
 
         errors = []
-        if trans_dollars < orig_dollars:
+        if trans_dollars != orig_dollars:
             errors.append(
                 f"math_delimiter_mismatch: original has {orig_dollars} inline $, "
                 f"translation has {trans_dollars}"

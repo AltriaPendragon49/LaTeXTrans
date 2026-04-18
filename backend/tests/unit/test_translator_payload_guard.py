@@ -376,6 +376,23 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         self.assertNotIn("snugshade", payload)
         self.assertNotIn("<PLACEHOLDER_ENV_3>", payload)
 
+    def test_reassemble_section_translation_strips_document_boundary_leaks_without_structure_shell(self):
+        agent = _build_agent(trans_mode=0)
+        section = {
+            "section": "11",
+            "contains_structure_shell": False,
+        }
+
+        reassembled = agent._reassemble_section_translation(
+            section,
+            "Translated body.\n\\end{document}\nMore translated body.",
+        )
+
+        self.assertNotIn("\\begin{document}", reassembled)
+        self.assertNotIn("\\end{document}", reassembled)
+        self.assertIn("Translated body.", reassembled)
+        self.assertIn("More translated body.", reassembled)
+
     def test_translate_section_marks_payload_invariant_passthrough_without_noop_retry(self):
         agent = _build_agent(trans_mode=0)
         section = {

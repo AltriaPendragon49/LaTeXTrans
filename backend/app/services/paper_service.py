@@ -74,7 +74,7 @@ _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
 _delete_job_tasks: Dict[str, asyncio.Task] = {}
-ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 900
+ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
 ADMIN_CURATION_CLEANUP_PAPER_TABLES = (
     "comments",
     "paper_assets",
@@ -3205,7 +3205,11 @@ async def _start_arxiv_paper_translation(
     task_manager.persist_task_if_needed(task_id)
 
     llm_config = await translate_route.build_llm_config_async(request.advanced_config, context["user_id"])
-    token_hash = hashlib.md5((llm_config.get("api_key") or "").encode()).hexdigest()
+    pool_routing_key = str(llm_config.get("pool_routing_key") or "").strip()
+    if pool_routing_key:
+        token_hash = hashlib.md5(pool_routing_key.encode()).hexdigest()
+    else:
+        token_hash = hashlib.md5((llm_config.get("api_key") or "").encode()).hexdigest()
     asyncio.create_task(
         translate_route._download_and_enqueue(
             task_id=task_id,
@@ -3216,6 +3220,7 @@ async def _start_arxiv_paper_translation(
             advanced_config=request.advanced_config,
             tq=get_task_queue(),
             token_hash=token_hash,
+            lane="backfill",
         )
     )
     return {"task_id": task_id, "status": "queued"}

@@ -1068,6 +1068,11 @@ async def get_queue_status(
             "queue_size": 0,
             "max_concurrent": settings.max_concurrent_translations,
             "total_pending": 0,
+            "interactive_active": 0,
+            "interactive_waiting": 0,
+            "backfill_active": 0,
+            "backfill_waiting": 0,
+            "borrowed_slots": 0,
             "user_quota_used": 0
         }
 
@@ -1244,6 +1249,7 @@ async def _download_and_enqueue(
     advanced_config,
     tq,
     token_hash: str = "default",
+    lane: str = "interactive",
 ):
     """
     Background coroutine: download arXiv source and enqueue translation.
@@ -1317,7 +1323,7 @@ async def _download_and_enqueue(
                 return factory
 
             factory = await make_factory(task_id, user_id, source_language, target_language, advanced_config)
-            await tq.enqueue(task_id, factory, user_id, token_hash)
+            await tq.enqueue(task_id, factory, user_id, token_hash, lane=lane)
         else:
             asyncio.create_task(
                 run_translation(

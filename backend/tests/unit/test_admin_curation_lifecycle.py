@@ -75,7 +75,7 @@ def test_serialize_curation_batch_status_treats_retry_as_failed():
     assert paper_service._serialize_curation_batch_status([{"status": "retry"}]) == "failed"
 
 
-def test_wait_for_task_terminal_state_uses_15_minute_timeout_budget(monkeypatch):
+def test_wait_for_task_terminal_state_uses_30_minute_timeout_budget(monkeypatch):
     sleep_calls: list[int] = []
 
     async def _fake_sleep(_seconds: int):
@@ -91,7 +91,7 @@ def test_wait_for_task_terminal_state_uses_15_minute_timeout_budget(monkeypatch)
     else:
         raise AssertionError("expected timeout after bounded wait budget")
 
-    assert len(sleep_calls) == 900
+    assert len(sleep_calls) == 1800
 
 
 def test_cleanup_failed_admin_curation_artifacts_removes_placeholder_paper_and_task_artifacts(monkeypatch, tmp_path):
@@ -230,6 +230,62 @@ def test_run_curation_job_reuses_existing_arxiv_translation_task(monkeypatch):
     assert publish_calls == ["task-existing"]
     assert repository.job["status"] == "completed"
     assert repository.job["paper_id"] == "paper-1"
+
+
+def test_start_arxiv_paper_translation_routes_admin_curation_into_backfill_lane(monkeypatch):
+    created: dict[str, object] = {}
+
+    class _TaskManager:
+        def create_task(self, **kwargs):
+            created["create_task"] = kwargs
+            return "task-admin-backfill"
+
+        def update_task(self, task_id, **kwargs):
+            created["update_task"] = (task_id, kwargs)
+            return True
+
+        def persist_task_if_needed(self, task_id):
+            created["persist_task"] = task_id
+            return True
+
+    def _fake_create_task(coro):
+        coro.close()
+        return None
+
+    def _fake_download_and_enqueue(**kwargs):
+        created["download_and_enqueue"] = kwargs
+
+        async def _noop():
+            return None
+
+        return _noop()
+
+    async def _fake_build_llm_config_async(*_args, **_kwargs):
+        return {"api_key": "system-key", "pool_routing_key": "system-pool:test"}
+
+    monkeypatch.setattr(paper_service, "task_manager", _TaskManager())
+    monkeypatch.setattr(paper_service.asyncio, "create_task", _fake_create_task)
+    monkeypatch.setattr(paper_service.translate_route, "_download_and_enqueue", _fake_download_and_enqueue)
+    monkeypatch.setattr(
+        paper_service.translate_route,
+        "build_llm_config_async",
+        _fake_build_llm_config_async,
+    )
+
+    result = asyncio.run(
+        paper_service._start_arxiv_paper_translation(
+            paper={"source": "arxiv", "arxiv_id": "2312.00752"},
+            request=paper_service.translate_route.TranslateRequest(
+                source_language="en",
+                target_language="zh",
+            ),
+            context={"user_id": "admin-1", "is_admin": True, "roles": ["admin"]},
+        )
+    )
+
+    assert result == {"task_id": "task-admin-backfill", "status": "queued"}
+    assert created["persist_task"] == "task-admin-backfill"
+    assert created["download_and_enqueue"]["lane"] == "backfill"
 
 
 def test_run_curation_job_marks_timeout_as_failed_without_automatic_retry(monkeypatch):

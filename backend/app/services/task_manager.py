@@ -1733,11 +1733,13 @@ class TaskQueue:
         self._max_concurrent = max_concurrent
         self._cancel_retry_limit = 2
         # Per-token-hash buckets (lazily populated)
-        self._queues: Dict[str, asyncio.Queue] = {}
-        self._semaphores: Dict[str, asyncio.Semaphore] = {}
+        self._queues: Dict[str, Dict[str, asyncio.Queue]] = {}
+        self._semaphores: Dict[str, asyncio.Semaphore] = {}
+        self._bucket_events: Dict[str, asyncio.Event] = {}
         self._workers: Dict[str, asyncio.Task] = {}
         # Cross-bucket shared state
-        self._active_tasks: Dict[str, asyncio.Task] = {}  # task_id -> asyncio.Task
+        self._active_tasks: Dict[str, asyncio.Task] = {}  # task_id -> asyncio.Task
+        self._active_task_lanes: Dict[str, str] = {}      # task_id -> interactive|backfill
         self._skipped: set = set()                         # task_ids to discard on dequeue
         self._user_task_count: Dict[str, int] = {}        # user_id -> active count
         self._init_lock: Optional[asyncio.Lock] = None    # created in initialize()
@@ -1774,8 +1776,12 @@ class TaskQueue:
                         f"[TaskQueue] Respawned worker for token_hash={token_hash[:8]}..."
                     )
                 return
-            self._queues[token_hash] = asyncio.Queue()
-            self._semaphores[token_hash] = asyncio.Semaphore(self._max_concurrent)
+            self._queues[token_hash] = {
+                "interactive": asyncio.Queue(),
+                "backfill": asyncio.Queue(),
+            }
+            self._semaphores[token_hash] = asyncio.Semaphore(self._max_concurrent)
+            self._bucket_events[token_hash] = asyncio.Event()
             worker = asyncio.create_task(self._worker(token_hash))
             self._workers[token_hash] = worker
             logger.info(
@@ -1792,7 +1798,9 @@ class TaskQueue:
         task_id: str,
         coro_factory,
         user_id: Optional[str] = None,
-        token_hash: str = "default",
+        token_hash: str = "default",
+
+        lane: str = "interactive",
     ):
         """
         Enqueue a translation task into the bucket for *token_hash*.
@@ -1801,9 +1809,12 @@ class TaskQueue:
             task_id: Task ID
             coro_factory: Async callable (no args) that runs the translation
             user_id: Optional user ID for per-user quota tracking
-            token_hash: MD5 hex digest of the LLM API key; determines routing bucket
+            token_hash: MD5 hex digest of the LLM API key; determines routing bucket
+            lane: Scheduling lane, either ``interactive`` or ``backfill``
         """
-        # Update task status to QUEUED
+        normalized_lane = "backfill" if str(lane or "").strip().lower() == "backfill" else "interactive"
+
+        # Update task status to QUEUED
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.QUEUED.value,
@@ -1822,11 +1833,14 @@ class TaskQueue:
         # Ensure bucket exists (lazy creation)
         await self._ensure_bucket(token_hash)
 
-        await self._queues[token_hash].put((task_id, coro_factory, user_id))
+        await self._queues[token_hash][normalized_lane].put((task_id, coro_factory, user_id, normalized_lane))
+        self._bucket_events[token_hash].set()
+
+        bucket_size = sum(queue.qsize() for queue in self._queues[token_hash].values())
         logger.info(
             f"[TaskQueue] Enqueued task {task_id} "
-            f"(token={token_hash[:8]}..., user={user_id}, "
-            f"bucket_size={self._queues[token_hash].qsize()})"
+            f"(token={token_hash[:8]}..., lane={normalized_lane}, user={user_id}, "
+            f"bucket_size={bucket_size})"
         )
 
     def cancel_execution(self, task_id: str) -> bool:
@@ -1861,13 +1875,26 @@ class TaskQueue:
     def get_status(self) -> Dict[str, Any]:
         """Return aggregated queue status across all token buckets."""
         active_count = len(self._active_tasks)
-        queue_size = sum(q.qsize() for q in self._queues.values())
+        queue_size = sum(
+            lane_queue.qsize()
+            for bucket in self._queues.values()
+            for lane_queue in bucket.values()
+        )
+        interactive_active = sum(1 for lane in self._active_task_lanes.values() if lane == "interactive")
+        backfill_active = sum(1 for lane in self._active_task_lanes.values() if lane == "backfill")
+        interactive_waiting = sum(bucket["interactive"].qsize() for bucket in self._queues.values())
+        backfill_waiting = sum(bucket["backfill"].qsize() for bucket in self._queues.values())
         return {
             "active_count": active_count,
             "queue_size": queue_size,
             "max_concurrent": self._max_concurrent,
             "total_pending": active_count + queue_size,
-            "bucket_count": len(self._queues),
+            "bucket_count": len(self._queues),
+            "interactive_active": interactive_active,
+            "interactive_waiting": interactive_waiting,
+            "backfill_active": backfill_active,
+            "backfill_waiting": backfill_waiting,
+            "borrowed_slots": backfill_active,
         }
 
     # ------------------------------------------------------------------
@@ -1885,15 +1912,30 @@ class TaskQueue:
         logger.info(f"[TaskQueue] Worker started for token_hash={token_hash[:8]}...")
         while True:
             try:
-                task_id, coro_factory, user_id = await self._queues[token_hash].get()
+                bucket = self._queues[token_hash]
+                bucket_event = self._bucket_events[token_hash]
+                while bucket["interactive"].empty() and bucket["backfill"].empty():
+                    bucket_event.clear()
+                    if bucket["interactive"].empty() and bucket["backfill"].empty():
+                        await bucket_event.wait()
+                await self._semaphores[token_hash].acquire()  # Reserve a slot before selecting the next lane item.
+                if not bucket["interactive"].empty():
+                    selected_queue = bucket["interactive"]
+                elif not bucket["backfill"].empty():
+                    selected_queue = bucket["backfill"]
+                else:
+                    self._semaphores[token_hash].release()
+                    continue
+
+                task_id, coro_factory, user_id, lane = await selected_queue.get()
                 logger.info(
-                    f"[TaskQueue] Worker({token_hash[:8]}...) picked up task {task_id}"
+                    f"[TaskQueue] Worker({token_hash[:8]}...) picked up task {task_id} from lane={lane}"
                 )
 
                 # --- Skip check for queued-only cancellations ---
                 if task_id in self._skipped:
                     self._skipped.discard(task_id)
-                    self._queues[token_hash].task_done()
+                    selected_queue.task_done()
                     logger.info(
                         f"[TaskQueue] Task {task_id} was in _skipped, discarding."
                     )
@@ -1905,10 +1947,9 @@ class TaskQueue:
                                 self._user_task_count.pop(user_id, None)
                             else:
                                 self._user_task_count[user_id] = count - 1
-                    continue
+                    self._semaphores[token_hash].release()
+                    continue
 
-                # Acquire bucket semaphore (blocks when bucket is at capacity)
-                await self._semaphores[token_hash].acquire()
 
                 # --- Second skip check ---
                 # Handles the race: cancel_execution() called while worker was
@@ -1917,7 +1958,7 @@ class TaskQueue:
                 if task_id in self._skipped:
                     self._skipped.discard(task_id)
                     self._semaphores[token_hash].release()
-                    self._queues[token_hash].task_done()
+                    selected_queue.task_done()
                     logger.info(
                         f"[TaskQueue] Task {task_id} skipped after semaphore acquire "
                         f"(cancelled while waiting for slot)."
@@ -1969,6 +2010,7 @@ class TaskQueue:
 
                 running_task = asyncio.create_task(_run_with_cancel_retry())
                 self._active_tasks[task_id] = running_task
+                self._active_task_lanes[task_id] = lane
 
                 def _on_task_done(done_task: asyncio.Task, tid: str, uid: Optional[str], th: str) -> None:
                     async def _cleanup() -> None:
@@ -1996,6 +2038,7 @@ class TaskQueue:
                                     else:
                                         self._user_task_count[uid] = count - 1
                             self._active_tasks.pop(tid, None)
+                            self._active_task_lanes.pop(tid, None)
                             logger.info(
                                 f"[TaskQueue] Task {tid} finished, "
                                 f"semaphore slot released for token={th[:8]}..."
@@ -2006,7 +2049,7 @@ class TaskQueue:
                 running_task.add_done_callback(
                     lambda done_task, tid=task_id, uid=user_id, th=token_hash: _on_task_done(done_task, tid, uid, th)
                 )
-                self._queues[token_hash].task_done()
+                selected_queue.task_done()
 
 
             except asyncio.CancelledError:
