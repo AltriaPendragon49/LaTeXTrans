@@ -18,17 +18,22 @@
 - Decision: Treat section-level payload-invariant failures as rescue-first states, not immediate source passthrough states.
   - Rationale: the regression is not that hard-freeze rejects invalid output; the regression is that the section-level recovery path gives up too early and surfaces raw English.
 - Decision: Keep source preservation only as the final fallback when rescue still cannot produce a materially target-language result.
-  - Rationale: this matches `openspec/project.md` and the user’s explicit quality requirement.
+  - Rationale: this matches `openspec/project.md` and the user's explicit quality requirement.
+- Decision: When a translated section keeps the expected leading section hierarchy, any extra sectioning commands hallucinated into the prose body must be demoted back to plain target-language text before persistence.
+  - Rationale: `2305.18290` exposed a narrower post-rescue regression where stray `\section{...}` commands survived inside body text, hurting preview readability even when compile-time recovery remained possible.
 - Decision: Normalize explicit pdfTeX package driver declarations before modern CJK compilation.
   - Rationale: `2010.11929` is a concrete failure caused by template engine assumptions, not by translation semantics.
 
 ## Risks / Trade-offs
 - More aggressive downgrade persistence can keep imperfect Chinese in places that previously stayed English.
   - Mitigation: keep structural validation and only prefer target-language output when it passes the existing shell/placeholder safety checks.
+- Section-body sanitization could overcorrect papers whose source body intentionally contains nested sectioning commands.
+  - Mitigation: only apply the demotion rule when the source chunk has a leading sectioning block and the remaining source body contains no sectioning commands.
 - Template sanitization can affect healthy papers if made too broad.
   - Mitigation: limit the change to explicit driver-locked package forms and cover with focused regression tests.
 
 ## Validation Plan
 - Add regression tests for section rescue so payload-invariant failures do not revert whole sections to source when paragraph/fragment rescue produced acceptable target-language output.
+- Add a regression test for translated section bodies that hallucinate extra `\section` / `\subsection` commands even though the source body has none.
 - Add compile sanitization tests for explicit `pdftex` graphics driver declarations under zh/CJK compilation.
 - Re-run focused paper tests for `2006.11239`, `2305.18290`, and `2010.11929`.

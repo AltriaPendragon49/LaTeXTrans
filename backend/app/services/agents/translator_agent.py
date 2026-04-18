@@ -12,6 +12,7 @@ from . import global_llm_semaphore
 import backend.app.services.latex.prompts as pm
 from backend.app.services.latex.utils import *
 from backend.app.services.latex.utils import (
+    _extract_sectioning_commands,
     mask_residual_structure_tokens,
     mask_sensitive_commands,
     unmask_sensitive_commands,
@@ -102,6 +103,9 @@ class TranslatorAgent(BaseToolAgent):
         "proposition",
         "corollary",
     })
+    _SECTIONING_COMMAND_NAME_RE = re.compile(
+        r"\\(?P<name>part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?"
+    )
     _RESCUE_PLACEHOLDER_RE = re.compile(r"(<PLACEHOLDER_[A-Z0-9_]+>)")
     _RESCUE_TOKEN_RE = re.compile(
         r"(<(?:PLACEHOLDER|PROTECTED_CMD|ENV(?:_BEGIN|_END)?|ITEM|EQROW|EQCOMMENT|INLMATH)_[^>]+>)"
@@ -542,6 +546,85 @@ class TranslatorAgent(BaseToolAgent):
             f"{translated_core or ''}"
             f"{section.get('trailing_structure_shell', '') or ''}"
         )
+
+    @classmethod
+    def _get_sectioning_command_name(cls, command_text: str) -> str:
+        match = cls._SECTIONING_COMMAND_NAME_RE.match(command_text or "")
+        return match.group("name") if match else ""
+
+    @staticmethod
+    def _split_leading_sectioning_commands(text: str) -> Tuple[List[Dict[str, Any]], str]:
+        candidate = text or ""
+        commands = _extract_sectioning_commands(candidate)
+        if not commands:
+            return [], candidate
+
+        leading: List[Dict[str, Any]] = []
+        cursor = 0
+        for entry in commands:
+            if candidate[cursor:entry["start"]].strip():
+                break
+            leading.append(entry)
+            cursor = entry["end"]
+
+        if not leading:
+            return [], candidate
+        return leading, candidate[leading[-1]["end"] :]
+
+    @staticmethod
+    def _demote_sectioning_commands_to_text(text: str) -> str:
+        candidate = text or ""
+        commands = _extract_sectioning_commands(candidate)
+        if not commands:
+            return candidate
+
+        parts: List[str] = []
+        last = 0
+        for entry in commands:
+            parts.append(candidate[last : entry["start"]])
+            parts.append(entry.get("arg_inner", ""))
+            last = entry["end"]
+        parts.append(candidate[last:])
+
+        demoted = "".join(parts)
+        demoted = re.sub(r"[ \t]{2,}", " ", demoted)
+        demoted = re.sub(r"\n{3,}", "\n\n", demoted)
+        return demoted
+
+    @classmethod
+    def _sanitize_sectioning_command_drift(
+        cls,
+        original_text: str,
+        translated_text: str,
+    ) -> Tuple[str, bool]:
+        original_leading, original_body = cls._split_leading_sectioning_commands(original_text)
+        if not original_leading:
+            return translated_text, False
+        if _extract_sectioning_commands(original_body):
+            return translated_text, False
+
+        translated_leading, _ = cls._split_leading_sectioning_commands(translated_text)
+        original_names = [
+            cls._get_sectioning_command_name(entry.get("full", ""))
+            for entry in original_leading
+        ]
+        translated_names = [
+            cls._get_sectioning_command_name(entry.get("full", ""))
+            for entry in translated_leading
+        ]
+        expected_count = len(original_names)
+        if len(translated_names) < expected_count:
+            return translated_text, False
+        if translated_names[:expected_count] != original_names:
+            return translated_text, False
+
+        preserved_end = translated_leading[expected_count - 1]["end"]
+        preserved_prefix = translated_text[:preserved_end]
+        candidate_body = translated_text[preserved_end:]
+        sanitized_body = cls._demote_sectioning_commands_to_text(candidate_body)
+        if sanitized_body == candidate_body:
+            return translated_text, False
+        return f"{preserved_prefix}{sanitized_body}", True
 
     @staticmethod
     def _is_payload_invariant_reason(reason: Optional[str]) -> bool:
@@ -2589,6 +2672,13 @@ class TranslatorAgent(BaseToolAgent):
             env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
             if env_restore_preserved_source:
                 translated_text = translatable_content
+            else:
+                translated_text, drift_sanitized = self._sanitize_sectioning_command_drift(
+                    translatable_content,
+                    translated_text,
+                )
+                if drift_sanitized:
+                    transed_section["sectioning_command_drift_sanitized"] = True
 
             transed_section["trans_content"] = self._reassemble_section_translation(
                 section,

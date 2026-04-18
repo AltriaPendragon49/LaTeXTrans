@@ -21,6 +21,13 @@ The system SHALL parse LaTeX source files into an Abstract Syntax Tree (AST), tr
 - **THEN** the system MAY preserve the original source section as a final fallback
 - **AND** it MUST record that outcome as an explicit last-resort fallback state for auditability.
 
+#### Scenario: Extra sectioning commands in translated prose are demoted instead of persisted
+- **WHEN** a source section chunk starts with a sectioning block such as `\section{...}` / `\subsection{...}`
+- **AND** the remaining source body contains no sectioning commands
+- **AND** the translated candidate preserves the expected leading section hierarchy but introduces extra sectioning commands inside prose body text
+- **THEN** the system MUST demote those extra sectioning commands back to plain target-language text before persisting the translated section
+- **AND** it MUST keep the translated section content instead of reverting the whole chunk to source solely because of that body-level drift.
+
 ### Requirement: CJK Font Compatibility Fix
 The system MUST dynamically neutralize incompatible pdfLaTeX-specific font packages and explicit pdfTeX driver locks to ensure correct XeLaTeX/LuaLaTeX rendering of CJK characters.
 

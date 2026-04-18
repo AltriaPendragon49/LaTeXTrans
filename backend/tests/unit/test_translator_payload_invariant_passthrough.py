@@ -129,6 +129,33 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
             agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
         )
 
+    def test_translate_section_demotes_stray_sectioning_commands_from_translated_body(self):
+        agent = _build_agent()
+        section = {
+            "section": "13+13_1",
+            "content": (
+                "\\section{Additional Empirical Results}\n\n"
+                "\\subsection{Performance of Best of $N$ baseline for Various $N$}\n"
+                "We find that the Best of $N$ baseline is strong in our experiments."
+            ),
+            "previous_context": "",
+        }
+        translated_candidate = (
+            "\\section{补充实证结果}\n\n"
+            "\\subsection{不同 $N$ 下 Best of $N$ 基线的表现}\n"
+            "我们发现，Best of $N$ 基线在实验中依然很强。 "
+            "我们给出了 Best of $N$ \\section{各种基准线} $N$ 在对话与摘要任务上的结果。"
+        )
+
+        agent._request_llm_for_trans = AsyncMock(return_value=translated_candidate)
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertNotIn("\\section{各种基准线}", translated["trans_content"])
+        self.assertIn("各种基准线", translated["trans_content"])
+        self.assertTrue(translated.get("sectioning_command_drift_sanitized"))
+
     def test_rescue_plain_text_by_paragraph_falls_back_to_fragment_rescue(self):
         agent = _build_agent()
         text = (
