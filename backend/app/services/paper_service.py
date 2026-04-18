@@ -5593,6 +5593,15 @@ async def list_admin_curation_jobs(
     search: Optional[str] = None,
 ) -> Dict[str, Any]:
     repository = get_community_paper_repository()
+    normalized_status = str(status_filter or "").strip().lower()
+    if normalized_status in {"", "all"}:
+        status_filter = None
+    else:
+        status_filter = normalized_status
+
+    normalized_search = str(search or "").strip()
+    search = normalized_search or None
+
     jobs = await _run_local_repo(
         lambda: repository.list_curation_jobs(
             status_filter=status_filter,

@@ -685,9 +685,12 @@ async def list_admin_curation_jobs(
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
     _ensure_local_admin(current_user)
+    normalized_status = str(status or "").strip().lower()
+    status_filter = None if normalized_status in {"", "all"} else normalized_status
+    normalized_query = str(q or "").strip() or None
     return await paper_service.list_admin_curation_jobs(
-        status_filter=status,
-        search=q,
+        status_filter=status_filter,
+        search=normalized_query,
     )
 
 

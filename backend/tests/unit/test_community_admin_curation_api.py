@@ -217,6 +217,39 @@ def test_admin_can_list_curation_jobs(monkeypatch) -> None:
     assert payload["items"][0]["terminal_task_status"] == "failed_compilation"
 
 
+def test_admin_list_curation_jobs_treats_all_status_as_unfiltered(monkeypatch) -> None:
+    async def fake_list_admin_curation_jobs(*, status_filter: str | None, search: str | None) -> Dict[str, Any]:
+        assert status_filter is None
+        assert search is None
+        return {
+            "items": [],
+            "total": 0,
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.list_admin_curation_jobs",
+        fake_list_admin_curation_jobs,
+        raising=False,
+    )
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {
+        "id": "admin-1",
+        "roles": ["admin"],
+    }
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get(
+                "/api/papers/admin/curation/jobs",
+                params={"status": "all", "q": ""},
+            )
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+
 def test_admin_can_delete_retained_failed_curation_job(monkeypatch) -> None:
     async def fake_delete_admin_curation_job(*, job_id: str, current_user) -> Dict[str, Any]:
         assert job_id == "job-1"
