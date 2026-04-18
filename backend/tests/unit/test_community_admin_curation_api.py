@@ -163,3 +163,90 @@ def test_admin_can_fetch_curation_batch_status(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["batch_id"] == "batch-1"
     assert response.json()["items"][0]["status"] == "metadata_preparing"
+
+
+def test_admin_can_list_curation_jobs(monkeypatch) -> None:
+    async def fake_list_admin_curation_jobs(*, status_filter: str | None, search: str | None) -> Dict[str, Any]:
+        assert status_filter == "failed"
+        assert search == "2312.00752"
+        return {
+            "items": [
+                {
+                    "job_id": "job-1",
+                    "batch_id": "batch-1",
+                    "paper_id": None,
+                    "published_paper_id": None,
+                    "task_id": "task-1",
+                    "source_type": "arxiv",
+                    "arxiv_id": "2312.00752",
+                    "status": "failed",
+                    "terminal_task_status": "failed_compilation",
+                    "error": "compile failed",
+                    "failed_artifact_path": "failed_tasks/task-1",
+                    "created_at": "2026-04-19T00:00:00Z",
+                    "updated_at": "2026-04-19T00:05:00Z",
+                }
+            ],
+            "total": 1,
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.list_admin_curation_jobs",
+        fake_list_admin_curation_jobs,
+        raising=False,
+    )
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {
+        "id": "admin-1",
+        "roles": ["admin"],
+    }
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get(
+                "/api/papers/admin/curation/jobs",
+                params={"status": "failed", "q": "2312.00752"},
+            )
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["job_id"] == "job-1"
+    assert payload["items"][0]["terminal_task_status"] == "failed_compilation"
+
+
+def test_admin_can_delete_retained_failed_curation_job(monkeypatch) -> None:
+    async def fake_delete_admin_curation_job(*, job_id: str, current_user) -> Dict[str, Any]:
+        assert job_id == "job-1"
+        assert current_user["id"] == "admin-1"
+        return {
+            "job_id": "job-1",
+            "paper_id": None,
+            "status": "completed",
+        }
+
+    monkeypatch.setattr(
+        "backend.app.services.paper_service.delete_admin_curation_job",
+        fake_delete_admin_curation_job,
+        raising=False,
+    )
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {
+        "id": "admin-1",
+        "roles": ["admin"],
+    }
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.delete("/api/papers/admin/curation/jobs/job-1")
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-1",
+        "paper_id": None,
+        "status": "completed",
+    }

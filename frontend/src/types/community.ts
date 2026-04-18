@@ -357,9 +357,37 @@ export interface AdminCurationBatchResponse {
   items: AdminCurationBatchItem[]
 }
 
+export interface AdminCurationJobHistoryItem {
+  job_id: string
+  batch_id: string
+  paper_id?: string | null
+  published_paper_id?: string | null
+  task_id?: string | null
+  source_type: string
+  arxiv_id?: string | null
+  original_filename?: string | null
+  status: string
+  terminal_task_status?: string | null
+  error?: string | null
+  failed_artifact_path?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface AdminCurationJobHistoryResponse {
+  items: AdminCurationJobHistoryItem[]
+  total: number
+}
+
 export interface AdminDeletePaperResponse {
   job_id: string
   paper_id: string
+  status: string
+}
+
+export interface AdminDeleteCurationJobResponse {
+  job_id: string
+  paper_id?: string | null
   status: string
 }
 

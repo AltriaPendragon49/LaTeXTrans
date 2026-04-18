@@ -38,6 +38,7 @@ from backend.app.services import paper_preview_service
 from backend.app.services import task_artifact_storage
 from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
 from backend.app.services.storage_backend import (
+    CosStorageBackend,
     LocalDiskStorageBackend,
     StorageBackend,
     StoredObjectRef,
@@ -4928,6 +4929,157 @@ def _delete_local_artifact_path(path: Path) -> Optional[str]:
     return str(path)
 
 
+def _normalize_failed_artifact_path(path: str | Path) -> str:
+    return str(path).replace("\\", "/")
+
+
+def _get_storage_backend_instance() -> StorageBackend:
+    return build_storage_backend(settings)
+
+
+def _delete_object_storage_prefix(prefix: str) -> list[str]:
+    backend = _get_storage_backend_instance()
+    if not isinstance(backend, CosStorageBackend):
+        return []
+
+    refs = backend.list_files(prefix=prefix)
+    object_keys = [str(ref.object_key or "").strip() for ref in refs if str(ref.object_key or "").strip()]
+    if not object_keys:
+        return []
+
+    deleted: list[str] = []
+    client = backend._get_client()
+    for start in range(0, len(object_keys), 1000):
+        chunk = object_keys[start : start + 1000]
+        client.delete_objects(
+            Bucket=backend.bucket,
+            Delete={"Object": [{"Key": key} for key in chunk]},
+        )
+        deleted.extend(chunk)
+    return deleted
+
+
+def _delete_retained_failed_artifact(*, failed_artifact_path: str, artifact_storage_backend: Optional[str]) -> list[str]:
+    normalized_backend = str(artifact_storage_backend or "").strip() or "local_disk"
+    normalized_path = str(failed_artifact_path or "").strip()
+    if not normalized_path:
+        return []
+
+    if normalized_backend == "object_storage":
+        return _delete_object_storage_prefix(normalized_path)
+
+    resolved = _resolve_storage_path(normalized_path)
+    deleted = _delete_local_artifact_path(resolved)
+    return [deleted] if deleted else []
+
+
+def _retain_failed_artifact_reference(
+    *,
+    task_id: str,
+    failed_output_path: Optional[str],
+) -> dict[str, Optional[str]]:
+    candidate_path = _resolve_storage_path(failed_output_path) if failed_output_path else Path(settings.failed_tasks_dir) / task_id
+    if not candidate_path.exists():
+        return {
+            "failed_artifact_path": None,
+            "artifact_storage_backend": None,
+        }
+
+    backend = _get_storage_backend_instance()
+    if isinstance(backend, LocalDiskStorageBackend):
+        return {
+            "failed_artifact_path": _normalize_failed_artifact_path(candidate_path),
+            "artifact_storage_backend": "local_disk",
+        }
+
+    stored_root = f"failed_tasks/{task_id}"
+    if candidate_path.is_dir():
+        stored_path = task_artifact_storage.persist_task_directory(
+            candidate_path,
+            stored_path=stored_root,
+            delete_local=True,
+        )
+    else:
+        content_type = mimetypes.guess_type(candidate_path.name)[0] or "application/octet-stream"
+        backend.put_file(
+            local_path=candidate_path,
+            object_key=f"{stored_root}/{candidate_path.name}",
+            content_type=content_type,
+            delete_local=True,
+        )
+        stored_path = f"{stored_root}/{candidate_path.name}"
+    return {
+        "failed_artifact_path": _normalize_failed_artifact_path(stored_path),
+        "artifact_storage_backend": "object_storage",
+    }
+
+
+async def _delete_placeholder_curation_paper_if_present(*, repository: Any, paper_id: str) -> list[str]:
+    normalized_paper_id = str(paper_id or "").strip()
+    if not normalized_paper_id:
+        return []
+
+    try:
+        paper = await _fetch_paper_by_id(normalized_paper_id)
+    except Exception:
+        paper = None
+    if not _is_private_curating_placeholder_paper(paper):
+        return []
+
+    _RUNTIME_PAPER_OVERRIDES.pop(normalized_paper_id, None)
+    deleted_tables: list[str] = []
+    for table_name in ADMIN_CURATION_CLEANUP_PAPER_TABLES:
+        await _run_local_repo(
+            lambda table_name=table_name, paper_id=normalized_paper_id: repository.delete_rows_for_papers(table_name, [paper_id])
+        )
+        deleted_tables.append(table_name)
+    return deleted_tables
+
+
+async def _hard_delete_paper_records(*, repository: Any, paper_id: str) -> None:
+    community_dir = settings.community_papers_dir / paper_id
+    if community_dir.exists():
+        shutil.rmtree(community_dir, ignore_errors=False)
+
+    asset_task_ids = await _run_local_repo(lambda: repository.list_asset_task_ids_for_papers([paper_id]))
+    comment_ids = await _run_local_repo(lambda: repository.list_comment_ids_for_papers([paper_id]))
+    report_ids = await _run_local_repo(
+        lambda: repository.list_report_ids_for_targets(target_type="paper", target_ids=[paper_id])
+    )
+    if comment_ids:
+        report_ids.extend(
+            await _run_local_repo(
+                lambda: repository.list_report_ids_for_targets(target_type="comment", target_ids=comment_ids)
+            )
+        )
+    report_ids = [report_id for report_id in report_ids if str(report_id or "").strip()]
+    if report_ids:
+        await _run_local_repo(
+            lambda: repository.delete_rows_by_ids("moderation_actions", id_column="report_id", row_ids=report_ids)
+        )
+        await _run_local_repo(
+            lambda: repository.delete_rows_by_ids("reports", id_column="id", row_ids=report_ids)
+        )
+
+    for table_name in [
+        "comments",
+        "paper_assets",
+        "paper_likes",
+        "paper_favorites",
+        "community_structured_insights",
+        "community_similar_recommendations",
+    ]:
+        await _run_local_repo(lambda table_name=table_name: repository.delete_rows_for_papers(table_name, [paper_id]))
+
+    cleaned_task_ids = [str(task_id or "").strip() for task_id in asset_task_ids if str(task_id or "").strip()]
+    for task_id in cleaned_task_ids:
+        task_manager.delete_task_full(task_id)
+    if cleaned_task_ids:
+        await _run_local_repo(lambda: repository.delete_translation_tasks(cleaned_task_ids))
+
+    await _run_local_repo(lambda: repository.delete_rows_for_papers("papers", [paper_id]))
+
+
 async def _cleanup_failed_admin_curation_artifacts(
     *,
     repository: Any,
@@ -4942,6 +5094,9 @@ async def _cleanup_failed_admin_curation_artifacts(
     task_ids = [task_id for task_id in dict.fromkeys(ordered_candidates) if task_id]
     deleted_paths: List[str] = []
     errors: List[str] = []
+    failed_artifact_path: Optional[str] = None
+    artifact_storage_backend: Optional[str] = None
+    terminal_task_status: Optional[str] = None
 
     for task_id in task_ids:
         if cancel_running_task:
@@ -4951,22 +5106,21 @@ async def _cleanup_failed_admin_curation_artifacts(
                 errors.append(f"Failed to cancel task {task_id}: {exc}")
 
         task_snapshot = task_manager.get_task(task_id) if hasattr(task_manager, "get_task") else None
+        if terminal_task_status is None:
+            candidate_status = str((task_snapshot or {}).get("status") or "").strip()
+            if candidate_status:
+                terminal_task_status = candidate_status
         failed_output_path = str((task_snapshot or {}).get("failed_output_path") or "").strip()
-        if failed_output_path:
+        if failed_artifact_path is None:
             try:
-                deleted = _delete_local_artifact_path(Path(failed_output_path))
-                if deleted:
-                    deleted_paths.append(deleted)
+                retained_artifact = _retain_failed_artifact_reference(
+                    task_id=task_id,
+                    failed_output_path=failed_output_path or None,
+                )
+                failed_artifact_path = retained_artifact.get("failed_artifact_path")
+                artifact_storage_backend = retained_artifact.get("artifact_storage_backend")
             except Exception as exc:
-                errors.append(f"Failed to delete failed task output for {task_id}: {exc}")
-        else:
-            fallback_failed_path = Path(settings.failed_tasks_dir) / task_id
-            try:
-                deleted = _delete_local_artifact_path(fallback_failed_path)
-                if deleted:
-                    deleted_paths.append(deleted)
-            except Exception as exc:
-                errors.append(f"Failed to delete fallback failed task output for {task_id}: {exc}")
+                errors.append(f"Failed to retain failed task output for {task_id}: {exc}")
 
         try:
             cleanup_result = task_manager.delete_task_full(task_id)
@@ -4980,43 +5134,19 @@ async def _cleanup_failed_admin_curation_artifacts(
                 [str(error) for error in cleanup_result.get("errors", []) if str(error or "").strip()]
             )
 
-        try:
-            await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
-        except Exception as exc:
-            errors.append(f"Failed to delete translation task row for {task_id}: {exc}")
-
-    source_type = str(job.get("source_type") or "").strip()
-    source_path_raw = str(job.get("source_path") or "").strip()
-    if source_type == "upload" and source_path_raw:
-        source_path = _resolve_storage_path(source_path_raw)
-        if _is_task_scoped_upload_source(source_path, task_ids):
-            try:
-                deleted = _delete_local_artifact_path(source_path)
-                if deleted:
-                    deleted_paths.append(deleted)
-            except Exception as exc:
-                errors.append(f"Failed to delete upload source path {source_path}: {exc}")
-
     paper_id = str(job.get("paper_id") or "").strip()
     if paper_id:
         try:
-            paper = await _fetch_paper_by_id(paper_id)
+            await _delete_placeholder_curation_paper_if_present(repository=repository, paper_id=paper_id)
         except Exception as exc:
-            paper = None
-            errors.append(f"Failed to load paper {paper_id} for cleanup: {exc}")
-        if _is_private_curating_placeholder_paper(paper):
-            _RUNTIME_PAPER_OVERRIDES.pop(paper_id, None)
-            for table_name in ADMIN_CURATION_CLEANUP_PAPER_TABLES:
-                try:
-                    await _run_local_repo(
-                        lambda table_name=table_name, paper_id=paper_id: repository.delete_rows_for_papers(table_name, [paper_id])
-                    )
-                except Exception as exc:
-                    errors.append(f"Failed to delete {table_name} rows for paper {paper_id}: {exc}")
+            errors.append(f"Failed to delete placeholder paper {paper_id}: {exc}")
 
     return {
         "deleted_paths": deleted_paths,
         "errors": errors,
+        "failed_artifact_path": failed_artifact_path,
+        "artifact_storage_backend": artifact_storage_backend,
+        "terminal_task_status": terminal_task_status,
     }
 
 
@@ -5042,7 +5172,14 @@ async def _mark_admin_curation_job_failed(
     await _run_local_repo(
         lambda: repository.update_curation_job(
             job_id,
-            {"status": "failed", "error": final_error, "updated_at": _utc_now_iso()},
+            {
+                "status": "failed",
+                "terminal_task_status": cleanup_result.get("terminal_task_status"),
+                "error": final_error,
+                "failed_artifact_path": cleanup_result.get("failed_artifact_path"),
+                "artifact_storage_backend": cleanup_result.get("artifact_storage_backend"),
+                "updated_at": _utc_now_iso(),
+            },
         )
     )
 
@@ -5163,8 +5300,12 @@ async def _run_curation_job(job_id: str) -> None:
                     job_id,
                     {
                         "paper_id": published.get("id"),
+                        "published_paper_id": published.get("id"),
                         "status": "completed",
+                        "terminal_task_status": "completed",
                         "error": None,
+                        "failed_artifact_path": None,
+                        "artifact_storage_backend": None,
                         "updated_at": _utc_now_iso(),
                     },
                 )
@@ -5183,8 +5324,12 @@ async def _run_curation_job(job_id: str) -> None:
                         job_id,
                         {
                             "paper_id": published.get("id"),
+                            "published_paper_id": published.get("id"),
                             "status": "completed",
+                            "terminal_task_status": "completed",
                             "error": None,
+                            "failed_artifact_path": None,
+                            "artifact_storage_backend": None,
                             "updated_at": _utc_now_iso(),
                         },
                     )
@@ -5362,48 +5507,7 @@ async def _run_delete_job(job_id: str) -> None:
             paper_id = str(job.get("paper_id") or "").strip()
             if not paper_id:
                 raise RuntimeError("Delete job missing paper_id")
-
-            community_dir = settings.community_papers_dir / paper_id
-            if community_dir.exists():
-                shutil.rmtree(community_dir, ignore_errors=False)
-
-            asset_task_ids = await _run_local_repo(lambda: repository.list_asset_task_ids_for_papers([paper_id]))
-            comment_ids = await _run_local_repo(lambda: repository.list_comment_ids_for_papers([paper_id]))
-            report_ids = await _run_local_repo(
-                lambda: repository.list_report_ids_for_targets(target_type="paper", target_ids=[paper_id])
-            )
-            if comment_ids:
-                report_ids.extend(
-                    await _run_local_repo(
-                        lambda: repository.list_report_ids_for_targets(target_type="comment", target_ids=comment_ids)
-                    )
-                )
-            report_ids = [report_id for report_id in report_ids if str(report_id or "").strip()]
-            if report_ids:
-                await _run_local_repo(
-                    lambda: repository.delete_rows_by_ids("moderation_actions", id_column="report_id", row_ids=report_ids)
-                )
-                await _run_local_repo(
-                    lambda: repository.delete_rows_by_ids("reports", id_column="id", row_ids=report_ids)
-                )
-
-            for table_name in [
-                "comments",
-                "paper_assets",
-                "paper_likes",
-                "paper_favorites",
-                "community_structured_insights",
-                "community_similar_recommendations",
-            ]:
-                await _run_local_repo(lambda table_name=table_name: repository.delete_rows_for_papers(table_name, [paper_id]))
-
-            cleaned_task_ids = [str(task_id or "").strip() for task_id in asset_task_ids if str(task_id or "").strip()]
-            for task_id in cleaned_task_ids:
-                task_manager.delete_task_full(task_id)
-            if cleaned_task_ids:
-                await _run_local_repo(lambda: repository.delete_translation_tasks(cleaned_task_ids))
-
-            await _run_local_repo(lambda: repository.delete_rows_for_papers("papers", [paper_id]))
+            await _hard_delete_paper_records(repository=repository, paper_id=paper_id)
             await _run_local_repo(
                 lambda: repository.update_delete_job(
                     job_id,
@@ -5462,6 +5566,98 @@ async def delete_community_paper_admin(
     stored = await _run_local_repo(lambda: repository.insert_delete_job(job_payload))
     _schedule_delete_job(str(stored.get("job_id") or ""))
     return _delete_job_payload(stored)
+
+
+def _admin_curation_history_item(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "job_id": job.get("job_id"),
+        "batch_id": job.get("batch_id"),
+        "paper_id": job.get("paper_id"),
+        "published_paper_id": job.get("published_paper_id"),
+        "task_id": job.get("task_id"),
+        "source_type": job.get("source_type"),
+        "arxiv_id": job.get("arxiv_id"),
+        "original_filename": job.get("original_filename"),
+        "status": job.get("status"),
+        "terminal_task_status": job.get("terminal_task_status"),
+        "error": job.get("error"),
+        "failed_artifact_path": job.get("failed_artifact_path"),
+        "created_at": _serialize_timestamp_value(job.get("created_at")),
+        "updated_at": _serialize_timestamp_value(job.get("updated_at")),
+    }
+
+
+async def list_admin_curation_jobs(
+    *,
+    status_filter: Optional[str] = None,
+    search: Optional[str] = None,
+) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    jobs = await _run_local_repo(
+        lambda: repository.list_curation_jobs(
+            status_filter=status_filter,
+            search=search,
+        )
+    )
+    items = [_admin_curation_history_item(job) for job in jobs]
+    return {
+        "items": items,
+        "total": len(items),
+    }
+
+
+async def delete_admin_curation_job(
+    *,
+    job_id: str,
+    current_user: Dict[str, Any],
+) -> Dict[str, Any]:
+    _ = current_user
+    repository = get_community_paper_repository()
+    job = await _run_local_repo(lambda: repository.get_curation_job(job_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Curation job not found")
+
+    job_status = str(job.get("status") or "").strip().lower()
+    task_ids = [
+        str(task_id or "").strip()
+        for task_id in dict.fromkeys([job.get("task_id")])
+        if str(task_id or "").strip()
+    ]
+
+    if job_status == "completed":
+        paper_id = str(job.get("published_paper_id") or job.get("paper_id") or "").strip()
+        if not paper_id:
+            raise HTTPException(status_code=409, detail="Completed curation job missing published paper")
+        await _hard_delete_paper_records(repository=repository, paper_id=paper_id)
+    else:
+        failed_artifact_path = str(job.get("failed_artifact_path") or "").strip()
+        if failed_artifact_path:
+            _delete_retained_failed_artifact(
+                failed_artifact_path=failed_artifact_path,
+                artifact_storage_backend=str(job.get("artifact_storage_backend") or "").strip() or None,
+            )
+
+        source_type = str(job.get("source_type") or "").strip()
+        source_path_raw = str(job.get("source_path") or "").strip()
+        if source_type == "upload" and source_path_raw:
+            source_path = _resolve_storage_path(source_path_raw)
+            if _is_task_scoped_upload_source(source_path, task_ids):
+                _delete_local_artifact_path(source_path)
+
+        for task_id in task_ids:
+            task_manager.delete_task_full(task_id)
+            await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
+
+        paper_id = str(job.get("paper_id") or "").strip()
+        if paper_id:
+            await _delete_placeholder_curation_paper_if_present(repository=repository, paper_id=paper_id)
+
+    await _run_local_repo(lambda: repository.delete_curation_job(job_id))
+    return {
+        "job_id": job.get("job_id"),
+        "paper_id": job.get("published_paper_id") or job.get("paper_id"),
+        "status": job.get("status"),
+    }
 
 
 async def resume_pending_admin_curation_jobs() -> Dict[str, Any]:

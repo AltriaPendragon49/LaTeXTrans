@@ -225,9 +225,37 @@ class AdminCurationBatchResponse(BaseModel):
     items: List[AdminCurationBatchItemResponse]
 
 
+class AdminCurationJobHistoryItemResponse(BaseModel):
+    job_id: str
+    batch_id: str
+    paper_id: Optional[str] = None
+    published_paper_id: Optional[str] = None
+    task_id: Optional[str] = None
+    source_type: str
+    arxiv_id: Optional[str] = None
+    original_filename: Optional[str] = None
+    status: str
+    terminal_task_status: Optional[str] = None
+    error: Optional[str] = None
+    failed_artifact_path: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class AdminCurationJobHistoryResponse(BaseModel):
+    items: List[AdminCurationJobHistoryItemResponse]
+    total: int
+
+
 class AdminDeletePaperResponse(BaseModel):
     job_id: str
     paper_id: str
+    status: str
+
+
+class AdminDeleteCurationJobResponse(BaseModel):
+    job_id: str
+    paper_id: Optional[str] = None
     status: str
 
 
@@ -646,6 +674,23 @@ async def get_admin_curation_batch(
     return await paper_service.get_admin_curation_batch(batch_id=batch_id)
 
 
+@router.get(
+    "/admin/curation/jobs",
+    response_model=AdminCurationJobHistoryResponse,
+    response_model_exclude_none=True,
+)
+async def list_admin_curation_jobs(
+    status: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    return await paper_service.list_admin_curation_jobs(
+        status_filter=status,
+        search=q,
+    )
+
+
 @router.post(
     "/admin/curation/uploads",
     response_model=AdminCurationBatchResponse,
@@ -672,6 +717,21 @@ async def submit_admin_upload_curation_batch(
         current_user=current_user,
         source_language=source_language,
         target_language=target_language,
+    )
+
+
+@router.delete(
+    "/admin/curation/jobs/{job_id}",
+    response_model=AdminDeleteCurationJobResponse,
+)
+async def delete_admin_curation_job(
+    job_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    return await paper_service.delete_admin_curation_job(
+        job_id=job_id,
+        current_user=current_user,
     )
 
 

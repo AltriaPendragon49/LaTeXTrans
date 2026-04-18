@@ -71,6 +71,7 @@ CURATION_JOB_COLUMNS = (
     "job_id",
     "batch_id",
     "paper_id",
+    "published_paper_id",
     "source_type",
     "arxiv_id",
     "original_filename",
@@ -79,7 +80,10 @@ CURATION_JOB_COLUMNS = (
     "source_language",
     "target_language",
     "status",
+    "terminal_task_status",
     "error",
+    "failed_artifact_path",
+    "artifact_storage_backend",
     "created_by",
     "created_at",
     "updated_at",
@@ -733,6 +737,60 @@ class CommunityPaperRepository:
                 for normalized in (self._normalize_curation_job_row(row) for row in _fetchall(cursor))
                 if normalized is not None
             ]
+
+    def list_curation_jobs(
+        self,
+        *,
+        status_filter: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        normalized_status = str(status_filter or "").strip()
+        if normalized_status:
+            params.append(normalized_status)
+            conditions.append(f"status = {_placeholder(len(params) - 1)}")
+
+        normalized_search = str(search or "").strip()
+        if normalized_search:
+            like_value = f"%{normalized_search}%"
+            params.append(like_value)
+            arxiv_placeholder = _placeholder(len(params) - 1)
+            params.append(like_value)
+            batch_placeholder = _placeholder(len(params) - 1)
+            conditions.append(f"(arxiv_id like {arxiv_placeholder} or batch_id like {batch_placeholder})")
+
+        where_clause = f" where {' and '.join(conditions)}" if conditions else ""
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(CURATION_JOB_COLUMNS)
+                    + " from community_curation_jobs"
+                    + where_clause
+                    + " order by created_at desc, job_id desc"
+                ),
+                tuple(params),
+            )
+            return [
+                normalized
+                for normalized in (self._normalize_curation_job_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
+    def delete_curation_job(self, job_id: str) -> int:
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            return 0
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "delete from community_curation_jobs where job_id = " + _placeholder(0),
+                (normalized_job_id,),
+            )
+            return int(cursor.rowcount or 0)
 
     def insert_delete_job(self, payload: dict[str, Any]) -> dict[str, Any]:
         serialized = self._serialize_delete_job_updates(payload)

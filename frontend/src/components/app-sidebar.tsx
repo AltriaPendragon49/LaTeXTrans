@@ -1,4 +1,4 @@
-import { Compass, PenSquare, Shield, User, Settings } from "lucide-react"
+import { Compass, ListChecks, PenSquare, Settings, Shield, User } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
@@ -55,13 +55,22 @@ export function AppSidebar() {
           </NavLink>
 
           {isAdmin ? (
-            <NavLink
-              to="/admin/curation"
-              className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
-            >
-              <Shield className="w-6 h-6 shrink-0" />
-              <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.admin.nav.curation", "Admin curation")}</span>
-            </NavLink>
+            <>
+              <NavLink
+                to="/admin/curation"
+                className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
+              >
+                <Shield className="w-6 h-6 shrink-0" />
+                <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.admin.nav.curation", "Admin curation")}</span>
+              </NavLink>
+              <NavLink
+                to="/admin/curation/tasks"
+                className={({isActive}) => `flex items-center gap-4 rounded-full px-4 py-3 transition-colors group/item ${isActive ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-tertiary hover:bg-surface-container-low'}`}
+              >
+                <ListChecks className="w-6 h-6 shrink-0" />
+                <span className="hidden group-hover:block font-inter text-sm tracking-tight font-medium uppercase whitespace-nowrap">{t("community.admin.nav.tasks", "Admin tasks")}</span>
+              </NavLink>
+            </>
           ) : null}
         </div>
 

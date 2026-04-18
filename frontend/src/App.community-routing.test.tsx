@@ -61,6 +61,10 @@ vi.mock("@/pages/CommunityAdminCuration", () => ({
   default: () => <div>Admin curation page</div>,
 }))
 
+vi.mock("@/pages/CommunityAdminCurationTasks", () => ({
+  default: () => <div>Admin curation tasks page</div>,
+}))
+
 vi.mock("@/layout", () => ({
   default: () => (
     <div>
@@ -140,6 +144,20 @@ describe("App community routing", () => {
     render(<App />)
 
     expect(await screen.findByText("Admin curation page")).toBeInTheDocument()
+  })
+
+  it("allows admin users to access /admin/curation/tasks", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["admin"] },
+    }
+
+    window.history.pushState({}, "", "/admin/curation/tasks")
+
+    render(<App />)
+
+    expect(await screen.findByText("Admin curation tasks page")).toBeInTheDocument()
   })
 
   it("keeps /translate routed through tools", async () => {

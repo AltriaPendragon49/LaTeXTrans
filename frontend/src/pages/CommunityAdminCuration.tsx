@@ -31,7 +31,7 @@ function parseArxivIds(rawValue: string): string[] {
   return Array.from(
     new Set(
       rawValue
-        .split(/[\s,]+/)
+        .split(/\r?\n/)
         .map((value) => value.trim())
         .filter(Boolean),
     ),
@@ -198,7 +198,7 @@ export default function CommunityAdminCurationPage() {
         <CardHeader>
           <CardTitle>{t("community.admin.curation.arxivTitle", "Batch import from arXiv")}</CardTitle>
           <CardDescription>
-            {t("community.admin.curation.arxivDescription", "Enter one or more arXiv IDs separated by commas or spaces.")}
+            {t("community.admin.curation.arxivDescription", "Enter one arXiv ID per line.")}
           </CardDescription>
         </CardHeader>
         <CardContent>

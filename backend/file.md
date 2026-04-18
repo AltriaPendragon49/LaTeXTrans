@@ -166,6 +166,7 @@
 - `backend/migrations_mysql/20260411_0003_expand_paper_asset_id_columns.sql`
 - `backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql`
 - `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`
+- `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
 - `backend/scripts/bootstrap_local_community_papers.py`
@@ -192,7 +193,7 @@
 - `backend/app/api/routes/community_agent.py`: 社区智能体运行、会话与事件流接口。 | 顶层符号: CommunityAgentSkillToggles, CommunityAgentRunRequest, CommunityConversationTurnPayload, CommunityConversationRecordPayload, CommunityConversationDeleteResponse, _ensure_community_agent_authorized, _ensure_community_agent_product_enabled, create_agent_run, list_agent_conversations, upsert_agent_conversation, delete_agent_conversation
 - `backend/app/api/routes/download.py`: 译文、源文件、PDF、日志与术语下载或预览接口。 | 顶层符号: _validate_pdf_with_pdfinfo, _find_translated_pdf, _candidate_output_dirs, _find_translated_pdf_in_community_library, _collect_original_pdf_candidates, _pick_best_source_pdf
 - `backend/app/api/routes/history.py`: 翻译历史与任务详情接口。 | 顶层符号: TaskHistoryItem, TaskHistoryResponse, TaskDetailResponse, BatchDeleteRequest, get_translation_task_repository, _resolve_translation_task_repository, _infer_status_from_task_log, _ensure_task_authorized, _reconcile_task_snapshot, _serialize_optional_timestamp
-- `backend/app/api/routes/papers.py`: 社区论文提交、列表、详情、预览、下载和管理接口。 | 顶层符号: AssetSummary, ViewerState, PaperSummary, TaskSummary, PaperSubmitResponse, _ensure_paper_authorized, _ensure_local_admin, _proxy_remote_pdf_preview, _parse_single_byte_range, _serve_local_pdf_preview, _paper_thumbnail_cache_dir
+- `backend/app/api/routes/papers.py`: 社区论文提交、列表、详情、预览、下载与管理员策展管理接口，现包含管理员任务历史查询与硬删除入口。 | 顶层符号: AssetSummary, ViewerState, PaperSummary, TaskSummary, PaperSubmitResponse, AdminCurationJobHistoryItemResponse, AdminDeleteCurationJobResponse, _ensure_paper_authorized, _ensure_local_admin, _proxy_remote_pdf_preview, _parse_single_byte_range, _serve_local_pdf_preview, _paper_thumbnail_cache_dir
 - `backend/app/api/routes/settings.py`: 用户设置读取与更新接口。 | 顶层符号: UserSettingsResponse, UserSettingsUpdate, get_user_settings_repository, _resolve_user_settings_repository, _build_response, _ensure_settings_authorized, get_user_settings, update_user_settings
 - `backend/app/api/routes/task.py`: 任务状态查询、删除与流式订阅接口。 | 顶层符号: TaskStatusResponse, get_translation_task_repository, _resolve_translation_task_repository, _is_guest_task, _authorize_authenticated_task, _load_authorized_task, get_task_status
 - `backend/app/api/routes/translate.py`: 翻译启动、批量翻译、配置哈希与结果复用接口。 | 顶层符号: TranslateRequest, TranslateResponse, BatchTranslateRequest, BatchTranslateResponse, _schedule_community_publish_watch, get_translation_task_repository, get_user_api_config, get_user_api_config_async, build_llm_config, build_llm_config_async
@@ -226,7 +227,7 @@
 - `backend/app/repositories/__init__.py`: 包初始化与导出文件。
 - `backend/app/repositories/auth_repository.py`: 仓储层文件，为上层服务提供持久化读写能力。 | 顶层符号: AuthRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall
 - `backend/app/repositories/community_agent_repository.py`: 仓储层文件，为上层服务提供持久化读写能力。 | 顶层符号: CommunityAgentConversationRepository, CommunityAgentRunRepository, _placeholder, _fetchone, _fetchall, _decode_turns, _decode_json_dict, _normalize_db_timestamp
-- `backend/app/repositories/community_paper_repository.py`: 社区论文仓储，负责论文、资产、互动、策展与结构化解读等数据读写。 | 顶层符号: CommunityPaperRepository, _utc_now_naive, _placeholder, _fetchone, _fetchall, _decode_json_list
+- `backend/app/repositories/community_paper_repository.py`: 社区论文仓储，负责论文、资产、互动、策展、任务历史与结构化解读等数据读写。 | 顶层符号: CommunityPaperRepository, _utc_now_naive, _placeholder, _fetchone, _fetchall, _decode_json_list
 - `backend/app/repositories/translation_task_repository.py`: 翻译任务仓储，负责任务状态、详情、配置哈希与历史记录的持久化。 | 顶层符号: TranslationTaskRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall, _decode_json
 - `backend/app/repositories/user_settings_repository.py`: 仓储层文件，为上层服务提供持久化读写能力。 | 顶层符号: UserSettingsRepository, _utc_now_naive, _placeholder, _fetchone, _decode_json
 
@@ -239,7 +240,7 @@
 - `backend/app/services/email_service.py`: 业务服务文件。 | 顶层符号: EmailService, get_email_service
 - `backend/app/services/latex_validator.py`: 业务服务文件。 | 顶层符号: validate_latex_directory, find_main_tex_file
 - `backend/app/services/paper_preview_service.py`: 论文预览构建服务，生成 HTML、摘要、预览载荷并做缓存恢复。 | 顶层符号: _load_json, _build_placeholder_map, _replace_placeholders, _strip_structural_commands, _unwrap_formatting_commands, _normalize_inline_text
-- `backend/app/services/paper_service.py`: 论文主服务，负责社区论文导入、翻译桥接、预览、下载、结构化解读和策展流程。 | 顶层符号: _StructuredInsightBasePreferenceTracker, _utc_now_iso, _get_curation_semaphore, _get_delete_semaphore, get_community_paper_repository, _run_local_repo, _run_db_blocking_with_retry
+- `backend/app/services/paper_service.py`: 论文主服务，负责社区论文导入、翻译桥接、预览、下载、结构化解读，以及管理员策展失败留痕、任务历史与硬删除流程。 | 顶层符号: _StructuredInsightBasePreferenceTracker, _utc_now_iso, _get_curation_semaphore, _get_delete_semaphore, get_community_paper_repository, _run_local_repo, _run_db_blocking_with_retry
 - `backend/app/services/storage_backend.py`: 对象存储抽象层，统一本地磁盘与 COS 等后端的上传/下载接口。 | 顶层符号: StoredObjectRef, StorageBackend, LocalDiskStorageBackend, CosStorageBackend, build_storage_backend, _ensure_cos_config
 - `backend/app/services/task_artifact_storage.py`: 任务产物持久化服务，在本地与对象存储之间同步输出目录及清单。 | 顶层符号: _get_storage_backend, _storage_uses_object_store, _normalize_stored_path, normalize_stored_task_path, resolve_local_task_path, persist_task_directory
 - `backend/app/services/task_detail.py`: 任务详情推断与标准化工具，统一 stage、detail_code、detail_message 的生成。 | 顶层符号: normalize_stage, normalize_detail_params, infer_task_detail
@@ -360,6 +361,7 @@
 - `backend/migrations_mysql/20260411_0003_expand_paper_asset_id_columns.sql`: MySQL 迁移脚本：expand paper asset id columns。 | SQL 片段: alter table papers modify column trans_latest_asset_pdf_id varchar(255) null, modify column community_selected_asset_id 
 - `backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql`: MySQL 迁移脚本：add content column to community structured insights。 | SQL 片段: set @community_structured_insights_has_content := ( select count(*) from information_schema.columns where table_schema =
 - `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`: MySQL 迁移脚本：add community similar recommendations。 | SQL 片段: create table if not exists community_similar_recommendations ( paper_id varchar(64) not null, position int not null, arx
+- `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`: MySQL 迁移脚本：为管理员策展任务补充失败留痕字段与已发布论文关联字段。 | SQL 片段: alter table community_curation_jobs add column terminal_task_status varchar(32) null after status
 
 ### backend/scripts
 - `backend/scripts/apply_mysql_migrations.py`: 运维或迁移脚本。 | 顶层符号: _load_sql_files, apply_migrations, main

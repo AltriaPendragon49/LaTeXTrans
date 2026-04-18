@@ -139,11 +139,13 @@ def test_cleanup_failed_admin_curation_artifacts_removes_placeholder_paper_and_t
 
     assert result["errors"] == []
     assert deleted_task_ids == [task_id]
-    assert repository.deleted_translation_tasks == [[task_id]]
+    assert repository.deleted_translation_tasks == []
     assert ("papers", [paper_id]) in repository.deleted_paper_rows
     assert ("paper_assets", [paper_id]) in repository.deleted_paper_rows
-    assert not source_dir.exists()
-    assert not failed_dir.exists()
+    assert source_dir.exists()
+    assert failed_dir.exists()
+    assert result["failed_artifact_path"] == str(failed_dir).replace("\\", "/")
+    assert result["artifact_storage_backend"] == "local_disk"
 
 
 def test_cleanup_failed_admin_curation_artifacts_keeps_existing_published_paper(monkeypatch, tmp_path):
@@ -177,9 +179,45 @@ def test_cleanup_failed_admin_curation_artifacts_keeps_existing_published_paper(
         )
     )
 
-    assert repository.deleted_translation_tasks == [[task_id]]
+    assert repository.deleted_translation_tasks == []
     assert repository.deleted_paper_rows == []
-    assert not failed_dir.exists()
+    assert failed_dir.exists()
+
+
+def test_mark_admin_curation_job_failed_persists_retained_failure_metadata(monkeypatch):
+    repository = _FakeRepository({"job_id": "job-1", "status": "publishing"})
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _cleanup_failed(**_kwargs):
+        return {
+            "deleted_paths": [],
+            "errors": [],
+            "failed_artifact_path": "failed_tasks/task-1",
+            "artifact_storage_backend": "object_storage",
+            "terminal_task_status": "failed_compilation",
+        }
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "_cleanup_failed_admin_curation_artifacts", _cleanup_failed)
+
+    asyncio.run(
+        paper_service._mark_admin_curation_job_failed(
+            repository=repository,
+            job_id="job-1",
+            job={"task_id": "task-1"},
+            translated_task_id="task-1",
+            failure_message="compile failed",
+            cancel_running_task=False,
+        )
+    )
+
+    assert repository.job["status"] == "failed"
+    assert repository.job["error"] == "compile failed"
+    assert repository.job["failed_artifact_path"] == "failed_tasks/task-1"
+    assert repository.job["artifact_storage_backend"] == "object_storage"
+    assert repository.job["terminal_task_status"] == "failed_compilation"
 
 
 def test_run_curation_job_reuses_existing_arxiv_translation_task(monkeypatch):

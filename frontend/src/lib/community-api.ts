@@ -4,6 +4,8 @@ import { getAccessToken } from "@/lib/local-auth"
 import { retryOnTransientNetworkError } from "@/lib/network-retry"
 import type {
   AdminCurationBatchResponse,
+  AdminCurationJobHistoryResponse,
+  AdminDeleteCurationJobResponse,
   AdminDeletePaperResponse,
   CommunityAgentAcceptedRun,
   CommunityAgentMode,
@@ -275,6 +277,29 @@ export async function getAdminCurationBatch(
     () => api.get<AdminCurationBatchResponse>(`/papers/admin/curation/batches/${batchId}`),
     { attempts: 3, baseDelayMs: 150 },
   )
+  return response.data
+}
+
+export async function listAdminCurationJobs(params: {
+  status: string
+  q: string
+}): Promise<AdminCurationJobHistoryResponse> {
+  const response = await retryOnTransientNetworkError(
+    () => api.get<AdminCurationJobHistoryResponse>("/papers/admin/curation/jobs", {
+      params: {
+        status: params.status,
+        q: params.q,
+      },
+    }),
+    { attempts: 3, baseDelayMs: 150 },
+  )
+  return response.data
+}
+
+export async function deleteAdminCurationJob(
+  jobId: string,
+): Promise<AdminDeleteCurationJobResponse> {
+  const response = await api.delete<AdminDeleteCurationJobResponse>(`/papers/admin/curation/jobs/${jobId}`)
   return response.data
 }
 

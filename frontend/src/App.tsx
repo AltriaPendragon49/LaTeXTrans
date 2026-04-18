@@ -10,6 +10,7 @@ import { AuthProvider } from "./contexts/AuthContext"
 const Layout = lazy(() => import("./layout"))
 const CommunityFeedPage = lazy(() => import("./pages/CommunityFeed"))
 const CommunityAdminCurationPage = lazy(() => import("./pages/CommunityAdminCuration"))
+const CommunityAdminCurationTasksPage = lazy(() => import("./pages/CommunityAdminCurationTasks"))
 const ProcessingPage = lazy(() => import("./pages/Processing"))
 const ComparisonsPage = lazy(() => import("./pages/Comparisons"))
 const Login = lazy(() => import("./pages/Login"))
@@ -72,6 +73,14 @@ function App() {
                 element={
                   <AdminRoute>
                     {withSuspense(<CommunityAdminCurationPage />)}
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="admin/curation/tasks"
+                element={
+                  <AdminRoute>
+                    {withSuspense(<CommunityAdminCurationTasksPage />)}
                   </AdminRoute>
                 }
               />

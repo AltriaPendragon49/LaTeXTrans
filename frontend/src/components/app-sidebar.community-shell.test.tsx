@@ -71,5 +71,6 @@ describe("AppSidebar community shell", () => {
     )
 
     expect(screen.getByRole("link", { name: /Admin curation/i })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Admin tasks/i })).toBeInTheDocument()
   })
 })
