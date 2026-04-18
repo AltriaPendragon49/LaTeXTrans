@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { LoginPrompt } from "@/components/LoginPrompt"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
-import { deleteAdminCurationJob, listAdminCurationJobs } from "@/lib/community-api"
+import { batchDeleteAdminCurationJobs, deleteAdminCurationJob, listAdminCurationJobs } from "@/lib/community-api"
 import type { AdminCurationJobHistoryItem } from "@/types/community"
 
 const ADMIN_ROLES = new Set(["admin", "super_admin", "community_admin", "curation_admin"])
@@ -50,6 +51,8 @@ export default function CommunityAdminCurationTasksPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jobPendingDelete, setJobPendingDelete] = useState<AdminCurationJobHistoryItem | null>(null)
+  const [isBatchDeleteDialogOpen, setIsBatchDeleteDialogOpen] = useState(false)
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([])
 
   const isAdmin = hasAdminRole(user?.roles)
 
@@ -61,6 +64,7 @@ export default function CommunityAdminCurationTasksPage() {
       const payload = await listAdminCurationJobs({ status, q })
       setJobs(payload.items)
       setTotal(payload.total)
+      setSelectedJobIds((current) => current.filter((jobId) => payload.items.some((job) => job.job_id === jobId)))
       setError(null)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("community.submit.errorFallback"))
@@ -87,6 +91,67 @@ export default function CommunityAdminCurationTasksPage() {
       toast.success(t("community.admin.tasks.deleteSuccess", "Task deleted permanently."))
       setJobPendingDelete(null)
       await loadJobs({ status: statusFilter, q: searchValue })
+    } catch (deleteError) {
+      toast.error(deleteError instanceof Error ? deleteError.message : t("community.submit.errorFallback"))
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const visibleJobIds = jobs.map((job) => job.job_id)
+  const allVisibleSelected = visibleJobIds.length > 0 && visibleJobIds.every((jobId) => selectedJobIds.includes(jobId))
+  const selectedVisibleCount = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId)).length
+
+  function toggleJobSelection(jobId: string, checked: boolean | "indeterminate") {
+    const shouldSelect = checked === true
+    setSelectedJobIds((current) => {
+      if (shouldSelect) {
+        return current.includes(jobId) ? current : [...current, jobId]
+      }
+      return current.filter((candidate) => candidate !== jobId)
+    })
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedJobIds((current) => {
+      if (allVisibleSelected) {
+        return current.filter((jobId) => !visibleJobIds.includes(jobId))
+      }
+      return Array.from(new Set([...current, ...visibleJobIds]))
+    })
+  }
+
+  async function handleBatchDeleteJobs() {
+    const visibleSelectedJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId))
+    if (!visibleSelectedJobIds.length) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      const payload = await batchDeleteAdminCurationJobs(visibleSelectedJobIds)
+      const failedIds = payload.failed.map((item) => item.job_id)
+      setIsBatchDeleteDialogOpen(false)
+      await loadJobs({ status: statusFilter, q: searchValue })
+      setSelectedJobIds(failedIds)
+
+      if (payload.deleted_count > 0) {
+        toast.success(
+          t("community.admin.tasks.batchDeleteSuccess", {
+            count: payload.deleted_count,
+            defaultValue: "Deleted {{count}} tasks permanently.",
+          }),
+        )
+      }
+
+      if (payload.failed_count > 0) {
+        toast.error(
+          t("community.admin.tasks.batchDeletePartialFailure", {
+            count: payload.failed_count,
+            defaultValue: "{{count}} tasks could not be deleted. They remain selected.",
+          }),
+        )
+      }
     } catch (deleteError) {
       toast.error(deleteError instanceof Error ? deleteError.message : t("community.submit.errorFallback"))
     } finally {
@@ -202,6 +267,33 @@ export default function CommunityAdminCurationTasksPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {t("community.admin.tasks.selectedCount", {
+                count: selectedVisibleCount,
+                defaultValue: "{{count}} selected",
+              })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={toggleSelectAllVisible}
+                disabled={jobs.length === 0}
+              >
+                {t("community.admin.tasks.selectAllVisible", "Select all visible")}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setIsBatchDeleteDialogOpen(true)}
+                disabled={selectedVisibleCount === 0}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("community.admin.tasks.batchDeleteAction", "Delete selected")}
+              </Button>
+            </div>
+          </div>
           {isLoading ? (
             <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -216,22 +308,33 @@ export default function CommunityAdminCurationTasksPage() {
               {jobs.map((job) => (
                 <div key={job.job_id} className="rounded-2xl border border-border/60 bg-muted/15 p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{job.status}</Badge>
-                        {job.terminal_task_status ? <Badge variant="outline">{job.terminal_task_status}</Badge> : null}
-                        <span className="font-medium">{job.arxiv_id || job.original_filename || job.job_id}</span>
+                    <div className="flex gap-3">
+                      <Checkbox
+                        checked={selectedJobIds.includes(job.job_id)}
+                        onCheckedChange={(checked) => toggleJobSelection(job.job_id, checked)}
+                        aria-label={t("community.admin.tasks.selectJobAriaLabel", {
+                          jobId: job.job_id,
+                          defaultValue: "Select {{jobId}}",
+                        })}
+                        className="mt-1"
+                      />
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">{job.status}</Badge>
+                          {job.terminal_task_status ? <Badge variant="outline">{job.terminal_task_status}</Badge> : null}
+                          <span className="font-medium">{job.arxiv_id || job.original_filename || job.job_id}</span>
+                        </div>
+                        <div className="grid gap-1 text-sm text-muted-foreground">
+                          <p>job: {job.job_id}</p>
+                          <p>batch: {job.batch_id}</p>
+                          {job.task_id ? <p>task: {job.task_id}</p> : null}
+                          {job.paper_id ? <p>paper: {job.paper_id}</p> : null}
+                          {job.published_paper_id ? <p>published: {job.published_paper_id}</p> : null}
+                          {job.failed_artifact_path ? <p>{job.failed_artifact_path}</p> : null}
+                          {job.updated_at ? <p>{t("community.admin.tasks.updatedAt", "Updated")}: {job.updated_at}</p> : null}
+                        </div>
+                        {job.error ? <p className="text-sm text-destructive">{job.error}</p> : null}
                       </div>
-                      <div className="grid gap-1 text-sm text-muted-foreground">
-                        <p>job: {job.job_id}</p>
-                        <p>batch: {job.batch_id}</p>
-                        {job.task_id ? <p>task: {job.task_id}</p> : null}
-                        {job.paper_id ? <p>paper: {job.paper_id}</p> : null}
-                        {job.published_paper_id ? <p>published: {job.published_paper_id}</p> : null}
-                        {job.failed_artifact_path ? <p>{job.failed_artifact_path}</p> : null}
-                        {job.updated_at ? <p>{t("community.admin.tasks.updatedAt", "Updated")}: {job.updated_at}</p> : null}
-                      </div>
-                      {job.error ? <p className="text-sm text-destructive">{job.error}</p> : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -283,6 +386,43 @@ export default function CommunityAdminCurationTasksPage() {
               onClick={(event) => {
                 event.preventDefault()
                 void handleDeleteJob()
+              }}
+            >
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {t("community.admin.tasks.deleteConfirm", "Permanently delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={isBatchDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsBatchDeleteDialogOpen(open)
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("community.admin.tasks.batchDeleteDialogTitle", "Permanently delete selected tasks?")}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm">
+              {t("community.admin.tasks.batchDeleteDialogDescription", {
+                count: selectedVisibleCount,
+                defaultValue:
+                  "This permanently deletes {{count}} selected task records and their retained artifacts. This action cannot be undone.",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2 sm:gap-0">
+            <AlertDialogCancel className="rounded-full">
+              {t("common.actions.cancel", "Cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault()
+                void handleBatchDeleteJobs()
               }}
             >
               {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

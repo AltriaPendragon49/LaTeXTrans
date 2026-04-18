@@ -749,8 +749,21 @@ class CommunityPaperRepository:
 
         normalized_status = str(status_filter or "").strip()
         if normalized_status:
-            params.append(normalized_status)
-            conditions.append(f"status = {_placeholder(len(params) - 1)}")
+            if normalized_status == "processing":
+                params.extend(["processing", "translating", "publishing"])
+                processing_placeholder = _placeholder(len(params) - 3)
+                translating_placeholder = _placeholder(len(params) - 2)
+                publishing_placeholder = _placeholder(len(params) - 1)
+                conditions.append(
+                    "("
+                    + f"status = {processing_placeholder} or "
+                    + f"status = {translating_placeholder} or "
+                    + f"status = {publishing_placeholder}"
+                    + ")"
+                )
+            else:
+                params.append(normalized_status)
+                conditions.append(f"status = {_placeholder(len(params) - 1)}")
 
         normalized_search = str(search or "").strip()
         if normalized_search:

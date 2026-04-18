@@ -5669,6 +5669,51 @@ async def delete_admin_curation_job(
     }
 
 
+async def batch_delete_admin_curation_jobs(
+    *,
+    job_ids: List[str],
+    current_user: Dict[str, Any],
+) -> Dict[str, Any]:
+    normalized_job_ids = [
+        str(job_id or "").strip()
+        for job_id in dict.fromkeys(job_ids)
+        if str(job_id or "").strip()
+    ]
+    if not normalized_job_ids:
+        raise HTTPException(status_code=400, detail="At least one curation job id is required")
+
+    deleted: List[Dict[str, Any]] = []
+    failed: List[Dict[str, Any]] = []
+    for job_id in normalized_job_ids:
+        try:
+            deleted.append(
+                await delete_admin_curation_job(
+                    job_id=job_id,
+                    current_user=current_user,
+                )
+            )
+        except HTTPException as exc:
+            detail = exc.detail
+            if isinstance(detail, dict):
+                detail = detail.get("message") or detail.get("detail") or str(detail)
+            elif detail is not None:
+                detail = str(detail)
+            failed.append(
+                {
+                    "job_id": job_id,
+                    "status_code": exc.status_code,
+                    "detail": detail,
+                }
+            )
+
+    return {
+        "deleted": deleted,
+        "failed": failed,
+        "deleted_count": len(deleted),
+        "failed_count": len(failed),
+    }
+
+
 async def resume_pending_admin_curation_jobs() -> Dict[str, Any]:
     repository = get_community_paper_repository()
     try:

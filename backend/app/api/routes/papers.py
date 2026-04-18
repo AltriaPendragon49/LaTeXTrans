@@ -259,6 +259,23 @@ class AdminDeleteCurationJobResponse(BaseModel):
     status: str
 
 
+class AdminBatchDeleteCurationJobsRequest(BaseModel):
+    job_ids: List[str]
+
+
+class AdminBatchDeleteCurationJobsFailureResponse(BaseModel):
+    job_id: str
+    status_code: int
+    detail: Optional[str] = None
+
+
+class AdminBatchDeleteCurationJobsResponse(BaseModel):
+    deleted: List[AdminDeleteCurationJobResponse]
+    failed: List[AdminBatchDeleteCurationJobsFailureResponse]
+    deleted_count: int
+    failed_count: int
+
+
 def _ensure_local_admin(current_user: Optional[Dict[str, Any]]) -> None:
     roles = {str(role or "").strip().lower() for role in (current_user or {}).get("roles", [])}
     if "admin" in roles:
@@ -734,6 +751,21 @@ async def delete_admin_curation_job(
     _ensure_local_admin(current_user)
     return await paper_service.delete_admin_curation_job(
         job_id=job_id,
+        current_user=current_user,
+    )
+
+
+@router.post(
+    "/admin/curation/jobs/batch-delete",
+    response_model=AdminBatchDeleteCurationJobsResponse,
+)
+async def batch_delete_admin_curation_jobs(
+    request: AdminBatchDeleteCurationJobsRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    _ensure_local_admin(current_user)
+    return await paper_service.batch_delete_admin_curation_jobs(
+        job_ids=request.job_ids,
         current_user=current_user,
     )
 

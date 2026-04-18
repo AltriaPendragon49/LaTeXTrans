@@ -370,3 +370,8 @@
 - `backend/scripts/grant_local_admin.py`: 运维或迁移脚本。 | 顶层符号: _utc_now_naive, _fetch_target_user, grant_local_admin, main
 - `backend/scripts/import_source_to_mysql.py`: 运维或迁移脚本。 | 顶层符号: _utc_now, _first, _as_str, _as_bool, _as_int, _as_timestamp
 - `backend/scripts/mysql_script_connection.py`: 运维或迁移脚本。 | 顶层符号: resolve_mysql_script_config, describe_mysql_script_target, mysql_script_connection
+## Recent Responsibility Updates
+
+- `backend/app/api/routes/papers.py`: 管理员策展历史接口现已负责规范化 `all` / `processing` 筛选语义，并提供选中任务批量硬删除入口。
+- `backend/app/services/paper_service.py`: 管理员策展历史服务现已负责处理中状态聚合查询与批量硬删除编排，并返回逐任务成功/失败结果。
+- `backend/app/repositories/community_paper_repository.py`: 策展任务列表查询现已支持将 `processing` 扩展匹配到 `processing`、`translating`、`publishing` 三类在途状态。

@@ -1,6 +1,8 @@
 import asyncio
 from pathlib import Path
 
+from fastapi import HTTPException
+
 from backend.app.repositories.community_paper_repository import CommunityPaperRepository
 from backend.app.services import paper_service
 
@@ -376,3 +378,35 @@ def test_run_curation_job_marks_timeout_as_failed_without_automatic_retry(monkey
     assert repository.job["status"] == "failed"
     assert "Timed out waiting for task task-new" in str(repository.job["error"])
     assert cleanup_calls == [("task-new", True)]
+
+
+def test_batch_delete_admin_curation_jobs_reports_successes_and_failures(monkeypatch):
+    async def _delete_admin_curation_job(*, job_id: str, current_user: dict):
+        assert current_user["id"] == "admin-1"
+        if job_id == "job-2":
+            raise HTTPException(status_code=404, detail="Curation job not found")
+        return {
+            "job_id": job_id,
+            "paper_id": None if job_id == "job-1" else "paper-3",
+            "status": "failed" if job_id == "job-1" else "completed",
+        }
+
+    monkeypatch.setattr(paper_service, "delete_admin_curation_job", _delete_admin_curation_job)
+
+    result = asyncio.run(
+        paper_service.batch_delete_admin_curation_jobs(
+            job_ids=["job-1", "job-2", "job-3"],
+            current_user={"id": "admin-1", "roles": ["admin"]},
+        )
+    )
+
+    assert result["deleted_count"] == 2
+    assert result["failed_count"] == 1
+    assert [item["job_id"] for item in result["deleted"]] == ["job-1", "job-3"]
+    assert result["failed"] == [
+        {
+            "job_id": "job-2",
+            "status_code": 404,
+            "detail": "Curation job not found",
+        }
+    ]

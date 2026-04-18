@@ -3,6 +3,7 @@ import api from "@/lib/api"
 import { getAccessToken } from "@/lib/local-auth"
 import { retryOnTransientNetworkError } from "@/lib/network-retry"
 import type {
+  AdminBatchDeleteCurationJobsResponse,
   AdminCurationBatchResponse,
   AdminCurationJobHistoryResponse,
   AdminDeleteCurationJobResponse,
@@ -300,6 +301,16 @@ export async function deleteAdminCurationJob(
   jobId: string,
 ): Promise<AdminDeleteCurationJobResponse> {
   const response = await api.delete<AdminDeleteCurationJobResponse>(`/papers/admin/curation/jobs/${jobId}`)
+  return response.data
+}
+
+export async function batchDeleteAdminCurationJobs(
+  jobIds: string[],
+): Promise<AdminBatchDeleteCurationJobsResponse> {
+  const response = await api.post<AdminBatchDeleteCurationJobsResponse>(
+    "/papers/admin/curation/jobs/batch-delete",
+    { job_ids: jobIds },
+  )
   return response.data
 }
 

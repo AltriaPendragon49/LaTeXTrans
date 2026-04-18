@@ -391,6 +391,19 @@ export interface AdminDeleteCurationJobResponse {
   status: string
 }
 
+export interface AdminBatchDeleteCurationJobsFailure {
+  job_id: string
+  status_code: number
+  detail?: string | null
+}
+
+export interface AdminBatchDeleteCurationJobsResponse {
+  deleted: AdminDeleteCurationJobResponse[]
+  failed: AdminBatchDeleteCurationJobsFailure[]
+  deleted_count: number
+  failed_count: number
+}
+
 export interface CommunityPaperImportRequest {
   source: "arxiv"
   arxiv_id: string
