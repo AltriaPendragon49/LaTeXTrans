@@ -215,6 +215,48 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         )
         self.assertEqual(agent._request_llm_for_trans.await_count, 2)
 
+    def test_rescue_plain_text_by_paragraph_recursively_splits_long_failed_fragment(self):
+        agent = _build_agent()
+        text = (
+            "Diffusion models require stable placeholder handling while preserving mathematical context "
+            "across long rescue fragments without punctuation or explicit sentence boundaries so the "
+            "fallback path must keep splitting until the model can translate each smaller window safely"
+        )
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            user_text = args[1]
+            if fail_part == "11:paragraph:0":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return text
+            if fail_part == "11:paragraph:0:masked":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "11:paragraph:0:window:0":
+                return "扩散模型需要稳定的占位符保护，"
+            if fail_part == "11:paragraph:0:window:1":
+                return "并且在长片段回退时保持数学上下文，"
+            if fail_part == "11:paragraph:0:window:2":
+                return "因此系统必须继续细分，直到每个更小窗口都能安全翻译。"
+            return user_text
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="11",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertEqual(
+            rescued,
+            "扩散模型需要稳定的占位符保护，并且在长片段回退时保持数学上下文，因此系统必须继续细分，直到每个更小窗口都能安全翻译。",
+        )
+        self.assertGreaterEqual(agent._request_llm_for_trans.await_count, 5)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {
@@ -282,6 +324,41 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
         self.assertNotIn("fallback_reason", translated)
         agent._rescue_plain_text_by_paragraph.assert_awaited_once()
+
+    def test_translate_list_env_rescues_payload_invariant_items_individually(self):
+        agent = _build_agent()
+        env = {
+            "placeholder": "<PLACEHOLDER_ENV_31>",
+            "env_name": "itemize",
+            "content": (
+                "\\begin{itemize}\n"
+                "    \\item We chose the beta schedule carefully.\n"
+                "    \\item We tuned dropout for CIFAR10.\n"
+                "\\end{itemize}"
+            ),
+            "need_trans": True,
+        }
+
+        async def fake_request_env_translation(*, text, placeholder, **kwargs):
+            agent._mark_api_fallback("env", placeholder, "invariant_hard_freeze_protocol_violation")
+            return text
+
+        async def fake_rescue_plain_text_by_paragraph(*, text, identifier, **kwargs):
+            mapping = {
+                "<PLACEHOLDER_ENV_31>:item:0": "我们仔细选择了 beta 调度。",
+                "<PLACEHOLDER_ENV_31>:item:1": "我们为 CIFAR10 调整了 dropout。",
+            }
+            return mapping.get(identifier)
+
+        agent._request_env_translation = AsyncMock(side_effect=fake_request_env_translation)
+        agent._rescue_plain_text_by_paragraph = AsyncMock(side_effect=fake_rescue_plain_text_by_paragraph)
+
+        translated = asyncio.run(agent._translate_list_env(env, MagicMock()))
+
+        self.assertIn("我们仔细选择了 beta 调度。", translated["trans_content"])
+        self.assertIn("我们为 CIFAR10 调整了 dropout。", translated["trans_content"])
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertNotIn("fallback_reason", translated)
 
     def test_translate_generic_text_env_rescues_payload_invariant_source_preservation(self):
         agent = _build_agent()

@@ -109,6 +109,9 @@ class TranslatorAgent(BaseToolAgent):
         r".+?(?:[。！？!?;；](?:\s+|$)|[.:：](?=\s|$)(?:\s+|$)|\n|$)",
         re.S,
     )
+    _RESCUE_WINDOW_CHAR_BUDGET = 120
+    _RESCUE_WINDOW_MAX_DEPTH = 2
+    _RESCUE_MAX_FAILED_ALPHA_CHARS = 32
     _TERMINAL_NO_RETRY_STATUSES = frozenset({
         STATUS_TRANSLATED,
         STATUS_TRANSLATED_AFTER_NOOP_RETRY,
@@ -798,6 +801,118 @@ class TranslatorAgent(BaseToolAgent):
             pieces.extend(subchunks or [chunk])
         return pieces
 
+    @classmethod
+    def _split_plain_text_rescue_windows(cls, text: str) -> List[str]:
+        if not text:
+            return []
+        if len(text) <= cls._RESCUE_WINDOW_CHAR_BUDGET:
+            return []
+
+        windows: List[str] = []
+        cursor = 0
+        text_len = len(text)
+        budget = cls._RESCUE_WINDOW_CHAR_BUDGET
+        while cursor < text_len:
+            end = min(text_len, cursor + budget)
+            if end < text_len:
+                whitespace_matches = list(re.finditer(r"\s+", text[cursor:end]))
+                if whitespace_matches:
+                    end = cursor + whitespace_matches[-1].end()
+            if end <= cursor:
+                end = min(text_len, cursor + budget)
+            windows.append(text[cursor:end])
+            cursor = end
+
+        if len(windows) <= 1:
+            return []
+        return windows
+
+    @staticmethod
+    def _count_ascii_alpha(text: str) -> int:
+        return len(re.findall(r"[A-Za-z]", text or ""))
+
+    @staticmethod
+    def _normalize_cjk_punctuation_spacing(text: str) -> str:
+        return re.sub(r"([，。！？；：])\s+(?=[\u4e00-\u9fff])", r"\1", text or "")
+
+    async def _translate_plain_text_rescue_piece_recursively(
+        self,
+        *,
+        piece: str,
+        fail_part: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str],
+        paragraph_hint: str,
+        prompt_suffix: str,
+        prompt_key: str,
+        prompt_key_with_terms: Optional[str],
+        depth: int = 0,
+    ) -> Optional[str]:
+        rescued_piece = await self._translate_plain_text_rescue_piece(
+            piece=piece,
+            fail_part=fail_part,
+            part_type=part_type,
+            session=session,
+            error_message=error_message,
+            paragraph_hint=paragraph_hint,
+            prompt_suffix=prompt_suffix,
+            prompt_key=prompt_key,
+            prompt_key_with_terms=prompt_key_with_terms,
+        )
+        if rescued_piece is not None:
+            return rescued_piece
+
+        if depth >= self._RESCUE_WINDOW_MAX_DEPTH:
+            return None
+
+        windows = self._split_plain_text_rescue_windows(piece)
+        if len(windows) <= 1:
+            return None
+
+        rescued_windows: List[str] = []
+        translated_any = False
+        failed_alpha_chars = 0
+        total_alpha_chars = self._count_ascii_alpha(piece)
+
+        for idx, window in enumerate(windows):
+            if self._should_passthrough_rescue_fragment(window):
+                rescued_windows.append(window)
+                continue
+            rescued_window = await self._translate_plain_text_rescue_piece_recursively(
+                piece=window,
+                fail_part=f"{fail_part}:window:{idx}",
+                part_type=part_type,
+                session=session,
+                error_message=error_message,
+                paragraph_hint=paragraph_hint,
+                prompt_suffix=prompt_suffix,
+                prompt_key=prompt_key,
+                prompt_key_with_terms=prompt_key_with_terms,
+                depth=depth + 1,
+            )
+            if rescued_window is None:
+                failed_alpha_chars += self._count_ascii_alpha(window)
+                rescued_windows.append(window)
+                continue
+            translated_any = translated_any or not self._is_source_preserved_translation(
+                window,
+                rescued_window,
+            )
+            rescued_windows.append(rescued_window)
+
+        combined = self._normalize_cjk_punctuation_spacing("".join(rescued_windows))
+        if not translated_any:
+            return None
+        if failed_alpha_chars > max(
+            self._RESCUE_MAX_FAILED_ALPHA_CHARS,
+            int(total_alpha_chars * 0.12),
+        ):
+            return None
+        if self._is_source_preserved_translation(piece, combined):
+            return None
+        return combined
+
     async def _translate_plain_text_rescue_piece(
         self,
         *,
@@ -984,15 +1099,35 @@ class TranslatorAgent(BaseToolAgent):
             fragment for fragment in fragments if not self._should_passthrough_rescue_fragment(fragment)
         ]
         if len(translatable_fragments) <= 1:
-            return None
+            rescued_single = await self._translate_plain_text_rescue_piece_recursively(
+                piece=masked_text,
+                fail_part=identifier,
+                part_type=part_type,
+                session=session,
+                error_message=error_message,
+                paragraph_hint=paragraph_hint,
+                prompt_suffix=prompt_suffix,
+                prompt_key=prompt_key,
+                prompt_key_with_terms=prompt_key_with_terms,
+            )
+            if rescued_single is None:
+                return None
+            restored_single = self._restore_plain_text_rescue_text(rescued_single, rescue_context)
+            if self._has_unrestored_env_artifacts(restored_single):
+                return None
+            if self._is_source_preserved_translation(text, restored_single):
+                return None
+            return restored_single
 
         rescued: List[str] = []
         translated_any = False
+        failed_alpha_chars = 0
+        total_alpha_chars = sum(self._count_ascii_alpha(fragment) for fragment in translatable_fragments)
         for idx, fragment in enumerate(fragments):
             if self._should_passthrough_rescue_fragment(fragment):
                 rescued.append(fragment)
                 continue
-            rescued_fragment = await self._translate_plain_text_rescue_piece(
+            rescued_fragment = await self._translate_plain_text_rescue_piece_recursively(
                 piece=fragment,
                 fail_part=f"{identifier}:fragment:{idx}",
                 part_type=part_type,
@@ -1004,7 +1139,9 @@ class TranslatorAgent(BaseToolAgent):
                 prompt_key_with_terms=prompt_key_with_terms,
             )
             if rescued_fragment is None:
-                return None
+                failed_alpha_chars += self._count_ascii_alpha(fragment)
+                rescued.append(fragment)
+                continue
             translated_any = translated_any or not self._is_source_preserved_translation(fragment, rescued_fragment)
             rescued.append(rescued_fragment)
 
@@ -1012,11 +1149,75 @@ class TranslatorAgent(BaseToolAgent):
         restored = self._restore_plain_text_rescue_text(combined, rescue_context)
         if not translated_any:
             return None
+        if failed_alpha_chars > max(
+            self._RESCUE_MAX_FAILED_ALPHA_CHARS,
+            int(total_alpha_chars * 0.12),
+        ):
+            return None
         if self._has_unrestored_env_artifacts(restored):
             return None
         if self._is_source_preserved_translation(text, restored):
             return None
         return restored
+
+    async def _rescue_list_env_items(
+        self,
+        *,
+        anchored_text: str,
+        placeholder: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str] = None,
+    ) -> Optional[str]:
+        parts = re.split(r"(<ITEM_\d+>)", anchored_text)
+        rescued_parts: List[str] = []
+        translated_any = False
+        failed_alpha_chars = 0
+        item_idx = -1
+
+        for idx, part in enumerate(parts):
+            if not part:
+                continue
+            if re.fullmatch(r"<ITEM_\d+>", part):
+                item_idx += 1
+                rescued_parts.append(part)
+                continue
+            follows_item_token = idx > 0 and re.fullmatch(r"<ITEM_\d+>", parts[idx - 1] or "")
+            if not follows_item_token:
+                rescued_parts.append(part)
+                continue
+
+            rescued_part = await self._rescue_plain_text_by_paragraph(
+                text=part,
+                identifier=f"{placeholder}:item:{item_idx}",
+                part_type="env",
+                session=session,
+                error_message=error_message,
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms="section_system_prompt_with_dict",
+            )
+            if rescued_part is None:
+                failed_alpha_chars += self._count_ascii_alpha(part)
+                rescued_parts.append(part)
+                continue
+
+            translated_any = translated_any or not self._is_source_preserved_translation(
+                part,
+                rescued_part,
+            )
+            rescued_parts.append(rescued_part)
+
+        combined = self._normalize_cjk_punctuation_spacing("".join(rescued_parts))
+        total_alpha_chars = self._count_ascii_alpha(anchored_text)
+        if not translated_any:
+            return None
+        if failed_alpha_chars > max(
+            self._RESCUE_MAX_FAILED_ALPHA_CHARS,
+            int(total_alpha_chars * 0.12),
+        ):
+            return None
+        if self._is_source_preserved_translation(anchored_text, combined):
+            return None
+        return combined
 
     @staticmethod
     def _env_row_retry_key(placeholder: str, row_idx: int) -> str:
@@ -2711,9 +2912,20 @@ class TranslatorAgent(BaseToolAgent):
                 return transed_env
             mismatch = validate_immutable_placeholder_sequence(candidate, expected_tokens, "ITEM")
             if not mismatch:
+                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
+                if self._is_source_preserved_translation(anchored_text, candidate):
+                    rescued_candidate = await self._rescue_list_env_items(
+                        anchored_text=anchored_text,
+                        placeholder=placeholder,
+                        session=session,
+                        error_message=merged_error,
+                    )
+                    if rescued_candidate is not None:
+                        candidate = rescued_candidate
+                        self._clear_api_fallback("env", placeholder)
+                        api_fallback_reason = None
                 restored = restore_list_items_in_env_body(candidate, item_map)
                 transed_env["trans_content"] = restored
-                api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("env", placeholder))
                 self._update_env_metadata(
                     transed_env,
                     status=self._resolve_api_fallback_status(api_fallback_reason),
