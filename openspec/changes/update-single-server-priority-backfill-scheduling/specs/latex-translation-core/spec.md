@@ -33,3 +33,8 @@ The translation service SHALL handle transient LLM endpoint failures through tok
 - **WHEN** a task uses request-supplied or persisted user custom API credentials
 - **THEN** phase-1 system-managed pool logic MUST NOT alter that task's credential routing semantics
 - **AND** retry behavior for that task MAY remain on the existing single-credential path until a later approved change extends pooling to user-owned credentials.
+
+#### Scenario: Post-translation structured insight generation reuses the system-managed pool
+- **WHEN** the backend performs structured insight generation for a translated paper using system-managed credentials
+- **THEN** that chat-completion request MUST reuse the same system-managed pool helper and member health state as the main translation runtime
+- **AND** MUST NOT fall back to a hard-coded single-member direct HTTP route.

@@ -48,3 +48,8 @@ The system-managed token-pool layer SHALL prefer quick failover to healthy endpo
 - **WHEN** a request uses `custom_api_key/custom_base_url` from the request or user settings
 - **THEN** the system MUST preserve the current single-credential behavior for that request
 - **AND** MUST NOT silently enroll those user-owned credentials into the system-managed pool in phase 1.
+
+#### Scenario: Structured insight sidecar calls share pool health state
+- **WHEN** a translated paper triggers structured insight generation with system-managed credentials
+- **THEN** the request MUST use the same configured pool members and routing key family as the translation runtime for that backend deployment
+- **AND** failover and exhaustion handling MUST observe the same per-member health state instead of maintaining an isolated direct-call path.

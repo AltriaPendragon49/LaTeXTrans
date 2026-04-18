@@ -111,6 +111,7 @@ This matches the user's requirement that the token pool exists to shorten waits,
 Important scope boundary for phase 1:
 
 - only system-managed credentials participate in this pool
+- all translation-runtime system-managed chat-completion calls in the paper pipeline, including post-translation structured insight generation, must reuse the same pool helper and health state
 - user-supplied `custom_api_key/custom_base_url` requests keep the current single-credential behavior
 - persisted user custom credentials from settings also keep the current single-credential behavior in phase 1
 

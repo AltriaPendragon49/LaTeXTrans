@@ -25,6 +25,69 @@ def _valid_sections() -> list[dict[str, str]]:
     ]
 
 
+class _AiohttpResponse:
+    def __init__(self, *, status: int, payload: dict[str, object]):
+        self.status = status
+        self._payload = payload
+        self.headers: dict[str, str] = {}
+
+    async def json(self):
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400:
+            raise RuntimeError(f"HTTP {self.status}")
+
+
+class _AiohttpPostContext:
+    def __init__(self, response: _AiohttpResponse):
+        self._response = response
+
+    async def __aenter__(self):
+        return self._response
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class _DirectAiohttpSession:
+    def __init__(self):
+        self.calls: list[dict[str, object]] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def post(self, url: str, *, json: dict[str, object], headers: dict[str, str], timeout: object):
+        self.calls.append(
+            {
+                "url": url,
+                "json": json,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        return _AiohttpPostContext(
+            _AiohttpResponse(
+                status=200,
+                payload={"choices": [{"message": {"content": "structured insight output"}}]},
+            )
+        )
+
+
+class _BoomAiohttpSession:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def post(self, *args, **kwargs):
+        raise AssertionError("structured insight system-pool path should not call session.post directly")
+
+
 def test_prepare_structured_insight_sources_routes_relevant_sections_and_falls_back_by_order(monkeypatch, tmp_path):
     output_dir = tmp_path / "task-1" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -264,6 +327,69 @@ def test_generate_structured_insight_sections_calls_llm_once_per_module_and_retr
         expected = 2 if section_key == "future" else 1
         assert call_counts[section_key] == expected
     assert next(section for section in sections if section["section_key"] == "future")["content"]
+
+
+@pytest.mark.asyncio
+async def test_structured_insight_llm_uses_pool_helper_for_system_managed_credentials(monkeypatch):
+    llm_config = {
+        "base_url": "https://relay-a.example/v1/chat/completions",
+        "api_key": "k1",
+        "model": "test-model",
+        "timeout": 30,
+        "pool_mode": "system_managed",
+        "pool_members": [
+            {"member_id": "a1", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k1"},
+            {"member_id": "a2", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k2"},
+        ],
+    }
+    called: dict[str, object] = {}
+
+    async def _fake_pool_call(**kwargs):
+        called["pool_mode"] = kwargs["llm_config"].get("pool_mode")
+        called["payload"] = kwargs["payload"]
+        return {"choices": [{"message": {"content": "pooled structured insight"}}]}
+
+    monkeypatch.setattr(paper_service, "post_chat_completion_with_pool", _fake_pool_call, raising=False)
+    monkeypatch.setattr(paper_service.aiohttp, "ClientSession", lambda *args, **kwargs: _BoomAiohttpSession())
+
+    result = await paper_service._call_structured_insight_llm(
+        llm_config=llm_config,
+        system_prompt="Summarize",
+        user_payload={"title": "Paper", "section_key": "problem"},
+    )
+
+    assert result == "pooled structured insight"
+    assert called["pool_mode"] == "system_managed"
+    assert isinstance(called["payload"], dict)
+    assert called["payload"]["model"] == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_structured_insight_llm_keeps_direct_route_for_custom_credentials(monkeypatch):
+    llm_config = {
+        "base_url": "https://custom.example/v1/chat/completions",
+        "api_key": "user-key",
+        "model": "test-model",
+        "timeout": 30,
+    }
+    session = _DirectAiohttpSession()
+
+    async def _unexpected_pool_call(**kwargs):
+        raise AssertionError("custom structured insight credentials should not use the system token pool")
+
+    monkeypatch.setattr(paper_service, "post_chat_completion_with_pool", _unexpected_pool_call, raising=False)
+    monkeypatch.setattr(paper_service.aiohttp, "ClientSession", lambda *args, **kwargs: session)
+
+    result = await paper_service._call_structured_insight_llm(
+        llm_config=llm_config,
+        system_prompt="Summarize",
+        user_payload={"title": "Paper", "section_key": "problem"},
+    )
+
+    assert result == "structured insight output"
+    assert len(session.calls) == 1
+    assert session.calls[0]["url"] == "https://custom.example/v1/chat/completions"
+    assert session.calls[0]["headers"]["Authorization"] == "Bearer user-key"
 
 
 def test_generate_structured_insight_sections_uses_fallback_content_after_retries(monkeypatch):

@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 from uuid import uuid4
 
+import aiohttp
 import httpx
 import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -35,6 +36,7 @@ from backend.app.services.latex.utils import extract_abstract, extract_text_from
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_preview_service
 from backend.app.services import task_artifact_storage
+from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
 from backend.app.services.storage_backend import (
     LocalDiskStorageBackend,
     StorageBackend,
@@ -4303,26 +4305,42 @@ async def _call_structured_insight_llm(
     if not provider_url or not provider_key or not provider_model:
         raise RuntimeError("Structured insight LLM configuration is unavailable")
 
-    async with httpx.AsyncClient(timeout=max(float(llm_config.get("timeout") or settings.llm_timeout), 10.0)) as client:
-        response = await client.post(
-            provider_url,
-            json={
-                "model": provider_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-                ],
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False,
-            },
-            headers={
-                "Authorization": f"Bearer {provider_key}",
-                "Content-Type": "application/json",
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
+    payload = {
+        "model": provider_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    timeout = aiohttp.ClientTimeout(total=max(float(llm_config.get("timeout") or settings.llm_timeout), 10.0))
+
+    async with aiohttp.ClientSession() as session:
+        if llm_config.get("pool_mode") == "system_managed" and list(llm_config.get("pool_members") or []):
+            payload = await post_chat_completion_with_pool(
+                session=session,
+                llm_config=llm_config,
+                payload=payload,
+                timeout=timeout,
+                on_retry_message=lambda message: logger.warning(
+                    "Structured insight LLM pool retry: %s",
+                    message,
+                ),
+            )
+        else:
+            async with session.post(
+                provider_url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {provider_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=timeout,
+            ) as response:
+                response.raise_for_status()
+                payload = await response.json()
 
     choices = payload.get("choices") if isinstance(payload, dict) else None
     if not isinstance(choices, list) or not choices:
