@@ -62,6 +62,73 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertEqual(agent.fail_section_nums, [])
         self.assertFalse(agent.have_fail_parts)
 
+    def test_translate_section_payload_invariant_non_source_candidate_uses_paragraph_rescue(self):
+        agent = _build_agent()
+        section = {
+            "section": "13+13_1",
+            "content": (
+                "\\section{Additional Empirical Results}\n\n"
+                "\\subsection{Performance of Best of $N$ baseline for Various $N$}\n"
+                "We find that the Best of $N$ baseline remains strong."
+            ),
+            "previous_context": "",
+        }
+        unsafe_candidate = (
+            "\\section{其他实证结果}\n\n"
+            "\\subsection{最佳表现} $N$ 各种方法的基线 $N$}\n"
+            "我们发现，$N$ 基线仍然很强。"
+        )
+        rescued_candidate = (
+            "\\section{其他实证结果}\n\n"
+            "\\subsection{各种 $N$ 下 Best of $N$ 基线的表现}\n"
+            "我们发现，Best of $N$ 基线仍然很强。"
+        )
+
+        async def fake_request(*args, **kwargs):
+            agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+            return unsafe_candidate
+
+        agent._request_llm_for_trans = fake_request
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=rescued_candidate)
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["trans_content"], rescued_candidate)
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertNotIn("payload_invariant_passthrough", str(translated))
+
+    def test_translate_section_payload_invariant_non_source_candidate_never_persists_unsafe_text(self):
+        agent = _build_agent()
+        section = {
+            "section": "13+13_1",
+            "content": (
+                "\\section{Additional Empirical Results}\n\n"
+                "\\subsection{Performance of Best of $N$ baseline for Various $N$}\n"
+                "We find that the Best of $N$ baseline remains strong."
+            ),
+            "previous_context": "",
+        }
+        unsafe_candidate = (
+            "\\section{其他实证结果}\n\n"
+            "\\subsection{最佳表现} $N$ 各种方法的基线 $N$}\n"
+            "我们发现，$N$ 基线仍然很强。"
+        )
+
+        async def fake_request(*args, **kwargs):
+            agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+            return unsafe_candidate
+
+        agent._request_llm_for_trans = fake_request
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=None)
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(translated["trans_content"], section["content"])
+        self.assertEqual(
+            translated["translation_status"],
+            agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+        )
+
     def test_rescue_plain_text_by_paragraph_falls_back_to_fragment_rescue(self):
         agent = _build_agent()
         text = (

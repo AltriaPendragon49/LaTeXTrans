@@ -2567,10 +2567,7 @@ class TranslatorAgent(BaseToolAgent):
 
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
             payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
-            if (
-                payload_invariant_passthrough
-                and self._is_source_preserved_translation(translatable_content, translated_text)
-            ):
+            if payload_invariant_passthrough:
                 rescued_text = await self._rescue_plain_text_by_paragraph(
                     text=translatable_content,
                     identifier=section_num,
@@ -2585,6 +2582,9 @@ class TranslatorAgent(BaseToolAgent):
                     self._clear_api_fallback("sec", section_num)
                     api_fallback_reason = None
                     payload_invariant_passthrough = False
+                else:
+                    # Never persist unsafe text produced under a hard-freeze protocol violation.
+                    translated_text = translatable_content
 
             env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
             if env_restore_preserved_source:
