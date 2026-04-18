@@ -1,0 +1,16 @@
+## 1. Investigation Guardrails
+- [ ] 1.1 Preserve the hard-freeze fail-fast boundary and document the confirmed regression path from server artifacts.
+- [ ] 1.2 Confirm the narrow compile failure trigger for `2010.11929` and keep the fix scoped to the confirmed pdfTeX-driver incompatibility family.
+
+## 2. Section Rescue Priority Fix
+- [ ] 2.1 Update section-level payload-invariant handling so target-language paragraph/fragment downgrade is preferred over full source passthrough whenever rescue succeeds materially.
+- [ ] 2.2 Ensure reconstruction does not re-expand a rescued section back to source English after compile-first or payload-invariant recovery.
+- [ ] 2.3 Add regression tests covering known affected section patterns from `2006.11239` and `2305.18290`.
+
+## 3. Template Compatibility Fix
+- [ ] 3.1 Add a compile sanitization rule for explicit pdfTeX package driver locks that are incompatible with zh/CJK modern-engine compilation.
+- [ ] 3.2 Add focused regression coverage for the `2010.11929` failure family.
+
+## 4. Verification
+- [ ] 4.1 Run focused local tests for translation fallback and compile sanitization.
+- [ ] 4.2 Sync to the server, restart if needed, and validate `2010.11929`, `2006.11239`, and `2305.18290` through the admin ingestion path.

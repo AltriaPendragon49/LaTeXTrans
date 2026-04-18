@@ -696,6 +696,12 @@ class TranslatorAgent(BaseToolAgent):
         pieces = re.split(r"(\n\s*\n+)", normalized)
         rescued: List[str] = []
         translated_any = False
+        failed_alpha_chars = 0
+        total_alpha_chars = sum(
+            self._count_ascii_alpha(piece)
+            for piece in pieces
+            if piece and not re.fullmatch(r"\n\s*\n+", piece)
+        )
 
         for idx, piece in enumerate(pieces):
             if not piece or re.fullmatch(r"\n\s*\n+", piece):
@@ -750,13 +756,22 @@ class TranslatorAgent(BaseToolAgent):
                     prompt_key_with_terms=prompt_key_with_terms,
                 )
             if rescued_piece is None:
-                return None
+                failed_alpha_chars += self._count_ascii_alpha(piece)
+                rescued.append(piece)
+                continue
 
             rescued.append(rescued_piece)
             translated_any = translated_any or not self._is_source_preserved_translation(piece, rescued_piece)
 
         combined = "".join(rescued)
         if not translated_any:
+            return None
+        if not self._should_accept_best_effort_rescue(
+            original=text,
+            translated=combined,
+            failed_alpha_chars=failed_alpha_chars,
+            total_alpha_chars=total_alpha_chars,
+        ):
             return None
         if self._has_unrestored_env_artifacts(combined):
             return None
@@ -858,6 +873,56 @@ class TranslatorAgent(BaseToolAgent):
     def _normalize_cjk_punctuation_spacing(text: str) -> str:
         return re.sub(r"([，。！？；：])\s+(?=[\u4e00-\u9fff])", r"\1", text or "")
 
+    @staticmethod
+    def _count_cjk_chars(text: str) -> int:
+        return len(re.findall(r"[\u4e00-\u9fff]", text or ""))
+
+    @classmethod
+    def _has_material_target_language_signal(cls, original: str, translated: str) -> bool:
+        if not original or not translated:
+            return False
+        translated_cjk = cls._count_cjk_chars(translated)
+        if translated_cjk >= 24:
+            return True
+
+        original_words = len(re.findall(r"\b[A-Za-z]{3,}\b", original))
+        translated_words = len(re.findall(r"\b[A-Za-z]{3,}\b", translated))
+        if original_words <= 0:
+            return translated_cjk >= 12
+
+        reduced_words = max(original_words - translated_words, 0)
+        return translated_cjk >= 12 and (
+            reduced_words >= 24 or translated_words <= int(original_words * 0.7)
+        )
+
+    @classmethod
+    def _should_accept_best_effort_rescue(
+        cls,
+        *,
+        original: str,
+        translated: str,
+        failed_alpha_chars: int,
+        total_alpha_chars: int,
+    ) -> bool:
+        if not translated or cls._is_source_preserved_translation(original, translated):
+            return False
+
+        allowed_failed = max(
+            cls._RESCUE_MAX_FAILED_ALPHA_CHARS,
+            int(total_alpha_chars * 0.12),
+        )
+        if failed_alpha_chars <= allowed_failed:
+            return True
+
+        if total_alpha_chars <= 0 or failed_alpha_chars >= total_alpha_chars:
+            return False
+
+        failed_ratio = failed_alpha_chars / max(total_alpha_chars, 1)
+        return failed_ratio <= 0.7 and cls._has_material_target_language_signal(
+            original,
+            translated,
+        )
+
     async def _translate_plain_text_rescue_piece_recursively(
         self,
         *,
@@ -931,9 +996,11 @@ class TranslatorAgent(BaseToolAgent):
         combined = self._normalize_cjk_punctuation_spacing("".join(rescued_windows))
         if not translated_any:
             return None
-        if failed_alpha_chars > max(
-            self._RESCUE_MAX_FAILED_ALPHA_CHARS,
-            int(total_alpha_chars * 0.12),
+        if not self._should_accept_best_effort_rescue(
+            original=piece,
+            translated=combined,
+            failed_alpha_chars=failed_alpha_chars,
+            total_alpha_chars=total_alpha_chars,
         ):
             return None
         if self._is_source_preserved_translation(piece, combined):
@@ -1184,9 +1251,11 @@ class TranslatorAgent(BaseToolAgent):
         restored = self._restore_plain_text_rescue_text(combined, rescue_context)
         if not translated_any:
             return None
-        if failed_alpha_chars > max(
-            self._RESCUE_MAX_FAILED_ALPHA_CHARS,
-            int(total_alpha_chars * 0.12),
+        if not self._should_accept_best_effort_rescue(
+            original=text,
+            translated=restored,
+            failed_alpha_chars=failed_alpha_chars,
+            total_alpha_chars=total_alpha_chars,
         ):
             return None
         if self._has_unrestored_env_artifacts(restored):
@@ -1245,9 +1314,11 @@ class TranslatorAgent(BaseToolAgent):
         total_alpha_chars = self._count_ascii_alpha(anchored_text)
         if not translated_any:
             return None
-        if failed_alpha_chars > max(
-            self._RESCUE_MAX_FAILED_ALPHA_CHARS,
-            int(total_alpha_chars * 0.12),
+        if not self._should_accept_best_effort_rescue(
+            original=anchored_text,
+            translated=combined,
+            failed_alpha_chars=failed_alpha_chars,
+            total_alpha_chars=total_alpha_chars,
         ):
             return None
         if self._is_source_preserved_translation(anchored_text, combined):

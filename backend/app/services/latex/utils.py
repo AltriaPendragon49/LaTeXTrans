@@ -1771,6 +1771,35 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
             else:
                 break
     
+    def _strip_explicit_pdftex_driver(line: str) -> str:
+        package_re = re.compile(
+            r'(?P<prefix>\s*(?:\\usepackage|\\RequirePackage))\s*'
+            r'\[(?P<options>[^\]]*)\]\s*'
+            r'\{(?P<packages>[^}]*)\}'
+        )
+        match = package_re.match(line)
+        if not match:
+            return line
+
+        packages = [pkg.strip() for pkg in match.group("packages").split(",") if pkg.strip()]
+        if "graphicx" not in packages:
+            return line
+
+        options = [opt.strip() for opt in match.group("options").split(",") if opt.strip()]
+        filtered_options = [opt for opt in options if opt.lower() != "pdftex"]
+        if len(filtered_options) == len(options):
+            return line
+
+        if filtered_options:
+            rewritten = (
+                f'{match.group("prefix")}[{",".join(filtered_options)}]'
+                f'{{{match.group("packages")}}}'
+            )
+        else:
+            rewritten = f'{match.group("prefix")}{{{match.group("packages")}}}'
+        logger.debug("Removed explicit pdftex driver lock from package import: %s", line.strip())
+        return rewritten
+
     # --- Step 2: Handle single-line pdfLaTeX-specific commands ---
     lines = latex_code.splitlines()
     modified_lines = []
@@ -1799,7 +1828,12 @@ def _comment_out_pdflatex_commands(latex_code: str) -> str:
         if stripped.startswith('%'):
             modified_lines.append(line)
             continue
-            
+
+        rewritten_line = _strip_explicit_pdftex_driver(line)
+        if rewritten_line != line:
+            modified_lines.append(rewritten_line)
+            continue
+
         # Check if line matches any pdfLaTeX-specific single-line pattern
         if combined_pattern.search(line):
             # Comment out the line with explanation

@@ -257,6 +257,87 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         )
         self.assertGreaterEqual(agent._request_llm_for_trans.await_count, 5)
 
+    def test_rescue_plain_text_by_paragraph_keeps_best_effort_translation_when_one_paragraph_fails(self):
+        agent = _build_agent()
+        text = (
+            "The first paragraph remains hard to translate and may stay in English.\n\n"
+            "The second paragraph should still become a readable Chinese downgrade with target language priority."
+        )
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            user_text = args[1]
+            if fail_part == "18:paragraph:0":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "18:paragraph:0:force":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "18:paragraph:0:masked":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "18:paragraph:2":
+                return "第二段已经被降级为可读的中文译文，并优先保留目标语言效果。"
+            raise AssertionError(f"unexpected fail_part {fail_part}")
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="18",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertIn("The first paragraph remains hard to translate", rescued)
+        self.assertIn("第二段已经被降级为可读的中文译文", rescued)
+
+    def test_rescue_plain_text_by_paragraph_accepts_best_effort_single_paragraph_window_rescue(self):
+        agent = _build_agent()
+        text = (
+            "This long rescue paragraph keeps some English scientific tokens while "
+            "the recovery path should still preserve a substantial Chinese downgrade "
+            "instead of reverting the whole paragraph back to the original source text."
+        )
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            user_text = args[1]
+            if fail_part == "21:paragraph:0":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return text
+            if fail_part == "21:paragraph:0:force":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "21:paragraph:0:masked":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "21:paragraph:0:window:0":
+                return "这一段已经被尽量降级成中文译文，"
+            if fail_part == "21:paragraph:0:window:1":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            if fail_part == "21:paragraph:0:window:1:force":
+                agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+                return user_text
+            raise AssertionError(f"unexpected fail_part {fail_part}")
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="21",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertIsNotNone(rescued)
+        self.assertIn("这一段已经被尽量降级成中文译文", rescued)
+
     def test_rescue_plain_text_by_paragraph_stops_after_non_invariant_api_failure(self):
         agent = _build_agent()
         text = "This paragraph should not recurse into finer rescue levels after an API outage."
