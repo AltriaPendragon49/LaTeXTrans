@@ -2718,12 +2718,42 @@ class TranslatorAgent(BaseToolAgent):
                 type="sec",
                 session=session,
             )
-            env_restore_preserved_source = self._has_unrestored_env_artifacts(retrans_content)
-            transed_section["trans_content"] = (
-                section.get("content", "") if env_restore_preserved_source else retrans_content
-            )
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
             payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+            translated_text = retrans_content if retrans_content is not None else translatable_content
+            if payload_invariant_passthrough:
+                rescued_text = await self._rescue_plain_text_by_paragraph(
+                    text=translatable_content,
+                    identifier=section_num,
+                    part_type="sec",
+                    session=session,
+                    error_message="Previous section-retry attempt violated protected-token invariants.",
+                    prompt_key="section_system_prompt",
+                    prompt_key_with_terms="section_system_prompt_with_dict",
+                )
+                if rescued_text is not None:
+                    translated_text = rescued_text
+                    self._clear_api_fallback("sec", section_num)
+                    api_fallback_reason = None
+                    payload_invariant_passthrough = False
+                else:
+                    translated_text = translatable_content
+
+            env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
+            if env_restore_preserved_source:
+                translated_text = translatable_content
+            else:
+                translated_text, drift_sanitized = self._sanitize_sectioning_command_drift(
+                    translatable_content,
+                    translated_text,
+                )
+                if drift_sanitized:
+                    transed_section["sectioning_command_drift_sanitized"] = True
+
+            transed_section["trans_content"] = self._reassemble_section_translation(
+                section,
+                translated_text,
+            )
             if payload_invariant_passthrough:
                 self._record_payload_invariant_section(section_num)
             self._update_section_metadata(
