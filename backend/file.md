@@ -259,7 +259,7 @@
 - `backend/app/services/agents/controlled_repair_agent.py`: 翻译代理管线相关文件。 | 顶层符号: RepairRateLimitExceededError, ControlledRepairAgent
 - `backend/app/services/agents/coordinator_agent.py`: 翻译流水线协调器，编排解析、翻译、校验、修复与编译步骤。 | 顶层符号: CoordinatorAgent
 - `backend/app/services/agents/generator_agent.py`: 翻译代理管线相关文件。 | 顶层符号: GeneratorAgent
-- `backend/app/services/agents/langgraph_orchestrator.py`: 翻译代理管线相关文件。 | 顶层符号: PipelineState, _should_skip_deterministic_section_downgrade, _normalize_error_signature, _write_audit_log, _update_progress, _write_task_log, _write_stage_failed_log
+- `backend/app/services/agents/langgraph_orchestrator.py`: 翻译代理编排层，负责节点流转、审计日志、进度更新，以及在校验重试后阻断仍残留英文长段的任务完成。 | 顶层符号: PipelineState, _should_skip_deterministic_section_downgrade, _normalize_error_signature, _write_audit_log, _update_progress, _write_task_log, _write_stage_failed_log
 - `backend/app/services/agents/llm_runtime.py`: 翻译代理管线相关文件。 | 顶层符号: _as_mapping, extract_llm_config, _coerce_positive_int, resolve_llm_timeout, resolve_llm_max_concurrent_requests, resolve_task_llm_max_concurrent_requests
 - `backend/app/services/agents/llm_token_pool.py`: 翻译代理管线相关文件。 | 顶层符号: _MemberState, _PoolRegistry, build_pool_members_from_groups, compute_pool_routing_key, _parse_retry_after_seconds, _perform_member_request, post_chat_completion_with_pool
 - `backend/app/services/agents/parser_agent.py`: 翻译代理管线相关文件。 | 顶层符号: ParserAgent
@@ -267,7 +267,7 @@
 - `backend/app/services/agents/pipeline_schema.py`: 翻译代理管线相关文件。 | 顶层符号: PipelineInput, NodeOutput, PipelineAuditEntry, FallbackReport
 - `backend/app/services/agents/structure_repair_node.py`: 翻译代理管线相关文件。 | 顶层符号: StructureRepairNode, _count_open_braces, _repair_unclosed_braces, _find_unmatched_environments, _repair_unmatched_environments, _apply_structural_repairs
 - `backend/app/services/agents/translation_repair_agent.py`: 翻译代理管线相关文件。 | 顶层符号: TranslationRepairAgent, _extract_placeholders, _estimate_tokens, _count_math_delimiters, _math_delimiter_guard, _placeholder_guard, _edit_budget_check
-- `backend/app/services/agents/translator_agent.py`: 核心翻译代理，负责分段翻译、术语处理、payload 守卫、降级与重试控制。 | 顶层符号: TranslatorAgent
+- `backend/app/services/agents/translator_agent.py`: 核心翻译代理，负责分段翻译、术语处理、payload 守卫、降级与重试控制，并承担残留英文长段的保守中文补救与误判 immutable 分段的兜底翻译。 | 顶层符号: TranslatorAgent
 - `backend/app/services/agents/validator_agent.py`: 翻译校验代理，检查完整性、结构风险和错误类型分类。 | 顶层符号: ValidatorAgent, find_long_english_prose_spans, classify_error
 
 ### backend/app/services/community_agent

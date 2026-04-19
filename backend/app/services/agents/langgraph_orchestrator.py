@@ -518,6 +518,28 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                 },
             )
         _update_progress(state, 85, "Validation completed")
+
+        residual_completeness_errors = [
+            error for error in (errors_report or [])
+            if error.get("completeness_error")
+        ]
+        if residual_completeness_errors and int(state.get("mode") or 0) != 3:
+            blocked_scopes = [
+                str(error.get("num_or_ph") or "")
+                for error in residual_completeness_errors
+            ]
+            _write_task_log(
+                transed_project_dir,
+                "validation_blocked_residual_english_prose",
+                {
+                    "count": len(residual_completeness_errors),
+                    "scopes": blocked_scopes,
+                },
+            )
+            raise RuntimeError(
+                "Residual English prose remains after validation retries: "
+                + ", ".join(scope for scope in blocked_scopes if scope)
+            )
     except Exception as e:
         _write_audit_log(transed_project_dir, task_id, "node_exit:validate_and_retry",
                          {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000,

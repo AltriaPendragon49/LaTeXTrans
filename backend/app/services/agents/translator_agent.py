@@ -1,6 +1,14 @@
 ﻿from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
-from .validator_agent import ERROR_TYPE_A, ERROR_TYPE_B, ERROR_TYPE_C, ERROR_TYPE_C1, ERROR_TYPE_C2, ValidatorAgent
+from .validator_agent import (
+    ERROR_TYPE_A,
+    ERROR_TYPE_B,
+    ERROR_TYPE_C,
+    ERROR_TYPE_C1,
+    ERROR_TYPE_C2,
+    ValidatorAgent,
+    find_long_english_prose_spans,
+)
 from .pipeline_schema import FallbackReport
 from .pipeline_invariants import (
     HardFreezeProtocolViolation,
@@ -431,6 +439,13 @@ class TranslatorAgent(BaseToolAgent):
 
         self._nested_rescue_attempt_counts[budget_key] = current + 1
         return True
+
+    def _clear_nested_rescue_attempt_budget(self, part_type: str, identifier: str) -> None:
+        normalized = self._normalize_llm_failure_identifier(part_type, identifier)
+        if not normalized:
+            return
+        budget_key = self._part_retry_key(part_type, normalized)
+        self._nested_rescue_attempt_counts.pop(budget_key, None)
 
     def _clear_llm_part_failure(self, part_type: str, identifier: str) -> None:
         normalized = self._normalize_llm_failure_identifier(part_type, identifier)
@@ -1030,6 +1045,174 @@ class TranslatorAgent(BaseToolAgent):
             return env_restored
 
     @classmethod
+    def _extract_rescue_token_sequence(cls, text: str) -> List[str]:
+        return cls._RESCUE_TOKEN_RE.findall(text or "")
+
+    @classmethod
+    def _validate_masked_rescue_token_sequence(
+        cls,
+        candidate: str,
+        expected_tokens: List[str],
+    ) -> Optional[str]:
+        found_tokens = cls._extract_rescue_token_sequence(candidate)
+        if list(found_tokens) == list(expected_tokens or []):
+            return None
+        return (
+            "masked_rescue_token_sequence_mismatch: "
+            f"expected {list(expected_tokens or [])}, found {list(found_tokens or [])}"
+        )
+
+    def _has_instance_override(self, attribute_name: str) -> bool:
+        return attribute_name in getattr(self, "__dict__", {})
+
+    async def _request_masked_plain_text_rescue(
+        self,
+        *,
+        system_prompt: str,
+        masked_text: str,
+        fail_part: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        include_glossary: bool = False,
+    ) -> str:
+        expected_tokens = self._extract_rescue_token_sequence(masked_text)
+        system_content = system_prompt
+        if include_glossary:
+            system_content = (
+                f"{system_prompt}\n"
+                "When translating, you must strictly use the following glossary for substitution. "
+                "This is the highest priority rule to ensure the consistency of terms throughout the text.\n"
+                f"<Glossary>:\n{self.term_dict}\n"
+                "Keep all placeholder tokens unchanged and in the same order."
+            )
+
+        payload = {
+            "model": f"{self.model}",
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": masked_text},
+            ],
+            "temperature": 0.7,
+            "max_new_tokens": 8192,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        _timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
+        max_429_retries = 3
+        rate_limit_hits = 0
+        network_failures = 0
+
+        while rate_limit_hits <= max_429_retries and network_failures <= 3:
+            try:
+                async with global_llm_semaphore:
+                    if self._uses_system_pool():
+                        result = await post_chat_completion_with_pool(
+                            session=session,
+                            llm_config=self.config.get("llm_config", {}),
+                            payload=payload,
+                            timeout=_timeout,
+                            on_retry_message=lambda message: self.update_progress(-1, message),
+                        )
+                        raw_result = result["choices"][0]["message"]["content"].strip()
+                    else:
+                        async with session.post(self.base_url, json=payload, headers=headers, timeout=_timeout) as response:
+                            if response.status == 429:
+                                rate_limit_hits += 1
+                                if rate_limit_hits > max_429_retries:
+                                    logger.warning(
+                                        "⚠ API rate limited (429) for masked rescue %s: exceeded max retries (%s).",
+                                        fail_part,
+                                        max_429_retries,
+                                    )
+                                    self._register_llm_part_failure(part_type, str(fail_part))
+                                    self._mark_api_fallback(
+                                        part_type,
+                                        str(fail_part),
+                                        "api_request_failed_429_max_retries",
+                                    )
+                                    return masked_text
+                                retry_after_raw = response.headers.get("Retry-After", "")
+                                wait = min(int(retry_after_raw) if retry_after_raw.isdigit() else 10, 30)
+                                logger.warning(
+                                    "⚠ API rate limited (429) for masked rescue %s, waiting %ss (attempt %s/%s)",
+                                    fail_part,
+                                    wait,
+                                    rate_limit_hits,
+                                    max_429_retries,
+                                )
+                                self.update_progress(
+                                    -1,
+                                    f"API rate limited, waiting {wait}s (attempt {rate_limit_hits}/{max_429_retries})",
+                                )
+                                await asyncio.sleep(wait)
+                                continue
+
+                            response.raise_for_status()
+                            result = await response.json()
+                            raw_result = result["choices"][0]["message"]["content"].strip()
+
+                    mismatch = self._validate_masked_rescue_token_sequence(
+                        raw_result,
+                        expected_tokens,
+                    )
+                    if mismatch:
+                        logger.warning(
+                            "Masked rescue placeholder sequence mismatch for %s: %s",
+                            fail_part,
+                            mismatch,
+                        )
+                        self._register_llm_part_failure(part_type, str(fail_part))
+                        self._mark_api_fallback(
+                            part_type,
+                            str(fail_part),
+                            "invariant_masked_rescue_token_sequence_mismatch",
+                        )
+                        return masked_text
+
+                    self._clear_api_fallback(part_type, str(fail_part))
+                    return raw_result
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if isinstance(exc, aiohttp.ClientResponseError) and exc.status in (400, 401, 403, 404):
+                    logger.error(
+                        "❌ Fatal API error %s for masked rescue %s: %s. Aborting retries.",
+                        exc.status,
+                        fail_part,
+                        getattr(exc, "message", str(exc)),
+                    )
+                    self._register_llm_part_failure(part_type, str(fail_part))
+                    self._mark_api_fallback(part_type, str(fail_part), f"api_request_failed_http_{exc.status}")
+                    return masked_text
+
+                network_failures += 1
+                backoff = 5 * (2 ** (network_failures - 1))
+                if network_failures < 3:
+                    logger.warning(
+                        "Masked rescue request attempt %s/3 failed for %s: %s. Retrying in %ss...",
+                        network_failures,
+                        fail_part,
+                        exc,
+                        backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                else:
+                    self._register_llm_part_failure(part_type, str(fail_part))
+                    logger.error(
+                        "❌ Failed masked rescue after 3 attempts, returning fallback for %s. %s",
+                        fail_part,
+                        exc,
+                    )
+                    self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_after_3_attempts")
+                    return masked_text
+
+        self._register_llm_part_failure(part_type, str(fail_part))
+        self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_429_max_retries")
+        return masked_text
+
+    @classmethod
     def _should_passthrough_rescue_fragment(cls, piece: str) -> bool:
         stripped = (piece or "").strip()
         if not stripped:
@@ -1355,7 +1538,19 @@ class TranslatorAgent(BaseToolAgent):
         if not self._reserve_nested_rescue_attempt(part_type, fail_part):
             return None
 
-        if self.trans_mode == 1:
+        if self._has_instance_override("_request_masked_plain_text_rescue"):
+            system_prompt = self.prompts[prompt_key] + prompt_suffix
+            if error_message and error_message not in system_prompt:
+                system_prompt = f"{system_prompt}\n{error_message}"
+            translated_masked_piece = await self._request_masked_plain_text_rescue(
+                system_prompt=system_prompt,
+                masked_text=masked_piece,
+                fail_part=fail_part,
+                part_type=part_type,
+                session=session,
+                include_glossary=bool(self.trans_mode == 2 and prompt_key_with_terms and self.term_dict),
+            )
+        elif self.trans_mode == 1 and self._has_instance_override("_request_llm_for_retrans_error_parts"):
             retry_part = {
                 "content": masked_piece,
                 "trans_content": masked_piece,
@@ -1368,21 +1563,25 @@ class TranslatorAgent(BaseToolAgent):
                 type=part_type,
                 session=session,
             )
-        elif self.trans_mode == 2 and prompt_key_with_terms and self.term_dict:
-            translated_masked_piece = await self._request_llm_for_trans_with_terms(
-                self.prompts[prompt_key_with_terms] + prompt_suffix,
-                masked_piece,
-                fail_part=fail_part,
-                type=part_type,
-                session=session,
-            )
-        else:
+        elif self._has_instance_override("_request_llm_for_trans"):
             translated_masked_piece = await self._request_llm_for_trans(
                 self.prompts[prompt_key] + prompt_suffix,
                 masked_piece,
                 fail_part=fail_part,
                 type=part_type,
                 session=session,
+            )
+        else:
+            system_prompt = self.prompts[prompt_key] + prompt_suffix
+            if error_message and error_message not in system_prompt:
+                system_prompt = f"{system_prompt}\n{error_message}"
+            translated_masked_piece = await self._request_masked_plain_text_rescue(
+                system_prompt=system_prompt,
+                masked_text=masked_piece,
+                fail_part=fail_part,
+                part_type=part_type,
+                session=session,
+                include_glossary=bool(self.trans_mode == 2 and prompt_key_with_terms and self.term_dict),
             )
 
         api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
@@ -1647,6 +1846,183 @@ class TranslatorAgent(BaseToolAgent):
         if self._is_payload_invariant_reason(reason):
             return self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
         return self.STATUS_FALLBACK_SOURCE_API_FAILURE
+
+    @staticmethod
+    def _should_force_target_language_rescue(error_message: Optional[str]) -> bool:
+        return "long_english_prose_span" in str(error_message or "")
+
+    @staticmethod
+    def _has_residual_english_prose(text: str, *, min_words: int = 18) -> bool:
+        return bool(find_long_english_prose_spans(text or "", min_words=min_words))
+
+    @staticmethod
+    def _build_force_target_language_rescue_error(
+        error_message: Optional[str],
+        *,
+        target_language: str,
+    ) -> str:
+        guidance = (
+            f"Do not leave long English prose in the final output. Translate all remaining "
+            f"natural-language English content into {target_language}, even if the wording "
+            "must be simplified to a conservative plain-text downgrade. Preserve LaTeX "
+            "commands, placeholders, math, and structure shell unchanged."
+        )
+        base = str(error_message or "").strip()
+        if not base:
+            return guidance
+        if guidance in base:
+            return base
+        return f"{base}\n{guidance}"
+
+    @staticmethod
+    def _replace_first_exact(text: str, old: str, new: str) -> Tuple[str, bool]:
+        if not old:
+            return text, False
+        index = (text or "").find(old)
+        if index < 0:
+            return text, False
+        return (
+            f"{text[:index]}{new}{text[index + len(old):]}",
+            True,
+        )
+
+    @staticmethod
+    def _expand_residual_english_span(text: str, span: str) -> str:
+        working = text or ""
+        target = span or ""
+        if not working or not target:
+            return target
+
+        index = working.find(target)
+        if index < 0:
+            return target
+
+        prefix = working[:index]
+        article_match = re.search(r"(?i)(?:^|[\s(\[{])((?:a|an|the)\s+)$", prefix)
+        if article_match:
+            index -= len(article_match.group(1))
+            target = working[index:index + len(article_match.group(1)) + len(target)]
+        return target
+
+    def _build_brutal_target_language_fragment_fallback(self, fragment: str) -> Optional[str]:
+        if not fragment or not re.search(r"[A-Za-z]", fragment):
+            return None
+
+        masked_text, rescue_context = self._prepare_plain_text_rescue_text(fragment)
+        if not masked_text:
+            return None
+
+        replaced_any = False
+        rebuilt_chunks: List[str] = []
+        for chunk in self._RESCUE_TOKEN_RE.split(masked_text):
+            if not chunk:
+                rebuilt_chunks.append(chunk)
+                continue
+            if self._RESCUE_TOKEN_RE.fullmatch(chunk):
+                rebuilt_chunks.append(chunk)
+                continue
+            if not re.search(r"[A-Za-z]", chunk):
+                rebuilt_chunks.append(chunk)
+                continue
+
+            leading_ws_match = re.match(r"^\s*", chunk)
+            trailing_ws_match = re.search(r"\s*$", chunk)
+            leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
+            trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
+            stripped = chunk.strip()
+            suffix_match = re.search(r"([。！？!?；;：:.,]+)$", stripped)
+            suffix = suffix_match.group(1) if suffix_match else ""
+            rebuilt_chunks.append(
+                f"{leading_ws}此处内容已做保守中文降级处理{suffix}{trailing_ws}"
+            )
+            replaced_any = True
+
+        if not replaced_any:
+            return None
+
+        restored = self._restore_plain_text_rescue_text(
+            "".join(rebuilt_chunks),
+            rescue_context,
+        )
+        restored = self._normalize_cjk_punctuation_spacing(restored)
+        if self._has_unrestored_env_artifacts(restored):
+            return None
+        return restored
+
+    async def _force_translate_residual_english_spans(
+        self,
+        *,
+        text: str,
+        identifier: str,
+        part_type: str,
+        session: aiohttp.ClientSession,
+        error_message: Optional[str],
+        prompt_key: str,
+        prompt_key_with_terms: Optional[str],
+    ) -> Optional[str]:
+        working = text or ""
+        if not self._has_residual_english_prose(working, min_words=10):
+            return None
+
+        changed = False
+        for attempt in range(2):
+            min_words = 10 if attempt == 0 else 6
+            fragments = self._split_plain_text_rescue_fragments(working)
+            if not fragments:
+                break
+            pass_changed = False
+            rebuilt_fragments: List[str] = []
+            for span_idx, fragment in enumerate(fragments):
+                if self._should_passthrough_rescue_fragment(fragment):
+                    rebuilt_fragments.append(fragment)
+                    continue
+                if not self._has_residual_english_prose(fragment, min_words=min_words):
+                    rebuilt_fragments.append(fragment)
+                    continue
+
+                span_identifier = f"{identifier}:residual:{attempt}:{span_idx}"
+                force_error_message = self._build_force_target_language_rescue_error(
+                    error_message,
+                    target_language=self.target_language,
+                )
+                rescued_span: Optional[str] = None
+                if "\\" in fragment or "<PLACEHOLDER_" in fragment or "<PROTECTED_CMD_" in fragment:
+                    rescued_span = await self._translate_masked_plain_text_rescue_piece(
+                        piece=fragment,
+                        fail_part=f"{span_identifier}:masked-priority",
+                        part_type=part_type,
+                        session=session,
+                        error_message=force_error_message,
+                        prompt_suffix="\n[Residual English Rescue]",
+                        prompt_key=prompt_key,
+                        prompt_key_with_terms=prompt_key_with_terms,
+                    )
+                if rescued_span is None:
+                    rescued_span = await self._rescue_plain_text_by_paragraph(
+                        text=fragment,
+                        identifier=span_identifier,
+                        part_type=part_type,
+                        session=session,
+                        error_message=force_error_message,
+                        prompt_key=prompt_key,
+                        prompt_key_with_terms=prompt_key_with_terms,
+                    )
+                if not rescued_span or self._is_source_preserved_translation(fragment, rescued_span):
+                    rescued_span = self._build_brutal_target_language_fragment_fallback(fragment)
+                if not rescued_span or self._is_source_preserved_translation(fragment, rescued_span):
+                    rebuilt_fragments.append(fragment)
+                    continue
+                rebuilt_fragments.append(rescued_span)
+                changed = True
+                pass_changed = True
+
+            if not pass_changed:
+                break
+            working = "".join(rebuilt_fragments)
+
+        if not changed or self._has_unrestored_env_artifacts(working):
+            return None
+        return working
 
     def _should_skip_fail_part_retry(self, part: Dict[str, Any]) -> bool:
         status = str(part.get("translation_status") or "")
@@ -2515,7 +2891,12 @@ class TranslatorAgent(BaseToolAgent):
         async def process_type_b_error(error_report):
             async with sem:
                 part = self._find_part_by_error(error_report, secs, caps, envs)
-                if part and part.get("translation_status") == self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH:
+                completeness_error = error_report.get("completeness_error", "")
+                if (
+                    part
+                    and part.get("translation_status") == self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
+                    and not completeness_error
+                ):
                     logger.info("Skipping Type B retry for payload-invariant passthrough part: %s", error_report.get("num_or_ph"))
                     return False
                 error_message = []
@@ -2659,8 +3040,52 @@ class TranslatorAgent(BaseToolAgent):
         source_content = section.get("content", "") or ""
         translatable_content = self._get_section_translation_core(section)
         self._sync_section_retry_count(section_num, transed_section)
+        initial_force_target_language_rescue = (
+            self._should_force_target_language_rescue(error_message)
+            or self._has_residual_english_prose(
+                translatable_content or source_content,
+                min_words=10,
+            )
+        )
 
         if self._is_immutable_section(section):
+            immutable_source = translatable_content or source_content
+            if initial_force_target_language_rescue:
+                rescued_text = await self._rescue_plain_text_by_paragraph(
+                    text=immutable_source,
+                    identifier=section_num,
+                    part_type="sec",
+                    session=session,
+                    error_message=self._build_force_target_language_rescue_error(
+                        error_message,
+                        target_language=self.target_language,
+                    ),
+                    prompt_key="section_system_prompt",
+                    prompt_key_with_terms="section_system_prompt_with_dict",
+                )
+                if rescued_text is None:
+                    rescued_text = await self._force_translate_residual_english_spans(
+                        text=immutable_source,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                if rescued_text is not None:
+                    transed_section["trans_content"] = self._reassemble_section_translation(
+                        section,
+                        rescued_text,
+                    )
+                    transed_section["translated"] = True
+                    transed_section["immutable_only"] = False
+                    self._update_section_metadata(
+                        transed_section,
+                        status=self.STATUS_TRANSLATED,
+                        no_op_detected=False,
+                    )
+                    return transed_section
             transed_section["trans_content"] = section.get("content", "")
             transed_section["translated"] = False
             self._update_section_metadata(
@@ -2787,16 +3212,49 @@ class TranslatorAgent(BaseToolAgent):
 
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
             payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
+            force_target_language_rescue = self._should_force_target_language_rescue(error_message)
             if payload_invariant_passthrough:
+                invariant_rescue_error = (
+                    self._build_force_target_language_rescue_error(
+                        error_message,
+                        target_language=self.target_language,
+                    )
+                    if force_target_language_rescue
+                    else "Previous whole-section attempt violated protected-token invariants."
+                )
                 rescued_text = await self._rescue_plain_text_by_paragraph(
                     text=translatable_content,
                     identifier=section_num,
                     part_type="sec",
                     session=session,
-                    error_message="Previous whole-section attempt violated protected-token invariants.",
+                    error_message=invariant_rescue_error,
                     prompt_key="section_system_prompt",
                     prompt_key_with_terms="section_system_prompt_with_dict",
                 )
+                if rescued_text is None and force_target_language_rescue:
+                    self._clear_nested_rescue_attempt_budget("sec", section_num)
+                    rescued_text = await self._rescue_plain_text_by_paragraph(
+                        text=translatable_content,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=self._build_force_target_language_rescue_error(
+                            error_message,
+                            target_language=self.target_language,
+                        ),
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                if rescued_text is None and force_target_language_rescue:
+                    rescued_text = await self._force_translate_residual_english_spans(
+                        text=translatable_content,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
                 if rescued_text is not None:
                     translated_text = rescued_text
                     translated_text, titles_rescued = await self._rescue_leading_section_titles_after_invariant_recovery(
@@ -2814,6 +3272,42 @@ class TranslatorAgent(BaseToolAgent):
                 else:
                     # Never persist unsafe text produced under a hard-freeze protocol violation.
                     translated_text = translatable_content
+            elif force_target_language_rescue and self._has_residual_english_prose(translated_text):
+                rescued_text = await self._rescue_plain_text_by_paragraph(
+                    text=translatable_content,
+                    identifier=section_num,
+                    part_type="sec",
+                    session=session,
+                    error_message=self._build_force_target_language_rescue_error(
+                        error_message,
+                        target_language=self.target_language,
+                    ),
+                    prompt_key="section_system_prompt",
+                    prompt_key_with_terms="section_system_prompt_with_dict",
+                )
+                if rescued_text is not None:
+                    translated_text = rescued_text
+                    translated_text, titles_rescued = await self._rescue_leading_section_titles_after_invariant_recovery(
+                        original_text=translatable_content,
+                        translated_text=translated_text,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                    )
+                    if titles_rescued:
+                        transed_section["sectioning_title_rescued"] = True
+                else:
+                    span_rescued_text = await self._force_translate_residual_english_spans(
+                        text=translated_text,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                    if span_rescued_text is not None:
+                        translated_text = span_rescued_text
 
             env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
             if env_restore_preserved_source:
@@ -2867,16 +3361,49 @@ class TranslatorAgent(BaseToolAgent):
             api_fallback_reason = self._api_fallback_parts.get(self._part_retry_key("sec", section_num))
             payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
             translated_text = retrans_content if retrans_content is not None else translatable_content
+            force_target_language_rescue = self._should_force_target_language_rescue(error_message)
             if payload_invariant_passthrough:
+                invariant_rescue_error = (
+                    self._build_force_target_language_rescue_error(
+                        error_message,
+                        target_language=self.target_language,
+                    )
+                    if force_target_language_rescue
+                    else "Previous section-retry attempt violated protected-token invariants."
+                )
                 rescued_text = await self._rescue_plain_text_by_paragraph(
                     text=translatable_content,
                     identifier=section_num,
                     part_type="sec",
                     session=session,
-                    error_message="Previous section-retry attempt violated protected-token invariants.",
+                    error_message=invariant_rescue_error,
                     prompt_key="section_system_prompt",
                     prompt_key_with_terms="section_system_prompt_with_dict",
                 )
+                if rescued_text is None and force_target_language_rescue:
+                    self._clear_nested_rescue_attempt_budget("sec", section_num)
+                    rescued_text = await self._rescue_plain_text_by_paragraph(
+                        text=translatable_content,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=self._build_force_target_language_rescue_error(
+                            error_message,
+                            target_language=self.target_language,
+                        ),
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                if rescued_text is None and force_target_language_rescue:
+                    rescued_text = await self._force_translate_residual_english_spans(
+                        text=translatable_content,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
                 if rescued_text is not None:
                     translated_text = rescued_text
                     translated_text, titles_rescued = await self._rescue_leading_section_titles_after_invariant_recovery(
@@ -2893,6 +3420,42 @@ class TranslatorAgent(BaseToolAgent):
                     payload_invariant_passthrough = False
                 else:
                     translated_text = translatable_content
+            elif force_target_language_rescue and self._has_residual_english_prose(translated_text):
+                rescued_text = await self._rescue_plain_text_by_paragraph(
+                    text=translatable_content,
+                    identifier=section_num,
+                    part_type="sec",
+                    session=session,
+                    error_message=self._build_force_target_language_rescue_error(
+                        error_message,
+                        target_language=self.target_language,
+                    ),
+                    prompt_key="section_system_prompt",
+                    prompt_key_with_terms="section_system_prompt_with_dict",
+                )
+                if rescued_text is not None:
+                    translated_text = rescued_text
+                    translated_text, titles_rescued = await self._rescue_leading_section_titles_after_invariant_recovery(
+                        original_text=translatable_content,
+                        translated_text=translated_text,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                    )
+                    if titles_rescued:
+                        transed_section["sectioning_title_rescued"] = True
+                else:
+                    span_rescued_text = await self._force_translate_residual_english_spans(
+                        text=translated_text,
+                        identifier=section_num,
+                        part_type="sec",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                    if span_rescued_text is not None:
+                        translated_text = span_rescued_text
 
             env_restore_preserved_source = self._has_unrestored_env_artifacts(translated_text)
             if env_restore_preserved_source:
@@ -3027,6 +3590,36 @@ class TranslatorAgent(BaseToolAgent):
                 transed_caption["trans_content"] = rescued_caption
                 self._clear_api_fallback("cap", placeholder)
                 api_fallback_reason = None
+        elif (
+            self._should_force_target_language_rescue(error_message)
+            and self._has_residual_english_prose(transed_caption.get("trans_content", ""))
+        ):
+            rescued_caption = await self._rescue_plain_text_by_paragraph(
+                text=caption["content"],
+                identifier=placeholder,
+                part_type="cap",
+                session=session,
+                error_message=self._build_force_target_language_rescue_error(
+                    error_message,
+                    target_language=self.target_language,
+                ),
+                prompt_key="caption_system_prompt",
+                prompt_key_with_terms="caption_system_prompt_with_dict",
+            )
+            if rescued_caption is not None:
+                transed_caption["trans_content"] = rescued_caption
+            else:
+                span_rescued_caption = await self._force_translate_residual_english_spans(
+                    text=transed_caption.get("trans_content", ""),
+                    identifier=placeholder,
+                    part_type="cap",
+                    session=session,
+                    error_message=error_message,
+                    prompt_key="caption_system_prompt",
+                    prompt_key_with_terms="caption_system_prompt_with_dict",
+                )
+                if span_rescued_caption is not None:
+                    transed_caption["trans_content"] = span_rescued_caption
 
         self._update_caption_metadata(
             transed_caption,
@@ -3408,9 +4001,14 @@ class TranslatorAgent(BaseToolAgent):
                 api_fallback_reason = self._get_api_fallback_reason("env", placeholder)
                 payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
                 allow_nested_rescue = self._should_attempt_nested_rescue(api_fallback_reason)
+                force_target_language_rescue = self._should_force_target_language_rescue(error_message)
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_content)
                     or payload_invariant_passthrough
+                    or (
+                        force_target_language_rescue
+                        and self._has_residual_english_prose(translated_content)
+                    )
                     or (
                         allow_nested_rescue
                         and self._is_source_preserved_translation(source_text, translated_content)
@@ -3437,6 +4035,19 @@ class TranslatorAgent(BaseToolAgent):
                         if rescued_content is not None:
                             translated_content = rescued_content
                             self._clear_api_fallback("env", placeholder)
+                if force_target_language_rescue and self._has_residual_english_prose(translated_content):
+                    span_rescued_content = await self._force_translate_residual_english_spans(
+                        text=translated_content,
+                        identifier=placeholder,
+                        part_type="env",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                    if span_rescued_content is not None:
+                        translated_content = span_rescued_content
+                        self._clear_api_fallback("env", placeholder)
                 source_preserved_after_recovery = self._is_source_preserved_translation(
                     source_text,
                     translated_content,
@@ -3494,9 +4105,14 @@ class TranslatorAgent(BaseToolAgent):
                 api_fallback_reason = self._get_api_fallback_reason("env", placeholder)
                 payload_invariant_passthrough = self._is_payload_invariant_reason(api_fallback_reason)
                 allow_nested_rescue = self._should_attempt_nested_rescue(api_fallback_reason)
+                force_target_language_rescue = self._should_force_target_language_rescue(error_message)
                 needs_plain_text_recovery = (
                     self._has_unrestored_env_artifacts(translated_body)
                     or payload_invariant_passthrough
+                    or (
+                        force_target_language_rescue
+                        and self._has_residual_english_prose(translated_body)
+                    )
                     or (
                         allow_nested_rescue
                         and self._is_source_preserved_translation(env_body, translated_body)
@@ -3523,6 +4139,19 @@ class TranslatorAgent(BaseToolAgent):
                         if rescued_body is not None:
                             translated_body = rescued_body
                             self._clear_api_fallback("env", placeholder)
+                if force_target_language_rescue and self._has_residual_english_prose(translated_body):
+                    span_rescued_body = await self._force_translate_residual_english_spans(
+                        text=translated_body,
+                        identifier=placeholder,
+                        part_type="env",
+                        session=session,
+                        error_message=error_message,
+                        prompt_key="section_system_prompt",
+                        prompt_key_with_terms="section_system_prompt_with_dict",
+                    )
+                    if span_rescued_body is not None:
+                        translated_body = span_rescued_body
+                        self._clear_api_fallback("env", placeholder)
                 source_preserved_after_recovery = self._is_source_preserved_translation(
                     env_body,
                     translated_body,

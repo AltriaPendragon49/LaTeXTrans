@@ -183,3 +183,61 @@ def test_web_runtime_refreshes_cached_recovered_task_from_persistent_store(monke
     assert second is not None
     assert second["status"] == "structure_invalid"
     assert second["completed_at"] == "2026-04-19T16:43:33"
+
+
+def test_web_runtime_refresh_preserves_current_attempt_id_for_late_updates(monkeypatch):
+    class _MockRepository:
+        def get_task(self, _task_id):
+            return {
+                "task_id": "task-attempt-refresh",
+                "status": "processing",
+                "progress": 25,
+                "stage": "translating",
+                "message": "Still translating",
+                "error": None,
+                "source_type": "arxiv",
+                "source_path": "data/uploads/task-attempt-refresh",
+                "output_path": "data/outputs/task-attempt-refresh",
+                "translation_mode": "full",
+                "compile_strategy": "auto",
+                "translation_model": "deepseek-chat",
+                "generate_glossary": True,
+                "use_author_api": True,
+                "email_notification": False,
+                "arxiv_id": "2305.18290",
+                "user_id": "user-test",
+                "source_language": "en",
+                "target_language": "zh",
+                "created_at": "2026-04-20T10:00:00",
+                "completed_at": None,
+            }
+
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: _MockRepository(),
+    )
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_settings",
+        lambda: type("Settings", (), {"backend_runtime_role": "web"})(),
+    )
+
+    tm = TaskManager()
+    task_id = tm.create_task(source_type="arxiv", user_id="user-test", arxiv_id="2305.18290")
+    attempt_id = tm.begin_task_attempt(task_id)
+
+    refreshed = tm.get_task(task_id)
+
+    assert refreshed is not None
+    assert refreshed["attempt_id"] == attempt_id
+
+    updated = tm.update_task(
+        task_id,
+        status="completed",
+        progress=100,
+        stage="done",
+        message="done",
+        expected_attempt_id=attempt_id,
+    )
+
+    assert updated is True
+    assert tm.get_task(task_id)["status"] == "completed"

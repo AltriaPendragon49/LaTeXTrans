@@ -155,6 +155,45 @@ def _should_refresh_cached_task_from_storage(task: Dict[str, Any]) -> bool:
     if not str(task.get("user_id") or "").strip():
         return False
     return not _is_terminal_task_status(task.get("status"))
+
+
+def _merge_runtime_fields_into_recovered_task(
+    cached_task: Dict[str, Any],
+    recovered_task: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Preserve in-memory runtime state when web refreshes a task from storage."""
+    merged_task = dict(recovered_task)
+
+    merged_task["attempt_id"] = max(
+        int(recovered_task.get("attempt_id") or 0),
+        int(cached_task.get("attempt_id") or 0),
+    )
+
+    for field_name in (
+        "_last_flush_time",
+        "compile_pid",
+        "compile_engine",
+        "compile_started_at",
+    ):
+        if field_name in cached_task:
+            merged_task[field_name] = cached_task.get(field_name)
+
+    if cached_task.get("failure_intercepted"):
+        merged_task["failure_intercepted"] = True
+
+    if cached_task.get("failed_output_path"):
+        merged_task["failed_output_path"] = cached_task.get("failed_output_path")
+
+    if cached_task.get("evidence_chain_broken"):
+        merged_task["evidence_chain_broken"] = True
+
+    if merged_task.get("advanced_config") is None and cached_task.get("advanced_config") is not None:
+        merged_task["advanced_config"] = cached_task.get("advanced_config")
+
+    if merged_task.get("latex_validation") is None and cached_task.get("latex_validation") is not None:
+        merged_task["latex_validation"] = cached_task.get("latex_validation")
+
+    return merged_task
 
 # ---------------------------------------------------------------------------
 # Runtime State Decoupling: Flush Throttle Configuration
@@ -1208,6 +1247,10 @@ class TaskManager:
             refreshed_task = self._recover_from_persistent_store(task_id)
 
             if refreshed_task:
+                refreshed_task = _merge_runtime_fields_into_recovered_task(
+                    cached_task,
+                    refreshed_task,
+                )
 
                 with self._lock:
 

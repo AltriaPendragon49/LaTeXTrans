@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock
 
 from backend.app.services.agents.translator_agent import TranslatorAgent
+from backend.app.services.agents.validator_agent import ERROR_TYPE_B
 
 
 def _build_agent() -> TranslatorAgent:
@@ -445,6 +446,106 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         )
         self.assertEqual(agent._request_llm_for_trans.await_count, 2)
 
+    def test_translate_masked_plain_text_rescue_piece_uses_dedicated_masked_request_path(self):
+        agent = _build_agent()
+        piece = (
+            "We discuss \\cref{eq:test} and optimize <PLACEHOLDER_ENV_16> for better samples."
+        )
+        masked_piece, _ = agent._prepare_plain_text_rescue_text(piece)
+        translated_masked_piece = masked_piece.replace(
+            "We discuss ",
+            "我们讨论 ",
+            1,
+        ).replace(
+            " and optimize ",
+            " 并优化 ",
+            1,
+        ).replace(
+            " for better samples.",
+            " 以获得更好的样本。",
+            1,
+        )
+
+        agent._request_llm_for_trans = AsyncMock(
+            side_effect=AssertionError("masked rescue should not reuse hard-freeze whole-piece requests")
+        )
+        agent._request_masked_plain_text_rescue = AsyncMock(return_value=translated_masked_piece)
+
+        rescued = asyncio.run(
+            agent._translate_masked_plain_text_rescue_piece(
+                piece=piece,
+                fail_part="8:paragraph:0:masked",
+                part_type="sec",
+                session=MagicMock(),
+                error_message="Previous paragraph rescue violated protected-token invariants.",
+                prompt_suffix="\n[Paragraph Rescue]",
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms=None,
+            )
+        )
+
+        self.assertEqual(
+            rescued,
+            "我们讨论 \\cref{eq:test} 并优化 <PLACEHOLDER_ENV_16> 以获得更好的样本。",
+        )
+        agent._request_masked_plain_text_rescue.assert_awaited_once()
+
+    def test_translate_masked_plain_text_rescue_piece_rejects_reordered_masked_tokens(self):
+        agent = _build_agent()
+        piece = "Alpha \\cref{eq:test} Beta <PLACEHOLDER_ENV_16> Gamma."
+        masked_piece, _ = agent._prepare_plain_text_rescue_text(piece)
+        rescue_tokens = agent._RESCUE_TOKEN_RE.findall(masked_piece)
+        self.assertGreaterEqual(len(rescue_tokens), 2)
+
+        reordered = masked_piece.replace(
+            rescue_tokens[0],
+            "__TMP_TOKEN__",
+            1,
+        ).replace(
+            rescue_tokens[1],
+            rescue_tokens[0],
+            1,
+        ).replace(
+            "__TMP_TOKEN__",
+            rescue_tokens[1],
+            1,
+        )
+
+        class _Response:
+            status = 200
+            headers = {}
+
+            def raise_for_status(self):
+                return None
+
+            async def json(self):
+                return {"choices": [{"message": {"content": reordered}}]}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class _Session:
+            def post(self, *args, **kwargs):
+                return _Response()
+
+        rescued = asyncio.run(
+            agent._translate_masked_plain_text_rescue_piece(
+                piece=piece,
+                fail_part="9:paragraph:0:masked",
+                part_type="sec",
+                session=_Session(),
+                error_message="Previous paragraph rescue violated protected-token invariants.",
+                prompt_suffix="\n[Paragraph Rescue]",
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms=None,
+            )
+        )
+
+        self.assertIsNone(rescued)
+
     def test_rescue_plain_text_by_paragraph_recursively_splits_long_failed_fragment(self):
         agent = _build_agent()
         text = (
@@ -648,6 +749,256 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
         self.assertNotIn("fallback_reason", translated)
         agent._rescue_plain_text_by_paragraph.assert_awaited_once()
+
+    def test_translate_section_completeness_retry_forces_plain_text_target_language_rescue(self):
+        agent = _build_agent()
+        agent.trans_mode = 1
+        section = {
+            "section": "22",
+            "content": (
+                "This section still contains a long English paragraph that must not remain in the "
+                "final translated output because users expect readable Chinese content here."
+            ),
+            "previous_context": "",
+        }
+
+        async def fake_retrans(*args, **kwargs):
+            return section["content"]
+
+        agent._request_llm_for_retrans_error_parts = fake_retrans
+        agent._rescue_plain_text_by_paragraph = AsyncMock(
+            return_value="这一段在完整性重试后被强制降级为中文。"
+        )
+
+        translated = asyncio.run(
+            agent._translate_section(
+                section,
+                MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+            )
+        )
+
+        self.assertEqual(
+            translated["trans_content"],
+            "这一段在完整性重试后被强制降级为中文。",
+        )
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertNotIn("fallback_reason", translated)
+        agent._rescue_plain_text_by_paragraph.assert_awaited_once()
+
+    def test_translate_section_completeness_retry_retries_force_rescue_after_payload_invariant_budget_exhaustion(self):
+        agent = _build_agent()
+        agent.trans_mode = 1
+        section = {
+            "section": "23",
+            "content": (
+                "This section still contains a long English paragraph and previously exhausted its "
+                "nested rescue budget, so the completeness retry should get one fresh force-rescue chance."
+            ),
+            "previous_context": "",
+        }
+
+        async def fake_retrans(*args, **kwargs):
+            agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+            return section["content"]
+
+        agent._request_llm_for_retrans_error_parts = fake_retrans
+        agent._nested_rescue_attempt_counts[agent._part_retry_key("sec", section["section"])] = 12
+        agent._rescue_plain_text_by_paragraph = AsyncMock(
+            side_effect=[None, "预算重置后的强制中文降级结果。"]
+        )
+
+        translated = asyncio.run(
+            agent._translate_section(
+                section,
+                MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+            )
+        )
+
+        self.assertEqual(translated["trans_content"], "预算重置后的强制中文降级结果。")
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertEqual(agent._rescue_plain_text_by_paragraph.await_count, 2)
+
+    def test_force_translate_residual_english_spans_replaces_remaining_long_english_prose(self):
+        agent = _build_agent()
+        mixed_text = (
+            "前文已经翻译。 "
+            "This remaining English paragraph should be translated into Chinese even when the "
+            "earlier paragraph-level rescue did not succeed, because users must not see a long "
+            "English prose fallback in the final output. "
+            "后文保持不变。"
+        )
+        agent._rescue_plain_text_by_paragraph = AsyncMock(
+            return_value="这一残留英文段落已被保守降级为中文。"
+        )
+
+        translated = asyncio.run(
+            agent._force_translate_residual_english_spans(
+                text=mixed_text,
+                identifier="24",
+                part_type="sec",
+                session=MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms="section_system_prompt_with_dict",
+            )
+        )
+
+        self.assertIn("这一残留英文段落已被保守降级为中文。", translated)
+        self.assertIn("后文保持不变。", translated)
+        self.assertFalse(agent._has_residual_english_prose(translated))
+        self.assertGreaterEqual(agent._rescue_plain_text_by_paragraph.await_count, 1)
+
+    def test_translate_immutable_section_with_long_english_prose_uses_conservative_rescue(self):
+        agent = _build_agent()
+        section = {
+            "section": "25",
+            "content": (
+                "This immutable-marked chunk still contains a long English prose paragraph that "
+                "should be conservatively translated instead of being passed through unchanged to users."
+            ),
+            "immutable_only": True,
+            "previous_context": "",
+        }
+        agent._rescue_plain_text_by_paragraph = AsyncMock(
+            return_value="这一段原本被误判为不可翻译的英文内容，现已保守降级为中文。"
+        )
+
+        translated = asyncio.run(
+            agent._translate_section(
+                section,
+                MagicMock(),
+            )
+        )
+
+        self.assertEqual(
+            translated["trans_content"],
+            "这一段原本被误判为不可翻译的英文内容，现已保守降级为中文。",
+        )
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        agent._rescue_plain_text_by_paragraph.assert_awaited_once()
+
+    def test_translate_section_force_span_rescue_resets_budget_after_force_paragraph_attempts(self):
+        agent = _build_agent()
+        agent.trans_mode = 1
+        section = {
+            "section": "26",
+            "content": (
+                "This section still contains a long English paragraph that should be forcefully "
+                "downgraded into Chinese even if the earlier paragraph rescue attempts exhausted "
+                "their shared nested rescue budget."
+            ),
+            "previous_context": "",
+        }
+
+        async def fake_retrans(*args, **kwargs):
+            agent._mark_api_fallback("sec", section["section"], "invariant_hard_freeze_protocol_violation")
+            return section["content"]
+
+        agent._request_llm_for_retrans_error_parts = fake_retrans
+        agent._nested_rescue_attempt_counts[agent._part_retry_key("sec", section["section"])] = 12
+        agent._rescue_plain_text_by_paragraph = AsyncMock(side_effect=[None, None])
+
+        async def fake_force_translate(**kwargs):
+            self.assertIsNone(
+                agent._nested_rescue_attempt_counts.get(
+                    agent._part_retry_key("sec", section["section"])
+                )
+            )
+            return "残留英文跨度在预算重置后被翻成中文。"
+
+        agent._force_translate_residual_english_spans = AsyncMock(side_effect=fake_force_translate)
+
+        translated = asyncio.run(
+            agent._translate_section(
+                section,
+                MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+            )
+        )
+
+        self.assertEqual(translated["trans_content"], "残留英文跨度在预算重置后被翻成中文。")
+        self.assertEqual(translated["translation_status"], agent.STATUS_TRANSLATED)
+        self.assertEqual(agent._rescue_plain_text_by_paragraph.await_count, 2)
+        agent._force_translate_residual_english_spans.assert_awaited_once()
+
+    def test_force_translate_residual_english_spans_prefers_masked_rescue_for_command_heavy_fragment(self):
+        agent = _build_agent()
+        mixed_text = (
+            "前文保留。 "
+            "We discuss \\cref{eq:test} and optimize the sampler for better samples in this command-heavy English fragment that should trigger conservative Chinese rescue. "
+            "后文保留。"
+        )
+        agent._rescue_plain_text_by_paragraph = AsyncMock(
+            return_value="其余命令较少的英文片段也会被保守翻成中文。"
+        )
+        agent._translate_masked_plain_text_rescue_piece = AsyncMock(
+            return_value="我们讨论 \\cref{eq:test} 并优化采样器以获得更好的样本。"
+        )
+
+        translated = asyncio.run(
+            agent._force_translate_residual_english_spans(
+                text=mixed_text,
+                identifier="27",
+                part_type="sec",
+                session=MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms="section_system_prompt_with_dict",
+            )
+        )
+
+        self.assertIn("我们讨论 \\cref{eq:test} 并优化采样器以获得更好的样本。", translated)
+        agent._translate_masked_plain_text_rescue_piece.assert_awaited()
+
+    def test_force_translate_residual_english_spans_brutally_downgrades_when_all_rescues_fail(self):
+        agent = _build_agent()
+        mixed_text = (
+            "Lead. "
+            "We review the RLHF pipeline in \\citeauthor{foo2024} and later \\citep{bar2024}. "
+            "It usually includes three phases and this command-heavy English fragment should never "
+            "survive as raw English in the final output. "
+            "Tail."
+        )
+        agent._translate_masked_plain_text_rescue_piece = AsyncMock(return_value=None)
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=None)
+
+        translated = asyncio.run(
+            agent._force_translate_residual_english_spans(
+                text=mixed_text,
+                identifier="28",
+                part_type="sec",
+                session=MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms="section_system_prompt_with_dict",
+            )
+        )
+
+        self.assertIsNotNone(translated)
+        self.assertIn("保守中文降级", translated)
+        self.assertIn("\\citeauthor{foo2024}", translated)
+        self.assertIn("\\citep{bar2024}", translated)
+        self.assertFalse(agent._has_residual_english_prose(translated, min_words=6))
 
     def test_translate_caption_marks_payload_invariant_passthrough(self):
         agent = _build_agent()
@@ -880,6 +1231,49 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         agent._translate_section.assert_not_awaited()
         agent._translate_caption.assert_not_awaited()
         agent._translate_env.assert_not_awaited()
+
+    def test_retranslate_error_parts_does_not_skip_completeness_retry_for_payload_invariant_section(self):
+        agent = _build_agent()
+        agent.errors_report = [
+            {
+                "part": "sec",
+                "num_or_ph": "9",
+                "error_type": ERROR_TYPE_B,
+                "completeness_error": (
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+            }
+        ]
+        sections = [
+            {
+                "section": "9",
+                "content": "English source paragraph.",
+                "trans_content": "English source paragraph.",
+                "translation_status": agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+            }
+        ]
+
+        async def fake_translate_section(section, session, error_message=None):
+            updated = dict(section)
+            updated["trans_content"] = "完整性修复后的中文段落。"
+            updated["translation_status"] = agent.STATUS_TRANSLATED
+            return updated
+
+        agent._translate_section = AsyncMock(side_effect=fake_translate_section)
+
+        asyncio.run(
+            agent._retranslate_error_parts(
+                secs=sections,
+                caps=[],
+                envs=[],
+                session=MagicMock(),
+            )
+        )
+
+        agent._translate_section.assert_awaited_once()
+        self.assertEqual(sections[0]["trans_content"], "完整性修复后的中文段落。")
+        self.assertEqual(sections[0]["translation_status"], agent.STATUS_TRANSLATED)
 
 
 if __name__ == "__main__":
