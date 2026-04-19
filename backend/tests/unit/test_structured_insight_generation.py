@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import pytest
+from fastapi import HTTPException
 
 from backend.app.services import paper_service
 
@@ -1008,6 +1009,121 @@ def test_publish_admin_curation_job_persists_similar_recommendations_before_publ
     assert update_calls
     assert update_calls[-1]["visibility"] == "public"
     assert update_calls[-1]["status"] == "published"
+
+
+def test_publish_admin_curation_job_retries_asset_sync_after_recreating_missing_placeholder(monkeypatch):
+    insert_calls: list[dict[str, object]] = []
+    sync_calls = {"count": 0}
+    update_calls: list[dict[str, object]] = []
+
+    async def _fetch_paper(_paper_id):
+        return None
+
+    async def _insert_paper(payload):
+        insert_calls.append(dict(payload))
+        return {
+            "id": "paper-1",
+            "title": payload["title"],
+            "arxiv_id": payload.get("arxiv_id"),
+            "authors": payload.get("authors") or [],
+            "categories": payload.get("categories") or [],
+            "abstract_raw": payload.get("abstract_raw"),
+            "abstract_translated": None,
+            "community_status": payload.get("community_status"),
+            "trans_status": payload.get("trans_status"),
+            "visibility": payload.get("visibility"),
+            "status": payload.get("status"),
+        }
+
+    async def _sync_task_assets(**_kwargs):
+        sync_calls["count"] += 1
+        if sync_calls["count"] == 1:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        return {
+            "paper": {
+                "id": "paper-1",
+                "title": "Curated paper",
+                "arxiv_id": "2501.00001",
+                "authors": ["Alice"],
+                "categories": ["cs.CL"],
+                "abstract_raw": "raw abstract",
+                "abstract_translated": None,
+                "community_status": "official",
+                "trans_status": "completed",
+                "visibility": "private",
+                "status": "curating",
+            }
+        }
+
+    async def _update_paper(_paper_id, payload):
+        update_calls.append(dict(payload))
+        return {
+            "id": "paper-1",
+            "title": payload["title"],
+            "arxiv_id": payload.get("arxiv_id"),
+            "authors": payload.get("authors") or [],
+            "categories": payload.get("categories") or [],
+            "abstract_raw": payload.get("abstract_raw"),
+            "abstract_translated": payload.get("abstract_translated"),
+            "community_status": payload.get("community_status"),
+            "trans_status": payload.get("trans_status"),
+            "visibility": payload.get("visibility"),
+            "status": payload.get("status"),
+        }
+
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_id", _fetch_paper)
+    monkeypatch.setattr(paper_service, "_insert_paper", _insert_paper)
+    monkeypatch.setattr(paper_service, "_sync_task_assets_for_paper", _sync_task_assets)
+    monkeypatch.setattr(
+        paper_service,
+        "_extract_translated_abstract_from_task",
+        lambda _task_id: "translated abstract",
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_structured_insight_sections_from_task",
+        lambda **_kwargs: asyncio.sleep(0, result=_valid_sections()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_upsert_structured_insight_sections",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_similar_recommendations_for_paper",
+        lambda **_kwargs: asyncio.sleep(0, result=[]),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_replace_persisted_similar_recommendations",
+        lambda **_kwargs: asyncio.sleep(0, result=[]),
+    )
+    monkeypatch.setattr(paper_service, "_update_paper", _update_paper)
+
+    result = asyncio.run(
+        paper_service._publish_admin_curation_job(
+            job={
+                "paper_id": "paper-1",
+                "created_by": "admin-1",
+                "source_type": "arxiv",
+                "arxiv_id": "2501.00001",
+            },
+            metadata={
+                "title": "Curated paper",
+                "authors": ["Alice"],
+                "categories": ["cs.CL"],
+                "abstract_raw": "raw abstract",
+            },
+            translated_task_id="task-1",
+        )
+    )
+
+    assert sync_calls["count"] == 2
+    assert len(insert_calls) == 2
+    assert insert_calls[0]["id"] == "paper-1"
+    assert update_calls[-1]["visibility"] == "public"
+    assert result["status"] == "published"
 
 
 def test_build_module_fallback_content_uses_excerpt_and_remains_readable():

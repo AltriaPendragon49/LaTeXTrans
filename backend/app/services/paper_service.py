@@ -4877,42 +4877,49 @@ async def _publish_admin_curation_job(
     translated_task_id: str,
 ) -> Dict[str, Any]:
     paper_id = str(job.get("paper_id") or "").strip()
-    existing = await _fetch_paper_by_id(paper_id) if paper_id else None
-    paper = existing
     resolved_arxiv_id = (
         _normalize_metadata_text(metadata.get("arxiv_id"))
         or _normalize_metadata_text(job.get("arxiv_id"))
-        or _normalize_metadata_text((paper or {}).get("arxiv_id"))
     )
     if str(job.get("source_type") or "").strip() == "arxiv" and not resolved_arxiv_id:
         raise ValueError("Admin arXiv curation publish requires arxiv_id")
-    if paper is None:
-        payload = _paper_payload(
-            source=str(job.get("source_type") or "upload"),
-            arxiv_id=resolved_arxiv_id,
-            title=metadata.get("title") or "Curated paper",
-            created_by=str(job.get("created_by") or ""),
-            community_status=COMMUNITY_STATUS_OFFICIAL,
-            authors=metadata.get("authors"),
-            categories=metadata.get("categories"),
-            abstract_raw=metadata.get("abstract_raw"),
-            abstract_translated=None,
-            task_id=None,
-            official_published_at=None,
-            trans_status="processing",
-        )
-        payload["id"] = paper_id
-        payload["visibility"] = "private"
-        payload["status"] = "curating"
-        paper = await _insert_paper(payload)
-
-    sync_result = await _sync_task_assets_for_paper(
-        paper_id=paper["id"],
-        task_id=translated_task_id,
-        promote_to_official=False,
-        paper=paper,
-        defer_runtime_cleanup=True,
+    paper = await _ensure_admin_curation_placeholder_paper(
+        paper_id=paper_id,
+        job=job,
+        metadata=metadata,
+        resolved_arxiv_id=resolved_arxiv_id,
     )
+
+    try:
+        sync_result = await _sync_task_assets_for_paper(
+            paper_id=paper["id"],
+            task_id=translated_task_id,
+            promote_to_official=False,
+            paper=paper,
+            defer_runtime_cleanup=True,
+        )
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        logger.warning(
+            "Admin curation publish lost placeholder paper %s during asset sync for task %s; recreating and retrying once",
+            paper_id,
+            translated_task_id,
+        )
+        paper = await _ensure_admin_curation_placeholder_paper(
+            paper_id=paper_id,
+            job=job,
+            metadata=metadata,
+            resolved_arxiv_id=resolved_arxiv_id,
+            force_recreate=True,
+        )
+        sync_result = await _sync_task_assets_for_paper(
+            paper_id=paper["id"],
+            task_id=translated_task_id,
+            promote_to_official=False,
+            paper=paper,
+            defer_runtime_cleanup=True,
+        )
     paper = sync_result.get("paper") or paper
     abstract_translated = _extract_translated_abstract_from_task(translated_task_id) or paper.get("abstract_translated")
     structured_insight_sections = await _generate_structured_insight_sections_from_task(
@@ -4971,6 +4978,39 @@ async def _publish_admin_curation_job(
         },
     )
     return updated
+
+
+async def _ensure_admin_curation_placeholder_paper(
+    *,
+    paper_id: str,
+    job: Dict[str, Any],
+    metadata: Dict[str, Any],
+    resolved_arxiv_id: Optional[str],
+    force_recreate: bool = False,
+) -> Dict[str, Any]:
+    if not force_recreate:
+        existing = await _fetch_paper_by_id(paper_id) if paper_id else None
+        if existing is not None:
+            return existing
+
+    payload = _paper_payload(
+        source=str(job.get("source_type") or "upload"),
+        arxiv_id=resolved_arxiv_id,
+        title=metadata.get("title") or "Curated paper",
+        created_by=str(job.get("created_by") or ""),
+        community_status=COMMUNITY_STATUS_OFFICIAL,
+        authors=metadata.get("authors"),
+        categories=metadata.get("categories"),
+        abstract_raw=metadata.get("abstract_raw"),
+        abstract_translated=None,
+        task_id=None,
+        official_published_at=None,
+        trans_status="processing",
+    )
+    payload["id"] = paper_id
+    payload["visibility"] = "private"
+    payload["status"] = "curating"
+    return await _insert_paper(payload)
 
 
 def _is_private_curating_placeholder_paper(paper: Optional[Dict[str, Any]]) -> bool:
