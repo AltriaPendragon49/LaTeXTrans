@@ -36,6 +36,15 @@ logger = logging.getLogger(__name__)
 
 _runtime_shutting_down = False
 _runtime_state_lock = threading.Lock()
+_TERMINAL_TASK_STATUSES = frozenset(
+    {
+        TaskStatus.COMPLETED.value,
+        TaskStatus.COMPLETED_WITH_WARNINGS.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.FAILED_COMPILATION.value,
+        TaskStatus.STRUCTURE_INVALID.value,
+    }
+)
 
 
 def get_translation_task_repository() -> TranslationTaskRepository:
@@ -74,7 +83,12 @@ def _is_within_cleanup_roots(candidate: Path, allowed_roots: List[Path]) -> bool
 
 def clear_cached_runtime_artifacts(task_id: str, retained_paths: List[Path]) -> List[str]:
     settings = get_settings()
-    allowed_roots = [Path(settings.outputs_dir), Path(settings.uploads_dir), Path(settings.storage_temp_dir)]
+    allowed_roots = []
+    for attr_name in ("outputs_dir", "uploads_dir", "storage_temp_dir"):
+        raw_root = getattr(settings, attr_name, None)
+        if raw_root is None:
+            continue
+        allowed_roots.append(Path(raw_root))
     cleared_paths: List[str] = []
     for candidate in retained_paths:
         if not isinstance(candidate, Path):
@@ -120,6 +134,10 @@ def is_runtime_shutting_down() -> bool:
     """Return whether backend runtime is currently shutting down."""
     with _runtime_state_lock:
         return _runtime_shutting_down
+
+
+def _is_terminal_task_status(status: Optional[str]) -> bool:
+    return str(status or "").strip() in _TERMINAL_TASK_STATUSES
 
 # ---------------------------------------------------------------------------
 # Runtime State Decoupling: Flush Throttle Configuration
@@ -345,7 +363,20 @@ class TaskManager:
             self._persist_task_create(task_id, user_id, source_type, arxiv_id, 
                                       source_language, target_language, advanced_config)
         
-        return task_id
+        return task_id
+
+    def begin_task_attempt(self, task_id: str) -> int:
+        """Start a fresh execution attempt and clear stale terminal markers."""
+        with self._lock:
+            if task_id not in self._tasks:
+                raise KeyError(task_id)
+            task = self._tasks[task_id]
+            next_attempt_id = int(task.get("attempt_id") or 0) + 1
+            task["attempt_id"] = next_attempt_id
+            task["completed_at"] = None
+            task["failure_intercepted"] = False
+            task["failed_output_path"] = None
+            return next_attempt_id
     
     def update_task(
         self,
@@ -375,7 +406,8 @@ class TaskManager:
         config_hash: Optional[str] = None,
         compile_pid: Optional[int] = None,
         compile_engine: Optional[str] = None,
-        compile_started_at: Optional[str] = None,
+        compile_started_at: Optional[str] = None,
+        expected_attempt_id: Optional[int] = None,
     ) -> bool:
         """
         Update task fields
@@ -411,19 +443,46 @@ class TaskManager:
 
             # 鈹€鈹€ Capture old semantic fields BEFORE mutation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
             _old_status = task.get("status")
-            _old_stage = task.get("stage")
+            _old_stage = task.get("stage")
+            current_attempt_id = int(task.get("attempt_id") or 0)
+
+            if (
+                expected_attempt_id is not None
+                and int(expected_attempt_id) != current_attempt_id
+            ):
+                logger.info(
+                    "[TaskManager] Ignoring stale update for task %s: expected attempt %s, current attempt %s",
+                    task_id,
+                    expected_attempt_id,
+                    current_attempt_id,
+                )
+                return False
+
+            if (
+                status is not None
+                and expected_attempt_id is not None
+                and _is_terminal_task_status(_old_status)
+                and not _is_terminal_task_status(status)
+            ):
+                logger.info(
+                    "[TaskManager] Ignoring terminal-regressing update for task %s in attempt %s: %s -> %s",
+                    task_id,
+                    current_attempt_id,
+                    _old_status,
+                    status,
+                )
+                return False
             
             if status is not None:
                 task["status"] = status
                 db_updates["status"] = status
                 # Auto-complete timestamp
-                if status in [TaskStatus.COMPLETED.value, 
-                             TaskStatus.COMPLETED_WITH_WARNINGS.value, 
-                             TaskStatus.FAILED.value,
-                             TaskStatus.FAILED_COMPILATION.value,
-                             TaskStatus.STRUCTURE_INVALID.value]:
+                if _is_terminal_task_status(status):
                     task["completed_at"] = get_cst_now_iso()
-                    db_updates["completed_at"] = task["completed_at"]
+                    db_updates["completed_at"] = task["completed_at"]
+                elif task.get("completed_at") is not None:
+                    task["completed_at"] = None
+                    db_updates["completed_at"] = None
             
             if progress is not None:
                 task["progress"] = max(0, min(100, progress))
@@ -1297,7 +1356,7 @@ class TaskManager:
         with self._lock:
             return {k: v.copy() for k, v in self._tasks.items()}
     
-    def create_progress_callback(self, task_id: str) -> Callable:
+    def create_progress_callback(self, task_id: str, *, attempt_id: Optional[int] = None) -> Callable:
         """
         Create a progress callback function for a specific task
         
@@ -1327,7 +1386,8 @@ class TaskManager:
                     status=TaskStatus.PROCESSING.value,
                     progress=current_progress,
                     stage=current_stage,
-                    message=message
+                    message=message,
+                    expected_attempt_id=attempt_id
                 )
                 return
 
@@ -1346,7 +1406,8 @@ class TaskManager:
                 status=TaskStatus.PROCESSING.value,
                 progress=percentage,
                 stage=stage,
-                message=message
+                message=message,
+                expected_attempt_id=attempt_id
             )
         
         return on_progress
@@ -1480,6 +1541,30 @@ class TaskManager:
             if not db_task:
                 return None
 
+            if (
+                db_task.get("completed_at")
+                and not _is_terminal_task_status(db_task.get("status"))
+            ):
+                reconciliation_message = (
+                    "Recovered inconsistent task state: non-terminal status with completed_at already set"
+                )
+                repository.update_task(
+                    task_id,
+                    {
+                        "status": TaskStatus.FAILED.value,
+                        "progress": 100,
+                        "message": reconciliation_message,
+                        "error": db_task.get("error") or reconciliation_message,
+                        "detail_code": "task_state_reconciled",
+                    },
+                )
+                db_task = dict(db_task)
+                db_task["status"] = TaskStatus.FAILED.value
+                db_task["progress"] = 100
+                db_task["message"] = reconciliation_message
+                db_task["error"] = db_task.get("error") or reconciliation_message
+                db_task["detail_code"] = "task_state_reconciled"
+
             task = {
                 "task_id": db_task.get("task_id"),
                 "status": db_task.get("status", "completed"),
@@ -1509,6 +1594,7 @@ class TaskManager:
                 "user_id": db_task.get("user_id"),
                 "source_language": db_task.get("source_language", "en"),
                 "target_language": db_task.get("target_language", "zh"),
+                "attempt_id": 0,
             }
 
             formatting = db_task.get("formatting")
@@ -2037,6 +2123,27 @@ class TaskQueue:
                                         f"[TaskQueue] Task {tid} raised exception: {exc}",
                                         exc_info=True,
                                     )
+                                    current_task = task_manager.get_task(tid) or {}
+                                    if not _is_terminal_task_status(current_task.get("status")):
+                                        task_manager.update_task(
+                                            task_id=tid,
+                                            status=TaskStatus.FAILED.value,
+                                            progress=100,
+                                            message=f"Task crashed unexpectedly: {exc}",
+                                            error=str(exc),
+                                            detail_code="task_runtime_exception",
+                                            user_id=uid,
+                                        )
+                                        try:
+                                            from backend.app.services import paper_service
+
+                                            await paper_service.mark_paper_translation_failed_by_task(tid)
+                                        except Exception:
+                                            logger.warning(
+                                                "[TaskQueue] Failed to sync paper status after unexpected task exception for %s",
+                                                tid,
+                                                exc_info=True,
+                                            )
                         finally:
                             self._semaphores[th].release()
                             if uid:

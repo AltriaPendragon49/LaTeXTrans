@@ -516,7 +516,8 @@ async def run_translation(
     logger.info(f"Advanced config: mode={advanced_config.translation_mode}, "
                 f"compile={advanced_config.compile_strategy}, "
                 f"user_id={user_id}")
-    
+    attempt_id: Optional[int] = None
+
     try:
         # Check if task was cancelled before starting
         if task_manager.is_cancelled(task_id):
@@ -528,6 +529,11 @@ async def run_translation(
         if not task:
             logger.error(f"Task not found: {task_id}")
             return
+
+        if hasattr(task_manager, "begin_task_attempt"):
+            attempt_id = task_manager.begin_task_attempt(task_id)
+        else:
+            attempt_id = int((task or {}).get("attempt_id") or 1)
         
         raw_source_path = task.get("source_path")
         arxiv_id = task.get("arxiv_id")
@@ -558,7 +564,8 @@ async def run_translation(
                 task_manager.update_task(
                     task_id=task_id,
                     message=f"源文件缺失，正在重新下载 arXiv {arxiv_id}...",
-                    user_id=user_id
+                    user_id=user_id,
+                    expected_attempt_id=attempt_id
                 )
                 save_dir = str(settings.uploads_dir / f"arxiv_{arxiv_id}")
                 source_dirs = await asyncio.to_thread(
@@ -582,7 +589,8 @@ async def run_translation(
                     task_id=task_id,
                     source_path=stored_source_path,
                     source_available=True,
-                    user_id=user_id
+                    user_id=user_id,
+                    expected_attempt_id=attempt_id
                 )
                 logger.info(f"Re-download succeeded, source_path updated to: {stored_source_path}")
                 return new_path
@@ -615,7 +623,8 @@ async def run_translation(
             message="Checking for reusable output...",
             detail_code="task_waiting",
             output_path=str(output_dir),  # eagerly written for lazy reconciliation
-            user_id=user_id
+            user_id=user_id,
+            expected_attempt_id=attempt_id
         )
         
         # 计算配置签名
@@ -646,7 +655,8 @@ async def run_translation(
                 message="Translation completed (reused existing output)",
                 detail_code="compile_complete",
                 output_path=new_output_path,
-                user_id=user_id
+                user_id=user_id,
+                expected_attempt_id=attempt_id
             )
             logger.info(f"Task {task_id} completed via output reuse")
             if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
@@ -663,11 +673,21 @@ async def run_translation(
             progress=0,
             message="Initializing translation...",
             detail_code="translation_starting",
-            user_id=user_id
+            user_id=user_id,
+            expected_attempt_id=attempt_id
         )
         
         # Create progress callback
-        progress_callback = task_manager.create_progress_callback(task_id)
+        if hasattr(task_manager, "create_progress_callback"):
+            try:
+                progress_callback = task_manager.create_progress_callback(
+                    task_id,
+                    attempt_id=attempt_id,
+                )
+            except TypeError:
+                progress_callback = task_manager.create_progress_callback(task_id)
+        else:
+            progress_callback = None
         
         # Build LLM config from advanced settings (with user's stored API key if available)
         llm_config = await build_llm_config_async(advanced_config, user_id)
@@ -797,6 +817,7 @@ async def run_translation(
                 guard_phase=guard_phase,
                 replay_bundle_ref=replay_bundle_ref,
                 user_id=user_id,
+                expected_attempt_id=attempt_id,
             )
             try:
                 from backend.app.services import paper_service
@@ -828,7 +849,8 @@ async def run_translation(
                 failure_class=failure_class,
                 guard_phase=guard_phase,
                 replay_bundle_ref=replay_bundle_ref,
-                user_id=user_id
+                user_id=user_id,
+                expected_attempt_id=attempt_id
             )
             try:
                 from backend.app.services import paper_service
@@ -854,7 +876,8 @@ async def run_translation(
                 detail_code="compile_complete",
                 warnings=warning_summary or "Compilation completed with warnings",
                 output_path=durable_output_path,
-                user_id=user_id
+                user_id=user_id,
+                expected_attempt_id=attempt_id
             )
             logger.info(f"Translation completed with compilation warnings: {task_id}")
         else:
@@ -865,7 +888,8 @@ async def run_translation(
                 message="Translation completed successfully",
                 detail_code="compile_complete",
                 output_path=durable_output_path,
-                user_id=user_id
+                user_id=user_id,
+                expected_attempt_id=attempt_id
             )
             logger.info(f"Translation completed: {task_id}")
         if str(getattr(settings, "storage_backend_mode", "")).strip().lower() == "cos":
@@ -896,6 +920,7 @@ async def run_translation(
             detail_code="task_interrupted_restart",
             progress=100,
             user_id=user_id,
+            expected_attempt_id=attempt_id,
         )
         try:
             from backend.app.services import paper_service
@@ -911,7 +936,8 @@ async def run_translation(
             status=TaskStatus.FAILED.value,
             error=str(e),
             message=f"Translation error: {str(e)}",
-            user_id=user_id
+            user_id=user_id,
+            expected_attempt_id=attempt_id
         )
         try:
             from backend.app.services import paper_service

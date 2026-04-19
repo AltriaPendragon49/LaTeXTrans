@@ -31,7 +31,7 @@ from backend.app.api.routes import translate as translate_route
 from backend.app.api.routes import upload as upload_route
 from backend.app.core.config import TaskStatus, get_settings
 from backend.app.db import DatabaseUnavailableError, db_connection, get_database_dialect
-from backend.app.repositories import CommunityPaperRepository
+from backend.app.repositories import CommunityPaperRepository, TranslationTaskRepository
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_thumbnail_service
@@ -226,6 +226,10 @@ def _get_delete_semaphore() -> asyncio.Semaphore:
 
 def get_community_paper_repository() -> CommunityPaperRepository:
     return CommunityPaperRepository()
+
+
+def _get_translation_task_repository() -> TranslationTaskRepository:
+    return TranslationTaskRepository()
 
 
 async def _run_local_repo(operation):
@@ -5252,10 +5256,84 @@ async def _mark_admin_curation_job_failed(
 
 
 async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
+    persistent_lookup_failed = False
+    persistent_reconcile_failed = False
+    persistent_retry_disabled_until = 0.0
+    persistent_call_timeout_seconds = 1.0
+    persistent_retry_backoff_seconds = 30.0
     for _ in range(ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS):
         task = task_manager.get_task(task_id)
         if task and task.get("status") in TERMINAL_TASK_STATUSES:
             return task
+        persisted_task = None
+        now_monotonic = time.monotonic()
+        if now_monotonic >= persistent_retry_disabled_until:
+            try:
+                persisted_task = await asyncio.wait_for(
+                    run_db_blocking(
+                        lambda: _get_translation_task_repository().get_task(task_id)
+                    ),
+                    timeout=persistent_call_timeout_seconds,
+                )
+                if persistent_lookup_failed:
+                    logger.info(
+                        "Admin curation wait recovered persistent task lookup for task %s",
+                        task_id,
+                    )
+                    persistent_lookup_failed = False
+                persistent_retry_disabled_until = 0.0
+            except Exception as exc:
+                persistent_retry_disabled_until = now_monotonic + persistent_retry_backoff_seconds
+                if not persistent_lookup_failed:
+                    logger.warning(
+                        "Admin curation wait could not read persistent task state for %s; continuing in-memory polling: %s",
+                        task_id,
+                        exc,
+                    )
+                    persistent_lookup_failed = True
+        if persisted_task:
+            if (
+                persisted_task.get("completed_at")
+                and str(persisted_task.get("status") or "").strip() not in TERMINAL_TASK_STATUSES
+            ):
+                reconciliation_message = (
+                    "Recovered inconsistent task state while waiting for admin curation completion"
+                )
+                updates = {
+                    "status": TaskStatus.FAILED.value,
+                    "progress": 100,
+                    "message": reconciliation_message,
+                    "error": persisted_task.get("error") or reconciliation_message,
+                    "detail_code": "task_state_reconciled",
+                }
+                try:
+                    await asyncio.wait_for(
+                        run_db_blocking(
+                            lambda: _get_translation_task_repository().update_task(task_id, updates)
+                        ),
+                        timeout=persistent_call_timeout_seconds,
+                    )
+                    if persistent_reconcile_failed:
+                        logger.info(
+                            "Admin curation wait recovered persistent task reconciliation for %s",
+                            task_id,
+                        )
+                        persistent_reconcile_failed = False
+                except Exception as exc:
+                    persistent_retry_disabled_until = max(
+                        persistent_retry_disabled_until,
+                        time.monotonic() + persistent_retry_backoff_seconds,
+                    )
+                    if not persistent_reconcile_failed:
+                        logger.warning(
+                            "Admin curation wait could not persist reconciled terminal state for %s; using synthesized failed snapshot: %s",
+                            task_id,
+                            exc,
+                        )
+                        persistent_reconcile_failed = True
+                persisted_task = {**persisted_task, **updates}
+            if str(persisted_task.get("status") or "").strip() in TERMINAL_TASK_STATUSES:
+                return persisted_task
         await asyncio.sleep(1)
     raise TimeoutError(f"Timed out waiting for task {task_id}")
 

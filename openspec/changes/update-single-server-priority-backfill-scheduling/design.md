@@ -103,6 +103,39 @@ Because both runtimes still share one physical server, splitting processes is ne
 
 This keeps the user's desired behavior: background work can still occupy most spare capacity, but it must make room once real access traffic appears.
 
+### 4c. Keep task terminal state monotonic within one execution attempt
+
+The current backend still uses long-lived in-process progress callbacks. A task can therefore receive a late `processing` update after its workflow has already written a terminal state. This is the most direct path to the observed drift where:
+
+- `translation_tasks.status` remains non-terminal
+- `completed_at` is already written
+- admin curation waits or history views observe contradictory state
+
+To stop this class of bug without introducing a distributed runtime, each translation execution attempt must carry a runtime-only attempt token:
+
+- starting a real execution attempt increments the attempt token and clears stale terminal markers from older attempts
+- progress callbacks are bound to the attempt token that created them
+- same-attempt updates MUST NOT move a task from terminal back to non-terminal
+- control-plane requeue actions may start a fresh attempt, but only by explicitly creating a new attempt token
+
+This gives the scheduler a monotonic terminal boundary for each attempt even though the broader runtime is still partially in memory.
+
+### 4d. Treat persistent storage as the truth source for terminal-state waiting and reconciliation
+
+Admin curation currently waits for terminal translation states while relying too heavily on the in-memory task snapshot. This is fragile across:
+
+- runtime restarts
+- recovered tasks that were not yet rehydrated into memory
+- inconsistent rows where `completed_at` is present but `status` is still `queued` / `pending` / `processing`
+
+The wait path and startup recovery must therefore prefer durable truth:
+
+- terminal waits should check in-memory state first for low latency, but MUST fall back to `translation_tasks`
+- impossible persistent states such as non-terminal status plus non-null `completed_at` should be reconciled immediately into a terminal failure state with an explicit reconciliation message
+- unexpected queue-level exceptions that escape the translation coroutine must also force a terminal failure write so slots, histories, and admin jobs do not wait forever on a non-terminal ghost
+
+This is not a replacement for the later checkpoint/resume design. It is a reliability guardrail that keeps broken task state from blocking throughput while that larger work remains deferred.
+
 ### 5. Add a health-aware token pool instead of naive round-robin
 
 The user has multiple API keys from different accounts on the same relay provider. In phase 1, the system-managed pool is explicitly:
@@ -193,6 +226,8 @@ Redis remains a future option if the system later needs:
 - Token-pool behavior can accidentally change quality if it alters model/runtime parity. Mitigation: the pool chooses credentials only; it does not change prompt, model, or repair semantics.
 - Deferred artifacts can create output-timing differences. Mitigation: gate the behavior behind flags and roll it out to backfill first.
 - Single-server throughput can still be compile-bound. Mitigation: keep compile concurrency fixed at `1` and optimize scheduler utilization around it instead of pretending compilation is parallel-safe.
+- Attempt-token monotonicity adds runtime bookkeeping. Mitigation: keep the token runtime-only and use it only for stale-update rejection, not for cross-process scheduling.
+- Persistent-state reconciliation can convert an impossible non-terminal row into a failed task. Mitigation: limit reconciliation to states that are already contradictory, record an explicit recovery message, and keep the original artifacts for diagnosis.
 
 ## Migration Plan
 

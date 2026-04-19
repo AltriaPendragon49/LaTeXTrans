@@ -35,6 +35,35 @@ The system SHALL manage translation tasks with priority-aware FIFO lanes on a si
 - **THEN** the scheduler releases the active slot
 - **AND** the highest-priority waiting task that is eligible to run starts next.
 
+### Requirement: Task terminal state remains monotonic within one execution attempt
+The system SHALL prevent same-attempt stale updates from regressing a task from terminal back to non-terminal state.
+
+#### Scenario: Late progress callback arrives after completion
+- **WHEN** a translation attempt has already written a terminal task state
+- **AND** a delayed progress or message update from that same attempt arrives later
+- **THEN** the system MUST ignore the stale non-terminal regression
+- **AND** MUST keep the existing terminal `status` and `completed_at`.
+
+#### Scenario: Fresh retry starts a new execution attempt
+- **WHEN** the scheduler or operator intentionally retries a previously terminal task
+- **THEN** the system MUST create a fresh execution attempt boundary before accepting new non-terminal progress updates
+- **AND** MAY clear stale terminal markers only for that fresh attempt.
+
+### Requirement: Impossible persistent task states are reconciled before they can block operators
+The system SHALL treat contradictory durable task rows as recoverable failures instead of leaving them non-terminal.
+
+#### Scenario: Persistent row has completed timestamp but non-terminal status
+- **WHEN** durable task state shows a non-terminal `status`
+- **AND** `completed_at` is already populated
+- **THEN** the system MUST reconcile that task into an explicit terminal failure state
+- **AND** MUST record a recovery-oriented message instead of leaving the task indefinitely active.
+
+#### Scenario: Admin curation waits across memory loss or runtime split
+- **WHEN** admin curation waits for a translation task to reach terminal state
+- **AND** the in-memory task snapshot is missing or stale
+- **THEN** the wait path MUST fall back to durable `translation_tasks` state
+- **AND** MUST NOT remain blocked forever on an already-terminal or already-reconciled task.
+
 ### Requirement: Queue Status API
 The system SHALL expose lane-aware queue status without breaking existing aggregate queue-status consumers.
 

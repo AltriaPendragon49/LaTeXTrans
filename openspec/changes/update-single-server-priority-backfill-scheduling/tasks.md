@@ -29,3 +29,11 @@
 ## 6. Thumbnail Warm Cache
 - [x] 6.1 Extract shared PDF thumbnail cache generation into a reusable backend service.
 - [x] 6.2 Prewarm public source/translated thumbnails when a paper becomes publicly readable.
+
+## 7. Task-State Consistency And Exception Containment
+- [ ] 7.1 Add attempt-scoped task update guards so same-attempt terminal states cannot regress back to `queued` / `processing` through stale progress callbacks.
+- [ ] 7.2 Clear stale `completed_at` markers only when a fresh control-plane retry or new execution attempt legitimately reactivates a task.
+- [ ] 7.3 Reconcile impossible persistent task rows (`completed_at` set while status is non-terminal) into explicit terminal failures during recovery/wait paths.
+- [ ] 7.4 Make admin curation terminal waits fall back to durable `translation_tasks` state instead of depending only on in-memory task snapshots.
+- [ ] 7.5 Ensure unexpected queue-level exceptions that escape the translation coroutine still force a terminal failure write and paper-status sync.
+- [ ] 7.6 Add automated coverage for terminal regression rejection, retry reactivation clearing, persistent-state reconciliation, durable wait fallback, and unexpected worker exception handling.
