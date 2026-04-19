@@ -1136,18 +1136,30 @@ def _needs_arxiv_metadata_hydration(paper: Dict[str, Any]) -> bool:
     title = str(paper.get("title") or "").strip()
     return (
         not title
-        or title.startswith("arXiv:")
+        or _is_placeholder_paper_title(title, source="arxiv")
         or not (paper.get("authors") or [])
         or not (paper.get("categories") or [])
         or not (paper.get("abstract_raw") or "").strip()
     )
 
 
+def _is_placeholder_paper_title(title: Optional[str], *, source: Optional[str] = None) -> bool:
+    normalized = _normalize_metadata_text(title)
+    if not normalized:
+        return True
+    lowered = normalized.lower()
+    if lowered in {"curated paper", "uploaded paper"}:
+        return True
+    if (source or "").strip() == "arxiv" and normalized.startswith("arXiv:"):
+        return True
+    return False
+
+
 def _best_available_metadata_payload(paper: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
     payload: Dict[str, Any] = {}
     title = _normalize_metadata_text(str(paper.get("title") or ""))
     metadata_title = _normalize_metadata_text(metadata.get("title"))
-    if metadata_title and (not title or title.startswith("arXiv:")):
+    if metadata_title and _is_placeholder_paper_title(title, source=paper.get("source")):
         payload["title"] = metadata_title
     if metadata.get("authors") and not (paper.get("authors") or []):
         payload["authors"] = metadata["authors"]
@@ -1272,6 +1284,57 @@ async def _hydrate_arxiv_metadata_if_needed(paper: Dict[str, Any]) -> Dict[str, 
     return await _update_paper(str(paper["id"]), payload)
 
 
+def _merge_arxiv_metadata(
+    current_metadata: Dict[str, Any],
+    fetched_metadata: Dict[str, Any],
+    *,
+    source: str,
+) -> Dict[str, Any]:
+    merged = dict(current_metadata or {})
+    current_title = _normalize_metadata_text(merged.get("title"))
+    fetched_title = _normalize_metadata_text(fetched_metadata.get("title"))
+    if fetched_title and _is_placeholder_paper_title(current_title, source=source):
+        merged["title"] = fetched_title
+    if not (merged.get("authors") or []) and fetched_metadata.get("authors"):
+        merged["authors"] = fetched_metadata.get("authors")
+    if not (merged.get("categories") or []) and fetched_metadata.get("categories"):
+        merged["categories"] = fetched_metadata.get("categories")
+    if not _normalize_metadata_text(merged.get("abstract_raw")) and fetched_metadata.get("abstract_raw"):
+        merged["abstract_raw"] = fetched_metadata.get("abstract_raw")
+    if not _normalize_metadata_text(merged.get("arxiv_id")) and fetched_metadata.get("arxiv_id"):
+        merged["arxiv_id"] = fetched_metadata.get("arxiv_id")
+    return merged
+
+
+async def _ensure_publishable_admin_curation_metadata(
+    *,
+    job: Dict[str, Any],
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    source_type = str(job.get("source_type") or "").strip()
+    resolved = dict(metadata or {})
+    if source_type != "arxiv":
+        return resolved
+
+    resolved_arxiv_id = _normalize_metadata_text(resolved.get("arxiv_id")) or _normalize_metadata_text(job.get("arxiv_id"))
+    if not resolved_arxiv_id:
+        raise ValueError("Admin arXiv curation publish requires arxiv_id")
+    resolved["arxiv_id"] = resolved_arxiv_id
+
+    if (
+        _is_placeholder_paper_title(resolved.get("title"), source="arxiv")
+        or not (resolved.get("authors") or [])
+        or not (resolved.get("categories") or [])
+        or not _normalize_metadata_text(resolved.get("abstract_raw"))
+    ):
+        fetched_metadata = await _fetch_arxiv_metadata(resolved_arxiv_id)
+        resolved = _merge_arxiv_metadata(resolved, fetched_metadata, source="arxiv")
+
+    if _is_placeholder_paper_title(resolved.get("title"), source="arxiv") or not (resolved.get("authors") or []):
+        raise ValueError("Admin arXiv curation publish requires complete arXiv metadata with title and authors")
+    return resolved
+
+
 async def _hydrate_translated_abstract_if_needed(
     paper: Dict[str, Any],
     asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -1341,6 +1404,20 @@ def _schedule_public_detail_repair(
         )
     )
     return True
+
+
+async def _hydrate_public_feed_papers_if_needed(papers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not papers:
+        return papers
+    repaired = await asyncio.gather(
+        *(
+            _hydrate_arxiv_metadata_if_needed(paper)
+            if _is_placeholder_paper_title(paper.get("title"), source=paper.get("source"))
+            else asyncio.sleep(0, result=paper)
+            for paper in papers
+        )
+    )
+    return [paper or original for paper, original in zip(repaired, papers)]
 
 
 def _resolve_storage_path(stored_path: Optional[str]) -> Path:
@@ -4876,6 +4953,7 @@ async def _publish_admin_curation_job(
     metadata: Dict[str, Any],
     translated_task_id: str,
 ) -> Dict[str, Any]:
+    metadata = await _ensure_publishable_admin_curation_metadata(job=job, metadata=metadata)
     paper_id = str(job.get("paper_id") or "").strip()
     resolved_arxiv_id = (
         _normalize_metadata_text(metadata.get("arxiv_id"))
@@ -4996,7 +5074,7 @@ async def _ensure_admin_curation_placeholder_paper(
     payload = _paper_payload(
         source=str(job.get("source_type") or "upload"),
         arxiv_id=resolved_arxiv_id,
-        title=metadata.get("title") or "Curated paper",
+        title=metadata.get("title") or (f"arXiv:{resolved_arxiv_id}" if resolved_arxiv_id else "Curated paper"),
         created_by=str(job.get("created_by") or ""),
         community_status=COMMUNITY_STATUS_OFFICIAL,
         authors=metadata.get("authors"),
@@ -6455,6 +6533,7 @@ async def list_community_papers(
         if normalized_limit is not None:
             papers = papers[:normalized_limit]
 
+    papers = await _hydrate_public_feed_papers_if_needed(papers)
     paper_ids = [paper["id"] for paper in papers]
     asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if paper_ids else {}
     items = [

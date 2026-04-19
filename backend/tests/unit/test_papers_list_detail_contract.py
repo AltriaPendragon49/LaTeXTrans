@@ -710,6 +710,80 @@ def test_detail_hydrates_missing_arxiv_metadata(monkeypatch):
     assert result["paper"]["abstract_raw"] == "Recovered abstract"
 
 
+def test_list_papers_hydrates_curated_placeholder_metadata(monkeypatch):
+    paper = {
+        "id": "paper-curated",
+        "source": "arxiv",
+        "arxiv_id": "2501.44444",
+        "title": "Curated paper",
+        "authors": [],
+        "categories": [],
+        "abstract_raw": None,
+        "abstract_translated": "translated abstract",
+        "visibility": "public",
+        "status": "published",
+        "trans_status": "completed",
+        "created_by": "admin-1",
+        "trans_latest_task_id": "task-curated",
+        "trans_latest_asset_pdf_id": None,
+        "like_count": 0,
+        "favorite_count": 0,
+        "comment_count": 0,
+        "view_count": 0,
+        "download_count": 0,
+        "created_at": "2026-03-18T02:00:00+00:00",
+        "updated_at": "2026-03-18T02:00:00+00:00",
+        "community_status": "official",
+        "community_selected_task_id": "task-curated",
+        "community_selected_asset_id": None,
+        "official_published_at": "2026-03-18T04:00:00+00:00",
+    }
+
+    class _FakeCommunityRepository:
+        def count_public_papers(self, *, query=None):
+            assert query is None
+            return 1
+
+        def list_public_papers_page(self, *, sort, query, limit, offset):
+            assert (sort, query, limit, offset) == ("latest", None, 12, 0)
+            return [dict(paper)]
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_arxiv_metadata",
+        lambda _arxiv_id: asyncio.sleep(
+            0,
+            result={
+                "title": "Recovered curated title",
+                "authors": ["Alice", "Bob"],
+                "categories": ["cs.LG"],
+                "abstract_raw": "Recovered abstract",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_update_paper",
+        lambda paper_id, payload: asyncio.sleep(0, result={**paper, "id": paper_id, **payload}),
+    )
+    monkeypatch.setattr(paper_service, "_PUBLIC_FEED_CACHE", {}, raising=False)
+
+    result = asyncio.run(
+        paper_service.list_community_papers(sort="latest", q=None, limit=12, offset=0)
+    )
+
+    assert result["items"][0]["title"] == "Recovered curated title"
+    assert result["items"][0]["authors"] == ["Alice", "Bob"]
+    assert result["items"][0]["categories"] == ["cs.LG"]
+    assert result["items"][0]["abstract_raw"] == "Recovered abstract"
+
+
 def test_reader_payload_exposes_anchor_metadata_for_source_and_translated_html():
     payload = paper_service._build_reader_experience_payload(
         paper={

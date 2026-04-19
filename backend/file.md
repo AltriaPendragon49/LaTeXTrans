@@ -379,6 +379,7 @@
 - `backend/app/services/task_manager.py`: 任务管理器现已负责执行尝试编号、同尝试终态单调保护、持久层异常状态对账，以及队列级未捕获异常的终态封口，避免状态漂移长期占用并发槽位。
 - `backend/app/api/routes/translate.py`: 翻译执行入口现已在每次运行前开启新的 attempt，并将进度与终态更新绑定到该 attempt；同时兼容旧测试桩缺少 attempt 接口或旧版 progress callback 签名的场景。
 - `backend/app/services/paper_service.py`: 管理员策展等待逻辑现已增加“持久层短超时 + 熔断退避”兜底，并在发现不可能状态时合成失败终态，避免数据库抖动反向卡死管理任务。
+- `backend/app/services/paper_service.py`: 社区论文公开链路现已阻止缺失标题/作者的 arXiv 策展结果发布，并会在首页列表读取时自动修复仍带占位标题的历史论文元数据。
 - `backend/app/api/routes/papers.py`: 管理员策展历史接口现已负责规范化 `all` / `processing` 筛选语义，并提供选中任务的批量硬删除入口。
 - `backend/app/repositories/community_paper_repository.py`: 策展任务列表查询现已支持将 `processing` 扩展匹配到 `processing`、`translating`、`publishing` 三类在途状态。
 

@@ -746,10 +746,10 @@ def test_generate_structured_insight_sections_requests_summary_plus_titled_subse
 def test_publish_admin_curation_job_blocks_publication_when_any_module_content_is_invalid(monkeypatch):
     paper = {
         "id": "paper-1",
-        "title": "Curated paper",
+        "title": "Recovered arXiv title",
         "arxiv_id": "2501.00001",
-        "authors": [],
-        "categories": [],
+        "authors": ["Alice"],
+        "categories": ["cs.CL"],
         "abstract_raw": "raw abstract",
         "abstract_translated": "中文摘要已经存在，而且长度足够支撑新的五模块导读系统。",
         "community_status": "official",
@@ -801,7 +801,13 @@ def test_publish_admin_curation_job_blocks_publication_when_any_module_content_i
         asyncio.run(
             paper_service._publish_admin_curation_job(
                 job={"paper_id": "paper-1", "created_by": "admin-1", "source_type": "arxiv"},
-                metadata={"title": "Curated paper", "arxiv_id": "2501.00001", "abstract_raw": "raw abstract"},
+                metadata={
+                    "title": "Recovered arXiv title",
+                    "arxiv_id": "2501.00001",
+                    "authors": ["Alice"],
+                    "categories": ["cs.CL"],
+                    "abstract_raw": "raw abstract",
+                },
                 translated_task_id="task-1",
             )
         )
@@ -889,7 +895,7 @@ def test_publish_admin_curation_job_preserves_job_arxiv_id_when_metadata_omits_i
                 "arxiv_id": "2508.18791",
             },
             metadata={
-                "title": "Curated paper",
+                "title": "Recovered arXiv title",
                 "authors": ["Alice"],
                 "categories": ["cs.CL"],
                 "abstract_raw": "raw abstract",
@@ -903,12 +909,96 @@ def test_publish_admin_curation_job_preserves_job_arxiv_id_when_metadata_omits_i
     assert result["arxiv_id"] == "2508.18791"
 
 
+def test_publish_admin_curation_job_rejects_incomplete_arxiv_metadata(monkeypatch):
+    paper = {
+        "id": "paper-1",
+        "title": "Recovered arXiv title",
+        "arxiv_id": "2501.00001",
+        "authors": ["Alice"],
+        "categories": ["cs.CL"],
+        "abstract_raw": None,
+        "abstract_translated": None,
+        "community_status": "official",
+        "trans_status": "processing",
+        "visibility": "private",
+        "status": "curating",
+    }
+    update_calls = {"count": 0}
+
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_paper_by_id",
+        lambda _paper_id: asyncio.sleep(0, result=paper),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_arxiv_metadata",
+        lambda _arxiv_id: asyncio.sleep(0, result={}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_sync_task_assets_for_paper",
+        lambda **_kwargs: asyncio.sleep(0, result={"paper": paper}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_extract_translated_abstract_from_task",
+        lambda _task_id: "translated abstract",
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_structured_insight_sections_from_task",
+        lambda **_kwargs: asyncio.sleep(0, result=_valid_sections()),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_upsert_structured_insight_sections",
+        lambda **_kwargs: asyncio.sleep(0, result=None),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_generate_similar_recommendations_for_paper",
+        lambda **_kwargs: asyncio.sleep(0, result=[]),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_replace_persisted_similar_recommendations",
+        lambda **_kwargs: asyncio.sleep(0, result=[]),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_update_paper",
+        lambda *_args, **_kwargs: update_calls.__setitem__("count", update_calls["count"] + 1),
+    )
+
+    with pytest.raises(ValueError, match="complete arXiv metadata"):
+        asyncio.run(
+            paper_service._publish_admin_curation_job(
+                job={
+                    "paper_id": "paper-1",
+                    "created_by": "admin-1",
+                    "source_type": "arxiv",
+                    "arxiv_id": "2501.00001",
+                },
+                metadata={
+                    "title": "Curated paper",
+                    "authors": [],
+                    "categories": [],
+                    "abstract_raw": None,
+                },
+                translated_task_id="task-1",
+            )
+        )
+
+    assert update_calls["count"] == 0
+
+
 def test_publish_admin_curation_job_persists_similar_recommendations_before_publication(monkeypatch):
     persisted_payload: dict[str, object] = {}
     update_calls: list[dict[str, object]] = []
     paper = {
         "id": "paper-1",
-        "title": "Curated paper",
+        "title": "Recovered arXiv title",
         "arxiv_id": "2501.00001",
         "authors": ["Alice"],
         "categories": ["cs.CL"],
@@ -983,7 +1073,7 @@ def test_publish_admin_curation_job_persists_similar_recommendations_before_publ
         paper_service._publish_admin_curation_job(
             job={"paper_id": "paper-1", "created_by": "admin-1", "source_type": "arxiv"},
             metadata={
-                "title": "Curated paper",
+                "title": "Recovered arXiv title",
                 "arxiv_id": "2501.00001",
                 "authors": ["Alice"],
                 "categories": ["cs.CL"],
@@ -1042,7 +1132,7 @@ def test_publish_admin_curation_job_retries_asset_sync_after_recreating_missing_
         return {
             "paper": {
                 "id": "paper-1",
-                "title": "Curated paper",
+                "title": "Recovered arXiv title",
                 "arxiv_id": "2501.00001",
                 "authors": ["Alice"],
                 "categories": ["cs.CL"],
@@ -1110,7 +1200,7 @@ def test_publish_admin_curation_job_retries_asset_sync_after_recreating_missing_
                 "arxiv_id": "2501.00001",
             },
             metadata={
-                "title": "Curated paper",
+                "title": "Recovered arXiv title",
                 "authors": ["Alice"],
                 "categories": ["cs.CL"],
                 "abstract_raw": "raw abstract",
