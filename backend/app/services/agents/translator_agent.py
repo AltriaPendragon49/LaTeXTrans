@@ -117,6 +117,7 @@ class TranslatorAgent(BaseToolAgent):
     )
     _RESCUE_WINDOW_CHAR_BUDGET = 120
     _RESCUE_WINDOW_MAX_DEPTH = 2
+    _RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART = 12
     _RESCUE_MAX_FAILED_ALPHA_CHARS = 32
     _TERMINAL_NO_RETRY_STATUSES = frozenset({
         STATUS_TRANSLATED,
@@ -204,6 +205,7 @@ class TranslatorAgent(BaseToolAgent):
         self.noop_sections: List[str] = []
         self.payload_invariant_sections: List[str] = []
         self._oversize_downgrade_events: List[Dict[str, Any]] = []
+        self._nested_rescue_attempt_counts: Dict[str, int] = {}
         # eliminate-silent-fallback: structured fallback reports for repair loop
         self.fallback_reports: List[FallbackReport] = []
         (
@@ -396,6 +398,39 @@ class TranslatorAgent(BaseToolAgent):
         self.have_fail_parts = bool(
             self.fail_section_nums or self.fail_caption_phs or self.fail_env_phs
         )
+
+    def _reserve_nested_rescue_attempt(self, part_type: str, fail_part: str) -> bool:
+        identifier = str(fail_part or "")
+        if ":" not in identifier:
+            return True
+
+        normalized = self._normalize_llm_failure_identifier(part_type, identifier)
+        if not normalized:
+            return True
+
+        budget = self._resolve_positive_int(
+            getattr(
+                self,
+                "_RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART",
+                self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
+            ),
+            self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
+        )
+        budget_key = self._part_retry_key(part_type, normalized)
+        current = int(self._nested_rescue_attempt_counts.get(budget_key, 0) or 0)
+        if current >= budget:
+            self._mark_api_fallback(part_type, identifier, "rescue_budget_exhausted")
+            logger.warning(
+                "Nested rescue budget exhausted for %s (%s): %s/%s",
+                budget_key,
+                identifier,
+                current,
+                budget,
+            )
+            return False
+
+        self._nested_rescue_attempt_counts[budget_key] = current + 1
+        return True
 
     def _clear_llm_part_failure(self, part_type: str, identifier: str) -> None:
         normalized = self._normalize_llm_failure_identifier(part_type, identifier)
@@ -1201,6 +1236,8 @@ class TranslatorAgent(BaseToolAgent):
     ) -> Optional[str]:
         if self._should_passthrough_rescue_fragment(piece):
             return piece
+        if not self._reserve_nested_rescue_attempt(part_type, fail_part):
+            return None
 
         leading_ws_match = re.match(r"^\s*", piece)
         trailing_ws_match = re.search(r"\s*$", piece)
@@ -1258,6 +1295,8 @@ class TranslatorAgent(BaseToolAgent):
                 "Do not copy the English source text."
             )
             retry_fail_part = f"{fail_part}:force"
+            if not self._reserve_nested_rescue_attempt(part_type, retry_fail_part):
+                return None
             if self.trans_mode == 1:
                 retry_part = {
                     "content": piece,
@@ -1312,6 +1351,8 @@ class TranslatorAgent(BaseToolAgent):
     ) -> Optional[str]:
         masked_piece, rescue_context = self._prepare_plain_text_rescue_text(piece)
         if not masked_piece.strip():
+            return None
+        if not self._reserve_nested_rescue_attempt(part_type, fail_part):
             return None
 
         if self.trans_mode == 1:

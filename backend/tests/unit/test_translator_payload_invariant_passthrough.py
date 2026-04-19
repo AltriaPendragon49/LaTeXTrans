@@ -593,6 +593,40 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertIsNone(rescued)
         self.assertEqual(agent._request_llm_for_trans.await_count, 1)
 
+    def test_rescue_plain_text_by_paragraph_caps_nested_invariant_rescue_budget(self):
+        agent = _build_agent()
+        agent._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART = 12
+        text = (
+            "This paragraph repeatedly triggers invariant-preserving fallback while remaining long enough "
+            "to split into several rescue windows with scientific wording and enough alphabetic content "
+            "to keep the recursive downgrade path active. It should remain difficult across retries and "
+            "continue to preserve the source language.\n\n"
+            "A second paragraph does the same thing and keeps the nested rescue path busy with more "
+            "English technical prose and additional content so the rescue windows are still long enough "
+            "to recurse deeper into the fragment workflow.\n\n"
+            "A third paragraph again stays in English and forces the agent to keep trying masked and "
+            "windowed rescues without ever producing enough target language signal to accept the result."
+        )
+
+        async def fake_request(*args, **kwargs):
+            fail_part = kwargs["fail_part"]
+            agent._mark_api_fallback("sec", fail_part, "invariant_hard_freeze_protocol_violation")
+            return args[1]
+
+        agent._request_llm_for_trans = AsyncMock(side_effect=fake_request)
+
+        rescued = asyncio.run(
+            agent._rescue_plain_text_by_paragraph(
+                text=text,
+                identifier="99",
+                part_type="sec",
+                session=MagicMock(),
+            )
+        )
+
+        self.assertIsNone(rescued)
+        self.assertEqual(agent._request_llm_for_trans.await_count, 12)
+
     def test_translate_section_rescues_payload_invariant_source_preservation_by_paragraph(self):
         agent = _build_agent()
         section = {
