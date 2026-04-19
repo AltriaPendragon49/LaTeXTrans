@@ -5010,7 +5010,18 @@ async def _ensure_admin_curation_placeholder_paper(
     payload["id"] = paper_id
     payload["visibility"] = "private"
     payload["status"] = "curating"
-    return await _insert_paper(payload)
+    try:
+        return await _insert_paper(payload)
+    except HTTPException as exc:
+        if paper_id:
+            existing = await _fetch_paper_by_id(paper_id)
+            if existing is not None:
+                logger.warning(
+                    "Admin curation placeholder paper %s already exists after recreate attempt; reusing persisted row",
+                    paper_id,
+                )
+                return existing
+        raise exc
 
 
 def _is_private_curating_placeholder_paper(paper: Optional[Dict[str, Any]]) -> bool:
