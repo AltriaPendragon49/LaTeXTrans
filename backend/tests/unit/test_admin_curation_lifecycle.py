@@ -272,6 +272,115 @@ def test_run_curation_job_reuses_existing_arxiv_translation_task(monkeypatch):
     assert repository.job["paper_id"] == "paper-1"
 
 
+def test_run_curation_job_keeps_existing_arxiv_task_in_translating_until_publish(monkeypatch):
+    repository = _FakeRepository(
+        {
+            "job_id": "job-1",
+            "paper_id": "paper-1",
+            "source_type": "arxiv",
+            "arxiv_id": "2406.15882",
+            "task_id": "task-existing",
+            "source_language": "en",
+            "target_language": "zh",
+            "created_by": "admin-1",
+            "status": "queued",
+        }
+    )
+    publish_seen_statuses: list[str] = []
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _resolve_context(_user_id: str):
+        return {"user_id": "admin-1", "is_admin": True, "roles": ["admin"]}
+
+    async def _fetch_metadata(_arxiv_id: str):
+        return {"title": "Paper", "authors": [], "categories": [], "abstract_raw": "abstract"}
+
+    async def _wait_for_terminal(_task_id: str):
+        assert repository.job["status"] == "translating"
+        return {"status": "completed"}
+
+    async def _publish_job(*, translated_task_id: str, **_kwargs):
+        publish_seen_statuses.append(repository.job["status"])
+        assert translated_task_id == "task-existing"
+        return {"id": "paper-1"}
+
+    async def _unexpected_start(**_kwargs):
+        raise AssertionError("existing task should be reused instead of starting a new arXiv translation")
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
+    monkeypatch.setattr(paper_service, "resolve_submitter_context_by_user_id", _resolve_context)
+    monkeypatch.setattr(paper_service, "_fetch_arxiv_metadata", _fetch_metadata)
+    monkeypatch.setattr(paper_service, "_wait_for_task_terminal_state", _wait_for_terminal)
+    monkeypatch.setattr(paper_service, "_publish_admin_curation_job", _publish_job)
+    monkeypatch.setattr(paper_service, "_start_arxiv_paper_translation", _unexpected_start)
+
+    asyncio.run(paper_service._run_curation_job("job-1"))
+
+    assert publish_seen_statuses == ["publishing"]
+    assert repository.updates[0]["status"] == "processing"
+    assert repository.updates[1]["status"] == "translating"
+    assert repository.updates[2]["status"] == "publishing"
+
+
+def test_run_curation_job_keeps_new_arxiv_task_in_translating_until_publish(monkeypatch):
+    repository = _FakeRepository(
+        {
+            "job_id": "job-1",
+            "paper_id": "paper-1",
+            "source_type": "arxiv",
+            "arxiv_id": "2406.15882",
+            "task_id": None,
+            "source_language": "en",
+            "target_language": "zh",
+            "created_by": "admin-1",
+            "status": "queued",
+        }
+    )
+    publish_seen_statuses: list[str] = []
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _resolve_context(_user_id: str):
+        return {"user_id": "admin-1", "is_admin": True, "roles": ["admin"]}
+
+    async def _fetch_metadata(_arxiv_id: str):
+        return {"title": "Paper", "authors": [], "categories": [], "abstract_raw": "abstract"}
+
+    async def _start_arxiv_translation(**_kwargs):
+        return {"task_id": "task-new"}
+
+    async def _wait_for_terminal(_task_id: str):
+        assert _task_id == "task-new"
+        assert repository.job["status"] == "translating"
+        return {"status": "completed"}
+
+    async def _publish_job(*, translated_task_id: str, **_kwargs):
+        publish_seen_statuses.append(repository.job["status"])
+        assert translated_task_id == "task-new"
+        return {"id": "paper-1"}
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
+    monkeypatch.setattr(paper_service, "resolve_submitter_context_by_user_id", _resolve_context)
+    monkeypatch.setattr(paper_service, "_fetch_arxiv_metadata", _fetch_metadata)
+    monkeypatch.setattr(paper_service, "_start_arxiv_paper_translation", _start_arxiv_translation)
+    monkeypatch.setattr(paper_service, "_wait_for_task_terminal_state", _wait_for_terminal)
+    monkeypatch.setattr(paper_service, "_publish_admin_curation_job", _publish_job)
+
+    asyncio.run(paper_service._run_curation_job("job-1"))
+
+    assert publish_seen_statuses == ["publishing"]
+    assert repository.updates[0]["status"] == "processing"
+    assert repository.updates[1]["status"] == "translating"
+    assert repository.updates[2]["status"] == "translating"
+    assert repository.updates[2]["task_id"] == "task-new"
+    assert repository.updates[3]["status"] == "publishing"
+
+
 def test_start_arxiv_paper_translation_routes_admin_curation_into_backfill_lane(monkeypatch):
     created: dict[str, object] = {}
 

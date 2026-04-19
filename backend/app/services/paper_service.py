@@ -5453,7 +5453,7 @@ async def _run_curation_job(job_id: str) -> None:
                             job_id,
                             {
                                 "task_id": translated_task_id,
-                                "status": "publishing",
+                                "status": "translating",
                                 "error": None,
                                 "updated_at": _utc_now_iso(),
                             },
@@ -5472,6 +5472,16 @@ async def _run_curation_job(job_id: str) -> None:
                         context=context,
                     )
                     translated_task_id = translation_result["task_id"]
+                    await _run_local_repo(
+                        lambda: repository.update_curation_job(
+                            job_id,
+                            {
+                                "task_id": translated_task_id,
+                                "status": "translating",
+                                "updated_at": _utc_now_iso(),
+                            },
+                        )
+                    )
             else:
                 source_path = _resolve_storage_path(str(job.get("source_path") or ""))
                 metadata = _archive_metadata_from_source_path(
@@ -5494,13 +5504,6 @@ async def _run_curation_job(job_id: str) -> None:
                     current_user={"id": context["user_id"]},
                 )
                 translated_task_id = translation_result["task_id"]
-
-            await _run_local_repo(
-                lambda: repository.update_curation_job(
-                    job_id,
-                    {"task_id": translated_task_id, "status": "publishing", "updated_at": _utc_now_iso()},
-                )
-            )
             task = await _wait_for_task_terminal_state(translated_task_id)
             if task.get("status") not in {"completed", "completed_with_warnings"}:
                 await _mark_admin_curation_job_failed(
@@ -5513,6 +5516,12 @@ async def _run_curation_job(job_id: str) -> None:
                 )
                 return
 
+            await _run_local_repo(
+                lambda: repository.update_curation_job(
+                    job_id,
+                    {"task_id": translated_task_id, "status": "publishing", "updated_at": _utc_now_iso()},
+                )
+            )
             published = await _publish_admin_curation_job(
                 job=job,
                 metadata=metadata,
@@ -5537,6 +5546,12 @@ async def _run_curation_job(job_id: str) -> None:
             logger.warning("Admin curation job %s timed out while waiting for %s", job_id, translated_task_id)
             latest_task = task_manager.get_task(translated_task_id) if translated_task_id else None
             if latest_task and latest_task.get("status") in {"completed", "completed_with_warnings"}:
+                await _run_local_repo(
+                    lambda: repository.update_curation_job(
+                        job_id,
+                        {"task_id": translated_task_id, "status": "publishing", "updated_at": _utc_now_iso()},
+                    )
+                )
                 published = await _publish_admin_curation_job(
                     job=job,
                     metadata=metadata,

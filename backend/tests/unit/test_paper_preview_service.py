@@ -28,7 +28,7 @@ def test_generate_preview_html_writes_semantic_reader_output(tmp_path: Path):
         {
             "section": "1_1",
             "content": "\\subsection{Method}\nSecond paragraph with $E=mc^2$.",
-            "trans_content": "\\subsection{方法}\n第二段包�?$E=mc^2$�?,
+            "trans_content": "\\subsection{方法}\n第二段包含 $E=mc^2$。",
         },
     ]
     envs = [
@@ -51,7 +51,7 @@ def test_generate_preview_html_writes_semantic_reader_output(tmp_path: Path):
     assert "引言" in html
     assert "<h3" in html
     assert "方法" in html
-    assert "<p>第一段�?/p>" in html
+    assert "<p>第一段。</p>" in html
     assert "$$a=b$$" in html
     assert "$E=mc^2$" in html
 
@@ -94,7 +94,7 @@ def test_generate_preview_html_strips_structural_latex_and_renders_figures_reada
         {
             "section": "0+1",
             "content": "\\begin{document}\\maketitle\\section{Introduction}\\label{sec:intro}\nBody.",
-            "trans_content": "\\begin{document}\\maketitle\\section{引言}\\label{sec:intro}\n第一段正文，模型记为\\PPNeSF{}�?,
+            "trans_content": "\\begin{document}\\maketitle\\section{引言}\\label{sec:intro}\n第一段正文，模型记为\\PPNeSF{}。",
         },
         {
             "section": "2",
@@ -126,14 +126,14 @@ def test_generate_preview_html_strips_structural_latex_and_renders_figures_reada
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "<h2>引言</h2>" in html
-    assert "第一段正文，模型记为PPNeSF�? in html
+    assert "第一段正文，模型记为PPNeSF。" in html
     assert "\\begin{document}" not in html
     assert "\\maketitle" not in html
     assert "\\label{sec:intro}" not in html
     assert "\\clearpage" not in html
     assert "\\begin{figure" not in html
-    assert "图表内容请查�?PDF 版本" in html
-    assert "图像说明文字�? in html
+    assert "图表内容请查看 PDF 版本" in html
+    assert "图像说明文字。" in html
 
 
 def test_generate_preview_html_renders_lists_tables_and_embeds_image_figures(tmp_path: Path):
@@ -182,12 +182,12 @@ def test_generate_preview_html_renders_lists_tables_and_embeds_image_figures(tmp
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "<ul" in html
-    assert "<li>第一条要�?/li>" in html
+    assert "<li>第一条要点</li>" in html
     assert "<table" in html
     assert "<th>方法</th>" in html
     assert "<td>本文</td>" in html
     assert "data:image/png;base64," in html
-    assert "示意�? in html
+    assert "示意图" in html
     assert "\\begin{itemize}" not in html
     assert "\\bibliography{refs}" not in html
 
@@ -200,7 +200,7 @@ def test_generate_preview_html_emits_anchorable_math_blocks_instead_of_pre(tmp_p
         {
             "section": "2",
             "content": "\\section{Math}\n<PLACEHOLDER_ENV_1>\n<PLACEHOLDER_ENV_2>\nBody paragraph.",
-            "trans_content": "\\section{数学}\n<PLACEHOLDER_ENV_1>\n<PLACEHOLDER_ENV_2>\n正文段落�?,
+            "trans_content": "\\section{数学}\n<PLACEHOLDER_ENV_1>\n<PLACEHOLDER_ENV_2>\n正文段落。",
         },
     ]
     envs = [
@@ -271,7 +271,7 @@ def test_generate_preview_html_renders_pdf_figures_inline_when_rasterizer_succee
 
     assert "data:image/png;base64,ZmFrZS1wZGY=" in html
     assert "PDF 图示" in html
-    assert "图表内容请查�?PDF 版本" not in html
+    assert "图表内容请查看 PDF 版本" not in html
 
 
 def test_generate_preview_html_normalizes_inline_command_examples_in_prose(tmp_path: Path):
@@ -285,7 +285,7 @@ def test_generate_preview_html_normalizes_inline_command_examples_in_prose(tmp_p
             "trans_content": (
                 "\\section{翻译-验证迭代机制}\n"
                 "命令``\\texttt{\\textbackslash textbf\\{\\}}''可能被遗漏，或``"
-                "\\begin{CJK}{UTF8}{gbsn}\\texttt{\\textbackslash 左}\\end{CJK}''被误译�?
+                "\\begin{CJK}{UTF8}{gbsn}\\texttt{\\textbackslash 左}\\end{CJK}''被误译。"
             ),
         },
     ]
@@ -296,7 +296,7 @@ def test_generate_preview_html_normalizes_inline_command_examples_in_prose(tmp_p
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "<code>\\textbf{}</code>" in html
-    assert "<code>\\�?/code>" in html
+    assert "<code>\\左</code>" in html
     assert "\\begin{CJK}" not in html
     assert "\\end{CJK}" not in html
 
@@ -311,7 +311,7 @@ def test_generate_preview_html_strips_spaced_citations_from_prose(tmp_path: Path
             "content": "\\section{Iteration}\nBody.",
             "trans_content": (
                 "\\section{翻译-验证迭代机制}\n"
-                "这可能导致个别句子的漏译或误�?\\cite {wang2025deltaonlinedocumentleveltranslation}�?
+                "这可能导致个别句子的漏译或误译 \\cite {wang2025deltaonlinedocumentleveltranslation}。"
             ),
         },
     ]
@@ -340,7 +340,7 @@ def test_generate_preview_html_renders_subsection_command_blocks_readably(tmp_pa
                 "\\begin{center}\n"
                 "\\ttfamily\\small LaTeXTrans --arxiv xxxx.xxxxx\n"
                 "\\end{center}\n"
-                "翻译完成后，系统将同时生成翻译后�?PDF 文件。\n"
+                "翻译完成后，系统将同时生成翻译后的 PDF 文件。\n"
             ),
         },
     ]
@@ -350,8 +350,8 @@ def test_generate_preview_html_renders_subsection_command_blocks_readably(tmp_pa
     result = paper_preview_service.generate_preview_html(output_dir)
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
-    assert "系统部署与使�? in html
-    assert "<h4 class=\"paper-preview__subheading\">命令行工�?/h4>" in html
+    assert "系统部署与使用" in html
+    assert "<h4 class=\"paper-preview__subheading\">命令行工具</h4>" in html
     assert "LaTeXTrans --arxiv xxxx.xxxxx" in html
     assert "paper-preview__command-block" in html
     assert "\\subsection" not in html
@@ -431,9 +431,9 @@ def test_generate_preview_html_linkifies_publication_urls(tmp_path: Path):
             "content": "\\section{Links}\nBody.",
             "trans_content": (
                 "\\section{公开资源}\n"
-                "源代码[<https://github.com/NiuTrans/LaTeXTrans>]�?
-                "在线演示平台[<https://latextrans.online>]�?
-                "演示视频[<https://youtu.be/-ODRUTE-VU8>]均已公开�?
+                "源代码[<https://github.com/NiuTrans/LaTeXTrans>]、"
+                "在线演示平台[<https://latextrans.online>]及"
+                "演示视频[<https://youtu.be/-ODRUTE-VU8>]均已公开。"
             ),
         },
     ]
@@ -470,10 +470,10 @@ def test_generate_preview_html_prefers_clean_display_math_environment(tmp_path: 
                 "\\end{align}LNCE..."
             ),
             "trans_content": (
-                "LNCE=�?2N∑i=1Nlog�?...).\\begin{align}\n"
+                "LNCE=−12N∑i=1Nlog⁡(...).\\begin{align}\n"
                 "L_{NCE} = -\\frac{1}{2N} \\sum_{i=1}^N \\log \\left( \\frac{\\exp{\\left(F^{3D}_{u_i} F^{2D}_{u_i}/\\tau \\right)}^2}{A} \\right) \\enspace.\n"
                 "\\label{eq:Lnce}\n"
-                "\\end{align}LNCE�?�?N1​i=1∑N​log(...)."
+                "\\end{align}LNCE​=−2N1​i=1∑N​log(...)."
             ),
         },
     ]
@@ -489,8 +489,8 @@ def test_generate_preview_html_prefers_clean_display_math_environment(tmp_path: 
     assert "\\begin{align}" not in html
     assert "\\end{align}" not in html
     assert "\\label{eq:Lnce}" not in html
-    assert "LNCE=�?2N" not in html
-    assert "LNCE�?�?N1" not in html
+    assert "LNCE=−12N" not in html
+    assert "LNCE​=−2N1" not in html
 
 
 def test_generate_preview_html_renders_paragraph_commands_as_subheadings(tmp_path: Path):
@@ -503,8 +503,8 @@ def test_generate_preview_html_renders_paragraph_commands_as_subheadings(tmp_pat
             "content": "\\section{Details}\nBody.",
             "trans_content": (
                 "\\section{细节}\n"
-                "\\paragraph{数据�?} 我们使用三个公开基准。\n\n"
-                "\\PARR{PPNeSF} 采用 ZipNeRF 架构作为背景神经隐式场�?
+                "\\paragraph{数据集.} 我们使用三个公开基准。\n\n"
+                "\\PARR{PPNeSF} 采用 ZipNeRF 架构作为背景神经隐式场。"
             ),
         },
     ]
@@ -514,7 +514,7 @@ def test_generate_preview_html_renders_paragraph_commands_as_subheadings(tmp_pat
     result = paper_preview_service.generate_preview_html(output_dir)
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
-    assert "<h4 class=\"paper-preview__subheading\">数据�?</h4>" in html
+    assert "<h4 class=\"paper-preview__subheading\">数据集.</h4>" in html
     assert "<h4 class=\"paper-preview__subheading\">PPNeSF</h4>" in html
     assert "\\paragraph{" not in html
     assert "\\PARR{" not in html
@@ -531,7 +531,7 @@ def test_generate_preview_html_renders_nested_subheadings_without_leaking_raw_co
             "trans_content": (
                 "\\section{实验}\n"
                 "\\subsection{实验设置}\n"
-                "\\paragraph{数据�?} 我们构建了一个包�?100 篇论文的数据集�?
+                "\\paragraph{数据集.} 我们构建了一个包含 100 篇论文的数据集。"
             ),
         },
     ]
@@ -542,7 +542,7 @@ def test_generate_preview_html_renders_nested_subheadings_without_leaking_raw_co
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "<h4 class=\"paper-preview__subheading\">实验设置</h4>" in html
-    assert "<h4 class=\"paper-preview__subheading\">数据�?</h4>" in html
+    assert "<h4 class=\"paper-preview__subheading\">数据集.</h4>" in html
     assert "\\paragraph{" not in html
 
 
@@ -559,7 +559,7 @@ def test_generate_preview_html_removes_duplicate_plaintext_formula_after_math_bl
                 "沿光线采样后，像素颜色计算如下：\n\n"
                 "<PLACEHOLDER_ENV_1>\n\n"
                 "C^ = i=1∑n T_i α_i c_i.\n\n"
-                "其中 $T_i$ 表示累积透射率�?
+                "其中 $T_i$ 表示累积透射率。"
             ),
         },
     ]
@@ -580,7 +580,7 @@ def test_generate_preview_html_removes_duplicate_plaintext_formula_after_math_bl
 
     assert "paper-preview__math-block" in html
     assert "C^ = i=1∑n T_i α_i c_i." not in html
-    assert "其中 $T_i$ 表示累积透射率�? in html
+    assert "其中 $T_i$ 表示累积透射率。" in html
 
 
 def test_generate_preview_html_strips_malformed_inline_math_from_captions(tmp_path: Path):
@@ -608,13 +608,13 @@ def test_generate_preview_html_strips_malformed_inline_math_from_captions(tmp_pa
             "content": (
                 "\\begin{figure}\n"
                 "\\includegraphics{segmentation.png}\n"
-                "\\caption{从左至右依次为：原始图像、渲染深度图、基于图像的粗分�?$s_c^{2D}\n"
+                "\\caption{从左至右依次为：原始图像、渲染深度图、基于图像的粗分割 $s_c^{2D}\n"
                 "\\end{figure}"
             ),
             "trans_content": (
                 "\\begin{figure}\n"
                 "\\includegraphics{segmentation.png}\n"
-                "\\caption{从左至右依次为：原始图像、渲染深度图、基于图像的粗分�?$s_c^{2D}\n"
+                "\\caption{从左至右依次为：原始图像、渲染深度图、基于图像的粗分割 $s_c^{2D}\n"
                 "\\end{figure}"
             ),
         },
@@ -626,7 +626,7 @@ def test_generate_preview_html_strips_malformed_inline_math_from_captions(tmp_pa
     result = paper_preview_service.generate_preview_html(output_dir, source_dirs=[source_dir])
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
-    assert "从左至右依次为：原始图像、渲染深度图、基于图像的粗分�? in html
+    assert "从左至右依次为：原始图像、渲染深度图、基于图像的粗分割" in html
     assert "$s_c^{2D" not in html
 
 
@@ -733,7 +733,7 @@ def test_generate_preview_html_renders_algorithm_blocks_as_structured_steps(tmp_
 
     assert "paper-preview__algorithm" in html
     assert "paper-preview__algorithm-steps" in html
-    assert "描述 PPNeSF 训练过程的伪算法�? in html
+    assert "描述 PPNeSF 训练过程的伪算法。" in html
     assert "Data:" in html
     assert "For iteration in range" in html
     assert "\\KwData" not in html
@@ -797,7 +797,7 @@ def test_generate_preview_html_normalizes_metric_arrows_and_caption_command_resi
     result = paper_preview_service.generate_preview_html(output_dir)
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
-    assert "LPIPS(�?/ FID (�? / Captions similarity (�?" in html
+    assert "LPIPS(↑)/ FID (↑) / Captions similarity (↓)" in html
     assert "\\uparrow" not in html
     assert "\\downarrow" not in html
     assert "\\cite{" not in html
@@ -814,19 +814,19 @@ def test_generate_preview_html_renders_mixed_prose_and_display_math_without_late
             "section": "12",
             "content": (
                 "\\subsubsection{Optimization}\n"
-                "最终，我们获得像素级分�?v=\\argmax_k(Q)$。\n"
+                "最终，我们获得像素级分配$v=\\argmax_k(Q)$。\n"
                 "$$\\textstyle{\n"
                 "p^{2D}_{k} = \\mu p^{2D}_{k} + (1-\\mu) ( \\beta \\frac{1}{|A(k)|} \\sum_{i\\in A(k)} F^{2D}_i }$$\n"
                 "$$\\textstyle{+ (1 - \\beta) \\frac{1}{|A(k)|} \\sum_{i\\in A(k)} F^{3D}_i) } \\enspace , $$\n"
-                "其中$\\beta$在训练过程中�?线性增�?.5�?
+                "其中$\\beta$在训练过程中从0线性增至0.5。"
             ),
             "trans_content": (
                 "\\subsubsection{优化}\n"
-                "最终，我们获得像素级分�?v=\\argmax_k(Q)$。\n"
+                "最终，我们获得像素级分配$v=\\argmax_k(Q)$。\n"
                 "$$\\textstyle{\n"
                 "p^{2D}_{k} = \\mu p^{2D}_{k} + (1-\\mu) ( \\beta \\frac{1}{|A(k)|} \\sum_{i\\in A(k)} F^{2D}_i }$$\n"
                 "$$\\textstyle{+ (1 - \\beta) \\frac{1}{|A(k)|} \\sum_{i\\in A(k)} F^{3D}_i) } \\enspace , $$\n"
-                "其中$\\beta$在训练过程中�?线性增�?.5�?
+                "其中$\\beta$在训练过程中从0线性增至0.5。"
             ),
         },
         {
@@ -835,13 +835,13 @@ def test_generate_preview_html_renders_mixed_prose_and_display_math_without_late
                 "\\PAR{PPNeSF}\n"
                 "六个结果特征根据高斯与网格单元的匹配程度重新加权$w_{j,l}$，并平均\n"
                 "$$\\textstyle{f_l = \\mean_j(w_{j,l} trilerp(x_j;V_l) \\enspace ,}$$\n"
-                "�?trilerp$表示三线性插值操作）�?
+                "（$trilerp$表示三线性插值操作）。"
             ),
             "trans_content": (
                 "\\PAR{PPNeSF}\n"
                 "六个结果特征根据高斯与网格单元的匹配程度重新加权$w_{j,l}$，并平均\n"
                 "$$\\textstyle{f_l = \\mean_j(w_{j,l} trilerp(x_j;V_l) \\enspace ,}$$\n"
-                "�?trilerp$表示三线性插值操作）�?
+                "（$trilerp$表示三线性插值操作）。"
             ),
         },
     ]
@@ -852,8 +852,8 @@ def test_generate_preview_html_renders_mixed_prose_and_display_math_without_late
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "paper-preview__math-block" in html
-    assert "最终，我们获得像素级分�? in html
-    assert "其中$\\beta$在训练过程中�?线性增�?.5�? in html
+    assert "最终，我们获得像素级分配" in html
+    assert "其中$\\beta$在训练过程中从0线性增至0.5。" in html
     assert "\\argmax_k(Q)" in html
     assert "\\operatorname{mean}_{j}" in html
     assert "paper-preview__latex" not in html
@@ -905,7 +905,7 @@ def test_generate_preview_html_cleans_nested_figure_caption_and_bibliography_hel
     result = paper_preview_service.generate_preview_html(output_dir)
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
-    assert "PPNeSF 架构示意图�? in html
+    assert "PPNeSF 架构示意图。" in html
     assert "\\textbf{" not in html
     assert "\\newblock" not in html
     assert "\\natexlab" not in html
@@ -1384,9 +1384,9 @@ def test_generate_preview_html_cleans_macro_residue_when_adjacent_to_cjk_charact
             "content": "\\section{Body}\nText.",
             "trans_content": (
                 "\\section{正文}\n"
-                "证明\\PPNeSF模型在定位任务中有效�?
-                "我们评估\\NIF的隐私程度，并优化\\GF、\\SF和\\IE的参数�?
-                "附录继续说明特征场\\FF以及对应训练策略�?
+                "证明\\PPNeSF模型在定位任务中有效。"
+                "我们评估\\NIF的隐私程度，并优化\\GF、\\SF和\\IE的参数。"
+                "附录继续说明特征场\\FF以及对应训练策略。"
             ),
         },
     ]
@@ -1397,8 +1397,8 @@ def test_generate_preview_html_cleans_macro_residue_when_adjacent_to_cjk_charact
     html = Path(result["file_path"]).read_text(encoding="utf-8")
 
     assert "PPNeSF模型" in html
-    assert "NIF的隐私程�? in html
-    assert "GF、SF和IE的参�? in html
+    assert "NIF的隐私程度" in html
+    assert "GF、SF和IE的参数" in html
     assert "特征场FF以及" in html
     assert "\\PPNeSF" not in html
     assert "\\NIF" not in html
