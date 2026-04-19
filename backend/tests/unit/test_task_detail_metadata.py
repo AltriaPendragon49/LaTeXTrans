@@ -1,6 +1,7 @@
 ﻿import json
 import os
 import asyncio
+from datetime import datetime
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
@@ -160,6 +161,45 @@ def test_task_routes_expose_persist_failed_field(monkeypatch):
         )
     ).model_dump()
     assert payload["persist_failed"] is True
+
+
+def test_task_routes_normalize_recovered_datetime_timestamps(monkeypatch):
+    fake_task = {
+        "task_id": "task-route-datetime-recovered",
+        "status": "queued",
+        "progress": 100,
+        "stage": "downloading",
+        "message": "Task queued, waiting for available slot",
+        "detail_code": "task_queued",
+        "detail_params": None,
+        "error": None,
+        "warnings": None,
+        "failure_reason_code": None,
+        "failure_class": None,
+        "guard_phase": None,
+        "replay_bundle_ref": None,
+        "evidence_chain_broken": False,
+        "source_available": True,
+        "created_at": datetime(2026, 4, 19, 16, 5, 0),
+        "completed_at": None,
+        "advanced_config": None,
+        "persist_failed": False,
+    }
+
+    class FakeTaskManager:
+        def get_task(self, task_id):
+            return fake_task if task_id == fake_task["task_id"] else None
+
+    monkeypatch.setattr(task_route, "task_manager", FakeTaskManager())
+
+    payload = asyncio.run(
+        task_route.get_task_status(
+            fake_task["task_id"],
+            current_user=None,
+        )
+    ).model_dump()
+
+    assert payload["created_at"] == "2026-04-19T16:05:00"
 
 
 def test_authenticated_task_requires_matching_owner(monkeypatch):

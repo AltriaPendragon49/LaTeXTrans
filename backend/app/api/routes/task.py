@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 import logging
 import asyncio
 import json
+from datetime import datetime
 
 from backend.app.core.auth import optional_current_user
 from backend.app.policies import authorize
@@ -48,6 +49,14 @@ def get_translation_task_repository() -> TranslationTaskRepository:
 
 def _resolve_translation_task_repository() -> TranslationTaskRepository:
     return get_translation_task_repository()
+
+
+def _serialize_optional_timestamp(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 def _is_guest_task(task: Dict[str, Any]) -> bool:
@@ -133,8 +142,8 @@ async def get_task_status(
         replay_bundle_ref=task.get("replay_bundle_ref"),
         evidence_chain_broken=task.get("evidence_chain_broken"),
         source_available=task["source_available"],
-        created_at=task["created_at"],
-        completed_at=task.get("completed_at"),
+        created_at=_serialize_optional_timestamp(task["created_at"]) or "",
+        completed_at=_serialize_optional_timestamp(task.get("completed_at")),
         advanced_config=task.get("advanced_config"),
         persist_failed=bool(task.get("persist_failed")),
     )

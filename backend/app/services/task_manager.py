@@ -138,6 +138,14 @@ def is_runtime_shutting_down() -> bool:
 
 def _is_terminal_task_status(status: Optional[str]) -> bool:
     return str(status or "").strip() in _TERMINAL_TASK_STATUSES
+
+
+def _serialize_task_timestamp(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 # ---------------------------------------------------------------------------
 # Runtime State Decoupling: Flush Throttle Configuration
@@ -1576,8 +1584,10 @@ class TaskManager:
                 "error": db_task.get("error"),
                 "warnings": None,
                 "source_available": True,
-                "created_at": db_task.get("created_at", datetime.now(timezone.utc).isoformat()),
-                "completed_at": db_task.get("completed_at"),
+                "created_at": _serialize_task_timestamp(
+                    db_task.get("created_at", datetime.now(timezone.utc).isoformat())
+                ),
+                "completed_at": _serialize_task_timestamp(db_task.get("completed_at")),
                 "source_type": db_task.get("source_type", "arxiv"),
                 "source_path": db_task.get("source_path"),
                 "output_path": db_task.get("output_path"),
@@ -2066,40 +2076,44 @@ class TaskQueue:
                             else:
                                 self._user_task_count[user_id] = count - 1
                     continue
-                async def _run_with_cancel_retry():
+                async def _run_with_cancel_retry(
+                    current_task_id=task_id,
+                    current_coro_factory=coro_factory,
+                    current_user_id=user_id,
+                ):
                     retry_count = 0
                     while True:
                         try:
-                            await coro_factory()
+                            await current_coro_factory()
                             return
                         except asyncio.CancelledError:
-                            user_cancelled = task_manager.is_cancelled(task_id)
+                            user_cancelled = task_manager.is_cancelled(current_task_id)
                             runtime_stopping = is_runtime_shutting_down()
                             if user_cancelled or runtime_stopping:
                                 raise
                             if retry_count >= self._cancel_retry_limit:
                                 logger.warning(
                                     "[TaskQueue] Task %s hit cancel-retry limit (%s), giving up.",
-                                    task_id,
+                                    current_task_id,
                                     self._cancel_retry_limit,
                                 )
                                 raise
                             retry_count += 1
                             logger.warning(
                                 "[TaskQueue] Task %s cancelled unexpectedly; retrying (%s/%s).",
-                                task_id,
+                                current_task_id,
                                 retry_count,
                                 self._cancel_retry_limit,
                             )
                             task_manager.update_task(
-                                task_id=task_id,
+                                task_id=current_task_id,
                                 status=TaskStatus.QUEUED.value,
                                 message=(
                                     f"Task interrupted unexpectedly, retrying "
                                     f"({retry_count}/{self._cancel_retry_limit})"
                                 ),
                                 detail_code="task_retry_after_cancel",
-                                user_id=user_id,
+                                user_id=current_user_id,
                             )
                             await asyncio.sleep(min(1.5 * retry_count, 5.0))
 
