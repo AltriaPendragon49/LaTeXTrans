@@ -288,6 +288,20 @@ def test_load_structured_insight_runtime_sections_preserves_source_and_translati
     assert "中文问题描述" in sections[0]["translated_content"]
 
 
+def test_normalize_structured_insight_text_falls_back_when_tex_extraction_crashes(monkeypatch):
+    monkeypatch.setattr(
+        paper_service,
+        "extract_text_from_tex",
+        lambda _text: (_ for _ in ()).throw(IndexError("list index out of range")),
+    )
+
+    result = paper_service._normalize_structured_insight_text(
+        "Future work discusses limitations and next steps."
+    )
+
+    assert result == "Future work discusses limitations and next steps."
+
+
 def test_validate_structured_insight_sections_rejects_failure_placeholder_content():
     invalid_sections = _valid_sections()
     invalid_sections[0]["content"] = "暂时无法生成"

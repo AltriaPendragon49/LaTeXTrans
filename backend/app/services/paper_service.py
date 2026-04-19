@@ -4036,7 +4036,11 @@ def _expand_structured_insight_placeholders(text: str, placeholder_map: Dict[str
 
 
 def _normalize_structured_insight_text(text: str) -> Optional[str]:
-    plain = _normalize_multiline_text(extract_text_from_tex(str(text or "")))
+    try:
+        plain = _normalize_multiline_text(extract_text_from_tex(str(text or "")))
+    except Exception as exc:
+        logger.warning("Failed to extract plain text for structured insight normalization: %s", exc)
+        plain = None
     if plain:
         return plain
     return _normalize_multiline_text(text)
