@@ -96,6 +96,50 @@ def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) ->
     signature.sort()
     return tuple(signature)
 
+
+def _normalize_fallback_signature(fallback_reports: Optional[List[Any]]) -> tuple[tuple[Any, ...], ...]:
+    signature: list[tuple[Any, ...]] = []
+    for report in fallback_reports or []:
+        if isinstance(report, dict):
+            report_dict = dict(report)
+        elif hasattr(report, "model_dump"):
+            report_dict = report.model_dump()
+        else:
+            continue
+
+        validation_evidence = report_dict.get("validation_evidence")
+        evidence_signature: tuple[tuple[str, str], ...] = ()
+        if isinstance(validation_evidence, dict):
+            evidence_signature = tuple(
+                sorted(
+                    (
+                        str(key),
+                        json.dumps(value, ensure_ascii=False, sort_keys=True, default=str),
+                    )
+                    for key, value in validation_evidence.items()
+                )
+            )
+
+        translated_text = report_dict.get("translated_text")
+        translated_digest = ""
+        if translated_text is not None:
+            translated_digest = hashlib.sha1(
+                str(translated_text).encode("utf-8")
+            ).hexdigest()
+
+        signature.append(
+            (
+                report_dict.get("fallback_kind"),
+                report_dict.get("chunk_scope"),
+                report_dict.get("root_cause"),
+                evidence_signature,
+                translated_digest,
+            )
+        )
+
+    signature.sort()
+    return tuple(signature)
+
 # ---------------------------------------------------------------------------
 # State Schema
 # ---------------------------------------------------------------------------
@@ -121,6 +165,8 @@ class PipelineState(TypedDict, total=False):
     fallback_reports: List[Any]      # List[FallbackReport]
     compile_fallback_reports: List[Any]
     repair_retry_count: int          # 当前已完成修复轮次
+    last_validation_error_signature: tuple[tuple[Any, ...], ...]
+    last_fallback_signature: tuple[tuple[Any, ...], ...]
     post_compile_fallback_attempted: bool
 
     # 输出字段
@@ -566,11 +612,48 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
     except Exception as _fr_collect_exc:
         logger.warning("Failed to collect FallbackReports: %s", _fr_collect_exc)
 
+    current_validation_error_signature = _normalize_error_signature(errors_report)
+    current_fallback_signature = _normalize_fallback_signature(collected_fallback_reports)
+    updated_repair_retry_count = int(state.get("repair_retry_count") or 0)
+    previous_validation_error_signature = tuple(
+        state.get("last_validation_error_signature") or ()
+    )
+    previous_fallback_signature = tuple(state.get("last_fallback_signature") or ())
+    same_fallback_signature = bool(current_fallback_signature) and (
+        current_fallback_signature == previous_fallback_signature
+    )
+    same_validation_signature = (
+        not current_validation_error_signature
+        or current_validation_error_signature == previous_validation_error_signature
+    )
+    if (
+        updated_repair_retry_count > 0
+        and same_fallback_signature
+        and same_validation_signature
+    ):
+        logger.warning(
+            "Outer repair loop made no progress after repair cycle %d; exhausting remaining repair budget",
+            updated_repair_retry_count,
+        )
+        _write_task_log(
+            transed_project_dir,
+            "repair_loop_short_circuited_no_progress",
+            {
+                "repair_retry_count": updated_repair_retry_count,
+                "remaining_errors_count": len(errors_report or []),
+                "remaining_fallback_count": len(collected_fallback_reports),
+            },
+        )
+        updated_repair_retry_count = MAX_REPAIR_RETRIES
+
     return {
         **state,
         "validation_warning": validation_warning,
         "fallback_reports": collected_fallback_reports,
         "compile_fallback_reports": compile_fallback_reports,
+        "repair_retry_count": updated_repair_retry_count,
+        "last_validation_error_signature": current_validation_error_signature,
+        "last_fallback_signature": current_fallback_signature,
     }
 
 
@@ -1388,6 +1471,8 @@ async def run_pipeline(
         "fallback_reports": [],
         "compile_fallback_reports": [],
         "repair_retry_count": 0,
+        "last_validation_error_signature": (),
+        "last_fallback_signature": (),
         "post_compile_fallback_attempted": False,
         "final_result": {
             "status": "failed",
