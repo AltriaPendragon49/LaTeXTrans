@@ -172,6 +172,7 @@
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
 - `backend/scripts/bootstrap_local_community_papers.py`
+- `backend/scripts/extract_core_pool_ids.py`
 - `backend/scripts/grant_local_admin.py`
 - `backend/scripts/import_source_to_mysql.py`
 - `backend/scripts/mysql_script_connection.py`
@@ -371,6 +372,7 @@
 - `backend/scripts/apply_mysql_migrations.py`: 运维或迁移脚本。 | 顶层符号: _load_sql_files, apply_migrations, main
 - `backend/scripts/audit_pipeline_regression.py`: 运维或迁移脚本。 | 顶层符号: _load_json, _find_main_tex, _placeholder_only_chunks, _count_status, _invariant_fallback_sections, _status_sections
 - `backend/scripts/bootstrap_local_community_papers.py`: 运维或迁移脚本。 | 顶层符号: LocalPaperCandidate, _iso_utc_from_path, _iter_candidate_dirs, _match_arxiv_id, _infer_arxiv_id, _find_preview_html, _find_translated_pdf
+- `backend/scripts/extract_core_pool_ids.py`: 从 `core_pool/latest.md` 提取 arXiv ID 顺序列表并写入同级 `id.md` 的辅助脚本。 | 顶层符号: ID_LINE_PATTERN, DEFAULT_INPUT_PATH, extract_arxiv_ids, write_id_file, build_argument_parser, main
 - `backend/scripts/grant_local_admin.py`: 运维或迁移脚本。 | 顶层符号: _utc_now_naive, _fetch_target_user, grant_local_admin, main
 - `backend/scripts/import_source_to_mysql.py`: 运维或迁移脚本。 | 顶层符号: _utc_now, _first, _as_str, _as_bool, _as_int, _as_timestamp
 - `backend/scripts/mysql_script_connection.py`: 运维或迁移脚本。 | 顶层符号: resolve_mysql_script_config, describe_mysql_script_target, mysql_script_connection
