@@ -322,13 +322,14 @@ async def startup_event():
     tm_module.task_queue = tq
     logger.info(f"[Startup] TaskQueue initialized (max_concurrent={settings.max_concurrent_translations})")
 
-    if runtime_role == "all":
+    if runtime_role in {"all", "worker"}:
         await fail_interrupted_translation_tasks()
-        await reset_stale_community_tasks()
-    elif runtime_role == "worker":
-        logger.warning(
-            "[Startup] Skipping global restart reconciliation in worker role because translation ownership is split across runtimes."
-        )
+        if runtime_role == "all":
+            await reset_stale_community_tasks()
+        else:
+            logger.info(
+                "[Startup] Worker role completed interrupted-task reconciliation and skipped stale paper cleanup."
+            )
 
     if runtime_role in {"all", "worker"}:
         from backend.app.services import paper_service
