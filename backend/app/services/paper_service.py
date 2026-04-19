@@ -5259,6 +5259,26 @@ async def _mark_admin_curation_job_failed(
     )
 
 
+def _cache_terminal_task_snapshot(task_id: str, task_snapshot: Optional[Dict[str, Any]]) -> None:
+    if not task_id or not task_snapshot:
+        return
+    normalized_status = str(task_snapshot.get("status") or "").strip()
+    if normalized_status not in TERMINAL_TASK_STATUSES:
+        return
+    runtime_tasks = getattr(task_manager, "_tasks", None)
+    runtime_lock = getattr(task_manager, "_lock", None)
+    if runtime_tasks is None or runtime_lock is None:
+        return
+    try:
+        with runtime_lock:
+            existing_snapshot = runtime_tasks.get(task_id)
+            merged_snapshot = dict(existing_snapshot) if isinstance(existing_snapshot, dict) else {"task_id": task_id}
+            merged_snapshot.update(task_snapshot)
+            runtime_tasks[task_id] = merged_snapshot
+    except Exception:
+        logger.debug("Failed to cache terminal task snapshot for %s", task_id, exc_info=True)
+
+
 async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
     persistent_lookup_failed = False
     persistent_reconcile_failed = False
@@ -5337,6 +5357,7 @@ async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
                         persistent_reconcile_failed = True
                 persisted_task = {**persisted_task, **updates}
             if str(persisted_task.get("status") or "").strip() in TERMINAL_TASK_STATUSES:
+                _cache_terminal_task_snapshot(task_id, persisted_task)
                 return persisted_task
         await asyncio.sleep(1)
     raise TimeoutError(f"Timed out waiting for task {task_id}")
