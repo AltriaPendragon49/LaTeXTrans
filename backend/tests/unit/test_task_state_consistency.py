@@ -102,3 +102,84 @@ def test_recover_from_persistent_store_reconciles_non_terminal_completed_row(mon
         and payload.get("detail_code") == "task_state_reconciled"
         for task_id, payload in updated
     )
+
+
+def test_web_runtime_refreshes_cached_recovered_task_from_persistent_store(monkeypatch):
+    rows = [
+        {
+            "task_id": "task-web-refresh",
+            "status": "processing",
+            "progress": 5,
+            "stage": "parsing",
+            "message": "Initializing parser",
+            "error": None,
+            "source_type": "arxiv",
+            "source_path": "data/uploads/task-web-refresh",
+            "output_path": "data/outputs/task-web-refresh",
+            "translation_mode": "full",
+            "compile_strategy": "auto",
+            "translation_model": "deepseek-chat",
+            "generate_glossary": True,
+            "use_author_api": True,
+            "email_notification": False,
+            "arxiv_id": "2203.02155",
+            "user_id": "user-test",
+            "source_language": "en",
+            "target_language": "zh",
+            "created_at": "2026-04-19T16:39:10",
+            "completed_at": None,
+        },
+        {
+            "task_id": "task-web-refresh",
+            "status": "structure_invalid",
+            "progress": 100,
+            "stage": "done",
+            "message": "Unexpected closing environment",
+            "error": "Unexpected closing environment",
+            "source_type": "arxiv",
+            "source_path": "data/uploads/task-web-refresh",
+            "output_path": "data/failed_tasks/task-web-refresh",
+            "translation_mode": "full",
+            "compile_strategy": "auto",
+            "translation_model": "deepseek-chat",
+            "generate_glossary": True,
+            "use_author_api": True,
+            "email_notification": False,
+            "arxiv_id": "2203.02155",
+            "user_id": "user-test",
+            "source_language": "en",
+            "target_language": "zh",
+            "created_at": "2026-04-19T16:39:10",
+            "completed_at": "2026-04-19T16:43:33",
+        },
+    ]
+
+    class _MockRepository:
+        def __init__(self):
+            self.calls = 0
+
+        def get_task(self, _task_id):
+            index = min(self.calls, len(rows) - 1)
+            self.calls += 1
+            return dict(rows[index])
+
+    repository = _MockRepository()
+
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_translation_task_repository",
+        lambda: repository,
+    )
+    monkeypatch.setattr(
+        "backend.app.services.task_manager.get_settings",
+        lambda: type("Settings", (), {"backend_runtime_role": "web"})(),
+    )
+
+    tm = TaskManager()
+    first = tm.get_task("task-web-refresh")
+    second = tm.get_task("task-web-refresh")
+
+    assert first is not None
+    assert first["status"] == "processing"
+    assert second is not None
+    assert second["status"] == "structure_invalid"
+    assert second["completed_at"] == "2026-04-19T16:43:33"

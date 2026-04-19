@@ -146,6 +146,15 @@ def _serialize_task_timestamp(value: Any) -> Optional[str]:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value)
+
+
+def _should_refresh_cached_task_from_storage(task: Dict[str, Any]) -> bool:
+    runtime_role = str(getattr(get_settings(), "backend_runtime_role", "all") or "all").strip().lower()
+    if runtime_role != "web":
+        return False
+    if not str(task.get("user_id") or "").strip():
+        return False
+    return not _is_terminal_task_status(task.get("status"))
 
 # ---------------------------------------------------------------------------
 # Runtime State Decoupling: Flush Throttle Configuration
@@ -1181,13 +1190,36 @@ class TaskManager:
             task_id: Task ID
         
         Returns:
-            Task dictionary or None if not found
-        """
-        with self._lock:
+            Task dictionary or None if not found
+
+        """
+
+        cached_task: Optional[Dict[str, Any]] = None
+        with self._lock:
             if task_id in self._tasks:
-                return self._tasks.get(task_id, None).copy()
+                cached_task = self._tasks.get(task_id, None).copy()
         
-        # Task not in memory, try to recover from persistent storage
+        if cached_task is not None and not _should_refresh_cached_task_from_storage(cached_task):
+
+            return cached_task
+
+        if cached_task is not None:
+
+            refreshed_task = self._recover_from_persistent_store(task_id)
+
+            if refreshed_task:
+
+                with self._lock:
+
+                    self._tasks[task_id] = refreshed_task
+
+                logger.info(f"[TaskManager] Refreshed cached task {task_id} from persistent storage")
+
+                return refreshed_task.copy()
+
+            return cached_task
+
+        # Task not in memory, try to recover from persistent storage
         recovered_task = self._recover_task_from_storage(task_id)
         if recovered_task:
             # Cache the recovered task
