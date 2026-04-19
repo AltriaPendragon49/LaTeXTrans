@@ -145,13 +145,30 @@ def _build_placeholder_map(output_dir: Path) -> Dict[str, str]:
 def _replace_placeholders(text: str, placeholder_map: Dict[str, str]) -> str:
     def _replace(match: re.Match[str]) -> str:
         placeholder = match.group(0)
-        return placeholder_map.get(placeholder, "")
+        replacement = placeholder_map.get(placeholder, "")
+        if placeholder and placeholder in replacement:
+            replacement = replacement.replace(placeholder, "")
+        return replacement
 
-    previous = text
-    current = PLACEHOLDER_PATTERN.sub(_replace, previous)
-    while current != previous and PLACEHOLDER_PATTERN.search(current):
-        previous = current
-        current = PLACEHOLDER_PATTERN.sub(_replace, previous)
+    current = text
+    seen_payloads = {current}
+    max_rounds = max(1, len(placeholder_map) + 2)
+    for _ in range(max_rounds):
+        if not PLACEHOLDER_PATTERN.search(current):
+            return current
+        updated = PLACEHOLDER_PATTERN.sub(_replace, current)
+        if updated == current:
+            break
+        if updated in seen_payloads:
+            logger.warning("Preview placeholder expansion detected a cycle; dropping unresolved placeholders")
+            current = updated
+            break
+        seen_payloads.add(updated)
+        current = updated
+
+    if PLACEHOLDER_PATTERN.search(current):
+        logger.warning("Preview placeholder expansion exceeded safe rounds; dropping unresolved placeholders")
+        current = PLACEHOLDER_PATTERN.sub("", current)
     return current
 
 
