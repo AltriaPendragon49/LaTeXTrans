@@ -24,7 +24,7 @@ export default function CommunityFeedPage() {
   const [deletingPaperId, setDeletingPaperId] = useState<string | null>(null)
   const isAdmin = hasAdminRole(user?.roles)
 
-  const { items, loading, error, refetch } = useCommunityPapers(activeTab, query)
+  const { items, total, hasMore, loading, loadingMore, error, loadMore, refetch } = useCommunityPapers(activeTab, query)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -115,7 +115,7 @@ export default function CommunityFeedPage() {
           <div className="flex gap-4 pb-4">
             <span className="flex items-center gap-2 px-4 py-1.5 text-tertiary text-sm font-medium">
               <span className="material-symbols-outlined text-xl">travel_explore</span>
-              {query ? t("community.feed.resultsFiltered", { count: items.length, query }) : t("community.feed.resultsTotal", { count: items.length })}
+              {query ? t("community.feed.resultsFiltered", { count: total, query }) : t("community.feed.resultsTotal", { count: total })}
             </span>
           </div>
         </div>
@@ -153,6 +153,18 @@ export default function CommunityFeedPage() {
                   deleting={deletingPaperId === paper.id}
                 />
               ))}
+              {hasMore ? (
+                <div className="flex justify-center pt-4">
+                  <button
+                    type="button"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                    className="px-6 py-3 rounded-full border border-outline-variant/20 bg-surface-container-low text-on-surface font-semibold hover:border-primary/30 hover:text-primary disabled:opacity-60"
+                  >
+                    {loadingMore ? `${t("common.actions.loadMore")}...` : t("common.actions.loadMore")}
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>

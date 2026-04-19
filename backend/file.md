@@ -138,8 +138,10 @@
 - `backend/app/services/latex/token_estimator.py`
 - `backend/app/services/latex/utils.py`
 - `backend/app/services/latex_validator.py`
+- `backend/app/services/paper_thumbnail_service.py`
 - `backend/app/services/paper_preview_service.py`
 - `backend/app/services/paper_service.py`
+- `backend/app/services/runtime_pressure.py`
 - `backend/app/services/storage_backend.py`
 - `backend/app/services/task_artifact_storage.py`
 - `backend/app/services/task_detail.py`
@@ -239,8 +241,10 @@
 - `backend/app/services/config_capture.py`: 业务服务文件。 | 顶层符号: _json_safe, _mask_api_key, _sanitize_llm_config, _sanitize_agent_config, capture_task_config
 - `backend/app/services/email_service.py`: 业务服务文件。 | 顶层符号: EmailService, get_email_service
 - `backend/app/services/latex_validator.py`: 业务服务文件。 | 顶层符号: validate_latex_directory, find_main_tex_file
+- `backend/app/services/paper_thumbnail_service.py`: 论文 PDF 缩略图缓存服务，负责首页缩略图生成、缓存命中与预热复用。 | 顶层符号: ensure_pdf_thumbnail, _thumbnail_cache_dir, _thumbnail_cache_path, _render_pdf_thumbnail_bytes_from_path, _render_pdf_thumbnail_bytes_from_url
 - `backend/app/services/paper_preview_service.py`: 论文预览构建服务，生成 HTML、摘要、预览载荷并做缓存恢复。 | 顶层符号: _load_json, _build_placeholder_map, _replace_placeholders, _strip_structural_commands, _unwrap_formatting_commands, _normalize_inline_text
 - `backend/app/services/paper_service.py`: 论文主服务，负责社区论文导入、翻译桥接、预览、下载、结构化解读，以及管理员策展失败留痕、任务历史与硬删除流程。 | 顶层符号: _StructuredInsightBasePreferenceTracker, _utc_now_iso, _get_curation_semaphore, _get_delete_semaphore, get_community_paper_repository, _run_local_repo, _run_db_blocking_with_retry
+- `backend/app/services/runtime_pressure.py`: 运行时压力协调服务，负责区分 web/worker 角色、记录前台访问压力并让后台回填任务让步。 | 顶层符号: get_runtime_role, web_runtime_enabled, background_runtime_enabled, admin_job_execution_enabled, record_frontend_pressure, has_recent_frontend_pressure, backfill_start_blocked_by_frontend_pressure, apply_worker_process_priority
 - `backend/app/services/storage_backend.py`: 对象存储抽象层，统一本地磁盘与 COS 等后端的上传/下载接口。 | 顶层符号: StoredObjectRef, StorageBackend, LocalDiskStorageBackend, CosStorageBackend, build_storage_backend, _ensure_cos_config
 - `backend/app/services/task_artifact_storage.py`: 任务产物持久化服务，在本地与对象存储之间同步输出目录及清单。 | 顶层符号: _get_storage_backend, _storage_uses_object_store, _normalize_stored_path, normalize_stored_task_path, resolve_local_task_path, persist_task_directory
 - `backend/app/services/task_detail.py`: 任务详情推断与标准化工具，统一 stage、detail_code、detail_message 的生成。 | 顶层符号: normalize_stage, normalize_detail_params, infer_task_detail

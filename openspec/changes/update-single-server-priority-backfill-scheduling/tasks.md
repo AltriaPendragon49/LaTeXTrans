@@ -15,3 +15,17 @@
 - [ ] 3.2 Add cooperative yield requests plus durable resume checkpoints at approved orchestration boundaries.
 - [ ] 3.3 Reduce wasteful backfill retry churn when the whole token pool is exhausted without penalizing interactive retries.
 - [ ] 3.4 Move terminology-table generation and success-only compilation diagnostics behind resumable sidecar feature flags while keeping failure diagnostics synchronous.
+
+## 4. Single-Server Web/Worker Isolation
+- [x] 4.1 Add `all|web|worker` runtime-role config and keep legacy single-process behavior available.
+- [x] 4.2 Make admin curation/delete execution worker-owned, with polling instead of web-process in-memory scheduling.
+- [x] 4.3 Add frontend-pressure-aware backfill admission plus worker process de-prioritization.
+
+## 5. Public Feed Responsiveness
+- [x] 5.1 Change community paper list reads to paginated API responses with `has_more` / `next_offset`.
+- [x] 5.2 Cache the first public latest-feed page and invalidate it on public paper mutations.
+- [x] 5.3 Update the frontend community feed hook/page to use incremental loading instead of whole-list fetches.
+
+## 6. Thumbnail Warm Cache
+- [x] 6.1 Extract shared PDF thumbnail cache generation into a reusable backend service.
+- [x] 6.2 Prewarm public source/translated thumbnails when a paper becomes publicly readable.

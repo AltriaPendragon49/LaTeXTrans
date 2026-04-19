@@ -793,6 +793,78 @@ def test_clear_cached_runtime_artifacts_skips_paths_outside_allowed_roots(
     assert outside_file.exists()
 
 
+def test_startup_web_role_skips_background_recovery_and_cleanup_loops(monkeypatch, tmp_path: Path):
+    calls = {"failover": 0, "reset": 0, "resume_curation": 0, "resume_delete": 0}
+
+    class _FakeTaskQueue:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def initialize(self):
+            return None
+
+    async def _fake_failover():
+        calls["failover"] += 1
+        return {}
+
+    async def _fake_reset():
+        calls["reset"] += 1
+        return {}
+
+    async def _fake_resume_curation():
+        calls["resume_curation"] += 1
+        return {}
+
+    async def _fake_resume_delete():
+        calls["resume_delete"] += 1
+        return {}
+
+    async def _run() -> None:
+        monkeypatch.setattr(main_module, "fail_interrupted_translation_tasks", _fake_failover)
+        monkeypatch.setattr(main_module, "reset_stale_community_tasks", _fake_reset)
+        monkeypatch.setattr(
+            "backend.app.services.paper_service.resume_pending_admin_curation_jobs",
+            _fake_resume_curation,
+        )
+        monkeypatch.setattr(
+            "backend.app.services.paper_service.resume_pending_delete_jobs",
+            _fake_resume_delete,
+        )
+        monkeypatch.setattr(
+            "backend.app.services.task_manager.TaskQueue",
+            _FakeTaskQueue,
+        )
+        monkeypatch.setattr(
+            main_module,
+            "settings",
+            SimpleNamespace(
+                app_name="LaTexTrans",
+                version="test",
+                data_dir=tmp_path / "data",
+                outputs_dir=tmp_path / "data" / "outputs",
+                guest_task_ttl_hours=0,
+                max_concurrent_translations=1,
+                llm_model="gpt-test",
+                cors_origins=["http://localhost:3000"],
+                backend_runtime_role="web",
+            ),
+        )
+
+        await main_module.startup_event()
+        assert getattr(main_module.app.state, "cleanup_task", None) is None
+        assert getattr(main_module.app.state, "admin_job_poll_task", None) is None
+        await main_module.shutdown_event()
+
+    asyncio.run(_run())
+
+    assert calls == {
+        "failover": 0,
+        "reset": 0,
+        "resume_curation": 0,
+        "resume_delete": 0,
+    }
+
+
 def test_run_translation_persists_failed_state_on_cancel(monkeypatch, tmp_path: Path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()

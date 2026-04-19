@@ -10,13 +10,19 @@ vi.mock("@/lib/community-api", () => ({
 }))
 
 function HookProbe({ sort, query }: { sort: "latest" | "translated" | "hot"; query: string }) {
-  const { items, total, loading } = useCommunityPapers(sort, query)
+  const { items, total, loading, hasMore, loadMore, loadingMore } = useCommunityPapers(sort, query)
 
   return (
     <div>
       <span data-testid="loading">{String(loading)}</span>
+      <span data-testid="loading-more">{String(loadingMore)}</span>
       <span data-testid="total">{String(total)}</span>
       <span data-testid="title">{items[0]?.title ?? ""}</span>
+      <span data-testid="count">{String(items.length)}</span>
+      <span data-testid="has-more">{String(hasMore)}</span>
+      <button type="button" onClick={() => void loadMore()}>
+        load more
+      </button>
     </div>
   )
 }
@@ -55,7 +61,7 @@ describe("useCommunityPapers", () => {
         total: 1,
       },
     }
-    getCommunityPapersMock.mockResolvedValue({ items: [], total: 0 })
+    getCommunityPapersMock.mockResolvedValue({ items: [], total: 0, has_more: false, next_offset: null })
 
     render(<HookProbe sort="latest" query="" />)
 
@@ -65,7 +71,7 @@ describe("useCommunityPapers", () => {
   })
 
   it("does not delay the initial homepage fetch behind query debounce", () => {
-    getCommunityPapersMock.mockResolvedValue({ items: [], total: 0 })
+    getCommunityPapersMock.mockResolvedValue({ items: [], total: 0, has_more: false, next_offset: null })
 
     render(<HookProbe sort="latest" query="" />)
 
@@ -73,12 +79,13 @@ describe("useCommunityPapers", () => {
     expect(getCommunityPapersMock).toHaveBeenCalledWith({
       sort: "latest",
       q: undefined,
-      limit: undefined,
+      limit: 12,
+      offset: 0,
     })
   })
 
   it("still debounces follow-up query refinement", async () => {
-    getCommunityPapersMock.mockResolvedValue({ items: [], total: 0 })
+    getCommunityPapersMock.mockResolvedValue({ items: [], total: 0, has_more: false, next_offset: null })
 
     const { rerender } = render(<HookProbe sort="latest" query="" />)
     expect(getCommunityPapersMock).toHaveBeenCalledTimes(1)
@@ -101,7 +108,76 @@ describe("useCommunityPapers", () => {
     expect(getCommunityPapersMock).toHaveBeenLastCalledWith({
       sort: "latest",
       q: "diffusion",
-      limit: undefined,
+      limit: 12,
+      offset: 0,
     })
+  })
+
+  it("loads the next page and appends items", async () => {
+    getCommunityPapersMock
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "paper-1",
+            source: "arxiv",
+            arxiv_id: "2503.01010",
+            title: "First page",
+            authors: [],
+            categories: [],
+            community_status: "official",
+            trans_status: "completed",
+            created_at: "2026-03-18T00:00:00Z",
+            official_published_at: "2026-03-18T00:00:00Z",
+            community_selected_task_id: "task-1",
+            community_selected_asset_id: "asset-1",
+          },
+        ],
+        total: 2,
+        has_more: true,
+        next_offset: 1,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "paper-2",
+            source: "arxiv",
+            arxiv_id: "2503.02020",
+            title: "Second page",
+            authors: [],
+            categories: [],
+            community_status: "official",
+            trans_status: "completed",
+            created_at: "2026-03-18T00:00:00Z",
+            official_published_at: "2026-03-18T00:00:00Z",
+            community_selected_task_id: "task-2",
+            community_selected_asset_id: "asset-2",
+          },
+        ],
+        total: 2,
+        has_more: false,
+        next_offset: null,
+      })
+
+    render(<HookProbe sort="latest" query="" />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId("count")).toHaveTextContent("1")
+    expect(screen.getByTestId("has-more")).toHaveTextContent("true")
+
+    await act(async () => {
+      screen.getByRole("button", { name: "load more" }).click()
+      await Promise.resolve()
+    })
+
+    expect(getCommunityPapersMock).toHaveBeenNthCalledWith(2, {
+      sort: "latest",
+      q: undefined,
+      limit: 12,
+      offset: 1,
+    })
+    expect(screen.getByTestId("count")).toHaveTextContent("2")
+    expect(screen.getByTestId("has-more")).toHaveTextContent("false")
   })
 })

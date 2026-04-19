@@ -25,11 +25,12 @@ from typing import Dict, Any, Optional, Callable, Union, List
 from backend.app.core.config import TaskStatus, CompilationStage, get_settings
 from backend.app.repositories import AuthRepository, TranslationTaskRepository
 from backend.app.core.timezone_utils import get_cst_now, get_cst_now_iso
-from backend.app.services.task_detail import (
-    infer_task_detail,
-    normalize_detail_params,
-    normalize_stage,
-)
+from backend.app.services.runtime_pressure import backfill_start_blocked_by_frontend_pressure
+from backend.app.services.task_detail import (
+    infer_task_detail,
+    normalize_detail_params,
+    normalize_stage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1922,6 +1923,14 @@ class TaskQueue:
                 if not bucket["interactive"].empty():
                     selected_queue = bucket["interactive"]
                 elif not bucket["backfill"].empty():
+                    if backfill_start_blocked_by_frontend_pressure():
+                        self._semaphores[token_hash].release()
+                        bucket_event.clear()
+                        try:
+                            await asyncio.wait_for(bucket_event.wait(), timeout=0.25)
+                        except asyncio.TimeoutError:
+                            pass
+                        continue
                     selected_queue = bucket["backfill"]
                 else:
                     self._semaphores[token_hash].release()

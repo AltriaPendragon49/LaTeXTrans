@@ -8,6 +8,10 @@ declare global {
     __COMMUNITY_BOOTSTRAP_PROMISE__?: Promise<{
       items: CommunityPaper[]
       total: number
+      offset?: number
+      limit?: number | null
+      has_more?: boolean
+      next_offset?: number | null
       source_mode?: "database" | "baseline_seed"
     } | null>
   }

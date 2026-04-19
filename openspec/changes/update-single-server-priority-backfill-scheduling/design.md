@@ -83,6 +83,26 @@ Because the observed server is a 4 vCPU / ~8 GB RAM machine and LaTeX compilatio
 
 Backfill may occupy both translation slots when the interactive lane is empty. When interactive work appears, one slot is recovered at the next checkpoint. This gives meaningful throughput gain without turning compile or memory pressure into a stability risk.
 
+### 4a. Split admin backfill ownership from the web-serving runtime
+
+The current codebase still keeps translation runtime state partially in memory, so a full cross-process shared queue is not safe yet. To protect the user-facing site without re-architecting the entire translation kernel in one step, this change introduces a narrower split:
+
+- `web` runtime: serves HTTP traffic and keeps ordinary interactive translation behavior
+- `worker` runtime: polls queued admin curation/delete jobs from durable storage and owns background backfill execution
+- `all` runtime: legacy compatibility mode for local development or single-process fallback
+
+This avoids running heavy admin backfill orchestration inside the same Python process that answers homepage and health requests.
+
+### 4b. Let worker backfill yield to real browser pressure
+
+Because both runtimes still share one physical server, splitting processes is necessary but not sufficient. The worker therefore watches a lightweight file-backed "frontend pressure" heartbeat written by the web runtime. When the heartbeat is recent:
+
+- the worker should avoid starting a new backfill task
+- already-running work is allowed to finish its current safe step
+- the worker process is additionally de-prioritized with OS niceness where supported
+
+This keeps the user's desired behavior: background work can still occupy most spare capacity, but it must make room once real access traffic appears.
+
 ### 5. Add a health-aware token pool instead of naive round-robin
 
 The user has multiple API keys from different accounts on the same relay provider. In phase 1, the system-managed pool is explicitly:
@@ -132,6 +152,26 @@ For rollout safety:
 - backfill can enable deferred artifacts first
 - sidecar jobs must be idempotent and resumable
 
+### 6a. Move community feed reads to paginated first-page caching
+
+The public homepage should no longer fetch the full community paper list on first render. The feed now returns:
+
+- `items`
+- `total`
+- `offset`
+- `limit`
+- `has_more`
+- `next_offset`
+
+The web runtime caches the first `latest` page with an empty query for a short TTL and invalidates that cache whenever public paper state changes. The frontend increments via `load more` instead of re-fetching the whole corpus.
+
+### 6b. Prewarm thumbnail cache on publish
+
+Thumbnail endpoints already cache after first access, but the first homepage visit still pays the rasterization/download cost. This change adds a shared thumbnail-cache helper and schedules warmup when a paper becomes publicly ready, covering:
+
+- source PDF thumbnails when a local or arXiv source preview exists
+- translated PDF thumbnails when translated output becomes public
+
 ### 7. No external Redis requirement in phase 1
 
 A Redis queue is not required for this phase because:
@@ -159,8 +199,11 @@ Redis remains a future option if the system later needs:
 1. Implement phase-1 token-pool support for system-managed credentials only.
 2. Preserve current behavior for request-supplied and user-stored custom credentials.
 3. Add tests that prove `429/503` failover and all-members-exhausted behavior.
-4. Enable priority scheduling and cooperative yield in a later phase.
-5. Enable deferred post-success artifacts for backfill only after parity testing passes.
+4. Deploy split `web` and `worker` runtimes on the same host so admin backfill is removed from the web-serving process.
+5. Enable frontend-pressure-aware backfill admission in the worker runtime.
+6. Roll community feed pagination/load-more and first-page cache together so the web runtime stops whole-list fetches.
+7. Enable thumbnail prewarm after public-paper publish transitions.
+8. Enable deferred post-success artifacts for backfill only after parity testing passes.
 
 ## Validation Plan
 

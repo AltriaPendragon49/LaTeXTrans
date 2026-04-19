@@ -51,6 +51,10 @@ export interface CommunityPaper {
 export interface CommunityPaperListResponse {
   items: CommunityPaper[]
   total: number
+  offset?: number
+  limit?: number | null
+  has_more?: boolean
+  next_offset?: number | null
   source_mode?: "database" | "baseline_seed"
 }
 

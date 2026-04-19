@@ -17,6 +17,12 @@ The system SHALL manage translation tasks with priority-aware FIFO lanes on a si
 - **AND** a translation slot would otherwise remain idle
 - **THEN** the scheduler MAY start or resume a backfill task in that slot.
 
+#### Scenario: Recent frontend traffic defers new backfill starts
+- **WHEN** the worker runtime has observed recent frontend pressure from the web runtime
+- **AND** only backfill tasks are waiting for admission
+- **THEN** the scheduler MUST defer starting a new backfill task until the pressure window expires or new capacity becomes explicitly available to backfill
+- **AND** this deferral MUST NOT block already-waiting interactive work.
+
 #### Scenario: Interactive work claims the next eligible slot
 - **WHEN** at least one backfill task is running
 - **AND** a new interactive task arrives while all translation slots are occupied

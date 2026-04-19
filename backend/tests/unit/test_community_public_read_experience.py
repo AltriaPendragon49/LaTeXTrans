@@ -84,6 +84,10 @@ def test_list_papers_does_not_fall_back_to_operator_baseline_seed(monkeypatch, t
     assert result == {
         "items": [],
         "total": 0,
+        "offset": 0,
+        "limit": None,
+        "has_more": False,
+        "next_offset": None,
         "source_mode": "database",
     }
 
@@ -120,6 +124,10 @@ def test_list_papers_returns_empty_state_when_admin_and_seed_are_unavailable(mon
     assert result == {
         "items": [],
         "total": 0,
+        "offset": 0,
+        "limit": None,
+        "has_more": False,
+        "next_offset": None,
         "source_mode": "database",
     }
 

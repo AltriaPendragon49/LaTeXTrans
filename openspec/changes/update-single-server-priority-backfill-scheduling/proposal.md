@@ -8,10 +8,14 @@
 - Introduce a single-machine dual-lane scheduler with `interactive` high priority and `backfill` opportunistic capacity borrowing.
 - Add cooperative backfill yield/resume behavior that pauses only at safe checkpoints and resumes from the last durable position.
 - Add a health-aware system token pool with two configured `base_url` groups and five independent system-managed credentials, plus quick failover on consecutive `429` or `503` failures.
+- Split single-server runtime responsibility into `web` and `worker` roles so admin backfill/delete execution can live outside the user-facing HTTP process.
+- Add a lightweight frontend-pressure signal so the worker defers starting new backfill work while recent browser/API traffic is active.
+- Change the community feed API and UI from whole-list fetches to paginated incremental loading, with first-page caching for the public latest feed.
+- Prewarm homepage PDF thumbnail cache entries when papers become publicly readable so the first homepage render does not pay thumbnail generation cost.
 - Keep one-paper LangGraph orchestration intact; do not split graph nodes for the same paper across multiple workers in this change.
 - Allow non-critical post-success artifacts such as terminology-table generation and successful-compilation diagnostics to move behind resumable sidecar execution under feature flags.
 - Preserve the existing validation, repair, compile, and target-language fallback guardrails.
 
 ## Impact
-- Affected specs: `task-queue`, `queue-token-isolation`, `translation-orchestration`, `latex-translation-core`
-- Affected code: `backend/app/api/routes/translate.py`, `backend/app/core/config.py`, `backend/app/services/task_manager.py`, `backend/app/services/agents/langgraph_orchestrator.py`, `backend/app/services/agents/generator_agent.py`, `backend/app/services/agents/translator_agent.py`, `backend/app/services/translation/repair_scheduler.py`, `backend/app/main.py`
+- Affected specs: `task-queue`, `queue-token-isolation`, `translation-orchestration`, `latex-translation-core`, `deployment-infra`, `web-api`, `web-ui`, `community-public-read-experience`
+- Affected code: `backend/app/main.py`, `backend/app/core/config.py`, `backend/app/services/runtime_pressure.py`, `backend/app/services/task_manager.py`, `backend/app/services/paper_service.py`, `backend/app/services/paper_thumbnail_service.py`, `backend/app/repositories/community_paper_repository.py`, `backend/app/api/routes/papers.py`, `frontend/src/hooks/use-community-papers.ts`, `frontend/src/lib/community-api.ts`, `frontend/src/pages/CommunityFeed.tsx`

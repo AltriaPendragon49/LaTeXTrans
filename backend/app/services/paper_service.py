@@ -34,8 +34,10 @@ from backend.app.db import DatabaseUnavailableError, db_connection, get_database
 from backend.app.repositories import CommunityPaperRepository
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
+from backend.app.services import paper_thumbnail_service
 from backend.app.services import paper_preview_service
 from backend.app.services import task_artifact_storage
+from backend.app.services.runtime_pressure import admin_job_execution_enabled
 from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
 from backend.app.services.storage_backend import (
     CosStorageBackend,
@@ -71,6 +73,8 @@ _detail_repair_inflight: set[str] = set()
 _preview_payload_cache: Dict[str, Dict[str, Any]] = {}
 _preview_html_cache: Dict[str, str] = {}
 _source_html_cache: Dict[str, str] = {}
+_PUBLIC_FEED_CACHE: Dict[str, Dict[str, Any]] = {}
+_PUBLIC_FEED_CACHE_TTL_SECONDS = 60.0
 _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
@@ -1401,6 +1405,61 @@ def _matches_paper_query(paper: Dict[str, Any], query: Optional[str]) -> bool:
     return normalized_query in haystack
 
 
+def invalidate_public_feed_cache() -> None:
+    _PUBLIC_FEED_CACHE.clear()
+
+
+def _public_feed_cache_key(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> str:
+    return "|".join(
+        [
+            str(sort or "latest").strip().lower(),
+            _normalize_search_text(query),
+            str(int(limit) if limit is not None else "none"),
+            str(max(0, int(offset))),
+        ]
+    )
+
+
+def _should_cache_public_feed(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> bool:
+    return (
+        str(sort or "latest").strip().lower() == "latest"
+        and not _normalize_search_text(query)
+        and max(0, int(offset)) == 0
+        and limit is not None
+        and int(limit) > 0
+    )
+
+
+def _get_cached_public_feed_payload(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> Optional[Dict[str, Any]]:
+    if not _should_cache_public_feed(sort=sort, query=query, limit=limit, offset=offset):
+        return None
+    cache_key = _public_feed_cache_key(sort=sort, query=query, limit=limit, offset=offset)
+    cached = _PUBLIC_FEED_CACHE.get(cache_key)
+    if not cached:
+        return None
+    if time.time() > float(cached.get("expires_at") or 0):
+        _PUBLIC_FEED_CACHE.pop(cache_key, None)
+        return None
+    return dict(cached.get("payload") or {})
+
+
+def _set_cached_public_feed_payload(
+    *,
+    sort: str,
+    query: Optional[str],
+    limit: Optional[int],
+    offset: int,
+    payload: Dict[str, Any],
+) -> None:
+    if not _should_cache_public_feed(sort=sort, query=query, limit=limit, offset=offset):
+        return
+    cache_key = _public_feed_cache_key(sort=sort, query=query, limit=limit, offset=offset)
+    _PUBLIC_FEED_CACHE[cache_key] = {
+        "payload": dict(payload),
+        "expires_at": time.time() + _PUBLIC_FEED_CACHE_TTL_SECONDS,
+    }
+
+
 def _load_baseline_seed_rows() -> List[Dict[str, Any]]:
     baseline_path = getattr(settings, "community_baseline_seed_path", None)
     if not baseline_path:
@@ -2275,12 +2334,14 @@ async def _insert_paper(payload: Dict[str, Any]) -> Dict[str, Any]:
     normalized_payload.setdefault("created_at", _utc_now_iso())
     normalized_payload.setdefault("updated_at", normalized_payload["created_at"])
     try:
-        return await _run_local_repo(lambda: repository.insert_paper(normalized_payload))
+        inserted = await _run_local_repo(lambda: repository.insert_paper(normalized_payload))
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Local database unavailable") from exc
     except Exception as exc:
         logger.warning("Failed to insert paper into local repository: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to create paper") from exc
+    invalidate_public_feed_cache()
+    return inserted
 
 
 async def _update_paper(paper_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2294,6 +2355,7 @@ async def _update_paper(paper_id: str, payload: Dict[str, Any]) -> Dict[str, Any
         raise HTTPException(status_code=500, detail="Failed to update paper") from exc
     if local_row is None:
         raise HTTPException(status_code=404, detail="Paper not found")
+    invalidate_public_feed_cache()
     return _apply_runtime_paper_override(local_row)
 
 
@@ -3475,6 +3537,10 @@ async def _sync_task_assets_for_paper(
                 task_id,
                 _candidate_runtime_cache_paths_for_task(task_id),
             )
+        _schedule_public_thumbnail_warmup(
+            paper_id=paper_id,
+            translated_asset=translated_asset,
+        )
         return {
             "done": True,
             "status": "completed",
@@ -5078,6 +5144,7 @@ async def _hard_delete_paper_records(*, repository: Any, paper_id: str) -> None:
         await _run_local_repo(lambda: repository.delete_translation_tasks(cleaned_task_ids))
 
     await _run_local_repo(lambda: repository.delete_rows_for_papers("papers", [paper_id]))
+    invalidate_public_feed_cache()
 
 
 async def _cleanup_failed_admin_curation_artifacts(
@@ -5194,6 +5261,8 @@ async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
 
 
 def _schedule_curation_job(job_id: str) -> None:
+    if not admin_job_execution_enabled():
+        return
     if job_id in _curation_job_tasks and not _curation_job_tasks[job_id].done():
         return
     task = asyncio.create_task(_run_curation_job(job_id))
@@ -5479,6 +5548,8 @@ def _delete_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _schedule_delete_job(job_id: str) -> None:
+    if not admin_job_execution_enabled():
+        return
     if job_id in _delete_job_tasks and not _delete_job_tasks[job_id].done():
         return
     task = asyncio.create_task(_run_delete_job(job_id))
@@ -6025,6 +6096,82 @@ async def resolve_paper_source_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
     raise HTTPException(status_code=404, detail="Source PDF not available")
 
 
+async def _warm_translated_thumbnail_for_asset(*, paper_id: str, asset: Optional[Dict[str, Any]]) -> None:
+    if not asset:
+        return
+
+    cache_seed = f"translated:{paper_id}:{asset.get('id') or asset.get('file_name') or paper_id}"
+    if asset.get("storage_backend") == "object_storage":
+        filename = str(asset.get("file_name") or f"{paper_id}.pdf")
+        mime_type = str(asset.get("mime_type") or "application/pdf")
+        signed_url = _resolve_object_storage_signed_url(
+            asset,
+            expires_in=300,
+            response_params={
+                "response-content-disposition": f'inline; filename="{filename}"',
+                "response-content-type": mime_type,
+            },
+        )
+        if signed_url:
+            await paper_thumbnail_service.ensure_pdf_thumbnail(
+                cache_seed=cache_seed,
+                remote_url=signed_url,
+            )
+        return
+
+    file_path = _resolve_storage_path(asset.get("file_path") or "")
+    if file_path.exists():
+        await paper_thumbnail_service.ensure_pdf_thumbnail(
+            cache_seed=cache_seed,
+            file_path=str(file_path),
+        )
+
+
+async def _warm_public_paper_thumbnails(
+    *,
+    paper_id: str,
+    translated_asset: Optional[Dict[str, Any]] = None,
+) -> None:
+    try:
+        source_preview = await resolve_paper_source_pdf_preview(paper_id=paper_id)
+        if source_preview.get("file_path"):
+            resolved_path = Path(str(source_preview["file_path"]))
+            if resolved_path.exists():
+                stat = resolved_path.stat()
+                await paper_thumbnail_service.ensure_pdf_thumbnail(
+                    cache_seed=f"source-file:{resolved_path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}",
+                    file_path=str(resolved_path),
+                )
+        elif source_preview.get("arxiv_id"):
+            await paper_thumbnail_service.ensure_pdf_thumbnail(
+                cache_seed=f"source-arxiv:{source_preview['arxiv_id']}",
+                remote_url=f"https://arxiv.org/pdf/{source_preview['arxiv_id']}.pdf",
+            )
+    except Exception as exc:
+        logger.debug("Source thumbnail warmup skipped for paper %s: %s", paper_id, exc)
+
+    try:
+        if translated_asset is None:
+            translated_preview = await resolve_paper_translated_pdf_preview(paper_id=paper_id)
+            translated_asset = translated_preview.get("asset")
+        await _warm_translated_thumbnail_for_asset(paper_id=paper_id, asset=translated_asset)
+    except Exception as exc:
+        logger.debug("Translated thumbnail warmup skipped for paper %s: %s", paper_id, exc)
+
+
+def _schedule_public_thumbnail_warmup(
+    *,
+    paper_id: str,
+    translated_asset: Optional[Dict[str, Any]] = None,
+) -> None:
+    asyncio.create_task(
+        _warm_public_paper_thumbnails(
+            paper_id=paper_id,
+            translated_asset=translated_asset,
+        )
+    )
+
+
 async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]:
     payload = _decode_download_token(token)
     if payload.get("paper_id") != paper_id:
@@ -6082,12 +6229,41 @@ async def list_community_papers(
     q: Optional[str] = None,
     viewer_user_id: Optional[str] = None,
     limit: Optional[int] = None,
+    offset: int = 0,
 ) -> Dict[str, Any]:
+    del viewer_user_id
     repository = get_community_paper_repository()
+    normalized_limit = int(limit) if limit is not None and int(limit) > 0 else None
+    normalized_offset = max(0, int(offset or 0))
+    cached_payload = _get_cached_public_feed_payload(
+        sort=sort,
+        query=q,
+        limit=normalized_limit,
+        offset=normalized_offset,
+    )
+    if cached_payload is not None:
+        return cached_payload
+
     papers: List[Dict[str, Any]] = []
     source_mode = "database"
+    total = 0
     try:
-        papers = await _run_local_repo(repository.list_public_papers)
+        if (
+            normalized_limit is not None
+            and hasattr(repository, "list_public_papers_page")
+            and hasattr(repository, "count_public_papers")
+        ):
+            total = await _run_local_repo(lambda: repository.count_public_papers(query=q))
+            papers = await _run_local_repo(
+                lambda: repository.list_public_papers_page(
+                    sort=sort,
+                    query=q,
+                    limit=normalized_limit,
+                    offset=normalized_offset,
+                )
+            )
+        else:
+            papers = await _run_local_repo(repository.list_public_papers)
     except DatabaseUnavailableError:
         papers = []
     except Exception as exc:
@@ -6100,11 +6276,15 @@ async def list_community_papers(
         )
 
     papers = [_apply_runtime_paper_override(paper) or paper for paper in papers]
-    papers = [paper for paper in papers if _is_public_community_paper(paper)]
-    papers = [paper for paper in papers if _matches_paper_query(paper, q)]
-    papers = _sort_papers(papers, sort)
-    if limit is not None and limit > 0:
-        papers = papers[:limit]
+    if total <= 0 or normalized_limit is None or not hasattr(repository, "list_public_papers_page"):
+        papers = [paper for paper in papers if _is_public_community_paper(paper)]
+        papers = [paper for paper in papers if _matches_paper_query(paper, q)]
+        papers = _sort_papers(papers, sort)
+        total = len(papers)
+        if normalized_offset:
+            papers = papers[normalized_offset:]
+        if normalized_limit is not None:
+            papers = papers[:normalized_limit]
 
     paper_ids = [paper["id"] for paper in papers]
     asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if paper_ids else {}
@@ -6115,7 +6295,24 @@ async def list_community_papers(
         )
         for paper in papers
     ]
-    return {"items": items, "total": len(items), "source_mode": source_mode}
+    has_more = (normalized_offset + len(items)) < total
+    payload = {
+        "items": items,
+        "total": total,
+        "offset": normalized_offset,
+        "limit": normalized_limit,
+        "has_more": has_more,
+        "next_offset": (normalized_offset + len(items)) if has_more else None,
+        "source_mode": source_mode,
+    }
+    _set_cached_public_feed_payload(
+        sort=sort,
+        query=q,
+        limit=normalized_limit,
+        offset=normalized_offset,
+        payload=payload,
+    )
+    return payload
 
 
 async def get_community_paper_detail(

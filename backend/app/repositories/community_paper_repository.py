@@ -339,6 +339,87 @@ class CommunityPaperRepository:
                 if normalized is not None
             ]
 
+    def _public_paper_query_parts(self, *, query: Optional[str] = None) -> tuple[str, list[Any]]:
+        filters = [
+            "visibility = " + _placeholder(0),
+            "status <> " + _placeholder(1),
+        ]
+        params: list[Any] = ["public", "removed"]
+
+        normalized_query = str(query or "").strip()
+        if normalized_query:
+            like_value = f"%{normalized_query.lower()}%"
+            query_fields = [
+                "lower(coalesce(title, ''))",
+                "lower(coalesce(arxiv_id, ''))",
+                "lower(coalesce(abstract_raw, ''))",
+                "lower(coalesce(abstract_translated, ''))",
+                "lower(coalesce(authors, ''))",
+                "lower(coalesce(categories, ''))",
+            ]
+            placeholders = []
+            for field in query_fields:
+                placeholders.append(f"{field} like {_placeholder(len(params))}")
+                params.append(like_value)
+            filters.append("(" + " or ".join(placeholders) + ")")
+
+        return " where " + " and ".join(filters), params
+
+    def count_public_papers(self, *, query: Optional[str] = None) -> int:
+        where_sql, params = self._public_paper_query_parts(query=query)
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute("select count(*) as total from papers" + where_sql, tuple(params))
+            row = _fetchone(cursor) or {}
+            return int(row.get("total") or 0)
+
+    def list_public_papers_page(
+        self,
+        *,
+        sort: str,
+        query: Optional[str],
+        limit: int,
+        offset: int,
+    ) -> list[dict[str, Any]]:
+        normalized_sort = str(sort or "latest").strip().lower()
+        where_sql, params = self._public_paper_query_parts(query=query)
+        order_by = (
+            " order by case when community_status = 'official' then 0 else 1 end asc, "
+            "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
+        )
+        if normalized_sort == "hot":
+            order_by = (
+                " order by case when community_status = 'official' then 0 else 1 end asc, "
+                "coalesce(view_count, 0) desc, coalesce(like_count, 0) desc, coalesce(created_at, '') desc"
+            )
+        elif normalized_sort == "translated":
+            order_by = (
+                " order by case when community_status = 'official' then 0 else 1 end asc, "
+                "case when trans_status = 'completed' then 0 else 1 end asc, "
+                "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
+            )
+
+        params.extend([int(limit), int(offset)])
+        limit_placeholder = _placeholder(len(params) - 2)
+        offset_placeholder = _placeholder(len(params) - 1)
+        sql = (
+            "select "
+            + ", ".join(PAPER_COLUMNS)
+            + " from papers"
+            + where_sql
+            + order_by
+            + f" limit {limit_placeholder} offset {offset_placeholder}"
+        )
+
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(sql, tuple(params))
+            return [
+                normalized
+                for normalized in (self._normalize_paper_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
     def insert_paper(self, payload: dict[str, Any]) -> dict[str, Any]:
         serialized = self._serialize_paper_updates(payload)
         if "id" not in serialized:

@@ -757,4 +757,148 @@ def test_reader_payload_exposes_anchor_metadata_for_source_and_translated_html()
     assert any(item.get("anchor_id") == "section-intro-block-0" for item in translated_anchors)
 
 
+def test_list_papers_paginates_and_reports_has_more(monkeypatch):
+    list_calls = []
+    count_calls = []
+
+    class _FakeCommunityRepository:
+        def count_public_papers(self, *, query=None):
+            count_calls.append(query)
+            return 3
+
+        def list_public_papers_page(self, *, sort, query, limit, offset):
+            list_calls.append((sort, query, limit, offset))
+            return [
+                {
+                    "id": "paper-2",
+                    "source": "arxiv",
+                    "arxiv_id": "2501.22222",
+                    "title": "Second page candidate",
+                    "authors": [],
+                    "categories": [],
+                    "visibility": "public",
+                    "status": "published",
+                    "trans_status": "completed",
+                    "created_by": "admin-1",
+                    "trans_latest_task_id": "task-2",
+                    "trans_latest_asset_pdf_id": None,
+                    "like_count": 0,
+                    "favorite_count": 0,
+                    "comment_count": 0,
+                    "view_count": 0,
+                    "download_count": 0,
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                    "updated_at": "2026-03-18T02:00:00+00:00",
+                    "community_status": "official",
+                    "community_selected_task_id": "task-2",
+                    "community_selected_asset_id": None,
+                    "official_published_at": "2026-03-18T04:00:00+00:00",
+                },
+                {
+                    "id": "paper-3",
+                    "source": "arxiv",
+                    "arxiv_id": "2501.33333",
+                    "title": "Third page candidate",
+                    "authors": [],
+                    "categories": [],
+                    "visibility": "public",
+                    "status": "published",
+                    "trans_status": "completed",
+                    "created_by": "admin-1",
+                    "trans_latest_task_id": "task-3",
+                    "trans_latest_asset_pdf_id": None,
+                    "like_count": 0,
+                    "favorite_count": 0,
+                    "comment_count": 0,
+                    "view_count": 0,
+                    "download_count": 0,
+                    "created_at": "2026-03-18T01:00:00+00:00",
+                    "updated_at": "2026-03-18T01:00:00+00:00",
+                    "community_status": "official",
+                    "community_selected_task_id": "task-3",
+                    "community_selected_asset_id": None,
+                    "official_published_at": "2026-03-18T03:00:00+00:00",
+                },
+            ]
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+    monkeypatch.setattr(paper_service, "_PUBLIC_FEED_CACHE", {}, raising=False)
+
+    result = asyncio.run(
+        paper_service.list_community_papers(sort="latest", q=None, limit=2, offset=1)
+    )
+
+    assert result["total"] == 3
+    assert len(result["items"]) == 2
+    assert result["offset"] == 1
+    assert result["limit"] == 2
+    assert result["has_more"] is False
+    assert result["next_offset"] is None
+    assert count_calls == [None]
+    assert list_calls == [("latest", None, 2, 1)]
+
+
+def test_list_papers_reuses_cached_first_page_for_latest_sort(monkeypatch):
+    calls = {"count": 0, "list": 0}
+
+    class _FakeCommunityRepository:
+        def count_public_papers(self, *, query=None):
+            calls["count"] += 1
+            return 1
+
+        def list_public_papers_page(self, *, sort, query, limit, offset):
+            calls["list"] += 1
+            return [
+                {
+                    "id": "paper-cached",
+                    "source": "arxiv",
+                    "arxiv_id": "2501.99999",
+                    "title": "Cached latest paper",
+                    "authors": [],
+                    "categories": [],
+                    "visibility": "public",
+                    "status": "published",
+                    "trans_status": "completed",
+                    "created_by": "admin-1",
+                    "trans_latest_task_id": "task-cached",
+                    "trans_latest_asset_pdf_id": None,
+                    "like_count": 0,
+                    "favorite_count": 0,
+                    "comment_count": 0,
+                    "view_count": 0,
+                    "download_count": 0,
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                    "updated_at": "2026-03-18T02:00:00+00:00",
+                    "community_status": "official",
+                    "community_selected_task_id": "task-cached",
+                    "community_selected_asset_id": None,
+                    "official_published_at": "2026-03-18T04:00:00+00:00",
+                }
+            ]
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+    monkeypatch.setattr(paper_service, "_PUBLIC_FEED_CACHE", {}, raising=False)
+
+    first = asyncio.run(
+        paper_service.list_community_papers(sort="latest", q=None, limit=12, offset=0)
+    )
+    second = asyncio.run(
+        paper_service.list_community_papers(sort="latest", q=None, limit=12, offset=0)
+    )
+
+    assert first["items"][0]["id"] == "paper-cached"
+    assert second["items"][0]["id"] == "paper-cached"
+    assert calls == {"count": 1, "list": 1}
+
+
 

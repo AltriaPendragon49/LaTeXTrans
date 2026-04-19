@@ -24,6 +24,7 @@ from backend.app.services.task_manager import (
     get_task_manager,
     get_task_queue,
 )
+from backend.app.services import runtime_pressure
 from backend.app.services import task_manager as task_manager_module
 
 if hasattr(task_manager_module, "set_runtime_shutting_down"):
@@ -57,6 +58,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def frontend_pressure_middleware(request, call_next):
+    if runtime_pressure.web_runtime_enabled():
+        runtime_pressure.record_frontend_pressure()
+    return await call_next(request)
 
 api_router = APIRouter()
 
@@ -291,14 +299,20 @@ async def fail_interrupted_translation_tasks() -> dict:
 async def startup_event():
     """Startup event handler"""
     set_runtime_shutting_down(False)
+    runtime_role = str(getattr(settings, "backend_runtime_role", "all") or "all").strip().lower()
+    if runtime_role == "worker":
+        runtime_pressure.apply_worker_process_priority()
     logger.info(f"Starting {settings.app_name} v{settings.version}")
     logger.info(f"Data directory: {settings.data_dir}")
     logger.info(f"LLM Model: {settings.llm_model}")
     logger.info(f"CORS origins: {settings.cors_origins}")
+    logger.info(f"Backend runtime role: {runtime_role}")
     logger.warning(
         "Task runtime state is still partially in-process memory; "
         "run a single worker in production until full runtime-state externalization is implemented."
     )
+    app.state.cleanup_task = None
+    app.state.admin_job_poll_task = None
 
     # Initialize TaskQueue
     import backend.app.services.task_manager as tm_module
@@ -308,15 +322,31 @@ async def startup_event():
     tm_module.task_queue = tq
     logger.info(f"[Startup] TaskQueue initialized (max_concurrent={settings.max_concurrent_translations})")
 
-    await fail_interrupted_translation_tasks()
-    await reset_stale_community_tasks()
-    try:
+    if runtime_role == "all":
+        await fail_interrupted_translation_tasks()
+        await reset_stale_community_tasks()
+    elif runtime_role == "worker":
+        logger.warning(
+            "[Startup] Skipping global restart reconciliation in worker role because translation ownership is split across runtimes."
+        )
+
+    if runtime_role in {"all", "worker"}:
         from backend.app.services import paper_service
 
-        await paper_service.resume_pending_admin_curation_jobs()
-        await paper_service.resume_pending_delete_jobs()
-    except Exception as exc:
-        logger.warning("[Startup] Failed to resume community admin jobs: %s", exc)
+        async def _poll_admin_jobs():
+            while True:
+                try:
+                    await paper_service.resume_pending_admin_curation_jobs()
+                    await paper_service.resume_pending_delete_jobs()
+                except Exception as exc:
+                    logger.warning("[Startup] Failed to poll community admin jobs: %s", exc)
+                await asyncio.sleep(max(1.0, float(getattr(settings, "admin_job_poll_interval_seconds", 5.0) or 5.0)))
+
+        app.state.admin_job_poll_task = asyncio.create_task(_poll_admin_jobs())
+        logger.info("[Startup] Admin job polling started")
+
+    if runtime_role != "all":
+        return
 
     # Orphaned task cleanup runs on startup and then periodically.
     from backend.app.services.task_manager import task_manager as _tm
@@ -434,6 +464,13 @@ async def startup_event():
 async def shutdown_event():
     """Shutdown event handler"""
     set_runtime_shutting_down(True)
+    admin_job_poll_task = getattr(app.state, 'admin_job_poll_task', None)
+    if admin_job_poll_task:
+        admin_job_poll_task.cancel()
+        try:
+            await admin_job_poll_task
+        except asyncio.CancelledError:
+            pass
     cleanup_task = getattr(app.state, 'cleanup_task', None)
     if cleanup_task:
         cleanup_task.cancel()

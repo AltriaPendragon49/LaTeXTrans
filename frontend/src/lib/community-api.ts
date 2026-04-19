@@ -34,6 +34,7 @@ export async function getCommunityPapers(params: {
   sort: CommunityFeedSort
   q?: string
   limit?: number
+  offset?: number
 }): Promise<CommunityPaperListResponse> {
   const response = await retryOnTransientNetworkError(
     () =>
@@ -42,6 +43,7 @@ export async function getCommunityPapers(params: {
           sort: params.sort,
           ...(params.q ? { q: params.q } : {}),
           ...(params.limit ? { limit: params.limit } : {}),
+          ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
         },
       }),
     { attempts: 3, baseDelayMs: 150 },

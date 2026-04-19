@@ -21,7 +21,7 @@ from backend.app.api.routes.translate import TranslateRequest
 from backend.app.core.auth import optional_current_user, require_current_user
 from backend.app.core.config import get_settings
 from backend.app.policies import authorize
-from backend.app.services import community_content_pool_service, paper_preview_service, paper_service
+from backend.app.services import community_content_pool_service, paper_preview_service, paper_service, paper_thumbnail_service
 
 router = APIRouter(prefix="/papers")
 security = HTTPBearer(auto_error=False)
@@ -106,6 +106,10 @@ class PaperSubmitResponse(BaseModel):
 class PaperListResponse(BaseModel):
     items: List[PaperSummary]
     total: int
+    offset: int = 0
+    limit: Optional[int] = None
+    has_more: bool = False
+    next_offset: Optional[int] = None
     source_mode: str = "database"
 
 
@@ -530,24 +534,13 @@ async def _serve_pdf_thumbnail_response(
     file_path: Optional[str] = None,
     remote_url: Optional[str] = None,
 ) -> Response:
-    cache_path = _thumbnail_cache_path(cache_seed)
-    if cache_path.exists():
-        return FileResponse(
-            path=cache_path,
-            media_type="image/png",
-            headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
-        )
-
-    thumbnail_bytes: Optional[bytes] = None
-    if file_path:
-        thumbnail_bytes = await asyncio.to_thread(_render_pdf_thumbnail_bytes_from_path, Path(file_path))
-    elif remote_url:
-        thumbnail_bytes = await _render_pdf_thumbnail_bytes_from_url(remote_url)
-
-    if not thumbnail_bytes:
+    cache_path = await paper_thumbnail_service.ensure_pdf_thumbnail(
+        cache_seed=cache_seed,
+        file_path=file_path,
+        remote_url=remote_url,
+    )
+    if not cache_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF thumbnail not available")
-
-    cache_path.write_bytes(thumbnail_bytes)
     return FileResponse(
         path=cache_path,
         media_type="image/png",
@@ -626,7 +619,8 @@ async def list_papers(
     response: Response,
     sort: str = "latest",
     q: Optional[str] = None,
-    limit: Optional[int] = Query(default=None, ge=1, le=12),
+    limit: Optional[int] = Query(default=12, ge=1, le=24),
+    offset: int = Query(default=0, ge=0),
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
     user_id = str(current_user.get("id")) if isinstance(current_user, dict) and current_user.get("id") else None
@@ -635,6 +629,7 @@ async def list_papers(
         q=q,
         viewer_user_id=user_id,
         limit=limit,
+        offset=offset,
     )
     response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
     response.headers["X-Community-Source-Mode"] = payload.get("source_mode", "database")

@@ -214,6 +214,31 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_CURATION_MAX_CONCURRENT",
         description="Maximum concurrent admin community curation jobs.",
     )
+    backend_runtime_role: str = Field(
+        default="all",
+        validation_alias="BACKEND_RUNTIME_ROLE",
+        description="Runtime role for the current backend process: all|web|worker.",
+    )
+    admin_job_poll_interval_seconds: float = Field(
+        default=5.0,
+        validation_alias="ADMIN_JOB_POLL_INTERVAL_SECONDS",
+        description="Polling interval used by worker/background runtimes to claim queued admin jobs.",
+    )
+    frontend_pressure_grace_seconds: float = Field(
+        default=15.0,
+        validation_alias="FRONTEND_PRESSURE_GRACE_SECONDS",
+        description="How long worker backfill admission should defer after recent frontend traffic.",
+    )
+    frontend_pressure_write_interval_seconds: float = Field(
+        default=1.0,
+        validation_alias="FRONTEND_PRESSURE_WRITE_INTERVAL_SECONDS",
+        description="Minimum interval between persisted frontend-pressure heartbeats from the web runtime.",
+    )
+    worker_process_nice_increment: int = Field(
+        default=10,
+        validation_alias="WORKER_PROCESS_NICE_INCREMENT",
+        description="Additional niceness applied to worker runtimes where the platform supports it.",
+    )
     
     # LaTeX Compiler Settings
     latex_bin_dir: Optional[str] = Field(
@@ -393,6 +418,14 @@ class Settings(BaseSettings):
         if mode not in {"per_call_client", "shared_client"}:
             return "per_call_client"
         return mode
+
+    @field_validator("backend_runtime_role", mode="before")
+    @classmethod
+    def _parse_backend_runtime_role(cls, value):
+        role = str(value or "all").strip().lower()
+        if role not in {"all", "web", "worker"}:
+            return "all"
+        return role
 
     @field_validator("local_admin_external_user_ids", mode="before")
     @classmethod
