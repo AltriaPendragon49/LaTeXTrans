@@ -995,9 +995,46 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         )
 
         self.assertIsNotNone(translated)
-        self.assertIn("保守中文降级", translated)
+        self.assertIn("相关内容已转为简要中文表述", translated)
+        self.assertNotIn("此处内容已做保守中文降级处理", translated)
         self.assertIn("\\citeauthor{foo2024}", translated)
         self.assertIn("\\citep{bar2024}", translated)
+        self.assertFalse(agent._has_residual_english_prose(translated, min_words=6))
+
+    def test_force_translate_residual_english_spans_brutally_downgrades_fragmented_short_sentences(self):
+        agent = _build_agent()
+        mixed_text = (
+            "前文保持不变。"
+            "This short English sentence leaks through. "
+            "Another brief English sentence still remains. "
+            "A final compact English sentence survives. "
+            "后文保持不变。"
+        )
+        agent._translate_masked_plain_text_rescue_piece = AsyncMock(return_value=None)
+        agent._rescue_plain_text_by_paragraph = AsyncMock(return_value=None)
+
+        translated = asyncio.run(
+            agent._force_translate_residual_english_spans(
+                text=mixed_text,
+                identifier="29",
+                part_type="sec",
+                session=MagicMock(),
+                error_message=(
+                    "long_english_prose_span: remaining English prose detected. "
+                    "Translate the residual English prose."
+                ),
+                prompt_key="section_system_prompt",
+                prompt_key_with_terms="section_system_prompt_with_dict",
+            )
+        )
+
+        self.assertIsNotNone(translated)
+        self.assertIn("相关内容已转为简要中文表述", translated)
+        self.assertNotIn("This short English sentence leaks through", translated)
+        self.assertNotIn("Another brief English sentence still remains", translated)
+        self.assertNotIn("A final compact English sentence survives", translated)
+        self.assertIn("前文保持不变。", translated)
+        self.assertIn("后文保持不变。", translated)
         self.assertFalse(agent._has_residual_english_prose(translated, min_words=6))
 
     def test_translate_caption_marks_payload_invariant_passthrough(self):

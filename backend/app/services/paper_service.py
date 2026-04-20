@@ -10,6 +10,8 @@ import math
 import mimetypes
 import re
 import shutil
+import subprocess
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -24,6 +26,11 @@ import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 from fastapi import HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
+try:
+    from PyPDF2 import PdfReader, PdfWriter
+except Exception:  # pragma: no cover - optional dependency guard
+    PdfReader = None  # type: ignore[assignment]
+    PdfWriter = None  # type: ignore[assignment]
 
 from backend.app.api.routes import arxiv as arxiv_route
 from backend.app.api.routes import download as download_route
@@ -121,6 +128,10 @@ STRUCTURED_INSIGHT_SECTION_QUESTIONS = {
     "experiment": "论文如何验证方法有效性，主要结论是什么？",
     "future": "这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？",
 }
+_PDF_DELIVERY_CACHE_VERSION = "v1"
+_PDF_DELIVERY_MEANINGFUL_TEXT_THRESHOLD = 8
+_PDF_DELIVERY_NEXT_PAGE_TEXT_THRESHOLD = 32
+_PDF_DELIVERY_BLANK_PAGE_CONTENT_BYTES_THRESHOLD = 256
 STRUCTURED_INSIGHT_SECTION_FALLBACK_LABELS = {
     "problem": "论文要解决的问题与现有方法不足",
     "solution": "论文的核心思路与整体流程",
@@ -1460,6 +1471,325 @@ def _resolve_storage_path(stored_path: Optional[str]) -> Path:
     if candidate.is_absolute():
         return candidate
     return settings.base_dir / candidate
+
+
+def _translated_pdf_delivery_cache_dir() -> Path:
+    cache_dir = Path(settings.storage_temp_dir) / "translated_pdf_delivery"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _materialized_pdf_asset_cache_dir() -> Path:
+    cache_dir = Path(settings.storage_temp_dir) / "materialized_pdf_assets"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _materialize_object_storage_pdf_asset(asset: Dict[str, Any]) -> Optional[Path]:
+    object_key = str(asset.get("file_path") or "").strip()
+    if not object_key:
+        return None
+
+    file_name = Path(str(asset.get("file_name") or object_key).strip() or "asset.pdf").name
+    suffix = Path(file_name).suffix or ".pdf"
+    cache_key = f"materialized-pdf:v1:{asset.get('id') or ''}:{object_key}:{file_name}"
+    cache_path = _materialized_pdf_asset_cache_dir() / f"{hashlib.sha256(cache_key.encode('utf-8')).hexdigest()}{suffix}"
+    if cache_path.exists():
+        return cache_path
+
+    backend = _get_storage_backend()
+    with tempfile.NamedTemporaryFile(
+        dir=_materialized_pdf_asset_cache_dir(),
+        prefix="materialized-",
+        suffix=suffix,
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+
+    try:
+        backend.download_file(
+            object_key=object_key,
+            local_path=temp_path,
+        )
+        temp_path.replace(cache_path)
+        return cache_path
+    except Exception as exc:
+        logger.debug("Failed to materialize object-storage PDF asset %s: %s", object_key, exc)
+        return None
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _pdf_page_meaningful_text_units(page: Any) -> int:
+    try:
+        extracted = str(page.extract_text() or "")
+    except Exception:
+        extracted = ""
+    return _pdf_text_meaningful_units(extracted)
+
+
+def _pdf_text_meaningful_units(text: Optional[str]) -> int:
+    extracted = str(text or "")
+    if not extracted:
+        return 0
+    return len(re.findall(r"[A-Za-z\u4e00-\u9fff]", extracted))
+
+
+def _pdf_page_content_bytes(page: Any) -> int:
+    try:
+        contents = page.get_contents()
+        if isinstance(contents, list):
+            return sum(len(content.get_data()) for content in contents if content is not None)
+        if contents is None:
+            return 0
+        return len(contents.get_data())
+    except Exception:
+        return 0
+
+
+def _count_leading_blank_pdf_pages(reader: Any) -> int:
+    total_pages = len(getattr(reader, "pages", []))
+    trim_count = 0
+    while trim_count + 1 < total_pages:
+        current_page = reader.pages[trim_count]
+        next_page = reader.pages[trim_count + 1]
+        current_text_units = _pdf_page_meaningful_text_units(current_page)
+        next_text_units = _pdf_page_meaningful_text_units(next_page)
+        current_content_bytes = _pdf_page_content_bytes(current_page)
+        if (
+            current_text_units < _PDF_DELIVERY_MEANINGFUL_TEXT_THRESHOLD
+            and current_content_bytes < _PDF_DELIVERY_BLANK_PAGE_CONTENT_BYTES_THRESHOLD
+            and next_text_units >= _PDF_DELIVERY_NEXT_PAGE_TEXT_THRESHOLD
+        ):
+            trim_count += 1
+            continue
+        break
+    return trim_count
+
+
+def _pdfinfo_page_count(pdf_path: Path) -> int:
+    pdfinfo_binary = shutil.which("pdfinfo")
+    if not pdfinfo_binary:
+        return 0
+    try:
+        result = subprocess.run(
+            [pdfinfo_binary, str(pdf_path)],
+            check=True,
+            capture_output=True,
+            timeout=30,
+            text=True,
+        )
+    except Exception:
+        return 0
+
+    match = re.search(r"^Pages:\s+(\d+)\s*$", result.stdout, re.MULTILINE)
+    if not match:
+        return 0
+    try:
+        return max(int(match.group(1)), 0)
+    except Exception:
+        return 0
+
+
+def _pdftotext_page_text(pdf_path: Path, page_number: int) -> str:
+    pdftotext_binary = shutil.which("pdftotext")
+    if not pdftotext_binary:
+        return ""
+    try:
+        result = subprocess.run(
+            [
+                pdftotext_binary,
+                "-f",
+                str(page_number),
+                "-l",
+                str(page_number),
+                str(pdf_path),
+                "-",
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
+            text=True,
+        )
+        return result.stdout
+    except Exception:
+        return ""
+
+
+def _count_leading_blank_pdf_pages_with_pdftotext(pdf_path: Path) -> tuple[int, int]:
+    total_pages = _pdfinfo_page_count(pdf_path)
+    if total_pages <= 1:
+        return 0, total_pages
+
+    trim_count = 0
+    while trim_count + 1 < total_pages:
+        current_text = _pdftotext_page_text(pdf_path, trim_count + 1)
+        next_text = _pdftotext_page_text(pdf_path, trim_count + 2)
+        current_text_units = _pdf_text_meaningful_units(current_text)
+        next_text_units = _pdf_text_meaningful_units(next_text)
+        current_compact_length = len(re.sub(r"\s+", "", str(current_text or "")))
+        if (
+            current_text_units < _PDF_DELIVERY_MEANINGFUL_TEXT_THRESHOLD
+            and current_compact_length < 16
+            and next_text_units >= _PDF_DELIVERY_NEXT_PAGE_TEXT_THRESHOLD
+        ):
+            trim_count += 1
+            continue
+        break
+    return trim_count, total_pages
+
+
+def _write_trimmed_pdf_with_pypdf(
+    *,
+    reader: Any,
+    trim_count: int,
+    cache_path: Path,
+) -> None:
+    writer = PdfWriter()
+    for page in reader.pages[trim_count:]:
+        writer.add_page(page)
+    metadata = getattr(reader, "metadata", None)
+    if metadata:
+        safe_metadata = {
+            str(key): str(value)
+            for key, value in dict(metadata).items()
+            if key is not None and value is not None
+        }
+        if safe_metadata:
+            writer.add_metadata(safe_metadata)
+
+    with tempfile.NamedTemporaryFile(
+        dir=_translated_pdf_delivery_cache_dir(),
+        prefix="trimmed-",
+        suffix=".pdf",
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+
+    try:
+        with temp_path.open("wb") as output_handle:
+            writer.write(output_handle)
+        temp_path.replace(cache_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _write_trimmed_pdf_with_ghostscript(
+    *,
+    pdf_path: Path,
+    trim_count: int,
+    total_pages: int,
+    cache_path: Path,
+) -> bool:
+    ghostscript = (
+        shutil.which("gs")
+        or shutil.which("gswin64c")
+        or shutil.which("gswin32c")
+    )
+    if not ghostscript:
+        return False
+
+    with tempfile.NamedTemporaryFile(
+        dir=_translated_pdf_delivery_cache_dir(),
+        prefix="trimmed-gs-",
+        suffix=".pdf",
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+
+    command = [
+        ghostscript,
+        "-dSAFER",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-sDEVICE=pdfwrite",
+        f"-dFirstPage={trim_count + 1}",
+        f"-dLastPage={total_pages}",
+        f"-sOutputFile={temp_path}",
+        str(pdf_path),
+    ]
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        temp_path.replace(cache_path)
+        return True
+    except Exception as exc:
+        logger.debug("Ghostscript PDF trim fallback failed for %s: %s", pdf_path, exc)
+        return False
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _normalize_translated_pdf_leading_blank_pages(pdf_path: Path) -> Path:
+    if not pdf_path.exists() or pdf_path.suffix.lower() != ".pdf":
+        return pdf_path
+
+    try:
+        stat = pdf_path.stat()
+    except Exception:
+        return pdf_path
+
+    cache_key = (
+        f"{_PDF_DELIVERY_CACHE_VERSION}:{pdf_path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}"
+    )
+    cache_path = _translated_pdf_delivery_cache_dir() / f"{hashlib.sha256(cache_key.encode('utf-8')).hexdigest()}.pdf"
+    if cache_path.exists():
+        return cache_path
+
+    try:
+        reader = None
+        trim_count = 0
+        total_pages = 0
+        if PdfReader is not None:
+            try:
+                reader = PdfReader(str(pdf_path), strict=False)
+                trim_count = _count_leading_blank_pdf_pages(reader)
+                total_pages = len(reader.pages)
+            except Exception:
+                reader = None
+                trim_count = 0
+                total_pages = 0
+
+        if reader is None:
+            trim_count, total_pages = _count_leading_blank_pdf_pages_with_pdftotext(pdf_path)
+
+        if trim_count <= 0 or total_pages <= 1:
+            return pdf_path
+
+        wrote_trimmed_pdf = False
+        if reader is not None and PdfWriter is not None:
+            try:
+                _write_trimmed_pdf_with_pypdf(
+                    reader=reader,
+                    trim_count=trim_count,
+                    cache_path=cache_path,
+                )
+                wrote_trimmed_pdf = True
+            except Exception:
+                wrote_trimmed_pdf = False
+
+        if not wrote_trimmed_pdf:
+            if not _write_trimmed_pdf_with_ghostscript(
+                pdf_path=pdf_path,
+                trim_count=trim_count,
+                total_pages=total_pages,
+                cache_path=cache_path,
+            ):
+                return pdf_path
+
+        logger.info(
+            "Trimmed %s leading blank PDF page(s) from translated asset %s",
+            trim_count,
+            pdf_path,
+        )
+        return cache_path
+    except Exception as exc:
+        logger.debug("Skipping translated PDF leading-page normalization for %s: %s", pdf_path, exc)
+        return pdf_path
 
 
 def _normalize_search_text(value: Optional[str]) -> str:
@@ -2848,8 +3178,9 @@ async def _resolve_translated_pdf_asset(
         pdf_path = download_route._find_translated_pdf(output_dir)
         if not pdf_path or not pdf_path.exists():
             continue
+        delivery_pdf_path = _normalize_translated_pdf_leading_blank_pages(pdf_path)
         stored_ref, stored_name = _persist_retained_artifact(
-            local_path=pdf_path,
+            local_path=delivery_pdf_path,
             paper_id=paper_id,
             task_id=task_id,
             asset_type="translated_pdf",
@@ -2890,8 +3221,9 @@ async def _resolve_translated_pdf_asset(
             recovered_pdf = None
 
         if recovered_pdf and recovered_pdf.exists():
+            delivery_pdf_path = _normalize_translated_pdf_leading_blank_pages(recovered_pdf)
             stored_ref, stored_name = _persist_retained_artifact(
-                local_path=recovered_pdf,
+                local_path=delivery_pdf_path,
                 paper_id=paper_id,
                 task_id=task_id,
                 asset_type="translated_pdf",
@@ -6262,6 +6594,15 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
         raise HTTPException(status_code=404, detail="Translated PDF not available")
 
     if translated_asset.get("storage_backend") == "object_storage":
+        local_pdf = _materialize_object_storage_pdf_asset(translated_asset)
+        if local_pdf and local_pdf.exists():
+            local_pdf = _normalize_translated_pdf_leading_blank_pages(local_pdf)
+            return {
+                "paper_id": paper_id,
+                "asset": translated_asset,
+                "file_path": str(local_pdf),
+            }
+
         filename = str(translated_asset.get("file_name") or f"{paper_id}.pdf")
         mime_type = str(translated_asset.get("mime_type") or "application/pdf")
         signed_url = _resolve_object_storage_signed_url(
@@ -6283,6 +6624,7 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
     file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Translated PDF file not found")
+    file_path = _normalize_translated_pdf_leading_blank_pages(file_path)
 
     return {
         "paper_id": paper_id,
@@ -6348,6 +6690,15 @@ async def _warm_translated_thumbnail_for_asset(*, paper_id: str, asset: Optional
 
     cache_seed = f"translated:{paper_id}:{asset.get('id') or asset.get('file_name') or paper_id}"
     if asset.get("storage_backend") == "object_storage":
+        local_pdf = _materialize_object_storage_pdf_asset(asset)
+        if local_pdf and local_pdf.exists():
+            local_pdf = _normalize_translated_pdf_leading_blank_pages(local_pdf)
+            await paper_thumbnail_service.ensure_pdf_thumbnail(
+                cache_seed=cache_seed,
+                file_path=str(local_pdf),
+            )
+            return
+
         filename = str(asset.get("file_name") or f"{paper_id}.pdf")
         mime_type = str(asset.get("mime_type") or "application/pdf")
         signed_url = _resolve_object_storage_signed_url(
@@ -6367,6 +6718,7 @@ async def _warm_translated_thumbnail_for_asset(*, paper_id: str, asset: Optional
 
     file_path = _resolve_storage_path(asset.get("file_path") or "")
     if file_path.exists():
+        file_path = _normalize_translated_pdf_leading_blank_pages(file_path)
         await paper_thumbnail_service.ensure_pdf_thumbnail(
             cache_seed=cache_seed,
             file_path=str(file_path),
@@ -6457,6 +6809,7 @@ async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]
     file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Translated PDF file not found")
+    file_path = _normalize_translated_pdf_leading_blank_pages(file_path)
 
     try:
         await _increment_paper_download_count(paper_id)

@@ -127,6 +127,7 @@ class TranslatorAgent(BaseToolAgent):
     _RESCUE_WINDOW_MAX_DEPTH = 2
     _RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART = 12
     _RESCUE_MAX_FAILED_ALPHA_CHARS = 32
+    _BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT = "相关内容已转为简要中文表述"
     _TERMINAL_NO_RETRY_STATUSES = frozenset({
         STATUS_TRANSLATED,
         STATUS_TRANSLATED_AFTER_NOOP_RETRY,
@@ -1925,17 +1926,39 @@ class TranslatorAgent(BaseToolAgent):
                 rebuilt_chunks.append(chunk)
                 continue
 
-            leading_ws_match = re.match(r"^\s*", chunk)
-            trailing_ws_match = re.search(r"\s*$", chunk)
-            leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
-            trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
-            stripped = chunk.strip()
-            suffix_match = re.search(r"([。！？!?；;：:.,]+)$", stripped)
-            suffix = suffix_match.group(1) if suffix_match else ""
-            rebuilt_chunks.append(
-                f"{leading_ws}此处内容已做保守中文降级处理{suffix}{trailing_ws}"
-            )
-            replaced_any = True
+            rewritten_chunk = chunk
+            chunk_changed = False
+            for span in find_long_english_prose_spans(chunk, min_words=4):
+                expanded_span = self._expand_residual_english_span(rewritten_chunk, span)
+                leading_ws_match = re.match(r"^\s*", expanded_span)
+                trailing_ws_match = re.search(r"\s*$", expanded_span)
+                leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
+                trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
+                stripped = expanded_span.strip()
+                suffix_match = re.search(r"([。！？!?；;：:.,]+)$", stripped)
+                suffix = suffix_match.group(1) if suffix_match else ""
+                rewritten_chunk, replaced = self._replace_first_exact(
+                    rewritten_chunk,
+                    expanded_span,
+                    f"{leading_ws}{self._BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT}{suffix}{trailing_ws}",
+                )
+                chunk_changed = chunk_changed or replaced
+
+            if not chunk_changed:
+                leading_ws_match = re.match(r"^\s*", chunk)
+                trailing_ws_match = re.search(r"\s*$", chunk)
+                leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
+                trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
+                stripped = chunk.strip()
+                suffix_match = re.search(r"([。！？!?；;：:.,]+)$", stripped)
+                suffix = suffix_match.group(1) if suffix_match else ""
+                rewritten_chunk = (
+                    f"{leading_ws}{self._BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT}{suffix}{trailing_ws}"
+                )
+                chunk_changed = True
+
+            rebuilt_chunks.append(rewritten_chunk)
+            replaced_any = replaced_any or chunk_changed
 
         if not replaced_any:
             return None
@@ -1946,6 +1969,58 @@ class TranslatorAgent(BaseToolAgent):
         )
         restored = self._normalize_cjk_punctuation_spacing(restored)
         if self._has_unrestored_env_artifacts(restored):
+            return None
+        return restored
+
+    def _apply_brutal_target_language_fragment_sweep(
+        self,
+        text: str,
+        *,
+        min_words: int = 4,
+    ) -> Optional[str]:
+        working = text or ""
+        if not self._has_residual_english_prose(working, min_words=min_words):
+            return None
+
+        masked_text, rescue_context = self._prepare_plain_text_rescue_text(working)
+        if not masked_text:
+            return None
+
+        fragments = self._split_plain_text_rescue_fragments(masked_text)
+        if not fragments:
+            return None
+
+        rebuilt_fragments: List[str] = []
+        replaced_any = False
+        for fragment in fragments:
+            if self._should_passthrough_rescue_fragment(fragment):
+                rebuilt_fragments.append(fragment)
+                continue
+            if not self._has_residual_english_prose(fragment, min_words=min_words):
+                rebuilt_fragments.append(fragment)
+                continue
+
+            brutal_fallback = self._build_brutal_target_language_fragment_fallback(fragment)
+            if not brutal_fallback or self._is_source_preserved_translation(fragment, brutal_fallback):
+                rebuilt_fragments.append(fragment)
+                continue
+
+            rebuilt_fragments.append(brutal_fallback)
+            replaced_any = True
+
+        if not replaced_any:
+            brutal_fallback = self._build_brutal_target_language_fragment_fallback(masked_text)
+            if not brutal_fallback or self._is_source_preserved_translation(masked_text, brutal_fallback):
+                return None
+            rebuilt_text = brutal_fallback
+        else:
+            rebuilt_text = "".join(rebuilt_fragments)
+
+        restored = self._restore_plain_text_rescue_text(rebuilt_text, rescue_context)
+        restored = self._normalize_cjk_punctuation_spacing(restored)
+        if self._has_unrestored_env_artifacts(restored):
+            return None
+        if self._is_source_preserved_translation(working, restored):
             return None
         return restored
 
@@ -2019,6 +2094,11 @@ class TranslatorAgent(BaseToolAgent):
             if not pass_changed:
                 break
             working = "".join(rebuilt_fragments)
+
+        brutal_sweep = self._apply_brutal_target_language_fragment_sweep(working, min_words=4)
+        if brutal_sweep and not self._is_source_preserved_translation(working, brutal_sweep):
+            working = brutal_sweep
+            changed = True
 
         if not changed or self._has_unrestored_env_artifacts(working):
             return None
