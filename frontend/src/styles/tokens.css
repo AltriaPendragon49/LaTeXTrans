@@ -1,0 +1,61 @@
+:root {
+  --px-shell-bg: #edf4fb;
+  --px-shell-surface: #f5f9fe;
+  --px-shell-panel: rgba(250, 253, 255, 0.92);
+  --px-shell-panel-strong: #ffffff;
+  --px-shell-ink: #0d1b2a;
+  --px-shell-muted: #5c6f88;
+  --px-shell-line: rgba(13, 27, 42, 0.09);
+  --px-shell-line-strong: rgba(13, 27, 42, 0.16);
+  --px-shell-accent: #1276c7;
+  --px-shell-accent-strong: #0a5da2;
+  --px-shell-accent-soft: rgba(18, 118, 199, 0.12);
+  --px-shell-accent-contrast: #f4fbff;
+  --px-shell-info: #0f766e;
+  --px-shell-info-soft: color-mix(in srgb, var(--px-shell-info) 10%, white);
+  --px-shell-info-line: color-mix(in srgb, var(--px-shell-info) 18%, transparent);
+  --px-shell-success: #0f766e;
+  --px-shell-success-soft: color-mix(in srgb, var(--px-shell-success) 10%, white);
+  --px-shell-success-line: color-mix(in srgb, var(--px-shell-success) 18%, transparent);
+  --px-shell-warning: #9a6700;
+  --px-shell-warning-soft: color-mix(in srgb, var(--px-shell-warning) 10%, white);
+  --px-shell-warning-line: color-mix(in srgb, var(--px-shell-warning) 18%, transparent);
+  --px-shell-danger: #b42318;
+  --px-shell-danger-strong: #d92d20;
+  --px-shell-danger-soft: color-mix(in srgb, var(--px-shell-danger-strong) 9%, white);
+  --px-shell-danger-line: color-mix(in srgb, var(--px-shell-danger-strong) 18%, transparent);
+  --px-shell-danger-contrast: #fff8f7;
+  --px-shell-shadow: 0 26px 72px -46px rgba(8, 23, 38, 0.28);
+  --px-shell-radius-xl: 20px;
+  --px-shell-radius-2xl: 28px;
+}
+
+.dark {
+  --px-shell-bg: #07111c;
+  --px-shell-surface: #0a1624;
+  --px-shell-panel: rgba(10, 22, 36, 0.94);
+  --px-shell-panel-strong: #0f2032;
+  --px-shell-ink: #ecf7ff;
+  --px-shell-muted: #93abc4;
+  --px-shell-line: rgba(236, 247, 255, 0.1);
+  --px-shell-line-strong: rgba(236, 247, 255, 0.18);
+  --px-shell-accent: #58c9ff;
+  --px-shell-accent-strong: #8fe0ff;
+  --px-shell-accent-soft: rgba(88, 201, 255, 0.16);
+  --px-shell-accent-contrast: #07111c;
+  --px-shell-info: #74d9cf;
+  --px-shell-info-soft: color-mix(in srgb, var(--px-shell-info) 12%, var(--px-shell-panel-strong));
+  --px-shell-info-line: color-mix(in srgb, var(--px-shell-info) 24%, transparent);
+  --px-shell-success: #7fe0b7;
+  --px-shell-success-soft: color-mix(in srgb, var(--px-shell-success) 12%, var(--px-shell-panel-strong));
+  --px-shell-success-line: color-mix(in srgb, var(--px-shell-success) 24%, transparent);
+  --px-shell-warning: #f4c26b;
+  --px-shell-warning-soft: color-mix(in srgb, var(--px-shell-warning) 12%, var(--px-shell-panel-strong));
+  --px-shell-warning-line: color-mix(in srgb, var(--px-shell-warning) 24%, transparent);
+  --px-shell-danger: #ffb1a7;
+  --px-shell-danger-strong: #ff8f80;
+  --px-shell-danger-soft: color-mix(in srgb, var(--px-shell-danger) 12%, var(--px-shell-panel-strong));
+  --px-shell-danger-line: color-mix(in srgb, var(--px-shell-danger) 24%, transparent);
+  --px-shell-danger-contrast: #07111c;
+  --px-shell-shadow: 0 28px 74px -42px rgba(2, 10, 19, 0.72);
+}
