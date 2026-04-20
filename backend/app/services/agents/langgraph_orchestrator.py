@@ -1006,7 +1006,7 @@ def _route_after_validate(state: PipelineState) -> str:
         if repair_retry_count < MAX_REPAIR_RETRIES:
             return "repair_translation"
         else:
-            return "generate"
+            return "ultimate_downgrade"
     return "generate"
 
 
@@ -1385,6 +1385,7 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
     graph.add_node("finalize", node_finalize)
     # eliminate-silent-fallback: repair loop node
     graph.add_node("repair_translation", node_repair_translation)
+    graph.add_node("ultimate_downgrade", node_ultimate_downgrade)
 
     graph.set_entry_point("parse")
     graph.add_edge("parse", "translate")
@@ -1396,10 +1397,12 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
         {
             "generate": "generate",
             "repair_translation": "repair_translation",
+            "ultimate_downgrade": "ultimate_downgrade",
         },
     )
     # repair loops back to validate for re-evaluation
     graph.add_edge("repair_translation", "validate_and_retry")
+    graph.add_edge("ultimate_downgrade", "generate")
     graph.add_edge("post_compile_target_language_fallback", "generate")
     graph.add_conditional_edges(
         "generate",
