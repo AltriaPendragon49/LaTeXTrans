@@ -5500,7 +5500,6 @@ def _schedule_curation_job(job_id: str) -> None:
     task = asyncio.create_task(_run_curation_job(job_id))
     _curation_job_tasks[job_id] = task
 
-
 async def _run_curation_job(job_id: str) -> None:
     repository = get_community_paper_repository()
     async with _get_curation_semaphore():
@@ -5671,7 +5670,7 @@ async def _run_curation_job(job_id: str) -> None:
                 job=job,
                 translated_task_id=translated_task_id,
                 failure_message=str(exc),
-                cancel_running_task=True,
+                cancel_running_task=bool(translated_task_id),
             )
         except Exception as exc:
             logger.warning("Admin curation job %s failed: %s", job_id, exc, exc_info=True)

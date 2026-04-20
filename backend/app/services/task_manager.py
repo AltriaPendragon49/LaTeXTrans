@@ -1309,37 +1309,38 @@ class TaskManager:
         with self._lock:
             return task_id in self._cancelled_tasks
     
-    def cancel_task(self, task_id: str) -> bool:
-        """
-        Cancel a task: forcibly interrupt the running asyncio.Task (if any),
-        then mark the in-memory record as failed.
-        
-        Args:
-            task_id: Task ID
-        
-        Returns:
-            True if task exists and was marked as cancelled
-        """
-        # Step 1: Kill the running coroutine via the queue's cancel_execution()
-        # This must happen BEFORE acquiring _lock so the worker's finally block
-        # can update _user_task_count (which also uses the same module-level tq).
-        try:
-            if task_queue is not None:
-                task_queue.cancel_execution(task_id)
-        except Exception as exc:
-            logger.warning(
-                f"[TaskManager] cancel_task: cancel_execution raised for {task_id}: {exc}"
-            )
-
-        # Step 2: Update in-memory state
-        with self._lock:
-            if task_id in self._tasks:
-                self._cancelled_tasks.add(task_id)
-                task = self._tasks[task_id]
-                task["status"] = TaskStatus.FAILED.value
-                task["message"] = "Task cancelled by user"
-                return True
-            return False
+    def cancel_task(self, task_id: str) -> bool:
+        """
+        Cancel a task: forcibly interrupt the running asyncio.Task (if any),
+        then mark the in-memory record as failed.
+        
+        Args:
+            task_id: Task ID
+        
+        Returns:
+            True if task exists and was marked as cancelled
+        """
+        task_exists = False
+        with self._lock:
+            if task_id in self._tasks:
+                self._cancelled_tasks.add(task_id)
+                task = self._tasks[task_id]
+                task["status"] = TaskStatus.FAILED.value
+                task["message"] = "Task cancelled by user"
+                task_exists = True
+
+        if not task_exists:
+            return False
+
+        try:
+            if task_queue is not None:
+                task_queue.cancel_execution(task_id)
+        except Exception as exc:
+            logger.warning(
+                f"[TaskManager] cancel_task: cancel_execution raised for {task_id}: {exc}"
+            )
+
+        return True
     
     def delete_task_full(self, task_id: str) -> Dict[str, Any]:
         """
@@ -1908,14 +1909,15 @@ class TaskQueue:
         self._queues: Dict[str, Dict[str, asyncio.Queue]] = {}
         self._semaphores: Dict[str, asyncio.Semaphore] = {}
         self._bucket_events: Dict[str, asyncio.Event] = {}
-        self._workers: Dict[str, asyncio.Task] = {}
-        # Cross-bucket shared state
+        self._workers: Dict[str, asyncio.Task] = {}
+        # Cross-bucket shared state
         self._active_tasks: Dict[str, asyncio.Task] = {}  # task_id -> asyncio.Task
         self._active_task_lanes: Dict[str, str] = {}      # task_id -> interactive|backfill
-        self._skipped: set = set()                         # task_ids to discard on dequeue
-        self._user_task_count: Dict[str, int] = {}        # user_id -> active count
-        self._init_lock: Optional[asyncio.Lock] = None    # created in initialize()
-
+        self._skipped: set = set()                         # task_ids to discard on dequeue
+        self._explicitly_cancelled: set = set()           # task_ids intentionally cancelled by control flow
+        self._user_task_count: Dict[str, int] = {}        # user_id -> active count
+        self._init_lock: Optional[asyncio.Lock] = None    # created in initialize()
+
     async def initialize(self):
         """Initialize shared lock (must be called inside an async context)."""
         self._init_lock = asyncio.Lock()
@@ -2015,30 +2017,32 @@ class TaskQueue:
             f"bucket_size={bucket_size})"
         )
 
-    def cancel_execution(self, task_id: str) -> bool:
-        """
-        Forcibly cancel *task_id*.
-
-        - If the task is currently **running**: calls ``asyncio.Task.cancel()`` on it.
-        - If the task is **queued but not yet running**: adds it to ``_skipped`` so
-          the worker discards it on the next dequeue.
-
-        Returns:
-            True if the task was found (running or queued), False otherwise.
-        """
-        running_task = self._active_tasks.get(task_id)
-        if running_task is not None and not running_task.done():
-            running_task.cancel()
-            logger.info(f"[TaskQueue] cancel_execution: cancelled running task {task_id}")
-            return True
-
-        # Not running 锟?mark as skipped so the worker drops it when dequeued
-        self._skipped.add(task_id)
-        logger.info(
-            f"[TaskQueue] cancel_execution: task {task_id} not yet running, "
-            f"added to _skipped"
-        )
-        return True
+    def cancel_execution(self, task_id: str) -> bool:
+        """
+        Forcibly cancel *task_id*.
+
+        - If the task is currently **running**: calls ``asyncio.Task.cancel()`` on it.
+        - If the task is **queued but not yet running**: adds it to ``_skipped`` so
+          the worker discards it on the next dequeue.
+
+        Returns:
+            True if the task was found (running or queued), False otherwise.
+        """
+        self._explicitly_cancelled.add(task_id)
+
+        running_task = self._active_tasks.get(task_id)
+        if running_task is not None and not running_task.done():
+            running_task.cancel()
+            logger.info(f"[TaskQueue] cancel_execution: cancelled running task {task_id}")
+            return True
+
+        # Not running - mark as skipped so the worker drops it when dequeued
+        self._skipped.add(task_id)
+        logger.info(
+            f"[TaskQueue] cancel_execution: task {task_id} not yet running, "
+            f"added to _skipped"
+        )
+        return True
 
     def get_user_active_count(self, user_id: str) -> int:
         """Get the number of active (queued + running) tasks for a user."""
@@ -2112,21 +2116,22 @@ class TaskQueue:
                     f"[TaskQueue] Worker({token_hash[:8]}...) picked up task {task_id} from lane={lane}"
                 )
 
-                # --- Skip check for queued-only cancellations ---
-                if task_id in self._skipped:
-                    self._skipped.discard(task_id)
+                # --- Skip check for queued-only cancellations ---
+                if task_id in self._skipped:
+                    self._skipped.discard(task_id)
+                    self._explicitly_cancelled.discard(task_id)
                     selected_queue.task_done()
-                    logger.info(
-                        f"[TaskQueue] Task {task_id} was in _skipped, discarding."
-                    )
-                    # Decrement user quota for skipped task
-                    if user_id:
-                        async with self._init_lock:
-                            count = self._user_task_count.get(user_id, 1)
-                            if count <= 1:
-                                self._user_task_count.pop(user_id, None)
-                            else:
-                                self._user_task_count[user_id] = count - 1
+                    logger.info(
+                        f"[TaskQueue] Task {task_id} was in _skipped, discarding."
+                    )
+                    # Decrement user quota for skipped task
+                    if user_id:
+                        async with self._init_lock:
+                            count = self._user_task_count.get(user_id, 1)
+                            if count <= 1:
+                                self._user_task_count.pop(user_id, None)
+                            else:
+                                self._user_task_count[user_id] = count - 1
                     self._semaphores[token_hash].release()
                     continue
 
@@ -2136,13 +2141,14 @@ class TaskQueue:
                 # waiting for the semaphore (task was already dequeued but not
                 # yet running, so it ended up in _skipped after the first check).
                 if task_id in self._skipped:
-                    self._skipped.discard(task_id)
-                    self._semaphores[token_hash].release()
+                    self._skipped.discard(task_id)
+                    self._explicitly_cancelled.discard(task_id)
+                    self._semaphores[token_hash].release()
                     selected_queue.task_done()
-                    logger.info(
-                        f"[TaskQueue] Task {task_id} skipped after semaphore acquire "
-                        f"(cancelled while waiting for slot)."
-                    )
+                    logger.info(
+                        f"[TaskQueue] Task {task_id} skipped after semaphore acquire "
+                        f"(cancelled while waiting for slot)."
+                    )
                     if user_id:
                         async with self._init_lock:
                             count = self._user_task_count.get(user_id, 1)
@@ -2163,8 +2169,9 @@ class TaskQueue:
                             return
                         except asyncio.CancelledError:
                             user_cancelled = task_manager.is_cancelled(current_task_id)
+                            explicitly_cancelled = current_task_id in self._explicitly_cancelled
                             runtime_stopping = is_runtime_shutting_down()
-                            if user_cancelled or runtime_stopping:
+                            if user_cancelled or explicitly_cancelled or runtime_stopping:
                                 raise
                             if retry_count >= self._cancel_retry_limit:
                                 logger.warning(
@@ -2244,6 +2251,7 @@ class TaskQueue:
                                         self._user_task_count[uid] = count - 1
                             self._active_tasks.pop(tid, None)
                             self._active_task_lanes.pop(tid, None)
+                            self._explicitly_cancelled.discard(tid)
                             logger.info(
                                 f"[TaskQueue] Task {tid} finished, "
                                 f"semaphore slot released for token={th[:8]}..."

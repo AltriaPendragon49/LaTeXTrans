@@ -61,6 +61,69 @@ async def test_task_queue_retries_unexpected_cancelled_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_task_queue_does_not_retry_explicit_cancel_during_immediate_cleanup(monkeypatch):
+    updates = []
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+    attempts = {"count": 0}
+
+    monkeypatch.setattr(
+        task_manager_module.task_manager,
+        "update_task",
+        lambda task_id, **kwargs: updates.append((task_id, kwargs)) or True,
+        raising=False,
+    )
+
+    queue = TaskQueue(max_concurrent=1)
+    await queue.initialize()
+    set_runtime_shutting_down(False)
+    monkeypatch.setattr(task_manager_module, "task_queue", queue, raising=False)
+
+    task_id = "explicit-cancel-task"
+    task_manager_module.task_manager._tasks[task_id] = {
+        "task_id": task_id,
+        "status": "processing",
+        "progress": 50,
+        "message": "running",
+    }
+    task_manager_module.task_manager._cancelled_tasks.discard(task_id)
+
+    async def long_running_coro():
+        attempts["count"] += 1
+        started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    await queue.enqueue(
+        task_id=task_id,
+        coro_factory=lambda: long_running_coro(),
+        user_id=None,
+        token_hash="explicit-cancel-token",
+    )
+
+    await asyncio.wait_for(started.wait(), timeout=2)
+    assert task_manager_module.task_manager.cancel_task(task_id) is True
+    task_manager_module.task_manager.delete_task_full(task_id)
+    await asyncio.wait_for(cancelled.wait(), timeout=2)
+    await asyncio.sleep(0.2)
+
+    assert attempts["count"] == 1
+    assert not any(
+        payload.get("detail_code") == "task_retry_after_cancel"
+        for _task_id, payload in updates
+    )
+    assert task_id not in queue._active_tasks
+
+    set_runtime_shutting_down(True)
+    queue._workers["explicit-cancel-token"].cancel()
+    await asyncio.wait_for(queue._workers["explicit-cancel-token"], timeout=1)
+    set_runtime_shutting_down(False)
+
+
+@pytest.mark.asyncio
 async def test_task_queue_worker_continues_after_unexpected_worker_cancel(monkeypatch):
     monkeypatch.setattr(
         task_manager_module.task_manager,

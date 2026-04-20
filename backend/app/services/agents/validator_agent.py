@@ -46,6 +46,23 @@ _NON_PROSE_COMMAND_RE = re.compile(
 )
 _LATEX_ENV_TOKEN_RE = re.compile(r"\\(?:begin|end)\s*\{[^{}]+\}")
 _LATEX_COMMAND_HEAD_RE = re.compile(r"\\[A-Za-z@]+\*?")
+_NON_BODY_SOURCE_COMMAND_RE = re.compile(
+    r"\\(?:documentclass|documentstyle|author|affiliation|address|institution|institute|thanks|"
+    r"email|orcid|orcidlink|bibliography|bibliographystyle|bibitem|bibentry|usepackage|"
+    r"RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|"
+    r"DeclarePairedDelimiter|DeclareRobustCommand|DeclareUnicodeCharacter|newtheorem|"
+    r"theoremstyle|numberwithin|usetikzlibrary|tikzstyle|pgfplotsset|lstset|lstdefinelanguage)\*?\b",
+    re.IGNORECASE,
+)
+_REFERENCE_HINT_RE = re.compile(
+    r"\b(?:doi|arxiv|proceedings|conference|journal|transactions|press|publisher|"
+    r"vol\.?|no\.?|pp\.?|pages|etal|et al\.?)\b",
+    re.IGNORECASE,
+)
+_REFERENCE_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}[a-z]?\b")
+_AUTHORISH_NAME_RE = re.compile(
+    r"\b[A-Z][a-z]+(?:-[A-Z][a-z]+)?(?:\s+(?:[A-Z]\.){1,2})?\s+[A-Z][a-z]+(?:-[A-Z][a-z]+)?\b"
+)
 
 
 def find_long_english_prose_spans(text: str, *, min_words: int = 18) -> List[str]:
@@ -90,6 +107,50 @@ def find_long_english_prose_spans(text: str, *, min_words: int = 18) -> List[str
         spans.append(normalized[span_start:span_end].strip())
 
     return [span for span in spans if span]
+
+
+def _is_front_matter_section(section_id: Any) -> bool:
+    normalized = str(section_id or "").strip()
+    return normalized in {"-1", "0"} or normalized.startswith("-1_chunk_")
+
+
+def _looks_like_reference_or_author_block(text: str) -> bool:
+    normalized = text or ""
+    if not normalized:
+        return False
+
+    english_words = _LONG_ENGLISH_WORD_RE.findall(normalized)
+    if len(english_words) < 12:
+        return False
+
+    if _REFERENCE_HINT_RE.search(normalized):
+        return True
+
+    years = _REFERENCE_YEAR_RE.findall(normalized)
+    names = _AUTHORISH_NAME_RE.findall(normalized)
+    separator_score = normalized.count(",") + normalized.count(";") + normalized.lower().count(" and ")
+    sentence_count = normalized.count(".")
+
+    if len(years) >= 2 and len(names) >= 2:
+        return True
+    if separator_score >= 4 and len(names) >= 3 and sentence_count <= len(names) + 3:
+        return True
+    return False
+
+
+def _allows_non_body_english(part: Dict[str, Any]) -> bool:
+    section_id = part.get("section")
+    if _is_front_matter_section(section_id):
+        return True
+    if str(part.get("chunk_role") or "").strip() == "document_root":
+        return True
+
+    source = part.get("content") or ""
+    if _NON_BODY_SOURCE_COMMAND_RE.search(source):
+        return True
+
+    translated = part.get("trans_content") or ""
+    return _looks_like_reference_or_author_block(translated)
 
 
 def classify_error(error_report: Dict[str, Any]) -> str:
@@ -833,8 +894,7 @@ class ValidatorAgent(BaseToolAgent):
     def _validate_long_english_prose(self, part: Dict[str, Any]) -> Optional[str]:
         if "section" not in part:
             return None
-        section_id = str(part.get("section", ""))
-        if section_id in {"-1", "0"}:
+        if _allows_non_body_english(part):
             return None
 
         translated = part.get("trans_content") or ""

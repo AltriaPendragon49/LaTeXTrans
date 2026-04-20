@@ -437,7 +437,7 @@ def test_start_arxiv_paper_translation_routes_admin_curation_into_backfill_lane(
     assert created["download_and_enqueue"]["lane"] == "backfill"
 
 
-def test_run_curation_job_marks_timeout_as_failed_without_automatic_retry(monkeypatch):
+def test_run_curation_job_marks_timeout_as_failed_and_cancels_running_translation(monkeypatch):
     repository = _FakeRepository(
         {
             "job_id": "job-1",
