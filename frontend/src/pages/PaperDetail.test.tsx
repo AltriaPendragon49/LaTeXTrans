@@ -18,6 +18,7 @@ const navigateMock = vi.fn()
 const setTaskIdMock = vi.fn()
 const setArxivIdMock = vi.fn()
 const openMock = vi.fn()
+const clipboardWriteTextMock = vi.fn()
 const paperDetailStoreState = {
   config: {
     source_language: "en",
@@ -210,9 +211,16 @@ describe("PaperDetailPage", () => {
       configurable: true,
       value: openMock,
     })
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: clipboardWriteTextMock,
+      },
+    })
+    clipboardWriteTextMock.mockResolvedValue(undefined)
   })
 
-  it("renders the reader shell and five guide modules for completed papers", async () => {
+  it("renders the reader shell, minimal toolbar, and five guide modules for completed papers", async () => {
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
 
     render(
@@ -223,11 +231,18 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole("heading", { level: 1, name: "Detail Page Title" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { level: 1, name: "Detail Page Title" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Back to feed" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Favorite paper" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Download translated PDF" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Paper information" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy paper link" })).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-reader-panel")).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-insights-panel")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument()
-    expect(screen.getByRole("tab", { name: "Insights" })).toBeInTheDocument()
+    expect(screen.queryByText("Translated reader")).not.toBeInTheDocument()
+    expect(screen.queryByText("Detail Page Title")).not.toBeInTheDocument()
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Paper analysis" })).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.problem"))).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.solution"))).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.innovation"))).toBeInTheDocument()
@@ -555,7 +570,7 @@ describe("PaperDetailPage", () => {
     )
   })
 
-  it("starts with the metadata header collapsed and expands on demand", async () => {
+  it("opens a paper info popover instead of a metadata expansion banner", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
 
@@ -567,11 +582,15 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Detail Page Title")).not.toBeInTheDocument()
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument()
 
-    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
+    await user.click(screen.getByRole("button", { name: "Paper information" }))
 
-    expect(screen.getByRole("button", { name: "Download" })).toBeEnabled()
+    expect(screen.getByText("Detail Page Title")).toBeInTheDocument()
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument()
+    expect(screen.getByText("cs.AI")).toBeInTheDocument()
+    expect(screen.getAllByText("2503.01010").length).toBeGreaterThan(0)
   })
 
   it("keeps only insights and similar tabs, collapses insights by default, and loads similar cards lazily", async () => {
@@ -599,7 +618,7 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole("tab", { name: "Insights" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Paper analysis" })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Similar" })).toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "Notes" })).not.toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "Comments" })).not.toBeInTheDocument()
@@ -684,66 +703,7 @@ describe("PaperDetailPage", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("starts translation and routes to the processing page", async () => {
-    const user = userEvent.setup()
-    translateCommunityPaperMock.mockResolvedValue({
-      paper_id: "paper-1",
-      task_id: "task-new",
-      status: "queued",
-      reused_existing_task: false,
-      processing_url: "/processing?taskId=task-new",
-    })
-    usePaperDetailMock.mockReturnValue(
-      buildDetailReturn({
-        paper: {
-          ...basePaper,
-          trans_status: "not_started",
-          community_selected_task_id: null,
-          assets: {},
-        },
-        preview: null,
-        readerState: "ready",
-        reader: {
-          preferred_mode: "source",
-          available_modes: ["source"],
-          source: {
-            kind: "source_html",
-            html_content: "<article><p>English paragraph.</p></article>",
-            url: "https://arxiv.org/html/2503.01010",
-          },
-          translated: null,
-          state: "source_ready",
-        },
-      }),
-    )
-
-    render(
-      <MemoryRouter initialEntries={["/paper/paper-1"]}>
-        <Routes>
-          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
-    await user.click(screen.getByRole("button", { name: "Translate" }))
-
-    await waitFor(() => {
-      expect(translateCommunityPaperMock).toHaveBeenCalledWith(
-        "paper-1",
-        expect.objectContaining({
-          source_language: "en",
-          target_language: "zh",
-        }),
-      )
-    })
-    expect(setTaskIdMock).toHaveBeenCalledWith("task-new")
-    expect(setArxivIdMock).toHaveBeenCalledWith("2503.01010")
-    expect(navigateMock).toHaveBeenCalledWith("/processing?taskId=task-new")
-  })
-
-  it("clicking view progress routes to the processing page for active tasks", async () => {
-    const user = userEvent.setup()
+  it("removes translate and view-progress header actions from the minimal toolbar", () => {
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
         paper: {
@@ -761,12 +721,8 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
-    await user.click(screen.getByRole("button", { name: "View Progress" }))
-
-    expect(setTaskIdMock).toHaveBeenCalledWith("task-1")
-    expect(setArxivIdMock).toHaveBeenCalledWith("2503.01010")
-    expect(navigateMock).toHaveBeenCalledWith("/processing?taskId=task-1")
+    expect(screen.queryByRole("button", { name: "Translate" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "View Progress" })).not.toBeInTheDocument()
   })
 
   it("download opens the signed url", async () => {
@@ -787,12 +743,31 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
-    await user.click(screen.getByRole("button", { name: "Download" }))
+    await user.click(screen.getByRole("button", { name: "Download translated PDF" }))
 
     await waitFor(() => {
       expect(createCommunityPaperDownloadSessionMock).toHaveBeenCalledWith("paper-1")
       expect(openMock).toHaveBeenCalledWith(`${API_BASE_URL}/api/papers/paper-1/download?token=abc`, "_blank")
+    })
+  })
+
+  it("copies the current paper detail url when share is clicked", async () => {
+    const user = userEvent.setup()
+    usePaperDetailMock.mockReturnValue(buildDetailReturn())
+    window.history.pushState({}, "", "/paper/paper-1")
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Copy paper link" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copied")).toBeInTheDocument()
     })
   })
 

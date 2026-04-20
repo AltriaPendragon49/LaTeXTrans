@@ -10,8 +10,6 @@ import type { CommunityPaper } from "@/types/community"
 
 const prefetchCommunityPaperDetailMock = vi.fn()
 const preloadPaperPreviewEnhancerMock = vi.fn()
-const preloadPdfHoverPreviewRendererMock = vi.fn()
-const loadPdfHoverPreviewMock = vi.fn()
 const fetchMock = vi.fn()
 const createObjectUrlMock = vi.fn()
 const revokeObjectUrlMock = vi.fn()
@@ -26,11 +24,6 @@ vi.mock("@/lib/community-api", async () => {
 
 vi.mock("@/lib/paper-preview-enhancer", () => ({
   preloadPaperPreviewEnhancer: (...args: unknown[]) => preloadPaperPreviewEnhancerMock(...args),
-}))
-
-vi.mock("@/features/community-paper/services/pdf-hover-preview", () => ({
-  preloadPdfHoverPreviewRenderer: (...args: unknown[]) => preloadPdfHoverPreviewRendererMock(...args),
-  loadPdfHoverPreview: (...args: unknown[]) => loadPdfHoverPreviewMock(...args),
 }))
 
 vi.mock("@/features/community-paper/services/community-paper-api", () => ({
@@ -94,12 +87,6 @@ describe("PaperCard", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    preloadPdfHoverPreviewRendererMock.mockResolvedValue(null)
-    loadPdfHoverPreviewMock.mockResolvedValue({
-      dataUrl: "data:image/png;base64,hires-preview",
-      width: 3200,
-      height: 4525,
-    })
     fetchMock.mockResolvedValue(
       new Response("source-pdf", {
         status: 200,
@@ -180,7 +167,6 @@ describe("PaperCard", () => {
 
     expect(prefetchCommunityPaperDetailMock).toHaveBeenCalledWith("paper-1")
     expect(preloadPaperPreviewEnhancerMock).toHaveBeenCalled()
-    expect(preloadPdfHoverPreviewRendererMock).toHaveBeenCalled()
   })
 
   it("renders the admin delete affordance only when an action is provided", () => {
@@ -247,7 +233,7 @@ describe("PaperCard", () => {
     expect(screen.getByRole("link", { name: "Chinese translation (PDF)" })).toHaveAttribute("href", "/paper/paper-1")
   })
 
-  it("warms a higher resolution pdf preview after thumbnail load and shows the inspector on the pdf left side", async () => {
+  it("enlarges the hovered preview card in place without rendering a magnifier inspector", async () => {
     render(
       <MemoryRouter>
         <PaperCard paper={paper} />
@@ -255,57 +241,25 @@ describe("PaperCard", () => {
     )
 
     const previewFrame = screen.getByTestId("paper-card-source-preview-frame")
-    const previewImage = screen.getByTestId("paper-card-source-preview-image")
+    const previewSurface = screen.getByTestId("paper-card-source-preview-surface")
 
-    expect(screen.queryByTestId("paper-card-source-preview-inspector")).not.toBeInTheDocument()
-
-    fireEvent.load(previewImage)
-
-    await waitFor(() => {
-      expect(previewImage).toHaveClass("opacity-100")
-    })
-
-    await waitFor(() => {
-      expect(preloadPdfHoverPreviewRendererMock).toHaveBeenCalled()
-      expect(loadPdfHoverPreviewMock).toHaveBeenCalledWith(`${API_BASE_URL}/api/papers/paper-1/source-pdf`)
-    })
-
-    previewFrame.getBoundingClientRect = vi.fn(() => ({
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: 320,
-      bottom: 240,
-      width: 320,
-      height: 240,
-      toJSON: () => ({}),
-    }))
+    expect(previewSurface).not.toHaveClass("scale-[1.08]")
 
     fireEvent.pointerEnter(previewFrame, {
       clientX: 48,
       clientY: 60,
     })
-    fireEvent.pointerMove(previewFrame, {
-      clientX: 64,
-      clientY: 84,
-    })
 
-    const inspector = await screen.findByTestId("paper-card-source-preview-inspector")
-    expect(inspector).toBeInTheDocument()
-    expect(inspector).toHaveStyle({
-      width: "600px",
-      height: "800px",
-      right: "calc(100% + 18px)",
+    await waitFor(() => {
+      expect(previewSurface).toHaveClass("scale-[1.08]")
     })
-    expect(await screen.findByTestId("paper-card-source-preview-inspector-image")).toHaveAttribute(
-      "src",
-      "data:image/png;base64,hires-preview",
-    )
+    expect(screen.queryByTestId("paper-card-source-preview-inspector")).not.toBeInTheDocument()
 
     fireEvent.pointerLeave(previewFrame)
 
-    expect(screen.queryByTestId("paper-card-source-preview-inspector")).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(previewSurface).not.toHaveClass("scale-[1.08]")
+    })
   })
 
   it("starts a translated pdf download session and opens the returned download url", async () => {

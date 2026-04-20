@@ -101,6 +101,52 @@ describe("CommunityFeedSurface", () => {
     expect(useCommunityPapersMock).toHaveBeenLastCalledWith("latest", "transformers")
   })
 
+  it("hides the default public results pill before a search is active", () => {
+    useCommunityPapersMock.mockReturnValue({
+      items: [{ id: "paper-1", title: "Visible paper" }],
+      total: 1,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter>
+        <CommunityFeedSurface />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByText("1 public papers ready to read")).not.toBeInTheDocument()
+  })
+
+  it("shows the filtered results pill after a search is submitted", async () => {
+    const user = userEvent.setup()
+
+    useCommunityPapersMock.mockImplementation((sort: unknown, currentQuery: unknown) => ({
+      items: [{ id: "paper-1", title: "Visible paper" }],
+      total: 1,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+      hasMore: false,
+      loadingMore: false,
+      loadMore: vi.fn(),
+      sort,
+      query: currentQuery,
+    }))
+
+    render(
+      <MemoryRouter>
+        <CommunityFeedSurface />
+      </MemoryRouter>,
+    )
+
+    await user.type(screen.getByRole("textbox", { name: "Search community papers" }), "transformers")
+    await user.click(screen.getByRole("button", { name: "Community search" }))
+
+    expect(screen.getByText('1 public papers matched "transformers"')).toBeInTheDocument()
+  })
+
   it("shows admin-only delete affordances and calls the delete api", async () => {
     const refetch = vi.fn()
     const user = userEvent.setup()

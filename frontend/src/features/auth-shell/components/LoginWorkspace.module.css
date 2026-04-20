@@ -1,0 +1,301 @@
+.scene {
+  position: relative;
+  width: 100%;
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 14% 20%, color-mix(in srgb, var(--px-shell-accent) 14%, white 86%) 0%, transparent 26%),
+    radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--px-shell-info) 12%, white 88%) 0%, transparent 22%),
+    linear-gradient(180deg, color-mix(in srgb, white 84%, var(--px-shell-bg) 16%) 0%, color-mix(in srgb, white 72%, var(--px-shell-bg) 28%) 100%);
+}
+
+.scene::before,
+.scene::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(18px);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.scene::before {
+  top: 4%;
+  left: -4rem;
+  width: 16rem;
+  height: 16rem;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--px-shell-accent) 18%, white 12%) 0%, transparent 68%);
+}
+
+.scene::after {
+  right: -5rem;
+  bottom: -1rem;
+  width: 18rem;
+  height: 18rem;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--px-shell-info) 16%, white 10%) 0%, transparent 70%);
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 30rem);
+  border-radius: 1.75rem;
+  padding: 1px;
+  background-image: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--px-shell-accent) 56%, white 44%) 0%,
+    color-mix(in srgb, var(--px-shell-accent) 20%, white 80%) 52%,
+    color-mix(in srgb, var(--px-shell-info) 36%, white 64%) 100%
+  );
+  box-shadow:
+    0 28px 75px -44px color-mix(in srgb, var(--px-shell-accent) 24%, transparent),
+    0 24px 44px -32px rgba(31, 50, 86, 0.24);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.shell:hover {
+  box-shadow:
+    0 0 28px color-mix(in srgb, var(--px-shell-accent) 12%, transparent),
+    0 28px 60px -36px rgba(31, 50, 86, 0.28);
+}
+
+.panel {
+  border-radius: calc(1.75rem - 1px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, white 94%, var(--px-shell-panel) 6%) 0%, color-mix(in srgb, white 88%, var(--px-shell-bg) 12%) 100%);
+  color: var(--px-shell-ink);
+  transition:
+    transform 0.25s ease,
+    border-radius 0.25s ease;
+}
+
+.panel:hover {
+  transform: scale(0.988);
+  border-radius: 1.5rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.8rem;
+}
+
+.header {
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.9rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--px-shell-accent) 20%, white 35%);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--px-shell-accent-soft) 58%, white 42%);
+  color: color-mix(in srgb, var(--px-shell-accent-strong) 82%, var(--px-shell-ink) 18%);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: color-mix(in srgb, var(--px-shell-ink) 92%, #0f2748 8%);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.description {
+  margin: 0.75rem 0 0;
+  color: color-mix(in srgb, var(--px-shell-muted) 86%, var(--px-shell-ink) 14%);
+  font-size: 0.98rem;
+  line-height: 1.65;
+}
+
+.error {
+  margin-bottom: 0.25rem;
+  border-radius: 1rem;
+  border-color: color-mix(in srgb, var(--px-shell-danger-line) 80%, transparent);
+  background: color-mix(in srgb, var(--px-shell-danger-soft) 68%, white 32%);
+  color: color-mix(in srgb, var(--px-shell-danger) 88%, var(--px-shell-ink) 12%);
+}
+
+.fieldBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.label {
+  color: color-mix(in srgb, var(--px-shell-ink) 76%, var(--px-shell-muted) 24%);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.78rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--px-shell-line) 88%, white 12%);
+  border-radius: 1.4rem;
+  background: color-mix(in srgb, white 94%, var(--px-shell-panel) 6%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 8px 18px -16px rgba(15, 23, 42, 0.25);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.field:focus-within {
+  border-color: color-mix(in srgb, var(--px-shell-accent) 56%, white 18%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 0 0 4px color-mix(in srgb, var(--px-shell-accent) 14%, transparent),
+    0 10px 24px -18px color-mix(in srgb, var(--px-shell-accent) 32%, transparent);
+  transform: translateY(-1px);
+}
+
+.icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--px-shell-muted) 72%, var(--px-shell-accent) 28%);
+}
+
+.input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--px-shell-ink) 94%, black 6%);
+  font-size: 0.98rem;
+  line-height: 1.4;
+}
+
+.input::placeholder {
+  color: color-mix(in srgb, var(--px-shell-muted) 78%, white 22%);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 0.85rem;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton {
+  border: none;
+  outline: none;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 2.95rem;
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.ghostButton:hover {
+  transform: translateY(-1px);
+}
+
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--px-shell-accent) 76%, white 24%) 0%, var(--px-shell-accent) 100%);
+  color: white;
+  box-shadow: 0 18px 28px -22px color-mix(in srgb, var(--px-shell-accent) 54%, transparent);
+}
+
+.primaryButton:hover {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--px-shell-accent-strong) 74%, white 14%) 0%, var(--px-shell-accent-strong) 100%);
+}
+
+.secondaryRow {
+  display: flex;
+  gap: 0.7rem;
+}
+
+.secondaryButton {
+  flex: 1;
+  padding: 0.72rem 0.9rem;
+  background: color-mix(in srgb, white 90%, var(--px-shell-panel-strong) 10%);
+  border: 1px solid color-mix(in srgb, var(--px-shell-line) 86%, white 14%);
+  color: color-mix(in srgb, var(--px-shell-ink) 82%, var(--px-shell-accent-strong) 18%);
+  box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.28);
+}
+
+.secondaryButton:hover {
+  background: color-mix(in srgb, var(--px-shell-accent-soft) 50%, white 50%);
+  border-color: color-mix(in srgb, var(--px-shell-accent) 24%, white 20%);
+}
+
+.ghostButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.85rem;
+  padding: 0.7rem 1rem;
+  border-radius: 0.85rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--px-shell-muted) 92%, var(--px-shell-ink) 8%);
+}
+
+.ghostButton:hover {
+  background: color-mix(in srgb, var(--px-shell-accent-soft) 34%, white 66%);
+  color: color-mix(in srgb, var(--px-shell-accent-strong) 86%, var(--px-shell-ink) 14%);
+}
+
+.footerNote {
+  margin-top: 0.15rem;
+  text-align: center;
+  color: color-mix(in srgb, var(--px-shell-muted) 90%, white 10%);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .scene {
+    padding: 1.25rem;
+  }
+
+  .form {
+    padding: 1.35rem;
+  }
+
+  .secondaryRow {
+    flex-direction: column;
+  }
+}

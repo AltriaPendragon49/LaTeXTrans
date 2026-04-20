@@ -1,25 +1,15 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
 
 import { API_BASE_URL } from "@/api-base"
 import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
-import {
-  createCommunityPaperDownloadSession,
-  translateCommunityPaper,
-} from "@/features/community-paper/services/community-paper-api"
-import { useTranslationConfig } from "@/features/translation-workflow/hooks/useTranslationConfig"
-import { useTranslationTask } from "@/features/translation-workflow/hooks/useTranslationTask"
+import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
 import type { CommunityPaperReaderMode } from "@/types/community"
 
 import { PaperDetailHeader } from "./PaperDetailHeader"
 import { PaperDetailStateBoundary } from "./PaperDetailStateBoundary"
 import { PaperDetailWorkspace } from "./PaperDetailWorkspace"
-import {
-  resolveAvailableModes,
-  resolvePreferredMode,
-  resolveStageLabel,
-} from "../utils/paper-detail-mode-resolution"
+import { resolveAvailableModes, resolvePreferredMode } from "../utils/paper-detail-mode-resolution"
 
 function formatAuthors(authors: unknown[], fallback: string) {
   if (!authors.length) {
@@ -77,7 +67,6 @@ interface PaperDetailScreenProps {
 
 export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const {
     paper,
     preview,
@@ -88,9 +77,6 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     error,
     notFound,
   } = usePaperDetail(paperId ?? undefined)
-  const { config } = useTranslationConfig()
-  const { setTaskId, setArxivId } = useTranslationTask()
-  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false)
   const [selectedModeState, setSelectedModeState] = useState<{
     paperId: string | null
     mode: CommunityPaperReaderMode | null
@@ -123,31 +109,6 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     })
   }
 
-  async function handleTranslate(activePaperArxivId: string | null | undefined) {
-    if (!paperId) {
-      return
-    }
-
-    try {
-      setActionError(null)
-      const response = await translateCommunityPaper(paperId, config)
-      setTaskId(response.task_id)
-      setArxivId(activePaperArxivId ?? null)
-      navigate(response.processing_url)
-    } catch (translateError) {
-      setActionError(extractActionErrorMessage(translateError) ?? t("community.actions.translateError"))
-    }
-  }
-
-  function handleViewProgress(activePaperTaskId: string | null | undefined, activePaperArxivId: string | null | undefined) {
-    if (!activePaperTaskId) {
-      return
-    }
-    setTaskId(activePaperTaskId)
-    setArxivId(activePaperArxivId ?? null)
-    navigate(`/processing?taskId=${activePaperTaskId}`)
-  }
-
   async function handleDownload() {
     if (!paperId) {
       return
@@ -174,12 +135,6 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     >
       {(activePaper) => {
         const authorsLabel = formatAuthors(activePaper.authors, t("community.card.authorsUnavailable"))
-        const hasTranslatedMode = availableModes.includes("translated_pdf")
-        const stageLabel = resolveStageLabel(activePaper.trans_status, readerState, hasTranslatedMode, t)
-        const canTranslate = activePaper.trans_status === "not_started" || activePaper.trans_status === "failed"
-        const canViewProgress =
-          Boolean(activePaper.community_selected_task_id) &&
-          (activePaper.trans_status === "queued" || activePaper.trans_status === "processing")
         const canDownload = activePaper.trans_status === "completed"
         const originalSourceUrl =
           reader?.source?.url ??
@@ -200,19 +155,9 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
                 paper={activePaper}
                 selectedMode={selectedMode}
                 availableModes={availableModes}
-                isHeaderExpanded={isHeaderExpanded}
                 authorsLabel={authorsLabel}
-                stageLabel={stageLabel}
-                actionError={actionError}
-                canTranslate={canTranslate}
-                canViewProgress={canViewProgress}
                 canDownload={canDownload}
                 onSelectMode={handleSelectMode}
-                onToggleExpanded={setIsHeaderExpanded}
-                onTranslate={() => void handleTranslate(activePaper.arxiv_id)}
-                onViewProgress={() =>
-                  handleViewProgress(activePaper.community_selected_task_id, activePaper.arxiv_id)
-                }
                 onDownload={() => void handleDownload()}
               />
 

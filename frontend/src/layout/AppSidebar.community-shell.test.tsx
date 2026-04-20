@@ -66,6 +66,24 @@ describe("AppSidebar community shell", () => {
     expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeInTheDocument()
   })
 
+  it("uses the collapsed brand button as the expand control", async () => {
+    const user = userEvent.setup()
+    await i18n.changeLanguage("en")
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <AppSidebar />
+      </MemoryRouter>,
+    )
+
+    const expandButton = screen.getByRole("button", { name: /expand sidebar/i })
+    const shell = container.querySelector("aside")
+
+    expect(expandButton).toHaveTextContent("PX")
+    await user.click(expandButton)
+    expect(shell).toHaveAttribute("data-collapsed", "false")
+  })
+
   it("opens the account menu from the bottom-left avatar and exposes account settings actions", async () => {
     const user = userEvent.setup()
     await i18n.changeLanguage("en")

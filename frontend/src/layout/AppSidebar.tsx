@@ -43,13 +43,20 @@ export function AppSidebar() {
           brandName={brandName}
           subtitle={brandSubtitle}
           collapsed={collapsed}
-          onClick={() => navigate("/")}
+          collapsedActionLabel="Expand sidebar"
+          onClick={() => {
+            if (collapsed) {
+              setCollapsed(false)
+              return
+            }
+
+            navigate("/")
+          }}
         />
       }
       collapsed={collapsed}
       onToggleCollapse={() => setCollapsed((current) => !current)}
       collapseLabel="Collapse sidebar"
-      expandLabel="Expand sidebar"
       nav={
         <nav aria-label={t("community.nav.explore")} className="space-y-2">
           <SidebarNavItem

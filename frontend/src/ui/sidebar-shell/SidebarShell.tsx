@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft } from "lucide-react"
 
 import { Button } from "@/ui/button/Button"
 
@@ -10,7 +10,6 @@ export function SidebarShell({
   collapsed,
   onToggleCollapse,
   collapseLabel,
-  expandLabel,
 }: {
   brand: ReactNode
   nav: ReactNode
@@ -18,7 +17,6 @@ export function SidebarShell({
   collapsed: boolean
   onToggleCollapse: () => void
   collapseLabel: string
-  expandLabel: string
 }) {
   return (
     <aside
@@ -28,21 +26,29 @@ export function SidebarShell({
       }`}
     >
       <div className={collapsed ? "space-y-6" : "space-y-8"}>
-        <div className={collapsed ? "space-y-4" : "space-y-4"}>
+        <div
+          className={
+            collapsed
+              ? "flex justify-center"
+              : "flex items-start justify-between gap-3"
+          }
+        >
           {brand}
-          <div className={collapsed ? "flex justify-center" : "flex justify-end"}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={onToggleCollapse}
-              aria-label={collapsed ? expandLabel : collapseLabel}
-              title={collapsed ? expandLabel : collapseLabel}
-              className="h-10 w-10 shrink-0 rounded-[16px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] text-[color:var(--px-shell-muted)] hover:bg-white hover:text-[color:var(--px-shell-ink)]"
-            >
-              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </Button>
-          </div>
+          {!collapsed ? (
+            <div className="shrink-0 pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                aria-label={collapseLabel}
+                title={collapseLabel}
+                className="h-10 w-10 shrink-0 rounded-[16px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] text-[color:var(--px-shell-muted)] hover:bg-white hover:text-[color:var(--px-shell-ink)]"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : null}
         </div>
         {nav}
       </div>

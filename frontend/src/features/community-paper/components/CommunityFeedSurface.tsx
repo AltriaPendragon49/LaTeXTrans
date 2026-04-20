@@ -1,4 +1,4 @@
-import { Clock3, Compass, Flame, Search, Trash2 } from "lucide-react"
+import { Clock3, Flame, Search, Trash2 } from "lucide-react"
 import { useState, type ReactElement } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -98,14 +98,11 @@ export default function CommunityFeedSurface() {
         value={activeTab}
         onValueChange={(nextValue) => setActiveTab(nextValue as CommunityFeedSort)}
         className="pb-2"
-        meta={
+        meta={query ? (
           <Pill className="px-3 py-2 text-xs font-medium normal-case tracking-normal">
-            <Compass className="h-4 w-4" />
-            {query
-              ? t("community.feed.resultsFiltered", { count: total, query })
-              : t("community.feed.resultsTotal", { count: total })}
+            {t("community.feed.resultsFiltered", { count: total, query })}
           </Pill>
-        }
+        ) : undefined}
       />
 
       <div className="relative">

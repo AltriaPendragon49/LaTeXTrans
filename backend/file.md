@@ -1,34 +1,34 @@
 # Backend File Index
 
-按 `backend/` 下真实物理路径整理的后端生产侧索引，方便 AI 或人工先按路径检索，再按说明定位模块。
+鎸?`backend/` 涓嬬湡瀹炵墿鐞嗚矾寰勬暣鐞嗙殑鍚庣鐢熶骇渚х储寮曪紝鏂逛究 AI 鎴栦汉宸ュ厛鎸夎矾寰勬绱紝鍐嶆寜璇存槑瀹氫綅妯″潡銆?
 
-收录范围：Python 源码、SQL 迁移脚本、运维脚本。
-不收录范围：测试代码、Markdown 文档、JSON 数据、环境示例、README。
+鏀跺綍鑼冨洿锛歅ython 婧愮爜銆丼QL 杩佺Щ鑴氭湰銆佽繍缁磋剼鏈€?
+涓嶆敹褰曡寖鍥达細娴嬭瘯浠ｇ爜銆丮arkdown 鏂囨。銆丣SON 鏁版嵁銆佺幆澧冪ず渚嬨€丷EADME銆?
 
 ## Usage Rules
 
-- 当需要快速查找后端文件、理解目录分布、定位模块入口时，优先先读本文件。
-- 建议检索顺序：先看 `Pure Path List` 找路径，再看 `Annotated Index` 读职责和顶层符号。
-- 任何新增、删除、移动、重命名后端生产侧文件的修改，都必须同步维护本文件。
-- 任何会显著改变文件职责的后端改动，也应同步更新对应说明。
+- 褰撻渶瑕佸揩閫熸煡鎵惧悗绔枃浠躲€佺悊瑙ｇ洰褰曞垎甯冦€佸畾浣嶆ā鍧楀叆鍙ｆ椂锛屼紭鍏堝厛璇绘湰鏂囦欢銆?
+- 寤鸿妫€绱㈤『搴忥細鍏堢湅 `Pure Path List` 鎵捐矾寰勶紝鍐嶇湅 `Annotated Index` 璇昏亴璐ｅ拰椤跺眰绗﹀彿銆?
+- 浠讳綍鏂板銆佸垹闄ゃ€佺Щ鍔ㄣ€侀噸鍛藉悕鍚庣鐢熶骇渚ф枃浠剁殑淇敼锛岄兘蹇呴』鍚屾缁存姢鏈枃浠躲€?
+- 浠讳綍浼氭樉钁楁敼鍙樻枃浠惰亴璐ｇ殑鍚庣鏀瑰姩锛屼篃搴斿悓姝ユ洿鏂板搴旇鏄庛€?
 
 ## Directory Map
 
-- `backend/app/api/routes`: FastAPI 路由入口层，负责对外 API。
-- `backend/app/core`: 全局配置、认证、加密、时间等核心基础设施。
-- `backend/app/db`: 数据库连接与方言适配。
-- `backend/app/models`: 配置模型与数据结构定义。
-- `backend/app/policies`: 权限策略与授权规则。
-- `backend/app/repositories`: 持久化读写仓储层。
-- `backend/app/services`: 业务服务层，是后端主要实现区域。
-- `backend/app/services/agents`: LaTeX 翻译代理与编排管线。
-- `backend/app/services/community_agent`: 社区智能体运行时、技能与工具。
-- `backend/app/services/latex`: LaTeX 解析、重建、编译、结构守卫。
-- `backend/app/services/translation`: 降级、修复、结构检查等翻译兜底逻辑。
-- `backend/app/utils`: 通用异步或阻塞辅助工具。
-- `backend/migrations`: 主数据库迁移脚本。
-- `backend/migrations_mysql`: MySQL 迁移脚本。
-- `backend/scripts`: 运维、初始化、迁移与审计脚本。
+- `backend/app/api/routes`: FastAPI 璺敱鍏ュ彛灞傦紝璐熻矗瀵瑰 API銆?
+- `backend/app/core`: 鍏ㄥ眬閰嶇疆銆佽璇併€佸姞瀵嗐€佹椂闂寸瓑鏍稿績鍩虹璁炬柦銆?
+- `backend/app/db`: 鏁版嵁搴撹繛鎺ヤ笌鏂硅█閫傞厤銆?
+- `backend/app/models`: 閰嶇疆妯″瀷涓庢暟鎹粨鏋勫畾涔夈€?
+- `backend/app/policies`: 鏉冮檺绛栫暐涓庢巿鏉冭鍒欍€?
+- `backend/app/repositories`: 鎸佷箙鍖栬鍐欎粨鍌ㄥ眰銆?
+- `backend/app/services`: 涓氬姟鏈嶅姟灞傦紝鏄悗绔富瑕佸疄鐜板尯鍩熴€?
+- `backend/app/services/agents`: LaTeX 缈昏瘧浠ｇ悊涓庣紪鎺掔绾裤€?
+- `backend/app/services/community_agent`: 绀惧尯鏅鸿兘浣撹繍琛屾椂銆佹妧鑳戒笌宸ュ叿銆?
+- `backend/app/services/latex`: LaTeX 瑙ｆ瀽銆侀噸寤恒€佺紪璇戙€佺粨鏋勫畧鍗€?
+- `backend/app/services/translation`: 闄嶇骇銆佷慨澶嶃€佺粨鏋勬鏌ョ瓑缈昏瘧鍏滃簳閫昏緫銆?
+- `backend/app/utils`: 閫氱敤寮傛鎴栭樆濉炶緟鍔╁伐鍏枫€?
+- `backend/migrations`: 涓绘暟鎹簱杩佺Щ鑴氭湰銆?
+- `backend/migrations_mysql`: MySQL 杩佺Щ鑴氭湰銆?
+- `backend/scripts`: 杩愮淮銆佸垵濮嬪寲銆佽縼绉讳笌瀹¤鑴氭湰銆?
 
 ## Pure Path List
 
@@ -180,223 +180,224 @@
 ## Annotated Index
 
 ### backend
-- `backend/__init__.py`: 包初始化与导出文件。
+- `backend/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
 
 ### backend/app
-- `backend/app/__init__.py`: 包初始化与导出文件。
-- `backend/app/main.py`: FastAPI 应用入口，负责注册中间件和路由，并处理启动与关闭时的任务收尾。 | 顶层符号: _dedupe_non_empty, get_translation_task_repository, get_community_paper_repository, reset_stale_community_tasks, fail_interrupted_translation_tasks, startup_event
+- `backend/app/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/main.py`: FastAPI 搴旂敤鍏ュ彛锛岃礋璐ｆ敞鍐屼腑闂翠欢鍜岃矾鐢憋紝骞跺鐞嗗惎鍔ㄤ笌鍏抽棴鏃剁殑浠诲姟鏀跺熬銆?| 椤跺眰绗﹀彿: _dedupe_non_empty, get_translation_task_repository, get_community_paper_repository, reset_stale_community_tasks, fail_interrupted_translation_tasks, startup_event
 
 ### backend/app/api
-- `backend/app/api/__init__.py`: 包初始化与导出文件。
+- `backend/app/api/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
 
 ### backend/app/api/routes
-- `backend/app/api/routes/__init__.py`: 包初始化与导出文件。
-- `backend/app/api/routes/arxiv.py`: arXiv 下载与合法性校验接口。 | 顶层符号: ArxivRequest, ArxivResponse, _download_arxiv_background, download_arxiv, validate_arxiv_id
-- `backend/app/api/routes/auth.py`: 认证接口，处理登录、当前用户与登出。 | 顶层符号: LoginRequest, LocalUserPayload, LoginResponse, MeResponse, get_auth_service, _error_response, login, current_user, logout
-- `backend/app/api/routes/community_agent.py`: 社区智能体运行、会话与事件流接口。 | 顶层符号: CommunityAgentSkillToggles, CommunityAgentRunRequest, CommunityConversationTurnPayload, CommunityConversationRecordPayload, CommunityConversationDeleteResponse, _ensure_community_agent_authorized, _ensure_community_agent_product_enabled, create_agent_run, list_agent_conversations, upsert_agent_conversation, delete_agent_conversation
-- `backend/app/api/routes/download.py`: 译文、源文件、PDF、日志与术语下载或预览接口。 | 顶层符号: _validate_pdf_with_pdfinfo, _find_translated_pdf, _candidate_output_dirs, _find_translated_pdf_in_community_library, _collect_original_pdf_candidates, _pick_best_source_pdf
-- `backend/app/api/routes/history.py`: 翻译历史与任务详情接口。 | 顶层符号: TaskHistoryItem, TaskHistoryResponse, TaskDetailResponse, BatchDeleteRequest, get_translation_task_repository, _resolve_translation_task_repository, _infer_status_from_task_log, _ensure_task_authorized, _reconcile_task_snapshot, _serialize_optional_timestamp
-- `backend/app/api/routes/papers.py`: 社区论文提交、列表、详情、预览、下载与管理员策展管理接口，现包含管理员任务历史查询与硬删除入口。 | 顶层符号: AssetSummary, ViewerState, PaperSummary, TaskSummary, PaperSubmitResponse, AdminCurationJobHistoryItemResponse, AdminDeleteCurationJobResponse, _ensure_paper_authorized, _ensure_local_admin, _proxy_remote_pdf_preview, _parse_single_byte_range, _serve_local_pdf_preview, _paper_thumbnail_cache_dir
-- `backend/app/api/routes/settings.py`: 用户设置读取与更新接口。 | 顶层符号: UserSettingsResponse, UserSettingsUpdate, get_user_settings_repository, _resolve_user_settings_repository, _build_response, _ensure_settings_authorized, get_user_settings, update_user_settings
-- `backend/app/api/routes/task.py`: 任务状态查询、删除与流式订阅接口。 | 顶层符号: TaskStatusResponse, get_translation_task_repository, _resolve_translation_task_repository, _is_guest_task, _authorize_authenticated_task, _load_authorized_task, get_task_status
-- `backend/app/api/routes/translate.py`: 翻译启动、批量翻译、配置哈希与结果复用接口。 | 顶层符号: TranslateRequest, TranslateResponse, BatchTranslateRequest, BatchTranslateResponse, _schedule_community_publish_watch, get_translation_task_repository, get_user_api_config, get_user_api_config_async, build_llm_config, build_llm_config_async
-- `backend/app/api/routes/upload.py`: LaTeX 上传、校验与压缩包解包接口。 | 顶层符号: LatexValidationResponse, UploadResponse, extract_rar, get_file_extension, upload_file
+- `backend/app/api/routes/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/api/routes/arxiv.py`: arXiv 涓嬭浇涓庡悎娉曟€ф牎楠屾帴鍙ｃ€?| 椤跺眰绗﹀彿: ArxivRequest, ArxivResponse, _download_arxiv_background, download_arxiv, validate_arxiv_id
+- `backend/app/api/routes/auth.py`: 璁よ瘉鎺ュ彛锛屽鐞嗙櫥褰曘€佸綋鍓嶇敤鎴蜂笌鐧诲嚭銆?| 椤跺眰绗﹀彿: LoginRequest, LocalUserPayload, LoginResponse, MeResponse, get_auth_service, _error_response, login, current_user, logout
+- `backend/app/api/routes/community_agent.py`: 绀惧尯鏅鸿兘浣撹繍琛屻€佷細璇濅笌浜嬩欢娴佹帴鍙ｃ€?| 椤跺眰绗﹀彿: CommunityAgentSkillToggles, CommunityAgentRunRequest, CommunityConversationTurnPayload, CommunityConversationRecordPayload, CommunityConversationDeleteResponse, _ensure_community_agent_authorized, _ensure_community_agent_product_enabled, create_agent_run, list_agent_conversations, upsert_agent_conversation, delete_agent_conversation
+- `backend/app/api/routes/download.py`: 璇戞枃銆佹簮鏂囦欢銆丳DF銆佹棩蹇椾笌鏈涓嬭浇鎴栭瑙堟帴鍙ｃ€?| 椤跺眰绗﹀彿: _validate_pdf_with_pdfinfo, _find_translated_pdf, _candidate_output_dirs, _find_translated_pdf_in_community_library, _collect_original_pdf_candidates, _pick_best_source_pdf
+- `backend/app/api/routes/history.py`: 缈昏瘧鍘嗗彶涓庝换鍔¤鎯呮帴鍙ｃ€?| 椤跺眰绗﹀彿: TaskHistoryItem, TaskHistoryResponse, TaskDetailResponse, BatchDeleteRequest, get_translation_task_repository, _resolve_translation_task_repository, _infer_status_from_task_log, _ensure_task_authorized, _reconcile_task_snapshot, _serialize_optional_timestamp
+- `backend/app/api/routes/papers.py`: 绀惧尯璁烘枃鎻愪氦銆佸垪琛ㄣ€佽鎯呫€侀瑙堛€佷笅杞戒笌绠＄悊鍛樼瓥灞曠鐞嗘帴鍙ｏ紝鐜板寘鍚鐞嗗憳浠诲姟鍘嗗彶鏌ヨ涓庣‖鍒犻櫎鍏ュ彛銆?| 椤跺眰绗﹀彿: AssetSummary, ViewerState, PaperSummary, TaskSummary, PaperSubmitResponse, AdminCurationJobHistoryItemResponse, AdminDeleteCurationJobResponse, _ensure_paper_authorized, _ensure_local_admin, _proxy_remote_pdf_preview, _parse_single_byte_range, _serve_local_pdf_preview, _paper_thumbnail_cache_dir
+- `backend/app/api/routes/settings.py`: 鐢ㄦ埛璁剧疆璇诲彇涓庢洿鏂版帴鍙ｃ€?| 椤跺眰绗﹀彿: UserSettingsResponse, UserSettingsUpdate, get_user_settings_repository, _resolve_user_settings_repository, _build_response, _ensure_settings_authorized, get_user_settings, update_user_settings
+- `backend/app/api/routes/task.py`: 浠诲姟鐘舵€佹煡璇€佸垹闄や笌娴佸紡璁㈤槄鎺ュ彛銆?| 椤跺眰绗﹀彿: TaskStatusResponse, get_translation_task_repository, _resolve_translation_task_repository, _is_guest_task, _authorize_authenticated_task, _load_authorized_task, get_task_status
+- `backend/app/api/routes/translate.py`: 缈昏瘧鍚姩銆佹壒閲忕炕璇戙€侀厤缃搱甯屼笌缁撴灉澶嶇敤鎺ュ彛銆?| 椤跺眰绗﹀彿: TranslateRequest, TranslateResponse, BatchTranslateRequest, BatchTranslateResponse, _schedule_community_publish_watch, get_translation_task_repository, get_user_api_config, get_user_api_config_async, build_llm_config, build_llm_config_async
+- `backend/app/api/routes/upload.py`: LaTeX 涓婁紶銆佹牎楠屼笌鍘嬬缉鍖呰В鍖呮帴鍙ｃ€?| 椤跺眰绗﹀彿: LatexValidationResponse, UploadResponse, extract_rar, get_file_extension, upload_file
 
 ### backend/app/core
-- `backend/app/core/__init__.py`: 包初始化与导出文件。
-- `backend/app/core/auth.py`: 本地认证与权限依赖实现，处理 JWT、当前用户解析和管理员请求校验。 | 顶层符号: extract_bearer_token_from_credentials, extract_bearer_token, resolve_current_user_id, get_auth_service, optional_current_user, require_current_user
-- `backend/app/core/config.py`: 全局配置中心，定义设置项、任务状态枚举以及 LLM、存储、数据库等运行参数。 | 顶层符号: TaskStatus, CompilationStage, Settings, get_settings, get_llm_config
-- `backend/app/core/encryption.py`: 核心基础设施文件。 | 顶层符号: _get_fernet, encrypt_api_key, decrypt_api_key, is_encryption_configured
-- `backend/app/core/timezone_utils.py`: 核心基础设施文件。 | 顶层符号: get_cst_now, get_cst_now_iso
+- `backend/app/core/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/core/auth.py`: 鏈湴璁よ瘉涓庢潈闄愪緷璧栧疄鐜帮紝澶勭悊 JWT銆佸綋鍓嶇敤鎴疯В鏋愬拰绠＄悊鍛樿姹傛牎楠屻€?| 椤跺眰绗﹀彿: extract_bearer_token_from_credentials, extract_bearer_token, resolve_current_user_id, get_auth_service, optional_current_user, require_current_user
+- `backend/app/core/config.py`: 鍏ㄥ眬閰嶇疆涓績锛屽畾涔夎缃」銆佷换鍔＄姸鎬佹灇涓句互鍙?LLM銆佸瓨鍌ㄣ€佹暟鎹簱绛夎繍琛屽弬鏁般€?| 椤跺眰绗﹀彿: TaskStatus, CompilationStage, Settings, get_settings, get_llm_config
+- `backend/app/core/encryption.py`: 鏍稿績鍩虹璁炬柦鏂囦欢銆?| 椤跺眰绗﹀彿: _get_fernet, encrypt_api_key, decrypt_api_key, is_encryption_configured
+- `backend/app/core/timezone_utils.py`: 鏍稿績鍩虹璁炬柦鏂囦欢銆?| 椤跺眰绗﹀彿: get_cst_now, get_cst_now_iso
 
 ### backend/app/db
-- `backend/app/db/__init__.py`: 包初始化与导出文件。
-- `backend/app/db/connection.py`: 数据库连接与辅助文件。 | 顶层符号: DatabaseUnavailableError, get_database_dialect, db_connection
+- `backend/app/db/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/db/connection.py`: 鏁版嵁搴撹繛鎺ヤ笌杈呭姪鏂囦欢銆?| 椤跺眰绗﹀彿: DatabaseUnavailableError, get_database_dialect, db_connection
 
 ### backend/app/models
-- `backend/app/models/__init__.py`: 包初始化与导出文件。
-- `backend/app/models/config_models.py`: 数据模型文件。 | 顶层符号: SourceType, FormattingConfig, AdvancedConfig, LatexValidation
+- `backend/app/models/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/models/config_models.py`: 鏁版嵁妯″瀷鏂囦欢銆?| 椤跺眰绗﹀彿: SourceType, FormattingConfig, AdvancedConfig, LatexValidation
 
 ### backend/app/policies
-- `backend/app/policies/__init__.py`: 包初始化与导出文件。 | 顶层符号: authorize
-- `backend/app/policies/admin_policy.py`: 鉴权策略文件。 | 顶层符号: AdminPolicy
-- `backend/app/policies/base.py`: 鉴权策略文件。 | 顶层符号: AuthorizationResult, BasePolicy, _normalize_roles, is_admin, is_authenticated
-- `backend/app/policies/community_agent_policy.py`: 鉴权策略文件。 | 顶层符号: CommunityAgentPolicy
-- `backend/app/policies/paper_policy.py`: 鉴权策略文件。 | 顶层符号: PaperPolicy
-- `backend/app/policies/settings_policy.py`: 鉴权策略文件。 | 顶层符号: SettingsPolicy
-- `backend/app/policies/task_policy.py`: 鉴权策略文件。 | 顶层符号: TaskPolicy
+- `backend/app/policies/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?| 椤跺眰绗﹀彿: authorize
+- `backend/app/policies/admin_policy.py`: 閴存潈绛栫暐鏂囦欢銆?| 椤跺眰绗﹀彿: AdminPolicy
+- `backend/app/policies/base.py`: 閴存潈绛栫暐鏂囦欢銆?| 椤跺眰绗﹀彿: AuthorizationResult, BasePolicy, _normalize_roles, is_admin, is_authenticated
+- `backend/app/policies/community_agent_policy.py`: 閴存潈绛栫暐鏂囦欢銆?| 椤跺眰绗﹀彿: CommunityAgentPolicy
+- `backend/app/policies/paper_policy.py`: 閴存潈绛栫暐鏂囦欢銆?| 椤跺眰绗﹀彿: PaperPolicy
+- `backend/app/policies/settings_policy.py`: 閴存潈绛栫暐鏂囦欢銆?| 椤跺眰绗﹀彿: SettingsPolicy
+- `backend/app/policies/task_policy.py`: 閴存潈绛栫暐鏂囦欢銆?| 椤跺眰绗﹀彿: TaskPolicy
 
 ### backend/app/repositories
-- `backend/app/repositories/__init__.py`: 包初始化与导出文件。
-- `backend/app/repositories/auth_repository.py`: 仓储层文件，为上层服务提供持久化读写能力。 | 顶层符号: AuthRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall
-- `backend/app/repositories/community_agent_repository.py`: 仓储层文件，为上层服务提供持久化读写能力。 | 顶层符号: CommunityAgentConversationRepository, CommunityAgentRunRepository, _placeholder, _fetchone, _fetchall, _decode_turns, _decode_json_dict, _normalize_db_timestamp
-- `backend/app/repositories/community_paper_repository.py`: 社区论文仓储，负责论文、资产、互动、策展、任务历史与结构化解读等数据读写。 | 顶层符号: CommunityPaperRepository, _utc_now_naive, _placeholder, _fetchone, _fetchall, _decode_json_list
-- `backend/app/repositories/translation_task_repository.py`: 翻译任务仓储，负责任务状态、详情、配置哈希与历史记录的持久化。 | 顶层符号: TranslationTaskRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall, _decode_json
-- `backend/app/repositories/user_settings_repository.py`: 仓储层文件，为上层服务提供持久化读写能力。 | 顶层符号: UserSettingsRepository, _utc_now_naive, _placeholder, _fetchone, _decode_json
+- `backend/app/repositories/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/repositories/auth_repository.py`: 浠撳偍灞傛枃浠讹紝涓轰笂灞傛湇鍔℃彁渚涙寔涔呭寲璇诲啓鑳藉姏銆?| 椤跺眰绗﹀彿: AuthRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall
+- `backend/app/repositories/community_agent_repository.py`: 浠撳偍灞傛枃浠讹紝涓轰笂灞傛湇鍔℃彁渚涙寔涔呭寲璇诲啓鑳藉姏銆?| 椤跺眰绗﹀彿: CommunityAgentConversationRepository, CommunityAgentRunRepository, _placeholder, _fetchone, _fetchall, _decode_turns, _decode_json_dict, _normalize_db_timestamp
+- `backend/app/repositories/community_paper_repository.py`: 绀惧尯璁烘枃浠撳偍锛岃礋璐ｈ鏂囥€佽祫浜с€佷簰鍔ㄣ€佺瓥灞曘€佷换鍔″巻鍙蹭笌缁撴瀯鍖栬В璇荤瓑鏁版嵁璇诲啓銆?| 椤跺眰绗﹀彿: CommunityPaperRepository, _utc_now_naive, _placeholder, _fetchone, _fetchall, _decode_json_list
+- `backend/app/repositories/translation_task_repository.py`: 缈昏瘧浠诲姟浠撳偍锛岃礋璐ｄ换鍔＄姸鎬併€佽鎯呫€侀厤缃搱甯屼笌鍘嗗彶璁板綍鐨勬寔涔呭寲銆?| 椤跺眰绗﹀彿: TranslationTaskRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall, _decode_json
+- `backend/app/repositories/user_settings_repository.py`: 浠撳偍灞傛枃浠讹紝涓轰笂灞傛湇鍔℃彁渚涙寔涔呭寲璇诲啓鑳藉姏銆?| 椤跺眰绗﹀彿: UserSettingsRepository, _utc_now_naive, _placeholder, _fetchone, _decode_json
 
 ### backend/app/services
-- `backend/app/services/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/auth_service.py`: 业务服务文件。 | 顶层符号: AuthServiceError, NiuTransAuthClient, LocalAuthService, _b64url_encode, _b64url_decode, _now_utc, _now_unix
-- `backend/app/services/community_agent_service.py`: 社区智能体服务门面，创建运行记录、转发事件流并协调持久化。 | 顶层符号: RunNotFoundError, _RunRecord, _now_iso, _default_provider_state, _should_persist_run, _authorize_run_access, _save_run_to_repository, _save_event_to_repository
-- `backend/app/services/community_content_pool_service.py`: 社区内容池服务，处理论文导入、内容池就绪度与后台构建任务。 | 顶层符号: PoolCandidate, ContentPoolDependencies, _CandidateState, CommunityContentPoolService, _utc_now_iso, _normalize_text, _default_discover_candidates, _default_admit_candidate, _default_ensure_source_ready, _default_start_translation
-- `backend/app/services/config_capture.py`: 业务服务文件。 | 顶层符号: _json_safe, _mask_api_key, _sanitize_llm_config, _sanitize_agent_config, capture_task_config
-- `backend/app/services/email_service.py`: 业务服务文件。 | 顶层符号: EmailService, get_email_service
-- `backend/app/services/latex_validator.py`: 业务服务文件。 | 顶层符号: validate_latex_directory, find_main_tex_file
-- `backend/app/services/paper_thumbnail_service.py`: 论文 PDF 缩略图缓存服务，负责首页缩略图生成、缓存命中与预热复用。 | 顶层符号: ensure_pdf_thumbnail, _thumbnail_cache_dir, _thumbnail_cache_path, _render_pdf_thumbnail_bytes_from_path, _render_pdf_thumbnail_bytes_from_url
-- `backend/app/services/paper_preview_service.py`: 论文预览构建服务，生成 HTML、摘要、预览载荷并做缓存恢复。 | 顶层符号: _load_json, _build_placeholder_map, _replace_placeholders, _strip_structural_commands, _unwrap_formatting_commands, _normalize_inline_text
-- `backend/app/services/paper_service.py`: 论文主服务，负责社区论文导入、翻译桥接、预览、下载、结构化解读，以及管理员策展失败留痕、任务历史与硬删除流程。 | 顶层符号: _StructuredInsightBasePreferenceTracker, _utc_now_iso, _get_curation_semaphore, _get_delete_semaphore, get_community_paper_repository, _run_local_repo, _run_db_blocking_with_retry
-- `backend/app/services/runtime_pressure.py`: 运行时压力协调服务，负责区分 web/worker 角色、记录前台访问压力并让后台回填任务让步。 | 顶层符号: get_runtime_role, web_runtime_enabled, background_runtime_enabled, admin_job_execution_enabled, record_frontend_pressure, has_recent_frontend_pressure, backfill_start_blocked_by_frontend_pressure, apply_worker_process_priority
-- `backend/app/services/storage_backend.py`: 对象存储抽象层，统一本地磁盘与 COS 等后端的上传/下载接口。 | 顶层符号: StoredObjectRef, StorageBackend, LocalDiskStorageBackend, CosStorageBackend, build_storage_backend, _ensure_cos_config
-- `backend/app/services/task_artifact_storage.py`: 任务产物持久化服务，在本地与对象存储之间同步输出目录及清单。 | 顶层符号: _get_storage_backend, _storage_uses_object_store, _normalize_stored_path, normalize_stored_task_path, resolve_local_task_path, persist_task_directory
-- `backend/app/services/task_detail.py`: 任务详情推断与标准化工具，统一 stage、detail_code、detail_message 的生成。 | 顶层符号: normalize_stage, normalize_detail_params, infer_task_detail
-- `backend/app/services/task_manager.py`: 任务管理核心，维护内存态任务、异步刷库、队列执行与运行时清理。 | 顶层符号: PersistentStateFlusher, TaskManager, GuestTaskTracker, TaskQueue, get_translation_task_repository, get_auth_repository, _delete_local_cache_path, _is_within_cleanup_roots, clear_cached_runtime_artifacts, set_runtime_shutting_down
+- `backend/app/services/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/auth_service.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: AuthServiceError, NiuTransAuthClient, LocalAuthService, _b64url_encode, _b64url_decode, _now_utc, _now_unix
+- `backend/app/services/community_agent_service.py`: 绀惧尯鏅鸿兘浣撴湇鍔￠棬闈紝鍒涘缓杩愯璁板綍銆佽浆鍙戜簨浠舵祦骞跺崗璋冩寔涔呭寲銆?| 椤跺眰绗﹀彿: RunNotFoundError, _RunRecord, _now_iso, _default_provider_state, _should_persist_run, _authorize_run_access, _save_run_to_repository, _save_event_to_repository
+- `backend/app/services/community_content_pool_service.py`: 绀惧尯鍐呭姹犳湇鍔★紝澶勭悊璁烘枃瀵煎叆銆佸唴瀹规睜灏辩华搴︿笌鍚庡彴鏋勫缓浠诲姟銆?| 椤跺眰绗﹀彿: PoolCandidate, ContentPoolDependencies, _CandidateState, CommunityContentPoolService, _utc_now_iso, _normalize_text, _default_discover_candidates, _default_admit_candidate, _default_ensure_source_ready, _default_start_translation
+- `backend/app/services/config_capture.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: _json_safe, _mask_api_key, _sanitize_llm_config, _sanitize_agent_config, capture_task_config
+- `backend/app/services/email_service.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: EmailService, get_email_service
+- `backend/app/services/latex_validator.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: validate_latex_directory, find_main_tex_file
+- `backend/app/services/paper_thumbnail_service.py`: 璁烘枃 PDF 缂╃暐鍥剧紦瀛樻湇鍔★紝璐熻矗棣栭〉缂╃暐鍥剧敓鎴愩€佺紦瀛樺懡涓笌棰勭儹澶嶇敤銆?| 椤跺眰绗﹀彿: ensure_pdf_thumbnail, _thumbnail_cache_dir, _thumbnail_cache_path, _render_pdf_thumbnail_bytes_from_path, _render_pdf_thumbnail_bytes_from_url
+- `backend/app/services/paper_preview_service.py`: 璁烘枃棰勮鏋勫缓鏈嶅姟锛岀敓鎴?HTML銆佹憳瑕併€侀瑙堣浇鑽峰苟鍋氱紦瀛樻仮澶嶃€?| 椤跺眰绗﹀彿: _load_json, _build_placeholder_map, _replace_placeholders, _strip_structural_commands, _unwrap_formatting_commands, _normalize_inline_text
+- `backend/app/services/paper_service.py`: 璁烘枃涓绘湇鍔★紝璐熻矗绀惧尯璁烘枃瀵煎叆銆佺炕璇戞ˉ鎺ャ€侀瑙堛€佷笅杞姐€佺粨鏋勫寲瑙ｈ锛屼互鍙婄鐞嗗憳绛栧睍澶辫触鐣欑棔銆佷换鍔″巻鍙蹭笌纭垹闄ゆ祦绋嬨€?| 椤跺眰绗﹀彿: _StructuredInsightBasePreferenceTracker, _utc_now_iso, _get_curation_semaphore, _get_delete_semaphore, get_community_paper_repository, _run_local_repo, _run_db_blocking_with_retry
+- `backend/app/services/runtime_pressure.py`: 杩愯鏃跺帇鍔涘崗璋冩湇鍔★紝璐熻矗鍖哄垎 web/worker 瑙掕壊銆佽褰曞墠鍙拌闂帇鍔涘苟璁╁悗鍙板洖濉换鍔¤姝ャ€?| 椤跺眰绗﹀彿: get_runtime_role, web_runtime_enabled, background_runtime_enabled, admin_job_execution_enabled, record_frontend_pressure, has_recent_frontend_pressure, backfill_start_blocked_by_frontend_pressure, apply_worker_process_priority
+- `backend/app/services/storage_backend.py`: 瀵硅薄瀛樺偍鎶借薄灞傦紝缁熶竴鏈湴纾佺洏涓?COS 绛夊悗绔殑涓婁紶/涓嬭浇鎺ュ彛銆?| 椤跺眰绗﹀彿: StoredObjectRef, StorageBackend, LocalDiskStorageBackend, CosStorageBackend, build_storage_backend, _ensure_cos_config
+- `backend/app/services/task_artifact_storage.py`: 浠诲姟浜х墿鎸佷箙鍖栨湇鍔★紝鍦ㄦ湰鍦颁笌瀵硅薄瀛樺偍涔嬮棿鍚屾杈撳嚭鐩綍鍙婃竻鍗曘€?| 椤跺眰绗﹀彿: _get_storage_backend, _storage_uses_object_store, _normalize_stored_path, normalize_stored_task_path, resolve_local_task_path, persist_task_directory
+- `backend/app/services/task_detail.py`: 浠诲姟璇︽儏鎺ㄦ柇涓庢爣鍑嗗寲宸ュ叿锛岀粺涓€ stage銆乨etail_code銆乨etail_message 鐨勭敓鎴愩€?| 椤跺眰绗﹀彿: normalize_stage, normalize_detail_params, infer_task_detail
+- `backend/app/services/task_manager.py`: 浠诲姟绠＄悊鏍稿績锛岀淮鎶ゅ唴瀛樻€佷换鍔°€佸紓姝ュ埛搴撱€侀槦鍒楁墽琛屼笌杩愯鏃舵竻鐞嗐€?| 椤跺眰绗﹀彿: PersistentStateFlusher, TaskManager, GuestTaskTracker, TaskQueue, get_translation_task_repository, get_auth_repository, _delete_local_cache_path, _is_within_cleanup_roots, clear_cached_runtime_artifacts, set_runtime_shutting_down
 
 ### backend/app/services/agents
-- `backend/app/services/agents/__init__.py`: 包初始化与导出文件。 | 顶层符号: _SemaphoreProxy, _get_llm_semaphore
-- `backend/app/services/agents/base_tool_agent.py`: 翻译代理管线相关文件。 | 顶层符号: BaseToolAgent
-- `backend/app/services/agents/compilation_diagnostic_node.py`: 翻译代理管线相关文件。 | 顶层符号: DiagnosticSuggestion, DiagnosticReport, CompilationDiagnosticNode
-- `backend/app/services/agents/compile_runtime.py`: 翻译代理管线相关文件。 | 顶层符号: get_compile_semaphore
-- `backend/app/services/agents/controlled_repair_agent.py`: 翻译代理管线相关文件。 | 顶层符号: RepairRateLimitExceededError, ControlledRepairAgent
-- `backend/app/services/agents/coordinator_agent.py`: 翻译流水线协调器，编排解析、翻译、校验、修复与编译步骤。 | 顶层符号: CoordinatorAgent
-- `backend/app/services/agents/generator_agent.py`: 翻译代理管线相关文件。 | 顶层符号: GeneratorAgent
-- `backend/app/services/agents/langgraph_orchestrator.py`: 翻译代理编排层，负责节点流转、审计日志、进度更新，以及在校验重试后阻断仍残留英文长段的任务完成。 | 顶层符号: PipelineState, _should_skip_deterministic_section_downgrade, _normalize_error_signature, _write_audit_log, _update_progress, _write_task_log, _write_stage_failed_log
-- `backend/app/services/agents/llm_runtime.py`: 翻译代理管线相关文件。 | 顶层符号: _as_mapping, extract_llm_config, _coerce_positive_int, resolve_llm_timeout, resolve_llm_max_concurrent_requests, resolve_task_llm_max_concurrent_requests
-- `backend/app/services/agents/llm_token_pool.py`: 翻译代理管线相关文件。 | 顶层符号: _MemberState, _PoolRegistry, build_pool_members_from_groups, compute_pool_routing_key, _parse_retry_after_seconds, _perform_member_request, post_chat_completion_with_pool
-- `backend/app/services/agents/parser_agent.py`: 翻译代理管线相关文件。 | 顶层符号: ParserAgent
-- `backend/app/services/agents/pipeline_invariants.py`: 翻译代理管线相关文件。 | 顶层符号: PipelineInvariantViolation, SpeculativeRepairForbiddenError, RawStructurePayloadViolation, RawContentLeakageViolation, HardFreezeProtocolViolation, assert_no_raw_structure, assert_no_long_raw_span, is_absolute_path_like
-- `backend/app/services/agents/pipeline_schema.py`: 翻译代理管线相关文件。 | 顶层符号: PipelineInput, NodeOutput, PipelineAuditEntry, FallbackReport
-- `backend/app/services/agents/structure_repair_node.py`: 翻译代理管线相关文件。 | 顶层符号: StructureRepairNode, _count_open_braces, _repair_unclosed_braces, _find_unmatched_environments, _repair_unmatched_environments, _apply_structural_repairs
-- `backend/app/services/agents/translation_repair_agent.py`: 翻译代理管线相关文件。 | 顶层符号: TranslationRepairAgent, _extract_placeholders, _estimate_tokens, _count_math_delimiters, _math_delimiter_guard, _placeholder_guard, _edit_budget_check
-- `backend/app/services/agents/translator_agent.py`: 核心翻译代理，负责分段翻译、术语处理、payload 守卫、降级与重试控制，并承担残留英文长段的保守中文补救与误判 immutable 分段的兜底翻译。 | 顶层符号: TranslatorAgent
-- `backend/app/services/agents/validator_agent.py`: 翻译校验代理，检查完整性、结构风险和错误类型分类。 | 顶层符号: ValidatorAgent, find_long_english_prose_spans, classify_error
+- `backend/app/services/agents/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?| 椤跺眰绗﹀彿: _SemaphoreProxy, _get_llm_semaphore
+- `backend/app/services/agents/base_tool_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: BaseToolAgent
+- `backend/app/services/agents/compilation_diagnostic_node.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: DiagnosticSuggestion, DiagnosticReport, CompilationDiagnosticNode
+- `backend/app/services/agents/compile_runtime.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: get_compile_semaphore
+- `backend/app/services/agents/controlled_repair_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: RepairRateLimitExceededError, ControlledRepairAgent
+- `backend/app/services/agents/coordinator_agent.py`: 缈昏瘧娴佹按绾垮崗璋冨櫒锛岀紪鎺掕В鏋愩€佺炕璇戙€佹牎楠屻€佷慨澶嶄笌缂栬瘧姝ラ銆?| 椤跺眰绗﹀彿: CoordinatorAgent
+- `backend/app/services/agents/generator_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: GeneratorAgent
+- `backend/app/services/agents/langgraph_orchestrator.py`: 缈昏瘧浠ｇ悊缂栨帓灞傦紝璐熻矗鑺傜偣娴佽浆銆佸璁℃棩蹇椼€佽繘搴︽洿鏂帮紝浠ュ強鍦ㄦ牎楠岄噸璇曞悗闃绘柇浠嶆畫鐣欒嫳鏂囬暱娈电殑浠诲姟瀹屾垚銆?| 椤跺眰绗﹀彿: PipelineState, _should_skip_deterministic_section_downgrade, _normalize_error_signature, _write_audit_log, _update_progress, _write_task_log, _write_stage_failed_log
+- `backend/app/services/agents/llm_runtime.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: _as_mapping, extract_llm_config, _coerce_positive_int, resolve_llm_timeout, resolve_llm_max_concurrent_requests, resolve_task_llm_max_concurrent_requests
+- `backend/app/services/agents/llm_token_pool.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: _MemberState, _PoolRegistry, build_pool_members_from_groups, compute_pool_routing_key, _parse_retry_after_seconds, _perform_member_request, post_chat_completion_with_pool
+- `backend/app/services/agents/parser_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: ParserAgent
+- `backend/app/services/agents/pipeline_invariants.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: PipelineInvariantViolation, SpeculativeRepairForbiddenError, RawStructurePayloadViolation, RawContentLeakageViolation, HardFreezeProtocolViolation, assert_no_raw_structure, assert_no_long_raw_span, is_absolute_path_like
+- `backend/app/services/agents/pipeline_schema.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: PipelineInput, NodeOutput, PipelineAuditEntry, FallbackReport
+- `backend/app/services/agents/structure_repair_node.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: StructureRepairNode, _count_open_braces, _repair_unclosed_braces, _find_unmatched_environments, _repair_unmatched_environments, _apply_structural_repairs
+- `backend/app/services/agents/translation_repair_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: TranslationRepairAgent, _extract_placeholders, _estimate_tokens, _count_math_delimiters, _math_delimiter_guard, _placeholder_guard, _edit_budget_check
+- `backend/app/services/agents/translator_agent.py`: 鏍稿績缈昏瘧浠ｇ悊锛岃礋璐ｅ垎娈电炕璇戙€佹湳璇鐞嗐€乸ayload 瀹堝崼銆侀檷绾т笌閲嶈瘯鎺у埗锛屽苟鎵挎媴娈嬬暀鑻辨枃闀挎鐨勪繚瀹堜腑鏂囪ˉ鏁戜笌璇垽 immutable 鍒嗘鐨勫厹搴曠炕璇戙€?| 椤跺眰绗﹀彿: TranslatorAgent
+- `backend/app/services/agents/validator_agent.py`: 缈昏瘧鏍￠獙浠ｇ悊锛屾鏌ュ畬鏁存€с€佺粨鏋勯闄╁拰閿欒绫诲瀷鍒嗙被銆?| 椤跺眰绗﹀彿: ValidatorAgent, find_long_english_prose_spans, classify_error
 
 ### backend/app/services/community_agent
-- `backend/app/services/community_agent/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/formatter.py`: 业务服务文件。 | 顶层符号: format_summary
-- `backend/app/services/community_agent/language.py`: 业务服务文件。 | 顶层符号: normalize_response_language, is_chinese_language, detect_response_language, summary_labels
-- `backend/app/services/community_agent/models.py`: 业务服务文件。 | 顶层符号: AnswerSlots, PlannerStep
-- `backend/app/services/community_agent/orchestrator.py`: 社区智能体编排层，负责计划、检索、技能执行与答案组织。 | 顶层符号: CommunityReactAgent, _normalize_text, _normalize_history, _normalize_reader_selection, _extract_arxiv_id, _normalized_title_tokens, _title_similarity_score
-- `backend/app/services/community_agent/runtime.py`: 社区智能体运行时上下文与事件循环封装。 | 顶层符号: AgentRuntimeState
-- `backend/app/services/community_agent/skills_runtime.py`: 社区智能体技能运行时，负责装配、启停和调用技能。 | 顶层符号: PromptSkillPack, PromptSkillBundle, _extract_frontmatter, _extract_json_block, load_prompt_skill_packs, _is_pack_visible, build_skill_prompt_bundle
-- `backend/app/services/community_agent/validator.py`: 业务服务文件。 | 顶层符号: ValidationError, _normalize_text, _extract_domains, _mentions_time_constraint, _looks_like_paper_title_query, validate_search_query, _collect_known_paper_ids
+- `backend/app/services/community_agent/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/formatter.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: format_summary
+- `backend/app/services/community_agent/language.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: normalize_response_language, is_chinese_language, detect_response_language, summary_labels
+- `backend/app/services/community_agent/models.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: AnswerSlots, PlannerStep
+- `backend/app/services/community_agent/orchestrator.py`: 绀惧尯鏅鸿兘浣撶紪鎺掑眰锛岃礋璐ｈ鍒掋€佹绱€佹妧鑳芥墽琛屼笌绛旀缁勭粐銆?| 椤跺眰绗﹀彿: CommunityReactAgent, _normalize_text, _normalize_history, _normalize_reader_selection, _extract_arxiv_id, _normalized_title_tokens, _title_similarity_score
+- `backend/app/services/community_agent/runtime.py`: 绀惧尯鏅鸿兘浣撹繍琛屾椂涓婁笅鏂囦笌浜嬩欢寰幆灏佽銆?| 椤跺眰绗﹀彿: AgentRuntimeState
+- `backend/app/services/community_agent/skills_runtime.py`: 绀惧尯鏅鸿兘浣撴妧鑳借繍琛屾椂锛岃礋璐ｈ閰嶃€佸惎鍋滃拰璋冪敤鎶€鑳姐€?| 椤跺眰绗﹀彿: PromptSkillPack, PromptSkillBundle, _extract_frontmatter, _extract_json_block, load_prompt_skill_packs, _is_pack_visible, build_skill_prompt_bundle
+- `backend/app/services/community_agent/validator.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: ValidationError, _normalize_text, _extract_domains, _mentions_time_constraint, _looks_like_paper_title_query, validate_search_query, _collect_known_paper_ids
 
 ### backend/app/services/community_agent/skills
-- `backend/app/services/community_agent/skills/__init__.py`: 包初始化与导出文件。 | 顶层符号: discover_skill_types, instantiate_discovered_skills
-- `backend/app/services/community_agent/skills/base.py`: 社区智能体技能定义文件。 | 顶层符号: SkillContract, AgentSkill, _extract_frontmatter, _extract_section_body, _extract_json_block, _extract_text_block, load_skill_contract
-- `backend/app/services/community_agent/skills/community_search.py`: 社区智能体技能定义文件。 | 顶层符号: CommunitySearchPapersSkill, _normalize_text, _citation_from_paper
-- `backend/app/services/community_agent/skills/compose_academic_answer.py`: 社区智能体技能定义文件。 | 顶层符号: ComposeAcademicAnswerSkill, _normalize_text, _normalize_string_list, _resolve_chat_completions_url, _extract_json_object
-- `backend/app/services/community_agent/skills/external_tavily_search.py`: 社区智能体技能定义文件。 | 顶层符号: ExternalTavilySearchSkill, _normalize_text
-- `backend/app/services/community_agent/skills/import_arxiv_paper.py`: 社区智能体技能定义文件。 | 顶层符号: ImportArxivPaperSkill
-- `backend/app/services/community_agent/skills/read_paper_context.py`: 社区智能体技能定义文件。 | 顶层符号: ReadPaperContextSkill, _normalize_text, _extract_anchor_ids
-- `backend/app/services/community_agent/skills/start_translation_kernel.py`: 社区智能体技能定义文件。 | 顶层符号: StartTranslationKernelSkill
+- `backend/app/services/community_agent/skills/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?| 椤跺眰绗﹀彿: discover_skill_types, instantiate_discovered_skills
+- `backend/app/services/community_agent/skills/base.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: SkillContract, AgentSkill, _extract_frontmatter, _extract_section_body, _extract_json_block, _extract_text_block, load_skill_contract
+- `backend/app/services/community_agent/skills/community_search.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: CommunitySearchPapersSkill, _normalize_text, _citation_from_paper
+- `backend/app/services/community_agent/skills/compose_academic_answer.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: ComposeAcademicAnswerSkill, _normalize_text, _normalize_string_list, _resolve_chat_completions_url, _extract_json_object
+- `backend/app/services/community_agent/skills/external_tavily_search.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: ExternalTavilySearchSkill, _normalize_text
+- `backend/app/services/community_agent/skills/import_arxiv_paper.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: ImportArxivPaperSkill
+- `backend/app/services/community_agent/skills/read_paper_context.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: ReadPaperContextSkill, _normalize_text, _extract_anchor_ids
+- `backend/app/services/community_agent/skills/start_translation_kernel.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉畾涔夋枃浠躲€?| 椤跺眰绗﹀彿: StartTranslationKernelSkill
 
 ### backend/app/services/community_agent/skills/contracts
-- `backend/app/services/community_agent/skills/contracts/__init__.py`: 包初始化与导出文件。
+- `backend/app/services/community_agent/skills/contracts/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
 
 ### backend/app/services/community_agent/skills/contracts/community_search_papers
-- `backend/app/services/community_agent/skills/contracts/community_search_papers/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/skills/contracts/community_search_papers/executor.py`: 社区智能体技能合约或执行器文件。 | 顶层符号: CommunitySearchPapersSkill
+- `backend/app/services/community_agent/skills/contracts/community_search_papers/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/skills/contracts/community_search_papers/executor.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉悎绾︽垨鎵ц鍣ㄦ枃浠躲€?| 椤跺眰绗﹀彿: CommunitySearchPapersSkill
 
 ### backend/app/services/community_agent/skills/contracts/compose_academic_answer
-- `backend/app/services/community_agent/skills/contracts/compose_academic_answer/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/skills/contracts/compose_academic_answer/executor.py`: 社区智能体技能合约或执行器文件。 | 顶层符号: ComposeAcademicAnswerSkill
+- `backend/app/services/community_agent/skills/contracts/compose_academic_answer/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/skills/contracts/compose_academic_answer/executor.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉悎绾︽垨鎵ц鍣ㄦ枃浠躲€?| 椤跺眰绗﹀彿: ComposeAcademicAnswerSkill
 
 ### backend/app/services/community_agent/skills/contracts/external_tavily_search
-- `backend/app/services/community_agent/skills/contracts/external_tavily_search/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/skills/contracts/external_tavily_search/executor.py`: 社区智能体技能合约或执行器文件。 | 顶层符号: ExternalTavilySearchSkill
+- `backend/app/services/community_agent/skills/contracts/external_tavily_search/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/skills/contracts/external_tavily_search/executor.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉悎绾︽垨鎵ц鍣ㄦ枃浠躲€?| 椤跺眰绗﹀彿: ExternalTavilySearchSkill
 
 ### backend/app/services/community_agent/skills/contracts/import_arxiv_paper
-- `backend/app/services/community_agent/skills/contracts/import_arxiv_paper/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/skills/contracts/import_arxiv_paper/executor.py`: 社区智能体技能合约或执行器文件。 | 顶层符号: ImportArxivPaperSkill
+- `backend/app/services/community_agent/skills/contracts/import_arxiv_paper/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/skills/contracts/import_arxiv_paper/executor.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉悎绾︽垨鎵ц鍣ㄦ枃浠躲€?| 椤跺眰绗﹀彿: ImportArxivPaperSkill
 
 ### backend/app/services/community_agent/skills/contracts/read_paper_context
-- `backend/app/services/community_agent/skills/contracts/read_paper_context/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/skills/contracts/read_paper_context/executor.py`: 社区智能体技能合约或执行器文件。 | 顶层符号: ReadPaperContextSkill
+- `backend/app/services/community_agent/skills/contracts/read_paper_context/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/skills/contracts/read_paper_context/executor.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉悎绾︽垨鎵ц鍣ㄦ枃浠躲€?| 椤跺眰绗﹀彿: ReadPaperContextSkill
 
 ### backend/app/services/community_agent/skills/contracts/start_translation_kernel
-- `backend/app/services/community_agent/skills/contracts/start_translation_kernel/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/community_agent/skills/contracts/start_translation_kernel/executor.py`: 社区智能体技能合约或执行器文件。 | 顶层符号: StartTranslationKernelSkill
+- `backend/app/services/community_agent/skills/contracts/start_translation_kernel/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/community_agent/skills/contracts/start_translation_kernel/executor.py`: 绀惧尯鏅鸿兘浣撴妧鑳藉悎绾︽垨鎵ц鍣ㄦ枃浠躲€?| 椤跺眰绗﹀彿: StartTranslationKernelSkill
 
 ### backend/app/services/community_agent/tools
-- `backend/app/services/community_agent/tools/__init__.py`: 包初始化与导出文件。 | 顶层符号: ToolRegistry, instantiate_tools
-- `backend/app/services/community_agent/tools/base.py`: 社区智能体工具实现文件。 | 顶层符号: CommunityAgentTool
-- `backend/app/services/community_agent/tools/community_search.py`: 社区智能体工具实现文件。 | 顶层符号: CommunitySearchPapersTool
-- `backend/app/services/community_agent/tools/external_tavily_search.py`: 社区智能体工具实现文件。 | 顶层符号: ExternalTavilySearchTool
-- `backend/app/services/community_agent/tools/import_arxiv_paper.py`: 社区智能体工具实现文件。 | 顶层符号: ImportArxivPaperTool
-- `backend/app/services/community_agent/tools/read_paper_context.py`: 社区智能体工具实现文件。 | 顶层符号: ReadPaperContextTool
-- `backend/app/services/community_agent/tools/start_translation_kernel.py`: 社区智能体工具实现文件。 | 顶层符号: StartTranslationKernelTool
+- `backend/app/services/community_agent/tools/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?| 椤跺眰绗﹀彿: ToolRegistry, instantiate_tools
+- `backend/app/services/community_agent/tools/base.py`: 绀惧尯鏅鸿兘浣撳伐鍏峰疄鐜版枃浠躲€?| 椤跺眰绗﹀彿: CommunityAgentTool
+- `backend/app/services/community_agent/tools/community_search.py`: 绀惧尯鏅鸿兘浣撳伐鍏峰疄鐜版枃浠躲€?| 椤跺眰绗﹀彿: CommunitySearchPapersTool
+- `backend/app/services/community_agent/tools/external_tavily_search.py`: 绀惧尯鏅鸿兘浣撳伐鍏峰疄鐜版枃浠躲€?| 椤跺眰绗﹀彿: ExternalTavilySearchTool
+- `backend/app/services/community_agent/tools/import_arxiv_paper.py`: 绀惧尯鏅鸿兘浣撳伐鍏峰疄鐜版枃浠躲€?| 椤跺眰绗﹀彿: ImportArxivPaperTool
+- `backend/app/services/community_agent/tools/read_paper_context.py`: 绀惧尯鏅鸿兘浣撳伐鍏峰疄鐜版枃浠躲€?| 椤跺眰绗﹀彿: ReadPaperContextTool
+- `backend/app/services/community_agent/tools/start_translation_kernel.py`: 绀惧尯鏅鸿兘浣撳伐鍏峰疄鐜版枃浠躲€?| 椤跺眰绗﹀彿: StartTranslationKernelTool
 
 ### backend/app/services/latex
-- `backend/app/services/latex/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/latex/compiler.py`: LaTeX 编译服务，负责分阶段编译、驱动切换、日志收集与智能回退。 | 顶层符号: LatexExecutor, HostLatexExecutor, DockerLatexExecutor, CompilationResult, LaTeXCompiler, _get_latex_executor, _has_real_bib_files, _iter_manual_bbl_inputs, _has_bibliography_driver, _prepare_bibliography_inputs, _validate_generated_pdf_structure
-- `backend/app/services/latex/parser.py`: LaTeX 解析服务，负责切分章节、环境、占位符与可翻译片段。 | 顶层符号: LatexParser
-- `backend/app/services/latex/prompts.py`: LaTeX 处理链路相关文件。 | 顶层符号: init_prompts, create_prompts
-- `backend/app/services/latex/reconstruct.py`: LaTeX 重建服务，将翻译后的片段按原结构回填并重组输出。 | 顶层符号: LatexConstructor
-- `backend/app/services/latex/sanitizer.py`: LaTeX 清洗器，预处理危险或不兼容命令并修正文档驱动细节。 | 顶层符号: apply_precompile_sanitization, _find_ghostscript, extract_failed_pdf_paths, check_pdf_syntax_error, sanitize_pdf, patch_tex_includegraphics
-- `backend/app/services/latex/structure_guard.py`: 结构守卫，校验解析或翻译后的括号、环境与命令结构完整性。 | 顶层符号: StructureGuardResult, _is_escaped, _strip_line_comments, _mask_verbatim_like_envs, _consume_braced_group, _consume_optional_bracket_group, _consume_command_token
-- `backend/app/services/latex/token_estimator.py`: LaTeX 处理链路相关文件。 | 顶层符号: _formula_digest, estimate_tokens_v1, safe_limit_v1
-- `backend/app/services/latex/utils.py`: LaTeX 处理链路相关文件。 | 顶层符号: ArxivDownloadError, ArxivNoSourceAvailableError, ArxivNetworkFailureError, ArxivArchiveCorruptedError, DownloadProgressCallback, get_pattern_command_full, extract_compressed_files, get_profect_dirs, has_appendix, remove_appendix_content, extract_latex_nodes
+- `backend/app/services/latex/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/latex/compiler.py`: LaTeX 缂栬瘧鏈嶅姟锛岃礋璐ｅ垎闃舵缂栬瘧銆侀┍鍔ㄥ垏鎹€佹棩蹇楁敹闆嗕笌鏅鸿兘鍥為€€銆?| 椤跺眰绗﹀彿: LatexExecutor, HostLatexExecutor, DockerLatexExecutor, CompilationResult, LaTeXCompiler, _get_latex_executor, _has_real_bib_files, _iter_manual_bbl_inputs, _has_bibliography_driver, _prepare_bibliography_inputs, _validate_generated_pdf_structure
+- `backend/app/services/latex/parser.py`: LaTeX 瑙ｆ瀽鏈嶅姟锛岃礋璐ｅ垏鍒嗙珷鑺傘€佺幆澧冦€佸崰浣嶇涓庡彲缈昏瘧鐗囨銆?| 椤跺眰绗﹀彿: LatexParser
+- `backend/app/services/latex/prompts.py`: LaTeX 澶勭悊閾捐矾鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: init_prompts, create_prompts
+- `backend/app/services/latex/reconstruct.py`: LaTeX 閲嶅缓鏈嶅姟锛屽皢缈昏瘧鍚庣殑鐗囨鎸夊師缁撴瀯鍥炲～骞堕噸缁勮緭鍑恒€?| 椤跺眰绗﹀彿: LatexConstructor
+- `backend/app/services/latex/sanitizer.py`: LaTeX 娓呮礂鍣紝棰勫鐞嗗嵄闄╂垨涓嶅吋瀹瑰懡浠ゅ苟淇鏂囨。椹卞姩缁嗚妭銆?| 椤跺眰绗﹀彿: apply_precompile_sanitization, _find_ghostscript, extract_failed_pdf_paths, check_pdf_syntax_error, sanitize_pdf, patch_tex_includegraphics
+- `backend/app/services/latex/structure_guard.py`: 缁撴瀯瀹堝崼锛屾牎楠岃В鏋愭垨缈昏瘧鍚庣殑鎷彿銆佺幆澧冧笌鍛戒护缁撴瀯瀹屾暣鎬с€?| 椤跺眰绗﹀彿: StructureGuardResult, _is_escaped, _strip_line_comments, _mask_verbatim_like_envs, _consume_braced_group, _consume_optional_bracket_group, _consume_command_token
+- `backend/app/services/latex/token_estimator.py`: LaTeX 澶勭悊閾捐矾鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: _formula_digest, estimate_tokens_v1, safe_limit_v1
+- `backend/app/services/latex/utils.py`: LaTeX 澶勭悊閾捐矾鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: ArxivDownloadError, ArxivNoSourceAvailableError, ArxivNetworkFailureError, ArxivArchiveCorruptedError, DownloadProgressCallback, get_pattern_command_full, extract_compressed_files, get_profect_dirs, has_appendix, remove_appendix_content, extract_latex_nodes
 
 ### backend/app/services/translation
-- `backend/app/services/translation/__init__.py`: 包初始化与导出文件。
-- `backend/app/services/translation/downgrade_handler.py`: 翻译降级与修复相关文件。 | 顶层符号: deterministic_downgrade
-- `backend/app/services/translation/repair_scheduler.py`: 翻译降级与修复相关文件。 | 顶层符号: QueueTimeoutError, TokenRepairScheduler
-- `backend/app/services/translation/structure_checker.py`: 翻译降级与修复相关文件。 | 顶层符号: _has_bare_dollars, _has_leaked_env, _has_unbalanced_braces, detect_structure_invariant
-- `backend/app/services/translation/ultimate_downgrade.py`: 翻译降级与修复相关文件。 | 顶层符号: _is_verbatim_segment, _extract_natural_language, _escape_latex_special, _strip_downgrade_comment_lines, _looks_like_downgrade_output, _split_title_and_body
+- `backend/app/services/translation/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/services/translation/downgrade_handler.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: deterministic_downgrade
+- `backend/app/services/translation/repair_scheduler.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: QueueTimeoutError, TokenRepairScheduler
+- `backend/app/services/translation/structure_checker.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: _has_bare_dollars, _has_leaked_env, _has_unbalanced_braces, detect_structure_invariant
+- `backend/app/services/translation/ultimate_downgrade.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: _is_verbatim_segment, _extract_natural_language, _escape_latex_special, _strip_downgrade_comment_lines, _looks_like_downgrade_output, _split_title_and_body
 
 ### backend/app/utils
-- `backend/app/utils/__init__.py`: 包初始化与导出文件。
-- `backend/app/utils/async_blocking.py`: 通用工具文件。 | 顶层符号: _wrappers_enabled, _db_mode, run_blocking, run_db_blocking
+- `backend/app/utils/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
+- `backend/app/utils/async_blocking.py`: 閫氱敤宸ュ叿鏂囦欢銆?| 椤跺眰绗﹀彿: _wrappers_enabled, _db_mode, run_blocking, run_db_blocking
 
 ### backend/migrations
-- `backend/migrations/20260316_add_task_detail_metadata.sql`: 数据库迁移脚本：20260316 add task detail metadata。 | SQL 片段: ALTER TABLE public.translation_tasks ADD COLUMN IF NOT EXISTS detail_code TEXT; ALTER TABLE public.translation_tasks ADD
-- `backend/migrations/20260318_add_increment_paper_download_count_fn.sql`: 数据库迁移脚本：20260318 add increment paper download count fn。 | SQL 片段: create or replace function public.increment_paper_download_count(target_paper_id uuid) returns table (download_count int
-- `backend/migrations/20260318_add_increment_paper_view_count_fn.sql`: 数据库迁移脚本：20260318 add increment paper view count fn。 | SQL 片段: create or replace function public.increment_paper_view_count(target_paper_id uuid) returns table (view_count integer) la
-- `backend/migrations/20260318_add_paper_community_admission_fields.sql`: 数据库迁移脚本：20260318 add paper community admission fields。 | SQL 片段: alter table public.papers add column if not exists community_status text not null default 'user_fallback' check (communi
-- `backend/migrations/20260318_create_interaction_tables.sql`: 数据库迁移脚本：20260318 create interaction tables。 | SQL 片段: create table if not exists public.paper_likes ( paper_id uuid not null references public.papers (id) on delete cascade, 
-- `backend/migrations/20260318_create_moderation_tables.sql`: 数据库迁移脚本：20260318 create moderation tables。 | SQL 片段: create table if not exists public.reports ( id uuid primary key default gen_random_uuid(), target_type text not null che
-- `backend/migrations/20260318_create_papers_and_assets.sql`: 数据库迁移脚本：20260318 create papers and assets。 | SQL 片段: create table if not exists public.papers ( id uuid primary key default gen_random_uuid(), source text not null check (so
-- `backend/migrations/20260318_refine_day1_policy_and_index_guards.sql`: 数据库迁移脚本：20260318 refine day1 policy and index guards。 | SQL 片段: create index if not exists comments_parent_id_idx on public.comments (parent_id) where parent_id is not null; create ind
-- `backend/migrations/20260323_create_community_agent_conversations.sql`: 数据库迁移脚本：20260323 create community agent conversations。 | SQL 片段: create table if not exists public.community_agent_conversations ( user_id uuid not null default auth.uid() references au
-- `backend/migrations/20260326_create_community_content_pool_foundation.sql`: 数据库迁移脚本：20260326 create community content pool foundation。 | SQL 片段: create table if not exists public.community_content_pool_candidates ( id uuid primary key default gen_random_uuid(), arx
+- `backend/migrations/20260316_add_task_detail_metadata.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260316 add task detail metadata銆?| SQL 鐗囨: ALTER TABLE public.translation_tasks ADD COLUMN IF NOT EXISTS detail_code TEXT; ALTER TABLE public.translation_tasks ADD
+- `backend/migrations/20260318_add_increment_paper_download_count_fn.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 add increment paper download count fn銆?| SQL 鐗囨: create or replace function public.increment_paper_download_count(target_paper_id uuid) returns table (download_count int
+- `backend/migrations/20260318_add_increment_paper_view_count_fn.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 add increment paper view count fn銆?| SQL 鐗囨: create or replace function public.increment_paper_view_count(target_paper_id uuid) returns table (view_count integer) la
+- `backend/migrations/20260318_add_paper_community_admission_fields.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 add paper community admission fields銆?| SQL 鐗囨: alter table public.papers add column if not exists community_status text not null default 'user_fallback' check (communi
+- `backend/migrations/20260318_create_interaction_tables.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 create interaction tables銆?| SQL 鐗囨: create table if not exists public.paper_likes ( paper_id uuid not null references public.papers (id) on delete cascade, 
+- `backend/migrations/20260318_create_moderation_tables.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 create moderation tables銆?| SQL 鐗囨: create table if not exists public.reports ( id uuid primary key default gen_random_uuid(), target_type text not null che
+- `backend/migrations/20260318_create_papers_and_assets.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 create papers and assets銆?| SQL 鐗囨: create table if not exists public.papers ( id uuid primary key default gen_random_uuid(), source text not null check (so
+- `backend/migrations/20260318_refine_day1_policy_and_index_guards.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260318 refine day1 policy and index guards銆?| SQL 鐗囨: create index if not exists comments_parent_id_idx on public.comments (parent_id) where parent_id is not null; create ind
+- `backend/migrations/20260323_create_community_agent_conversations.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260323 create community agent conversations銆?| SQL 鐗囨: create table if not exists public.community_agent_conversations ( user_id uuid not null default auth.uid() references au
+- `backend/migrations/20260326_create_community_content_pool_foundation.sql`: 鏁版嵁搴撹縼绉昏剼鏈細20260326 create community content pool foundation銆?| SQL 鐗囨: create table if not exists public.community_content_pool_candidates ( id uuid primary key default gen_random_uuid(), arx
 
 ### backend/migrations_mysql
-- `backend/migrations_mysql/20260409_0001_local_auth_mysql.sql`: MySQL 迁移脚本：local auth mysql。 | SQL 片段: create table if not exists users ( id varchar(64) not null, external_provider varchar(32) not null, external_user_id var
-- `backend/migrations_mysql/20260411_0002_community_admin_curation_flow.sql`: MySQL 迁移脚本：community admin curation flow。 | SQL 片段: create table if not exists community_structured_insights ( paper_id varchar(64) not null, section_key varchar(64) not nu
-- `backend/migrations_mysql/20260411_0003_expand_paper_asset_id_columns.sql`: MySQL 迁移脚本：expand paper asset id columns。 | SQL 片段: alter table papers modify column trans_latest_asset_pdf_id varchar(255) null, modify column community_selected_asset_id 
-- `backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql`: MySQL 迁移脚本：add content column to community structured insights。 | SQL 片段: set @community_structured_insights_has_content := ( select count(*) from information_schema.columns where table_schema =
-- `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`: MySQL 迁移脚本：add community similar recommendations。 | SQL 片段: create table if not exists community_similar_recommendations ( paper_id varchar(64) not null, position int not null, arx
-- `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`: MySQL 迁移脚本：为管理员策展任务补充失败留痕字段与已发布论文关联字段。 | SQL 片段: alter table community_curation_jobs add column terminal_task_status varchar(32) null after status
+- `backend/migrations_mysql/20260409_0001_local_auth_mysql.sql`: MySQL 杩佺Щ鑴氭湰锛歭ocal auth mysql銆?| SQL 鐗囨: create table if not exists users ( id varchar(64) not null, external_provider varchar(32) not null, external_user_id var
+- `backend/migrations_mysql/20260411_0002_community_admin_curation_flow.sql`: MySQL 杩佺Щ鑴氭湰锛歝ommunity admin curation flow銆?| SQL 鐗囨: create table if not exists community_structured_insights ( paper_id varchar(64) not null, section_key varchar(64) not nu
+- `backend/migrations_mysql/20260411_0003_expand_paper_asset_id_columns.sql`: MySQL 杩佺Щ鑴氭湰锛歟xpand paper asset id columns銆?| SQL 鐗囨: alter table papers modify column trans_latest_asset_pdf_id varchar(255) null, modify column community_selected_asset_id 
+- `backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql`: MySQL 杩佺Щ鑴氭湰锛歛dd content column to community structured insights銆?| SQL 鐗囨: set @community_structured_insights_has_content := ( select count(*) from information_schema.columns where table_schema =
+- `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`: MySQL 杩佺Щ鑴氭湰锛歛dd community similar recommendations銆?| SQL 鐗囨: create table if not exists community_similar_recommendations ( paper_id varchar(64) not null, position int not null, arx
+- `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`: MySQL 杩佺Щ鑴氭湰锛氫负绠＄悊鍛樼瓥灞曚换鍔¤ˉ鍏呭け璐ョ暀鐥曞瓧娈典笌宸插彂甯冭鏂囧叧鑱斿瓧娈点€?| SQL 鐗囨: alter table community_curation_jobs add column terminal_task_status varchar(32) null after status
 
 ### backend/scripts
-- `backend/scripts/apply_mysql_migrations.py`: 运维或迁移脚本。 | 顶层符号: _load_sql_files, apply_migrations, main
-- `backend/scripts/audit_pipeline_regression.py`: 运维或迁移脚本。 | 顶层符号: _load_json, _find_main_tex, _placeholder_only_chunks, _count_status, _invariant_fallback_sections, _status_sections
-- `backend/scripts/bootstrap_local_community_papers.py`: 运维或迁移脚本。 | 顶层符号: LocalPaperCandidate, _iso_utc_from_path, _iter_candidate_dirs, _match_arxiv_id, _infer_arxiv_id, _find_preview_html, _find_translated_pdf
-- `backend/scripts/extract_core_pool_ids.py`: 从 `core_pool/latest.md` 提取 arXiv ID 顺序列表并写入同级 `id.md` 的辅助脚本。 | 顶层符号: ID_LINE_PATTERN, DEFAULT_INPUT_PATH, extract_arxiv_ids, write_id_file, build_argument_parser, main
-- `backend/scripts/grant_local_admin.py`: 运维或迁移脚本。 | 顶层符号: _utc_now_naive, _fetch_target_user, grant_local_admin, main
-- `backend/scripts/import_source_to_mysql.py`: 运维或迁移脚本。 | 顶层符号: _utc_now, _first, _as_str, _as_bool, _as_int, _as_timestamp
-- `backend/scripts/mysql_script_connection.py`: 运维或迁移脚本。 | 顶层符号: resolve_mysql_script_config, describe_mysql_script_target, mysql_script_connection
+- `backend/scripts/apply_mysql_migrations.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _load_sql_files, apply_migrations, main
+- `backend/scripts/audit_pipeline_regression.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _load_json, _find_main_tex, _placeholder_only_chunks, _count_status, _invariant_fallback_sections, _status_sections
+- `backend/scripts/bootstrap_local_community_papers.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: LocalPaperCandidate, _iso_utc_from_path, _iter_candidate_dirs, _match_arxiv_id, _infer_arxiv_id, _find_preview_html, _find_translated_pdf
+- `backend/scripts/extract_core_pool_ids.py`: 浠?`core_pool/latest.md` 鎻愬彇 arXiv ID 椤哄簭鍒楄〃骞跺啓鍏ュ悓绾?`id.md` 鐨勮緟鍔╄剼鏈€?| 椤跺眰绗﹀彿: ID_LINE_PATTERN, DEFAULT_INPUT_PATH, extract_arxiv_ids, write_id_file, build_argument_parser, main
+- `backend/scripts/grant_local_admin.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _utc_now_naive, _fetch_target_user, grant_local_admin, main
+- `backend/scripts/import_source_to_mysql.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _utc_now, _first, _as_str, _as_bool, _as_int, _as_timestamp
+- `backend/scripts/mysql_script_connection.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: resolve_mysql_script_config, describe_mysql_script_target, mysql_script_connection
 ## Recent Responsibility Updates (2026-04-19)
 
-- `backend/app/services/task_manager.py`: 任务管理器现已负责执行尝试编号、同尝试终态单调保护、持久层异常状态对账，以及队列级未捕获异常的终态封口，避免状态漂移长期占用并发槽位。
-- `backend/app/api/routes/translate.py`: 翻译执行入口现已在每次运行前开启新的 attempt，并将进度与终态更新绑定到该 attempt；同时兼容旧测试桩缺少 attempt 接口或旧版 progress callback 签名的场景。
-- `backend/app/services/paper_service.py`: 管理员策展等待逻辑现已增加“持久层短超时 + 熔断退避”兜底，并在发现不可能状态时合成失败终态，避免数据库抖动反向卡死管理任务。
-- `backend/app/services/paper_service.py`: 社区论文公开链路现已阻止缺失标题/作者的 arXiv 策展结果发布，并会在首页列表读取时自动修复仍带占位标题的历史论文元数据。
-- `backend/app/api/routes/papers.py`: 管理员策展历史接口现已负责规范化 `all` / `processing` 筛选语义，并提供选中任务的批量硬删除入口。
-- `backend/app/repositories/community_paper_repository.py`: 策展任务列表查询现已支持将 `processing` 扩展匹配到 `processing`、`translating`、`publishing` 三类在途状态。
+- `backend/app/services/task_manager.py`: 浠诲姟绠＄悊鍣ㄧ幇宸茶礋璐ｆ墽琛屽皾璇曠紪鍙枫€佸悓灏濊瘯缁堟€佸崟璋冧繚鎶ゃ€佹寔涔呭眰寮傚父鐘舵€佸璐︼紝浠ュ強闃熷垪绾ф湭鎹曡幏寮傚父鐨勭粓鎬佸皝鍙ｏ紝閬垮厤鐘舵€佹紓绉婚暱鏈熷崰鐢ㄥ苟鍙戞Ы浣嶃€?
+- `backend/app/api/routes/translate.py`: 缈昏瘧鎵ц鍏ュ彛鐜板凡鍦ㄦ瘡娆¤繍琛屽墠寮€鍚柊鐨?attempt锛屽苟灏嗚繘搴︿笌缁堟€佹洿鏂扮粦瀹氬埌璇?attempt锛涘悓鏃跺吋瀹规棫娴嬭瘯妗╃己灏?attempt 鎺ュ彛鎴栨棫鐗?progress callback 绛惧悕鐨勫満鏅€?
+- `backend/app/services/paper_service.py`: 绠＄悊鍛樼瓥灞曠瓑寰呴€昏緫鐜板凡澧炲姞鈥滄寔涔呭眰鐭秴鏃?+ 鐔旀柇閫€閬库€濆厹搴曪紝骞跺湪鍙戠幇涓嶅彲鑳界姸鎬佹椂鍚堟垚澶辫触缁堟€侊紝閬垮厤鏁版嵁搴撴姈鍔ㄥ弽鍚戝崱姝荤鐞嗕换鍔°€?
+- `backend/app/services/paper_service.py`: 绀惧尯璁烘枃鍏紑閾捐矾鐜板凡闃绘缂哄け鏍囬/浣滆€呯殑 arXiv 绛栧睍缁撴灉鍙戝竷锛屽苟浼氬湪棣栭〉鍒楄〃璇诲彇鏃惰嚜鍔ㄤ慨澶嶄粛甯﹀崰浣嶆爣棰樼殑鍘嗗彶璁烘枃鍏冩暟鎹€?
+- `backend/app/api/routes/papers.py`: 绠＄悊鍛樼瓥灞曞巻鍙叉帴鍙ｇ幇宸茶礋璐ｈ鑼冨寲 `all` / `processing` 绛涢€夎涔夛紝骞舵彁渚涢€変腑浠诲姟鐨勬壒閲忕‖鍒犻櫎鍏ュ彛銆?
+- `backend/app/repositories/community_paper_repository.py`: 绛栧睍浠诲姟鍒楄〃鏌ヨ鐜板凡鏀寔灏?`processing` 鎵╁睍鍖归厤鍒?`processing`銆乣translating`銆乣publishing` 涓夌被鍦ㄩ€旂姸鎬併€?
 
 ## Recent Responsibility Updates
 
-- `backend/app/api/routes/papers.py`: 管理员策展历史接口现已负责规范化 `all` / `processing` 筛选语义，并提供选中任务批量硬删除入口。
-- `backend/app/services/paper_service.py`: 管理员策展历史服务现已负责处理中状态聚合查询与批量硬删除编排，并返回逐任务成功/失败结果。
-- `backend/app/repositories/community_paper_repository.py`: 策展任务列表查询现已支持将 `processing` 扩展匹配到 `processing`、`translating`、`publishing` 三类在途状态。
+- `backend/app/api/routes/papers.py`: 绠＄悊鍛樼瓥灞曞巻鍙叉帴鍙ｇ幇宸茶礋璐ｈ鑼冨寲 `all` / `processing` 绛涢€夎涔夛紝骞舵彁渚涢€変腑浠诲姟鎵归噺纭垹闄ゅ叆鍙ｃ€?
+- `backend/app/services/paper_service.py`: 绠＄悊鍛樼瓥灞曞巻鍙叉湇鍔＄幇宸茶礋璐ｅ鐞嗕腑鐘舵€佽仛鍚堟煡璇笌鎵归噺纭垹闄ょ紪鎺掞紝骞惰繑鍥為€愪换鍔℃垚鍔?澶辫触缁撴灉銆?
+- `backend/app/repositories/community_paper_repository.py`: 绛栧睍浠诲姟鍒楄〃鏌ヨ鐜板凡鏀寔灏?`processing` 鎵╁睍鍖归厤鍒?`processing`銆乣translating`銆乣publishing` 涓夌被鍦ㄩ€旂姸鎬併€?
 
 ## Recent Responsibility Updates (2026-04-20)
 
-- `backend/app/api/routes/papers.py`: ���������б��뿨Ƭ���·�������ṩ `source-download` ��ڣ����� paper summary �б�¶ `arxiv_url` �� `github_url` ���о�����Ԫ���ݡ�
-- `backend/app/api/routes/download.py`: Դ�� PDF Ԥ���߼����ѳ�ȡΪ�ɸ��õ� `_serve_source_pdf`��ͬʱ֧�� inline Ԥ���� attachment �������ַ��ط�ʽ��
-- `backend/app/services/paper_service.py`: �������Ļ��ܷ������Ѹ���� preview HTML ����ȡ GitHub �ⲿ���ӣ�Ϊ��ҳ���Ŀ�Ƭ��ֱ���о������ṩ���ݡ�
+- `backend/app/api/routes/papers.py`: 社区论文列表与卡片相关路由现已提供 `source-download` 入口，并在 paper summary 中暴露 `arxiv_url` 与 `github_url` 等研究动作元数据。
+- `backend/app/api/routes/download.py`: 源文 PDF 预览逻辑现已抽取为可复用的 `_serve_source_pdf`，同时支持 inline 预览与 attachment 下载两种返回方式。
+- `backend/app/services/paper_service.py`: 社区论文汇总服务现已负责从 preview HTML 中提取 GitHub 外部链接，为首页论文卡片的直达研究动作提供数据。
 ## Recent Responsibility Updates (2026-04-20 Admin Reset)
 
-- ackend/app/services/paper_service.py: ����Ա arXiv �ظ�����������ύǰö��ͬ rxiv_id �ľ� curation job����ȡ���������еĲ�չЭ�̲�ִ��ȫ����Ӳɾ�����ٴ����µ� curation job ��ȫ�� paper_id��
-- ackend/app/repositories/community_paper_repository.py: ������չ�ִ������ṩ�� rxiv_id ˳��ö�� curation jobs �Ĳ�ѯ�����ظ����Ԥɾ�����Ÿ��á�
+- ackend/app/services/paper_service.py: 管理员 arXiv 重复入库现已在提交前枚举同 rxiv_id 的旧 curation job，先取消仍在运行的策展协程并执行全流程硬删除，再创建新的 curation job 与全新 paper_id。
+- ackend/app/repositories/community_paper_repository.py: 社区策展仓储现已提供按 rxiv_id 顺序枚举 curation jobs 的查询，供重复入库预删除编排复用。
+- `backend/scripts/backfill_translated_pdf_delivery.py`: 社区译文 PDF 交付回填脚本，现已负责批量将现有论文的译文 PDF 升级为已完成首页空白裁剪的最终交付资产。

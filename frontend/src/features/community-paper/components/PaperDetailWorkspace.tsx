@@ -624,152 +624,158 @@ export function PaperDetailWorkspace({
       <aside
         data-testid="paper-detail-agent-panel"
         className={cn(
-          "relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-[color:var(--px-shell-panel)]",
-          isDesktop ? "h-full" : "min-h-[500px]",
+          "relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-[color:var(--px-shell-panel-strong)]",
+          isDesktop ? "h-full px-3 py-3 pl-0" : "min-h-[500px] p-3",
         )}
       >
-        <div data-testid="paper-detail-insights-panel" className="contents" />
-        <EditorialTabs
-          value={activeTab}
-          onValueChange={(nextValue) => handleSelectTab(nextValue as "insights" | "similar")}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <EditorialTabsList className="mx-3 mt-3 shrink-0 bg-[color:var(--px-shell-panel-strong)]">
-            <EditorialTabsTrigger value="insights">{t("community.detail.tab.insights")}</EditorialTabsTrigger>
-            <EditorialTabsTrigger value="similar">{t("community.detail.tab.similar")}</EditorialTabsTrigger>
-          </EditorialTabsList>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border border-[color:color-mix(in_srgb,var(--px-shell-line)_82%,white)] bg-[color:var(--px-shell-panel)] shadow-[0_24px_60px_-42px_rgba(15,23,42,0.28)]">
+          <div data-testid="paper-detail-insights-panel" className="contents" />
+          <EditorialTabs
+            value={activeTab}
+            onValueChange={(nextValue) => handleSelectTab(nextValue as "insights" | "similar")}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <EditorialTabsList className="mx-4 mt-4 shrink-0 rounded-none bg-[color:color-mix(in_srgb,var(--px-shell-panel-strong)_88%,white)]">
+              <EditorialTabsTrigger value="insights" className="rounded-none">
+                {t("community.detail.tab.insights")}
+              </EditorialTabsTrigger>
+              <EditorialTabsTrigger value="similar" className="rounded-none">
+                {t("community.detail.tab.similar")}
+              </EditorialTabsTrigger>
+            </EditorialTabsList>
 
-          {activeTab === "insights" ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-              {actionError ? (
-                <NoticeBanner tone="danger" description={actionError} />
-              ) : null}
+            {activeTab === "insights" ? (
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-5 space-y-3">
+                {actionError ? (
+                  <NoticeBanner tone="danger" description={actionError} className="rounded-none" />
+                ) : null}
 
-              {structuredInsights?.state === "processing" || structuredInsights?.state === "queued" ? (
-                <StatePanel
-                  className="rounded-[24px] px-4 py-8 shadow-none"
-                  title={t("community.detail.insightsPendingTitle")}
-                  description={t("community.detail.insightsPendingDescription")}
-                />
-              ) : hasGuideSections ? (
-                selectedInsights.map((section) => {
-                  const expanded = expandedInsightKey === section.section_key
-                  const parsedContent = resolveInsightContent(section)
-
-                  return (
-                    <DisclosureCard
-                      key={section.section_key}
-                      open={expanded}
-                      onOpenChange={(nextOpen) => setExpandedInsightKey(nextOpen ? section.section_key : "")}
-                      title={getInsightLabel(section.section_key, t)}
-                    >
-                      {parsedContent ? (
-                        <div className="space-y-3">
-                          {parsedContent.summary ? (
-                            <p className="font-medium leading-7 text-[color:var(--px-shell-ink)] whitespace-pre-wrap">
-                              {parsedContent.summary}
-                            </p>
-                          ) : null}
-                          {parsedContent.sections.map((item) => (
-                            <div
-                              key={`${section.section_key}-${item.title}`}
-                              className="space-y-1.5 border-l-2 border-[color:var(--px-shell-line)] pl-3"
-                            >
-                              <p className="text-[12px] font-semibold tracking-[0.06em] text-[color:var(--px-shell-ink)]/85">
-                                {item.title}
-                              </p>
-                              <p className="whitespace-pre-wrap leading-7 text-[color:var(--px-shell-ink)]">{item.body}</p>
-                            </div>
-                          ))}
-                          {parsedContent.paragraphs.map((paragraph, index) => (
-                            <p
-                              key={`${section.section_key}-paragraph-${index}`}
-                              className="whitespace-pre-wrap leading-7 text-[color:var(--px-shell-ink)]"
-                            >
-                              {paragraph}
-                            </p>
-                          ))}
-                        </div>
-                      ) : (
-                        <p>{t("community.detail.insights.languagePending")}</p>
-                      )}
-                    </DisclosureCard>
-                  )
-                })
-              ) : (
-                <StatePanel
-                  className="rounded-[24px] px-4 py-8 shadow-none"
-                  borderStyle="dashed"
-                  title={t("community.detail.insightsEmptyTitle")}
-                  description={t("community.detail.insightsEmptyDescription")}
-                />
-              )}
-            </div>
-          ) : (
-            <div className="flex-1 min-h-0 overflow-y-auto p-4">
-              {similarState === "loading" ? (
-                <NoticeBanner title={t("community.detail.similar.loading")} />
-              ) : null}
-
-              {similarState === "error" ? (
-                <StatePanel
-                  className="rounded-[24px] px-4 py-8 shadow-none"
-                  tone="danger"
-                  title={t("community.detail.similar.errorTitle")}
-                  description={t("community.detail.similar.errorDescription")}
-                />
-              ) : null}
-
-              {similarState === "ready" && similarItems.length === 0 ? (
-                <StatePanel
-                  className="rounded-[24px] px-4 py-8 shadow-none"
-                  borderStyle="dashed"
-                  title={t("community.detail.similar.emptyTitle")}
-                  description={t("community.detail.similar.emptyDescription")}
-                />
-              ) : null}
-
-              {similarState === "ready" && similarItems.length > 0 ? (
-                <div className="space-y-3">
-                  {similarItems.map((item) => {
-                    const itemKey = `${item.arxiv_id}-${item.community_paper_id ?? item.arxiv_url}`
-                    const expanded = expandedSimilarKey === itemKey
-                    const destination = item.community_paper_id ? (
-                      <Link
-                        to={`/paper/${item.community_paper_id}`}
-                        className="inline-flex text-sm font-medium text-[color:var(--px-shell-accent)] underline-offset-4 hover:underline"
-                      >
-                        {t("community.detail.similar.openInCommunity")}
-                      </Link>
-                    ) : (
-                      <a
-                        href={item.arxiv_url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="inline-flex text-sm font-medium text-[color:var(--px-shell-accent)] underline-offset-4 hover:underline"
-                      >
-                        {t("community.detail.similar.openInArxiv")}
-                      </a>
-                    )
+                {structuredInsights?.state === "processing" || structuredInsights?.state === "queued" ? (
+                  <StatePanel
+                    className="rounded-none px-4 py-8 shadow-none"
+                    title={t("community.detail.insightsPendingTitle")}
+                    description={t("community.detail.insightsPendingDescription")}
+                  />
+                ) : hasGuideSections ? (
+                  selectedInsights.map((section) => {
+                    const expanded = expandedInsightKey === section.section_key
+                    const parsedContent = resolveInsightContent(section)
 
                     return (
                       <DisclosureCard
-                        key={itemKey}
+                        key={section.section_key}
                         open={expanded}
-                        onOpenChange={(nextOpen) => setExpandedSimilarKey(nextOpen ? itemKey : "")}
-                        eyebrow={item.arxiv_id}
-                        title={item.title}
-                        headerAside={destination}
+                        onOpenChange={(nextOpen) => setExpandedInsightKey(nextOpen ? section.section_key : "")}
+                        title={getInsightLabel(section.section_key, t)}
                       >
-                        <p className="text-xs leading-6 text-[color:var(--px-shell-muted)]">{item.abstract}</p>
+                        {parsedContent ? (
+                          <div className="space-y-3">
+                            {parsedContent.summary ? (
+                              <p className="font-medium leading-7 text-[color:var(--px-shell-ink)] whitespace-pre-wrap">
+                                {parsedContent.summary}
+                              </p>
+                            ) : null}
+                            {parsedContent.sections.map((item) => (
+                              <div
+                                key={`${section.section_key}-${item.title}`}
+                                className="space-y-1.5 border-l-2 border-[color:var(--px-shell-line)] pl-3"
+                              >
+                                <p className="text-[12px] font-semibold tracking-[0.06em] text-[color:var(--px-shell-ink)]/85">
+                                  {item.title}
+                                </p>
+                                <p className="whitespace-pre-wrap leading-7 text-[color:var(--px-shell-ink)]">{item.body}</p>
+                              </div>
+                            ))}
+                            {parsedContent.paragraphs.map((paragraph, index) => (
+                              <p
+                                key={`${section.section_key}-paragraph-${index}`}
+                                className="whitespace-pre-wrap leading-7 text-[color:var(--px-shell-ink)]"
+                              >
+                                {paragraph}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>{t("community.detail.insights.languagePending")}</p>
+                        )}
                       </DisclosureCard>
                     )
-                  })}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </EditorialTabs>
+                  })
+                ) : (
+                  <StatePanel
+                    className="rounded-none px-4 py-8 shadow-none"
+                    borderStyle="dashed"
+                    title={t("community.detail.insightsEmptyTitle")}
+                    description={t("community.detail.insightsEmptyDescription")}
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-5">
+                {similarState === "loading" ? (
+                  <NoticeBanner title={t("community.detail.similar.loading")} />
+                ) : null}
+
+                {similarState === "error" ? (
+                  <StatePanel
+                    className="rounded-none px-4 py-8 shadow-none"
+                    tone="danger"
+                    title={t("community.detail.similar.errorTitle")}
+                    description={t("community.detail.similar.errorDescription")}
+                  />
+                ) : null}
+
+                {similarState === "ready" && similarItems.length === 0 ? (
+                  <StatePanel
+                    className="rounded-none px-4 py-8 shadow-none"
+                    borderStyle="dashed"
+                    title={t("community.detail.similar.emptyTitle")}
+                    description={t("community.detail.similar.emptyDescription")}
+                  />
+                ) : null}
+
+                {similarState === "ready" && similarItems.length > 0 ? (
+                  <div className="space-y-3">
+                    {similarItems.map((item) => {
+                      const itemKey = `${item.arxiv_id}-${item.community_paper_id ?? item.arxiv_url}`
+                      const expanded = expandedSimilarKey === itemKey
+                      const destination = item.community_paper_id ? (
+                        <Link
+                          to={`/paper/${item.community_paper_id}`}
+                          className="inline-flex text-sm font-medium text-[color:var(--px-shell-accent)] underline-offset-4 hover:underline"
+                        >
+                          {t("community.detail.similar.openInCommunity")}
+                        </Link>
+                      ) : (
+                        <a
+                          href={item.arxiv_url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex text-sm font-medium text-[color:var(--px-shell-accent)] underline-offset-4 hover:underline"
+                        >
+                          {t("community.detail.similar.openInArxiv")}
+                        </a>
+                      )
+
+                      return (
+                        <DisclosureCard
+                          key={itemKey}
+                          open={expanded}
+                          onOpenChange={(nextOpen) => setExpandedSimilarKey(nextOpen ? itemKey : "")}
+                          eyebrow={item.arxiv_id}
+                          title={item.title}
+                          headerAside={destination}
+                        >
+                          <p className="text-xs leading-6 text-[color:var(--px-shell-muted)]">{item.abstract}</p>
+                        </DisclosureCard>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </EditorialTabs>
+        </div>
       </aside>
     </div>
   )

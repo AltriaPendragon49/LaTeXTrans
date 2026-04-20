@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import {
   Bookmark,
   Download,
@@ -16,11 +16,6 @@ import { Link } from "react-router-dom"
 
 import { API_BASE_URL } from "@/api-base"
 import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
-import {
-  loadPdfHoverPreview,
-  preloadPdfHoverPreviewRenderer,
-  type PdfHoverPreviewImage,
-} from "@/features/community-paper/services/pdf-hover-preview"
 import { prefetchCommunityPaperDetail } from "@/lib/community-api"
 import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import type { CommunityPaper } from "@/types/community"
@@ -35,7 +30,6 @@ interface PaperCardProps {
 
 interface PdfPreviewFrameProps {
   imageUrl: string | null
-  pdfDocumentUrl: string | null
   unavailableIcon: ReactNode
   placeholderTone: "neutral" | "accent"
   testId: string
@@ -89,162 +83,32 @@ function extractActionErrorMessage(error: unknown): string | null {
   return null
 }
 
-const PREVIEW_INSPECTOR_WIDTH = 600
-const PREVIEW_INSPECTOR_HEIGHT = 800
-const PREVIEW_INSPECTOR_OFFSET = 18
-const PREVIEW_INSPECTOR_TARGET_ZOOM = 4
-const PREVIEW_WARMUP_DELAY_MS = 80
-
-type IdleCallbackHandle = number
-
-type IdleCallbackFn = (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void
-
-type IdleSchedulerWindow = Window & {
-  requestIdleCallback?: (callback: IdleCallbackFn, options?: { timeout: number }) => IdleCallbackHandle
-  cancelIdleCallback?: (handle: IdleCallbackHandle) => void
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
-
 function PdfPreviewFrame({
   imageUrl,
-  pdfDocumentUrl,
   unavailableIcon,
   placeholderTone,
   testId,
 }: PdfPreviewFrameProps) {
   const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null)
-  const [inspectorAnchor, setInspectorAnchor] = useState<{ x: number; y: number; frameHeight: number } | null>(null)
-  const [pdfInspectorImage, setPdfInspectorImage] = useState<PdfHoverPreviewImage | null>(null)
-  const [inspectorLoading, setInspectorLoading] = useState(false)
-  const warmupScheduledRef = useRef(false)
-  const warmupTimeoutRef = useRef<number | null>(null)
-  const warmupIdleHandleRef = useRef<IdleCallbackHandle | null>(null)
+  const [isHovered, setIsHovered] = useState(false)
   const loaded = Boolean(imageUrl) && loadedImageUrl === imageUrl
   const frameTestId = testId.replace(/-image$/, "-frame")
-  const inspectorTestId = testId.replace(/-image$/, "-inspector")
-  const inspectorImageTestId = testId.replace(/-image$/, "-inspector-image")
-  const inspectorLoadingTestId = testId.replace(/-image$/, "-inspector-loading")
-
-  useEffect(
-    () => () => {
-      if (typeof window === "undefined") {
-        return
-      }
-
-      const idleWindow = window as IdleSchedulerWindow
-      if (warmupTimeoutRef.current !== null) {
-        window.clearTimeout(warmupTimeoutRef.current)
-      }
-      if (warmupIdleHandleRef.current !== null && idleWindow.cancelIdleCallback) {
-        idleWindow.cancelIdleCallback(warmupIdleHandleRef.current)
-      }
-    },
-    [],
-  )
-
-  function updateInspectorPosition(event: React.PointerEvent<HTMLDivElement>) {
-    if (!loaded) {
-      return
-    }
-
-    const rect = event.currentTarget.getBoundingClientRect()
-    const width = rect.width || event.currentTarget.clientWidth || 320
-    const height = rect.height || event.currentTarget.clientHeight || 240
-    const x = clamp((event.clientX - rect.left) / width, 0, 1)
-    const y = clamp((event.clientY - rect.top) / height, 0, 1)
-
-    setInspectorAnchor({ x, y, frameHeight: height })
-  }
-
-  function resetInspector() {
-    setInspectorAnchor(null)
-  }
-
-  function ensureInspectorPreview() {
-    if (!pdfDocumentUrl || pdfInspectorImage || inspectorLoading) {
-      return
-    }
-
-    setInspectorLoading(true)
-    void loadPdfHoverPreview(pdfDocumentUrl)
-      .then((nextPreview) => {
-        setPdfInspectorImage(nextPreview)
-      })
-      .catch(() => {
-        setPdfInspectorImage(null)
-      })
-      .finally(() => {
-        setInspectorLoading(false)
-      })
-  }
-
-  function warmInspectorPreviewInBackground() {
-    if (!pdfDocumentUrl || warmupScheduledRef.current || typeof window === "undefined") {
-      return
-    }
-
-    warmupScheduledRef.current = true
-
-    const idleWindow = window as IdleSchedulerWindow
-    const runWarmup = () => {
-      void preloadPdfHoverPreviewRenderer()
-      void loadPdfHoverPreview(pdfDocumentUrl)
-    }
-
-    warmupTimeoutRef.current = window.setTimeout(() => {
-      if (idleWindow.requestIdleCallback) {
-        warmupIdleHandleRef.current = idleWindow.requestIdleCallback(() => {
-          runWarmup()
-        }, { timeout: 400 })
-        return
-      }
-
-      runWarmup()
-    }, PREVIEW_WARMUP_DELAY_MS)
-  }
-
-  const previewImageWidth = pdfInspectorImage?.width ?? PREVIEW_INSPECTOR_WIDTH * PREVIEW_INSPECTOR_TARGET_ZOOM
-  const previewImageHeight =
-    pdfInspectorImage?.height ?? PREVIEW_INSPECTOR_HEIGHT * PREVIEW_INSPECTOR_TARGET_ZOOM
-  const inspectorOffsetX = inspectorAnchor
-    ? clamp(
-      inspectorAnchor.x * previewImageWidth - PREVIEW_INSPECTOR_WIDTH / 2,
-      0,
-      Math.max(previewImageWidth - PREVIEW_INSPECTOR_WIDTH, 0),
-    )
-    : 0
-  const inspectorOffsetY = inspectorAnchor
-    ? clamp(
-      inspectorAnchor.y * previewImageHeight - PREVIEW_INSPECTOR_HEIGHT / 2,
-      0,
-      Math.max(previewImageHeight - PREVIEW_INSPECTOR_HEIGHT, 0),
-    )
-    : 0
-  const inspectorTop = inspectorAnchor
-    ? clamp(
-      inspectorAnchor.y * inspectorAnchor.frameHeight - PREVIEW_INSPECTOR_HEIGHT / 2,
-      -(PREVIEW_INSPECTOR_HEIGHT - inspectorAnchor.frameHeight),
-      0,
-    )
-    : 0
 
   return (
     <div
       data-testid={frameTestId}
       className="relative flex h-full min-h-[240px] overflow-visible"
-      onPointerEnter={(event) => {
-        void preloadPdfHoverPreviewRenderer()
-        ensureInspectorPreview()
-        updateInspectorPosition(event)
-      }}
-      onPointerMove={updateInspectorPosition}
-      onPointerLeave={resetInspector}
-      onPointerCancel={resetInspector}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+      onPointerCancel={() => setIsHovered(false)}
+      onFocus={() => setIsHovered(true)}
+      onBlur={() => setIsHovered(false)}
     >
-      <div className="relative flex h-full min-h-[240px] w-full overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-transform duration-200">
+      <div
+        data-testid={testId.replace(/-image$/, "-surface")}
+        className={`relative z-0 flex h-full min-h-[240px] w-full origin-center overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-[transform,box-shadow] duration-200 ${isHovered ? "z-10 scale-[1.40] shadow-[0_34px_82px_-28px_rgba(8,23,38,0.62)]" : "scale-100"}
+`}
+      >
         {imageUrl ? (
           <img
             data-testid={testId}
@@ -254,11 +118,10 @@ function PdfPreviewFrame({
             className={`absolute inset-0 h-full w-full bg-white object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
               setLoadedImageUrl(imageUrl)
-              warmInspectorPreviewInBackground()
             }}
             onError={() => {
               setLoadedImageUrl(null)
-              resetInspector()
+              setIsHovered(false)
             }}
           />
         ) : null}
@@ -279,46 +142,6 @@ function PdfPreviewFrame({
           </div>
         ) : null}
       </div>
-
-      {loaded && inspectorAnchor ? (
-        <div
-          data-testid={inspectorTestId}
-          aria-hidden="true"
-          className="pointer-events-none absolute z-[5] hidden overflow-hidden rounded-md border border-white/65 bg-[color:var(--px-shell-panel)] shadow-[0_32px_72px_-26px_rgba(4,11,26,0.62),0_0_0_1px_rgba(67,205,255,0.18)] ring-1 ring-[color:var(--px-shell-accent)]/28 md:block"
-          style={{
-            width: `${PREVIEW_INSPECTOR_WIDTH}px`,
-            height: `${PREVIEW_INSPECTOR_HEIGHT}px`,
-            right: `calc(100% + ${PREVIEW_INSPECTOR_OFFSET}px)`,
-            top: `${inspectorTop}px`,
-          }}
-        >
-          <div className="absolute inset-3 overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-white shadow-inner">
-            {pdfInspectorImage ? (
-              <img
-                data-testid={inspectorImageTestId}
-                src={pdfInspectorImage.dataUrl}
-                alt=""
-                className="absolute left-0 top-0 max-w-none"
-                style={{
-                  width: `${pdfInspectorImage.width}px`,
-                  height: `${pdfInspectorImage.height}px`,
-                  transform: `translate(${-inspectorOffsetX}px, ${-inspectorOffsetY}px)`,
-                }}
-              />
-            ) : inspectorLoading ? (
-              <div
-                data-testid={inspectorLoadingTestId}
-                className="absolute inset-0 animate-pulse bg-[linear-gradient(135deg,rgba(232,240,248,0.94),rgba(248,252,255,0.98))]"
-              >
-                <div className="absolute inset-x-6 top-8 h-3 rounded-full bg-[color:var(--px-shell-line)]" />
-                <div className="absolute inset-x-6 top-15 h-2.5 rounded-full bg-[color:var(--px-shell-line)]/85" />
-                <div className="absolute inset-x-6 top-21 h-2.5 rounded-full bg-[color:var(--px-shell-line)]/75" />
-                <div className="absolute inset-x-6 top-31 h-3 rounded-full bg-[color:var(--px-shell-accent-soft)]" />
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -389,7 +212,6 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   function prefetchDetailNavigation() {
     void prefetchCommunityPaperDetail(paper.id)
     void preloadPaperPreviewEnhancer()
-    void preloadPdfHoverPreviewRenderer()
   }
 
   const sourcePdfUrl =
@@ -643,7 +465,6 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         >
           <PdfPreviewFrame
             imageUrl={sourcePdfUrl}
-            pdfDocumentUrl={sourcePdfDocumentUrl}
             unavailableIcon={<FileText className="h-7 w-7" />}
             placeholderTone="neutral"
             testId="paper-card-source-preview-image"
@@ -661,7 +482,6 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         >
           <PdfPreviewFrame
             imageUrl={translatedPdfUrl}
-            pdfDocumentUrl={translatedPdfDocumentUrl}
             unavailableIcon={<Languages className="h-7 w-7" />}
             placeholderTone="accent"
             testId="paper-card-translated-preview-image"

@@ -7,15 +7,33 @@ import i18n from "@/i18n"
 import LoginPage from "@/pages/login"
 
 const useAuthMock = vi.fn()
+const assignMock = vi.fn()
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => useAuthMock(),
 }))
 
+vi.mock("@/lib/local-auth", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/local-auth")>("@/lib/local-auth")
+
+  return {
+    ...actual,
+    getNiuTransRegisterUrl: () => "https://example.com/register",
+    getNiuTransAccountUrl: () => "https://example.com/account",
+  }
+})
+
 describe("LoginPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        assign: assignMock,
+      },
+    })
   })
 
   it("shows the backend auth error instead of flattening it into a generic failure message", () => {
@@ -65,5 +83,30 @@ describe("LoginPage", () => {
     expect(clearError).toHaveBeenCalled()
     expect(signIn).toHaveBeenCalledWith("15043413070", "secret")
     expect(screen.queryByText("Enter a valid email address")).not.toBeInTheDocument()
+  })
+
+  it("keeps registration and account management as external redirects", async () => {
+    const user = userEvent.setup()
+
+    useAuthMock.mockReturnValue({
+      signIn: vi.fn(),
+      error: null,
+      clearError: vi.fn(),
+      loading: false,
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Create account" }))
+    await user.click(screen.getByRole("button", { name: "Manage your account information" }))
+
+    expect(assignMock).toHaveBeenNthCalledWith(1, "https://example.com/register")
+    expect(assignMock).toHaveBeenNthCalledWith(2, "https://example.com/account")
   })
 })

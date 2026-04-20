@@ -30,7 +30,7 @@ export function DisclosureCard({
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <div
         className={cn(
-          "overflow-hidden rounded-[22px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-none",
+          "overflow-hidden rounded-none border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-none",
           className,
         )}
         {...props}

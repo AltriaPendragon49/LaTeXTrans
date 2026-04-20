@@ -3268,6 +3268,41 @@ async def _increment_paper_download_count(paper_id: str) -> Dict[str, Any]:
     return {"paper_id": paper_id, "download_count": int(paper.get("download_count") or 0)}
 
 
+async def _store_canonical_translated_pdf_asset(
+    *,
+    paper_id: str,
+    task_id: Optional[str],
+    pdf_path: Path,
+    source_name: Optional[str],
+) -> tuple[Dict[str, Any], StoredObjectRef, Path]:
+    delivery_pdf_path = _normalize_translated_pdf_leading_blank_pages(pdf_path)
+    stored_ref, stored_name = _persist_retained_artifact(
+        local_path=delivery_pdf_path,
+        paper_id=paper_id,
+        task_id=task_id,
+        asset_type="translated_pdf",
+        source_name=source_name or pdf_path.name,
+        content_type="application/pdf",
+    )
+    asset = await _upsert_latest_asset(
+        paper_id=paper_id,
+        task_id=task_id,
+        asset_type="translated_pdf",
+        file_path=stored_ref.object_key,
+        file_name=stored_name,
+        mime_type=stored_ref.content_type or "application/pdf",
+        storage_backend=stored_ref.storage_backend,
+    )
+    await _update_paper(
+        paper_id,
+        {
+            "trans_latest_asset_pdf_id": asset.get("id"),
+            "updated_at": _utc_now_iso(),
+        },
+    )
+    return asset, stored_ref, delivery_pdf_path
+
+
 async def _resolve_translated_pdf_asset(
     *,
     paper_id: str,
@@ -3278,34 +3313,14 @@ async def _resolve_translated_pdf_asset(
         pdf_path = download_route._find_translated_pdf(output_dir)
         if not pdf_path or not pdf_path.exists():
             continue
-        delivery_pdf_path = _normalize_translated_pdf_leading_blank_pages(pdf_path)
-        stored_ref, stored_name = _persist_retained_artifact(
-            local_path=delivery_pdf_path,
+        asset, stored_ref, _delivery_pdf_path = await _store_canonical_translated_pdf_asset(
             paper_id=paper_id,
             task_id=task_id,
-            asset_type="translated_pdf",
+            pdf_path=pdf_path,
             source_name=pdf_path.name,
-            content_type="application/pdf",
-        )
-
-        asset = await _upsert_latest_asset(
-            paper_id=paper_id,
-            task_id=task_id,
-            asset_type="translated_pdf",
-            file_path=stored_ref.object_key,
-            file_name=stored_name,
-            mime_type=stored_ref.content_type or "application/pdf",
-            storage_backend=stored_ref.storage_backend,
         )
         if stored_ref.storage_backend != "local_disk":
             clear_cached_runtime_artifacts(task_id, [pdf_path])
-        await _update_paper(
-            paper_id,
-            {
-                "trans_latest_asset_pdf_id": asset.get("id"),
-                "updated_at": _utc_now_iso(),
-            },
-        )
         return asset
 
     output_path = str((task or {}).get("output_path") or "").strip()
@@ -3321,36 +3336,87 @@ async def _resolve_translated_pdf_asset(
             recovered_pdf = None
 
         if recovered_pdf and recovered_pdf.exists():
-            delivery_pdf_path = _normalize_translated_pdf_leading_blank_pages(recovered_pdf)
-            stored_ref, stored_name = _persist_retained_artifact(
-                local_path=delivery_pdf_path,
+            asset, stored_ref, _delivery_pdf_path = await _store_canonical_translated_pdf_asset(
                 paper_id=paper_id,
                 task_id=task_id,
-                asset_type="translated_pdf",
+                pdf_path=recovered_pdf,
                 source_name=recovered_pdf.name,
-                content_type="application/pdf",
-            )
-            asset = await _upsert_latest_asset(
-                paper_id=paper_id,
-                task_id=task_id,
-                asset_type="translated_pdf",
-                file_path=stored_ref.object_key,
-                file_name=stored_name,
-                mime_type=stored_ref.content_type or "application/pdf",
-                storage_backend=stored_ref.storage_backend,
             )
             if stored_ref.storage_backend != "local_disk":
                 clear_cached_runtime_artifacts(task_id, [recovered_pdf])
-            await _update_paper(
-                paper_id,
-                {
-                    "trans_latest_asset_pdf_id": asset.get("id"),
-                    "updated_at": _utc_now_iso(),
-                },
-            )
             return asset
 
     return None
+
+
+async def backfill_translated_pdf_delivery_asset(*, paper_id: str) -> Dict[str, Any]:
+    paper = await _fetch_paper_by_id(paper_id)
+    if not _is_public_community_paper(paper):
+        return {"paper_id": paper_id, "status": "skipped", "reason": "paper_unavailable"}
+
+    asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
+    translated_asset = asset_map.get("translated_pdf")
+    if not translated_asset:
+        return {"paper_id": paper_id, "status": "skipped", "reason": "translated_asset_missing"}
+
+    resolved_pdf: Optional[Path] = None
+    if translated_asset.get("storage_backend") == "object_storage":
+        resolved_pdf = _materialize_object_storage_pdf_asset(translated_asset)
+    else:
+        candidate = _resolve_storage_path(translated_asset.get("file_path") or "")
+        if candidate.exists() and candidate.is_file():
+            resolved_pdf = candidate
+
+    if resolved_pdf is None or not resolved_pdf.exists():
+        return {"paper_id": paper_id, "status": "skipped", "reason": "translated_asset_unrecoverable"}
+
+    upgraded_asset, _stored_ref, canonical_pdf_path = await _store_canonical_translated_pdf_asset(
+        paper_id=paper_id,
+        task_id=str(translated_asset.get("task_id") or "").strip() or None,
+        pdf_path=resolved_pdf,
+        source_name=str(translated_asset.get("file_name") or resolved_pdf.name),
+    )
+    return {
+        "paper_id": paper_id,
+        "status": "upgraded",
+        "asset_id": upgraded_asset.get("id"),
+        "canonical_file_path": str(canonical_pdf_path),
+    }
+
+
+async def backfill_translated_pdf_delivery_assets(
+    *,
+    paper_ids: Optional[List[str]] = None,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    normalized_ids = [str(paper_id or "").strip() for paper_id in (paper_ids or []) if str(paper_id or "").strip()]
+    if normalized_ids:
+        target_paper_ids = normalized_ids
+    else:
+        repository = get_community_paper_repository()
+        try:
+            rows = await _run_local_repo(lambda: repository.list_public_papers())
+        except DatabaseUnavailableError as exc:
+            raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+        except Exception as exc:
+            logger.warning("Failed to list public papers for translated PDF backfill: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to list public papers") from exc
+
+        target_paper_ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]
+
+    if limit is not None and limit >= 0:
+        target_paper_ids = target_paper_ids[:limit]
+
+    results: List[Dict[str, Any]] = []
+    for target_paper_id in target_paper_ids:
+        results.append(await backfill_translated_pdf_delivery_asset(paper_id=target_paper_id))
+
+    return {
+        "requested": len(target_paper_ids),
+        "upgraded": sum(1 for row in results if row.get("status") == "upgraded"),
+        "skipped": sum(1 for row in results if row.get("status") != "upgraded"),
+        "results": results,
+    }
 
 
 async def _ensure_translated_pdf_asset(
@@ -6789,15 +6855,6 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
         raise HTTPException(status_code=404, detail="Translated PDF not available")
 
     if translated_asset.get("storage_backend") == "object_storage":
-        local_pdf = _materialize_object_storage_pdf_asset(translated_asset)
-        if local_pdf and local_pdf.exists():
-            local_pdf = _normalize_translated_pdf_leading_blank_pages(local_pdf)
-            return {
-                "paper_id": paper_id,
-                "asset": translated_asset,
-                "file_path": str(local_pdf),
-            }
-
         filename = str(translated_asset.get("file_name") or f"{paper_id}.pdf")
         mime_type = str(translated_asset.get("mime_type") or "application/pdf")
         signed_url = _resolve_object_storage_signed_url(
@@ -6819,7 +6876,6 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
     file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Translated PDF file not found")
-    file_path = _normalize_translated_pdf_leading_blank_pages(file_path)
 
     return {
         "paper_id": paper_id,
@@ -7004,7 +7060,6 @@ async def resolve_paper_download(*, paper_id: str, token: str) -> Dict[str, Any]
     file_path = _resolve_storage_path(translated_asset.get("file_path") or "")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Translated PDF file not found")
-    file_path = _normalize_translated_pdf_leading_blank_pages(file_path)
 
     try:
         await _increment_paper_download_count(paper_id)
