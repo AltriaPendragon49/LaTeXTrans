@@ -25,6 +25,8 @@ export interface CommunityPaper {
   id: string
   source: "upload" | "arxiv"
   arxiv_id: string | null
+  arxiv_url?: string | null
+  github_url?: string | null
   title: string
   authors: unknown[]
   categories: string[]

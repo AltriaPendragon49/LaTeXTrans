@@ -387,3 +387,9 @@
 - `backend/app/api/routes/papers.py`: ç®¡ç†å‘˜ç­–å±•å†å²æ¥å£ç°å·²è´Ÿè´£è§„èŒƒåŒ– `all` / `processing` ç­›é€‰è¯­ä¹‰ï¼Œå¹¶æä¾›é€‰ä¸­ä»»åŠ¡æ‰¹é‡ç¡¬åˆ é™¤å…¥å£ã€‚
 - `backend/app/services/paper_service.py`: ç®¡ç†å‘˜ç­–å±•å†å²æœåŠ¡ç°å·²è´Ÿè´£å¤„ç†ä¸­çŠ¶æ€èšåˆæŸ¥è¯¢ä¸æ‰¹é‡ç¡¬åˆ é™¤ç¼–æ’ï¼Œå¹¶è¿”å›é€ä»»åŠ¡æˆåŠŸ/å¤±è´¥ç»“æœã€‚
 - `backend/app/repositories/community_paper_repository.py`: ç­–å±•ä»»åŠ¡åˆ—è¡¨æŸ¥è¯¢ç°å·²æ”¯æŒå°† `processing` æ‰©å±•åŒ¹é…åˆ° `processing`ã€`translating`ã€`publishing` ä¸‰ç±»åœ¨é€”çŠ¶æ€ã€‚
+
+## Recent Responsibility Updates (2026-04-20)
+
+- `backend/app/api/routes/papers.py`: ÉçÇøÂÛÎÄÁĞ±íÓë¿¨Æ¬Ïà¹ØÂ·ÓÉÏÖÒÑÌá¹© `source-download` Èë¿Ú£¬²¢ÔÚ paper summary ÖĞ±©Â¶ `arxiv_url` Óë `github_url` µÈÑĞ¾¿¶¯×÷ÔªÊı¾İ¡£
+- `backend/app/api/routes/download.py`: Ô´ÎÄ PDF Ô¤ÀÀÂß¼­ÏÖÒÑ³éÈ¡Îª¿É¸´ÓÃµÄ `_serve_source_pdf`£¬Í¬Ê±Ö§³Ö inline Ô¤ÀÀÓë attachment ÏÂÔØÁ½ÖÖ·µ»Ø·½Ê½¡£
+- `backend/app/services/paper_service.py`: ÉçÇøÂÛÎÄ»ã×Ü·şÎñÏÖÒÑ¸ºÔğ´Ó preview HTML ÖĞÌáÈ¡ GitHub Íâ²¿Á´½Ó£¬ÎªÊ×Ò³ÂÛÎÄ¿¨Æ¬µÄÖ±´ïÑĞ¾¿¶¯×÷Ìá¹©Êı¾İ¡£

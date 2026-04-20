@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
-import CommunityFeedPage from "@/pages/CommunityFeed"
+import CommunityFeedSurface from "@/features/community-paper/components/CommunityFeedSurface"
 
 const useCommunityPapersMock = vi.fn()
 
-vi.mock("@/hooks/use-community-papers", () => ({
+vi.mock("@/features/community-paper/hooks/useCommunityPapers", () => ({
   useCommunityPapers: (...args: unknown[]) => useCommunityPapersMock(...args),
 }))
 
@@ -17,11 +17,11 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }))
 
-vi.mock("@/components/community/PaperCard", () => ({
+vi.mock("@/features/community-paper/components/PaperCard", () => ({
   PaperCard: ({ paper }: { paper: { title: string } }) => <div>{paper.title}</div>,
 }))
 
-describe("CommunityFeedPage hidden agent entry", () => {
+describe("CommunityFeedSurface hidden agent entry", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
@@ -37,7 +37,7 @@ describe("CommunityFeedPage hidden agent entry", () => {
   it("removes the public agent composer and conversation launch copy", () => {
     render(
       <MemoryRouter>
-        <CommunityFeedPage />
+        <CommunityFeedSurface />
       </MemoryRouter>,
     )
 

@@ -75,6 +75,7 @@ _preview_html_cache: Dict[str, str] = {}
 _source_html_cache: Dict[str, str] = {}
 _PUBLIC_FEED_CACHE: Dict[str, Dict[str, Any]] = {}
 _PUBLIC_FEED_CACHE_TTL_SECONDS = 60.0
+_PUBLIC_EXTERNAL_LINK_CACHE: Dict[str, Dict[str, Optional[str]]] = {}
 _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
@@ -2659,15 +2660,114 @@ def _compact_asset_map_for_feed(
     return compact_map or None
 
 
+def _read_preview_asset_html(asset: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not asset:
+        return None
+
+    file_path = str(asset.get("file_path") or "").strip()
+    if not file_path:
+        return None
+
+    resolved_path = _resolve_storage_path(file_path)
+    if not resolved_path.exists() or not resolved_path.is_file():
+        return None
+    if resolved_path.suffix.lower() not in {".html", ".htm"}:
+        return None
+
+    try:
+        return resolved_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            return resolved_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
+def _extract_external_href_from_html(
+    html_content: Optional[str],
+    *,
+    host_fragment: str,
+) -> Optional[str]:
+    normalized_host = str(host_fragment or "").strip().lower()
+    if not html_content or not normalized_host:
+        return None
+
+    try:
+        soup = BeautifulSoup(html_content, "html.parser")
+    except Exception:
+        soup = None
+
+    href_candidates: List[str] = []
+    if soup is not None:
+        for anchor in soup.find_all("a", href=True):
+            href = str(anchor.get("href") or "").strip()
+            if href:
+                href_candidates.append(href)
+
+    href_candidates.extend(
+        match
+        for match in re.findall(r"https?://[^\s\"'<>]+", html_content)
+        if match
+    )
+
+    seen: set[str] = set()
+    for href in href_candidates:
+        normalized_href = str(href or "").strip()
+        lowered_href = normalized_href.lower()
+        if not normalized_href or normalized_href in seen:
+            continue
+        seen.add(normalized_href)
+        if not lowered_href.startswith(("http://", "https://")):
+            continue
+        if normalized_host not in lowered_href:
+            continue
+        return normalized_href
+
+    return None
+
+
+def _resolve_external_links_for_feed(
+    paper: Dict[str, Any],
+    asset_map: Optional[Dict[str, Dict[str, Any]]],
+) -> Dict[str, Optional[str]]:
+    arxiv_id = str(paper.get("arxiv_id") or "").strip()
+    arxiv_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else None
+
+    preview_asset = (asset_map or {}).get("preview_html")
+    cache_key = "|".join(
+        [
+            str(preview_asset.get("id") or "").strip() if preview_asset else "",
+            str(preview_asset.get("file_path") or "").strip() if preview_asset else "",
+            arxiv_url or "",
+        ]
+    )
+    cached = _PUBLIC_EXTERNAL_LINK_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    preview_html = _read_preview_asset_html(preview_asset)
+    resolved = {
+        "arxiv_url": arxiv_url,
+        "github_url": _extract_external_href_from_html(preview_html, host_fragment="github.com"),
+    }
+    _PUBLIC_EXTERNAL_LINK_CACHE[cache_key] = resolved
+    return resolved
+
+
 def _paper_feed_summary(
     paper: Dict[str, Any],
     *,
     asset_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     summary = _paper_summary(paper, asset_map=asset_map)
+    external_links = _resolve_external_links_for_feed(paper, asset_map)
     summary["abstract_raw"] = _compact_abstract_for_feed(summary.get("abstract_raw"))
     summary["abstract_translated"] = _compact_abstract_for_feed(summary.get("abstract_translated"))
     summary["assets"] = _compact_asset_map_for_feed(asset_map)
+    summary["arxiv_url"] = external_links.get("arxiv_url")
+    summary["github_url"] = external_links.get("github_url")
     return summary
 
 
@@ -3756,10 +3856,13 @@ def _paper_summary(
         asset_map=asset_map,
     )
     selected_latest_asset = latest_asset or _select_latest_asset_from_map(asset_map)
+    external_links = _resolve_external_links_for_feed(paper, asset_map)
     return {
         "id": paper.get("id"),
         "source": paper.get("source"),
         "arxiv_id": paper.get("arxiv_id"),
+        "arxiv_url": external_links.get("arxiv_url"),
+        "github_url": external_links.get("github_url"),
         "title": paper.get("title"),
         "authors": paper.get("authors") or [],
         "categories": paper.get("categories") or [],

@@ -1,14 +1,19 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { usePaperDetail } from "@/hooks/use-paper-detail"
-import { primeCommunityPaperDetailCache, clearCommunityPaperDetailCache } from "@/lib/community-api"
+import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
+import {
+  clearCommunityPaperDetailCache,
+  primeCommunityPaperDetailCache,
+} from "@/features/community-paper/services/community-paper-api"
 
 const getCommunityPaperDetailMock = vi.fn()
 const recordCommunityPaperViewMock = vi.fn()
 
-vi.mock("@/lib/community-api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/community-api")>("@/lib/community-api")
+vi.mock("@/features/community-paper/services/community-paper-api", async () => {
+  const actual = await vi.importActual<typeof import("@/features/community-paper/services/community-paper-api")>(
+    "@/features/community-paper/services/community-paper-api",
+  )
   return {
     ...actual,
     getCommunityPaperDetail: (...args: unknown[]) => getCommunityPaperDetailMock(...args),

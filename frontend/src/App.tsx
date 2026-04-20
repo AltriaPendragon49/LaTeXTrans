@@ -1,45 +1,39 @@
 import { lazy, Suspense, type ReactNode } from "react"
-import { Loader2 } from "lucide-react"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ThemeProvider } from "@/theme/theme-provider"
 import { useAuth } from "@/contexts/AuthContext"
+import { hasAdminRole } from "@/features/admin-curation/utils/admin-access"
+import { LoadingState } from "@/ui/loading-state/LoadingState"
 
 import { AuthProvider } from "./contexts/AuthContext"
 
 const Layout = lazy(() => import("./layout"))
-const CommunityFeedPage = lazy(() => import("./pages/CommunityFeed"))
-const CommunityAdminCurationPage = lazy(() => import("./pages/CommunityAdminCuration"))
-const CommunityAdminCurationTasksPage = lazy(() => import("./pages/CommunityAdminCurationTasks"))
-const ProcessingPage = lazy(() => import("./pages/Processing"))
-const ComparisonsPage = lazy(() => import("./pages/Comparisons"))
-const Login = lazy(() => import("./pages/Login"))
-const ProfilePage = lazy(() => import("./pages/Profile"))
-const PaperDetailPage = lazy(() => import("./pages/PaperDetail"))
-const ToolsHubPage = lazy(() => import("./pages/ToolsHub"))
-const SettingsPage = lazy(() => import("./pages/Settings"))
+const HomePage = lazy(() => import("./pages/home"))
+const CommunityAdminCurationPage = lazy(() => import("./pages/community-admin-curation"))
+const CommunityAdminCurationTasksPage = lazy(() => import("./pages/community-admin-curation-tasks"))
+const CommunityConversationPage = lazy(() => import("./pages/community-conversation"))
+const ProcessingPage = lazy(() => import("./pages/processing"))
+const Login = lazy(() => import("./pages/login"))
+const ProfilePage = lazy(() => import("./pages/profile"))
+const PaperDetailPage = lazy(() => import("@/pages/paper-detail"))
+const PreviewPage = lazy(() => import("@/pages/preview"))
+const TranslatePage = lazy(() => import("./pages/translate"))
+const WorkspaceHistoryPage = lazy(() => import("./pages/workspace-history"))
+const WorkspaceSettingsPage = lazy(() => import("./pages/workspace-settings"))
+const WorkspaceGlossaryPage = lazy(() => import("./pages/workspace-glossary"))
+const ToolsHubPage = lazy(() => import("./pages/tools-hub"))
 
 function RouteLoading() {
   const { t } = useTranslation()
 
   return (
-    <div className="flex min-h-[50vh] items-center justify-center gap-3 text-muted-foreground">
-      <Loader2 className="h-5 w-5 animate-spin" />
-      <span>{t("common.status.loading")}</span>
-    </div>
+    <LoadingState className="min-h-[50vh]" label={t("common.status.loading")} />
   )
 }
 
 function withSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>
-}
-
-function hasAdminRole(roles: string[] | null | undefined): boolean {
-  if (!roles?.length) {
-    return false
-  }
-  const adminRoles = new Set(["admin", "super_admin", "community_admin", "curation_admin"])
-  return roles.some((role) => adminRoles.has(String(role).trim().toLowerCase()))
 }
 
 function AdminRoute({ children }: { children: ReactNode }) {
@@ -57,6 +51,18 @@ function AdminRoute({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+function AuthenticatedWorkspaceRoute({ children }: { children: ReactNode }) {
+  const { user, loading, isAuthenticated } = useAuth()
+
+  if (loading) {
+    return <RouteLoading />
+  }
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />
+  }
+  return <>{children}</>
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -65,9 +71,9 @@ function App() {
           <Routes>
             <Route path="/login" element={withSuspense(<Login />)} />
             <Route path="/" element={withSuspense(<Layout />)}>
-              <Route index element={withSuspense(<CommunityFeedPage />)} />
-              <Route path="agent" element={<Navigate to="/" replace />} />
-              <Route path="agent/:conversationId" element={<Navigate to="/" replace />} />
+              <Route index element={withSuspense(<HomePage />)} />
+              <Route path="agent" element={withSuspense(<CommunityConversationPage />)} />
+              <Route path="agent/:conversationId" element={withSuspense(<CommunityConversationPage />)} />
               <Route
                 path="admin/curation"
                 element={
@@ -85,13 +91,44 @@ function App() {
                 }
               />
               <Route path="tools" element={withSuspense(<ToolsHubPage />)} />
-              <Route path="translate" element={<Navigate to="/tools?panel=translate" replace />} />
+              <Route
+                path="translate"
+                element={
+                  <AuthenticatedWorkspaceRoute>
+                    {withSuspense(<TranslatePage />)}
+                  </AuthenticatedWorkspaceRoute>
+                }
+              />
               <Route path="paper/:paperId" element={withSuspense(<PaperDetailPage />)} />
               <Route path="processing" element={withSuspense(<ProcessingPage />)} />
-              <Route path="preview" element={withSuspense(<ComparisonsPage />)} />
-              <Route path="history" element={<Navigate to="/tools?panel=history" replace />} />
-              <Route path="glossary" element={<Navigate to="/tools?panel=glossary" replace />} />
-              <Route path="settings" element={withSuspense(<SettingsPage />)} />
+              <Route path="preview" element={withSuspense(<PreviewPage />)} />
+              <Route
+                path="workspace/history"
+                element={
+                  <AuthenticatedWorkspaceRoute>
+                    {withSuspense(<WorkspaceHistoryPage />)}
+                  </AuthenticatedWorkspaceRoute>
+                }
+              />
+              <Route
+                path="workspace/settings"
+                element={
+                  <AuthenticatedWorkspaceRoute>
+                    {withSuspense(<WorkspaceSettingsPage />)}
+                  </AuthenticatedWorkspaceRoute>
+                }
+              />
+              <Route
+                path="workspace/glossary"
+                element={
+                  <AuthenticatedWorkspaceRoute>
+                    {withSuspense(<WorkspaceGlossaryPage />)}
+                  </AuthenticatedWorkspaceRoute>
+                }
+              />
+              <Route path="history" element={<Navigate to="/workspace/history" replace />} />
+              <Route path="glossary" element={<Navigate to="/workspace/glossary" replace />} />
+              <Route path="settings" element={<Navigate to="/workspace/settings" replace />} />
               <Route path="profile" element={withSuspense(<ProfilePage />)} />
             </Route>
           </Routes>

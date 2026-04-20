@@ -65,30 +65,45 @@ Frontend directory and module names SHALL describe product responsibility clearl
 - **THEN** it SHALL use a business-domain name such as `community-paper` or `translation-workflow`
 - **AND** it SHALL avoid generic buckets that do not communicate domain responsibility
 
-### Requirement: Early migrations SHALL preserve behavior and compatibility
+### Requirement: Reusable UI primitives SHALL be normalized through a Uiverse-first adoption workflow
 
-Early frontend architecture migrations SHALL preserve existing behavior and SHALL allow temporary compatibility layers while structure is being normalized.
+The frontend SHALL evaluate Uiverse as the first sourcing option for generic UI primitives and SHALL adapt selected patterns into the repository's own `src/ui/` system before product use.
 
-#### Scenario: First-pass architecture migration
-- **WHEN** a migration step is part of the first-pass architecture normalization
-- **THEN** it MAY move files, split mixed-responsibility files, and add compatibility re-exports
-- **AND** it SHALL NOT intentionally change business behavior in the same step without separate approval
+#### Scenario: A new reusable primitive is needed
+- **WHEN** the rollout needs a sidebar, button, input, tabs, search surface, card, sheet, or similarly generic primitive
+- **THEN** contributors SHALL check Uiverse first for a suitable starting pattern
+- **AND** any chosen pattern SHALL be refactored into the local `src/ui/` layer with the project's own tokens, accessibility, and interaction conventions
+- **AND** feature pages SHALL NOT paste raw Uiverse snippets directly as product code
 
-#### Scenario: Import paths are in transition
-- **WHEN** existing modules are moved to their target architecture paths
-- **THEN** the migration MAY keep old import paths working through temporary re-exports
-- **AND** old paths SHALL only be removed after the new structure is validated for the affected page or feature
+#### Scenario: No suitable Uiverse pattern exists
+- **WHEN** no Uiverse pattern meets the product need or integration constraints
+- **THEN** the project MAY implement a local primitive directly
+- **AND** that primitive SHALL still live under `src/ui/` when it is domain-agnostic
 
-### Requirement: Migration steps SHALL avoid bundled multi-axis rewrites
+### Requirement: Shared presentation shells SHALL be normalized under `src/ui/`
 
-A single frontend migration step SHALL keep scope narrow enough that architectural relocation does not become mixed with unrelated redesign or contract churn.
+The frontend SHALL treat domain-agnostic composition shells such as page intros, state panels, filter toolbars, notice banners, upload surfaces, and section wrappers as part of the governed `src/ui/` layer rather than page-local styling utilities.
 
-#### Scenario: Planning a migration step
-- **WHEN** a contributor defines a migration step
-- **THEN** that step SHALL NOT combine structural relocation, UI redesign, state-model rewrite, and API-contract rewrite in one pass
-- **AND** the step SHALL focus on one dominant migration concern at a time
+#### Scenario: A repeated page shell appears across multiple routes
+- **WHEN** multiple pages need the same structural pattern for route headers, empty or error states, banners, segmented filters, or section framing
+- **THEN** that pattern SHALL be implemented or promoted under `src/ui/`
+- **AND** consuming pages SHALL configure it with content and actions instead of recreating the visual contract locally
 
-### Requirement: Refactor scope SHALL avoid unnecessary fragmentation
+#### Scenario: A page already has a governed shell available
+- **WHEN** a page needs behavior already covered by a governed shell in `src/ui/`
+- **THEN** the page SHALL reuse the existing shell
+- **AND** it SHALL NOT introduce a parallel page-local version unless the existing shell cannot support the requirement without breaking shared semantics
+
+### Requirement: Full rollout steps SHALL preserve behavior coverage while allowing shell-level change
+
+The full frontend rollout MAY change visual language, route organization, shell hierarchy, and internal state composition, but it SHALL preserve feature coverage.
+
+#### Scenario: A route or page is redesigned
+- **WHEN** a page is reorganized, renamed, or moved during the rollout
+- **THEN** its capability set SHALL remain available to users through the new shell
+- **AND** the rollout SHALL not remove existing business-critical functionality as a side effect of architecture cleanup
+
+### Requirement: Migration steps SHALL avoid unnecessary fragmentation
 
 The frontend refactor SHALL avoid splitting modules into smaller files unless the split creates a real ownership or readability improvement.
 

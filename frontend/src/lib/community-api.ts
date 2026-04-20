@@ -332,10 +332,6 @@ export function clearCommunityPaperDetailCache(): void {
   communityPaperDetailInflight.clear()
 }
 
-export function preloadPaperDetailRoute(): Promise<unknown> {
-  return import("@/pages/PaperDetail")
-}
-
 export async function prefetchCommunityPaperDetail(
   paperId: string,
 ): Promise<CommunityPaperDetailResponse> {

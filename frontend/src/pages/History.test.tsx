@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
-import HistoryPage from "@/pages/History"
+import HistoryPage from "@/pages/workspace-history"
 import { getAccessToken } from "@/lib/local-auth"
 
 const authState = vi.hoisted(() => ({
@@ -12,15 +12,18 @@ const authState = vi.hoisted(() => ({
   session: { access_token: "token-1" },
 }))
 
+const historyStoreState = vi.hoisted(() => ({
+  setTaskId: vi.fn(),
+  setArxivId: vi.fn(),
+}))
+
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
-    setTaskId: vi.fn(),
-    setArxivId: vi.fn(),
-  }),
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof historyStoreState) => unknown) =>
+    selector ? selector(historyStoreState) : historyStoreState,
 }))
 
 vi.mock("@/lib/local-auth", () => ({
@@ -31,6 +34,8 @@ describe("HistoryPage", () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
+    historyStoreState.setTaskId.mockReset()
+    historyStoreState.setArxivId.mockReset()
     await i18n.changeLanguage("en")
     authState.isAuthenticated = true
     authState.loading = false
