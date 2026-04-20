@@ -108,17 +108,17 @@ export function PaperDetailHeader({
           </div>
         </div>
 
-        <div className="ml-4 flex shrink-0 items-center gap-3">
+        <div className="absolute left-1/2 top-1/2 hidden w-full max-w-md -translate-x-1/2 -translate-y-1/2 xl:block">
           <SegmentedControl
             value={selectedMode}
             onValueChange={onSelectMode}
             items={modeItems}
-            className="hidden xl:flex"
+            className="w-full"
             itemClassName="px-4"
           />
+        </div>
 
-          <div className="hidden h-6 w-px bg-[color:var(--px-shell-line)] sm:block" />
-
+        <div className="ml-4 flex shrink-0 items-center justify-end flex-none gap-3 xl:w-80">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[color:var(--px-shell-accent-soft)] text-[11px] font-black uppercase text-[color:var(--px-shell-accent)]">
               {paper.title.charAt(0)}

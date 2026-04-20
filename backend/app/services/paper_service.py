@@ -5935,6 +5935,91 @@ def _schedule_curation_job(job_id: str) -> None:
     task = asyncio.create_task(_run_curation_job(job_id))
     _curation_job_tasks[job_id] = task
 
+
+async def _cancel_curation_job_task_if_running(job_id: str) -> bool:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id:
+        return False
+    task = _curation_job_tasks.get(normalized_job_id)
+    if task is None:
+        return False
+    if task.done():
+        _curation_job_tasks.pop(normalized_job_id, None)
+        return False
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        logger.warning("Admin curation task cancellation for %s raised: %s", normalized_job_id, exc, exc_info=True)
+    finally:
+        if _curation_job_tasks.get(normalized_job_id) is task:
+            _curation_job_tasks.pop(normalized_job_id, None)
+    return True
+
+
+async def _reset_existing_admin_arxiv_curation(
+    *,
+    repository: Any,
+    arxiv_id: str,
+    existing_paper: Optional[Dict[str, Any]],
+) -> None:
+    normalized_arxiv_id = str(arxiv_id or "").strip()
+    if not normalized_arxiv_id:
+        return
+
+    existing_jobs = await _run_local_repo(
+        lambda: repository.list_curation_jobs_for_arxiv_id(normalized_arxiv_id)
+    )
+    if not existing_jobs and not existing_paper:
+        return
+
+    deleted_paper_ids: set[str] = set()
+    deleted_task_ids: set[str] = set()
+
+    existing_paper_id = str((existing_paper or {}).get("id") or "").strip()
+    if existing_paper_id:
+        await _hard_delete_paper_records(repository=repository, paper_id=existing_paper_id)
+        deleted_paper_ids.add(existing_paper_id)
+
+    for job in existing_jobs:
+        job_id = str(job.get("job_id") or "").strip()
+        if job_id:
+            await _cancel_curation_job_task_if_running(job_id)
+
+        job_status = str(job.get("status") or "").strip().lower()
+        published_paper_id = str(job.get("published_paper_id") or "").strip()
+        paper_id = str(job.get("paper_id") or "").strip()
+        target_paper_id = published_paper_id or paper_id
+
+        if job_status == "completed" or published_paper_id:
+            if target_paper_id and target_paper_id not in deleted_paper_ids:
+                await _hard_delete_paper_records(repository=repository, paper_id=target_paper_id)
+                deleted_paper_ids.add(target_paper_id)
+        else:
+            failed_artifact_path = str(job.get("failed_artifact_path") or "").strip()
+            if failed_artifact_path:
+                _delete_retained_failed_artifact(
+                    failed_artifact_path=failed_artifact_path,
+                    artifact_storage_backend=str(job.get("artifact_storage_backend") or "").strip() or None,
+                )
+
+            task_id = str(job.get("task_id") or "").strip()
+            if task_id and task_id not in deleted_task_ids:
+                task_manager.delete_task_full(task_id)
+                await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
+                deleted_task_ids.add(task_id)
+
+            if paper_id and paper_id not in deleted_paper_ids:
+                await _delete_placeholder_curation_paper_if_present(repository=repository, paper_id=paper_id)
+                deleted_paper_ids.add(paper_id)
+
+        if job_id:
+            await _run_local_repo(lambda job_id=job_id: repository.delete_curation_job(job_id))
+
+
 async def _run_curation_job(job_id: str) -> None:
     repository = get_community_paper_repository()
     async with _get_curation_semaphore():
@@ -6120,6 +6205,8 @@ async def _run_curation_job(job_id: str) -> None:
                 )
             except Exception:
                 logger.warning("Failed to persist curation job failure for %s", job_id, exc_info=True)
+        finally:
+            _curation_job_tasks.pop(job_id, None)
 
 
 async def submit_admin_arxiv_curation_batch(
@@ -6139,7 +6226,12 @@ async def submit_admin_arxiv_curation_batch(
     items: List[Dict[str, Any]] = []
     for arxiv_id in normalized_ids:
         existing = await _fetch_paper_by_arxiv_id(arxiv_id)
-        paper_id = str(existing.get("id") or uuid4().hex) if existing else uuid4().hex
+        await _reset_existing_admin_arxiv_curation(
+            repository=repository,
+            arxiv_id=arxiv_id,
+            existing_paper=existing,
+        )
+        paper_id = uuid4().hex
         job_payload = {
             "job_id": f"curation-job-{uuid4().hex}",
             "batch_id": batch_id,

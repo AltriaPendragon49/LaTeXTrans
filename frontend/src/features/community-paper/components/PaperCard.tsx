@@ -244,7 +244,7 @@ function PdfPreviewFrame({
       onPointerLeave={resetInspector}
       onPointerCancel={resetInspector}
     >
-      <div className="relative flex h-full min-h-[240px] w-full overflow-hidden rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-transform duration-200">
+      <div className="relative flex h-full min-h-[240px] w-full overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-transform duration-200">
         {imageUrl ? (
           <img
             data-testid={testId}
@@ -270,7 +270,7 @@ function PdfPreviewFrame({
           <div className="mb-2 h-1.5 w-full rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel-strong)_70%,var(--px-shell-line))]" />
           <div className="mb-2 h-1.5 w-full rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel-strong)_70%,var(--px-shell-line))]" />
           <div className="mb-6 h-1.5 w-5/6 rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel-strong)_70%,var(--px-shell-line))]" />
-          <div className={`mt-auto h-[58%] rounded-[14px] ${placeholderTone === "accent" ? "bg-[color:color-mix(in_srgb,var(--px-shell-accent-soft)_70%,white)]" : "bg-[color:var(--px-shell-panel)]"}`} />
+          <div className={`mt-auto h-[58%] rounded-sm ${placeholderTone === "accent" ? "bg-[color:color-mix(in_srgb,var(--px-shell-accent-soft)_70%,white)]" : "bg-[color:var(--px-shell-panel)]"}`} />
         </div>
 
         {!imageUrl ? (
@@ -284,7 +284,7 @@ function PdfPreviewFrame({
         <div
           data-testid={inspectorTestId}
           aria-hidden="true"
-          className="pointer-events-none absolute z-[5] hidden overflow-hidden rounded-[28px] border border-white/65 bg-[color:var(--px-shell-panel)] shadow-[0_32px_72px_-26px_rgba(4,11,26,0.62),0_0_0_1px_rgba(67,205,255,0.18)] ring-1 ring-[color:var(--px-shell-accent)]/28 md:block"
+          className="pointer-events-none absolute z-[5] hidden overflow-hidden rounded-md border border-white/65 bg-[color:var(--px-shell-panel)] shadow-[0_32px_72px_-26px_rgba(4,11,26,0.62),0_0_0_1px_rgba(67,205,255,0.18)] ring-1 ring-[color:var(--px-shell-accent)]/28 md:block"
           style={{
             width: `${PREVIEW_INSPECTOR_WIDTH}px`,
             height: `${PREVIEW_INSPECTOR_HEIGHT}px`,
@@ -292,7 +292,7 @@ function PdfPreviewFrame({
             top: `${inspectorTop}px`,
           }}
         >
-          <div className="absolute inset-3 overflow-hidden rounded-[22px] border border-[color:var(--px-shell-line)] bg-white shadow-inner">
+          <div className="absolute inset-3 overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-white shadow-inner">
             {pdfInspectorImage ? (
               <img
                 data-testid={inspectorImageTestId}
@@ -373,7 +373,7 @@ function PreviewLink({
       onMouseEnter={onIntent}
       onFocus={onIntent}
       onPointerDown={onIntent}
-      className="group flex h-full flex-col gap-2 rounded-[20px] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
+      className="group flex h-full flex-col gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
     >
       {children}
     </Link>
@@ -477,7 +477,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   }
 
   return (
-    <article className="grid gap-5 rounded-[26px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-5 shadow-[var(--px-shell-shadow)] transition-colors duration-200 xl:grid-cols-[minmax(0,1.05fr)_minmax(300px,0.95fr)]">
+    <article className="grid gap-5 rounded-md border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-5 shadow-[var(--px-shell-shadow)] transition-colors duration-200 xl:grid-cols-[minmax(0,0.85fr)_minmax(340px,1.15fr)]">
       <div className="flex min-w-0 flex-col justify-between">
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -517,7 +517,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
               onMouseEnter={prefetchDetailNavigation}
               onFocus={prefetchDetailNavigation}
               onPointerDown={prefetchDetailNavigation}
-              className="inline-flex max-w-full rounded-[12px] outline-none transition-colors duration-200 hover:text-[color:var(--px-shell-accent)] focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
+              className="inline-flex max-w-full rounded-sm outline-none transition-colors duration-200 hover:text-[color:var(--px-shell-accent)] focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
             >
               <h3 className="text-lg font-bold leading-tight text-[color:var(--px-shell-ink)] md:text-[1.28rem]">
                 {paper.title}

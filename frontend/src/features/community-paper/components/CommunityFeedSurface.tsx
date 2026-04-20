@@ -73,7 +73,7 @@ export default function CommunityFeedSurface() {
   return (
     <section
       aria-label={t("community.feed.title")}
-      className="mx-auto flex w-full max-w-4xl flex-col gap-3 text-[color:var(--px-shell-ink)]"
+      className="mx-auto flex w-full max-w-5xl flex-col gap-3 text-[color:var(--px-shell-ink)]"
     >
       <SearchBar
         variant="inline"

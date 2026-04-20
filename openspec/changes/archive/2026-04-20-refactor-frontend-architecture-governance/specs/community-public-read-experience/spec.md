@@ -14,6 +14,8 @@ The public reader SHALL let users intentionally switch between English-source an
 - **THEN** the detail route SHALL remain readable inside the community shell
 - **AND** login SHALL not be required merely to consume public reading content
 
+## ADDED Requirements
+
 ### Requirement: Paper detail uses a coordinated dual-pane copilot workspace
 
 The web UI SHALL present paper detail as a coordinated dual-pane workspace with a reading-dominant pane and a persistent paper-scoped support pane, integrated into the new editorial application shell.

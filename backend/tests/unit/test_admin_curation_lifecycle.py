@@ -519,3 +519,169 @@ def test_batch_delete_admin_curation_jobs_reports_successes_and_failures(monkeyp
             "detail": "Curation job not found",
         }
     ]
+
+
+def test_list_curation_jobs_for_arxiv_id_orders_created_jobs(monkeypatch):
+    cursor = _FakeCursor()
+
+    monkeypatch.setattr(
+        "backend.app.repositories.community_paper_repository.db_connection",
+        lambda *args, **kwargs: _FakeConnection(cursor),
+        raising=False,
+    )
+
+    repository = CommunityPaperRepository()
+    repository.list_curation_jobs_for_arxiv_id("2504.07439")
+
+    assert "from community_curation_jobs where arxiv_id =" in cursor.sql
+    assert "order by created_at asc, job_id asc" in cursor.sql
+    assert cursor.params == ("2504.07439",)
+
+
+def test_submit_admin_arxiv_curation_batch_resets_existing_completed_arxiv_history(monkeypatch):
+    class _BatchRepository:
+        def __init__(self) -> None:
+            self.inserted_payloads: list[dict] = []
+            self.deleted_job_ids: list[str] = []
+
+        def list_curation_jobs_for_arxiv_id(self, arxiv_id: str):
+            assert arxiv_id == "2504.07439"
+            return [
+                {
+                    "job_id": "job-old-completed",
+                    "paper_id": "paper-old",
+                    "published_paper_id": "paper-old",
+                    "task_id": "task-old",
+                    "source_type": "arxiv",
+                    "arxiv_id": arxiv_id,
+                    "status": "completed",
+                }
+            ]
+
+        def insert_curation_job(self, payload: dict):
+            stored = dict(payload)
+            self.inserted_payloads.append(stored)
+            return stored
+
+        def delete_curation_job(self, job_id: str):
+            self.deleted_job_ids.append(job_id)
+            return 1
+
+    repository = _BatchRepository()
+    hard_deleted_paper_ids: list[str] = []
+    scheduled_job_ids: list[str] = []
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _fetch_paper_by_arxiv_id(arxiv_id: str):
+        assert arxiv_id == "2504.07439"
+        return {"id": "paper-old", "arxiv_id": arxiv_id}
+
+    async def _hard_delete_paper_records(*, repository, paper_id: str):
+        assert repository is not None
+        hard_deleted_paper_ids.append(paper_id)
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_arxiv_id", _fetch_paper_by_arxiv_id)
+    monkeypatch.setattr(paper_service, "_hard_delete_paper_records", _hard_delete_paper_records)
+    monkeypatch.setattr(paper_service, "_schedule_curation_job", lambda job_id: scheduled_job_ids.append(job_id))
+
+    result = asyncio.run(
+        paper_service.submit_admin_arxiv_curation_batch(
+            arxiv_ids=["2504.07439"],
+            current_user={"id": "admin-1", "roles": ["admin"]},
+        )
+    )
+
+    assert hard_deleted_paper_ids == ["paper-old"]
+    assert repository.deleted_job_ids == ["job-old-completed"]
+    assert result["items"][0]["paper_id"] != "paper-old"
+    assert scheduled_job_ids == [result["items"][0]["job_id"]]
+
+
+def test_submit_admin_arxiv_curation_batch_resets_existing_failed_arxiv_history(monkeypatch):
+    class _BatchRepository:
+        def __init__(self) -> None:
+            self.inserted_payloads: list[dict] = []
+            self.deleted_job_ids: list[str] = []
+            self.deleted_translation_tasks: list[list[str]] = []
+
+        def list_curation_jobs_for_arxiv_id(self, arxiv_id: str):
+            assert arxiv_id == "2504.07439"
+            return [
+                {
+                    "job_id": "job-old-failed",
+                    "paper_id": "paper-failed",
+                    "published_paper_id": None,
+                    "task_id": "task-failed",
+                    "source_type": "arxiv",
+                    "arxiv_id": arxiv_id,
+                    "status": "failed",
+                    "failed_artifact_path": "failed_tasks/task-failed",
+                    "artifact_storage_backend": "object_storage",
+                }
+            ]
+
+        def insert_curation_job(self, payload: dict):
+            stored = dict(payload)
+            self.inserted_payloads.append(stored)
+            return stored
+
+        def delete_translation_tasks(self, task_ids: list[str]):
+            self.deleted_translation_tasks.append(list(task_ids))
+            return len(task_ids)
+
+        def delete_curation_job(self, job_id: str):
+            self.deleted_job_ids.append(job_id)
+            return 1
+
+    repository = _BatchRepository()
+    deleted_task_ids: list[str] = []
+    deleted_failed_artifacts: list[tuple[str, str | None]] = []
+    deleted_placeholder_papers: list[str] = []
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _fetch_paper_by_arxiv_id(arxiv_id: str):
+        assert arxiv_id == "2504.07439"
+        return None
+
+    async def _delete_placeholder(*, repository, paper_id: str):
+        deleted_placeholder_papers.append(paper_id)
+        return ["papers"]
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_arxiv_id", _fetch_paper_by_arxiv_id)
+    monkeypatch.setattr(
+        paper_service,
+        "_delete_retained_failed_artifact",
+        lambda *, failed_artifact_path, artifact_storage_backend: deleted_failed_artifacts.append(
+            (failed_artifact_path, artifact_storage_backend)
+        )
+        or [failed_artifact_path],
+    )
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "delete_task_full",
+        lambda task_id: deleted_task_ids.append(task_id) or {"success": True, "deleted_dirs": [], "errors": []},
+    )
+    monkeypatch.setattr(paper_service, "_delete_placeholder_curation_paper_if_present", _delete_placeholder)
+    monkeypatch.setattr(paper_service, "_schedule_curation_job", lambda _job_id: None)
+
+    result = asyncio.run(
+        paper_service.submit_admin_arxiv_curation_batch(
+            arxiv_ids=["2504.07439"],
+            current_user={"id": "admin-1", "roles": ["admin"]},
+        )
+    )
+
+    assert deleted_failed_artifacts == [("failed_tasks/task-failed", "object_storage")]
+    assert deleted_task_ids == ["task-failed"]
+    assert repository.deleted_translation_tasks == [["task-failed"]]
+    assert deleted_placeholder_papers == ["paper-failed"]
+    assert repository.deleted_job_ids == ["job-old-failed"]
+    assert result["items"][0]["paper_id"] != "paper-failed"

@@ -1,0 +1,37 @@
+# Tasks: Clean Up All Locales
+
+- [ ] Scaffold OpenSpec proposal and tasks
+- [ ] English (EN) Locale Cleanup
+    - [ ] Update `history.this_action_deletes...continue` to declarative
+    - [ ] Update `community.admin.deleteConfirm` to declarative
+    - [ ] Update `community.detail.insights` section descriptions to declarative
+    - [ ] Update `community.admin.tasks.deleteDialogTitle` to declarative
+- [ ] German (DE) Locale Cleanup
+    - [ ] Remove question marks from all prompts
+    - [ ] Translate English fallbacks in `community.admin.tasks`
+    - [ ] Make `insights` section declarative
+- [ ] Spanish (ES) Locale Cleanup
+    - [ ] Remove question marks from all prompts
+    - [ ] Translate English fallbacks in `community.admin.tasks`
+    - [ ] Make `insights` section declarative
+- [ ] French (FR) Locale Cleanup
+    - [ ] Remove question marks from all prompts
+    - [ ] Translate English fallbacks in `community.admin.tasks`
+    - [ ] Make `insights` section declarative
+- [ ] Japanese (JA) Locale Cleanup
+    - [ ] Remove question marks from all prompts
+    - [ ] Translate English fallbacks in `community.admin.tasks`
+    - [ ] Make `insights` section declarative
+- [ ] Korean (KO) Locale Cleanup
+    - [ ] Remove question marks from all prompts
+    - [ ] Translate English fallbacks in `community.admin.tasks`
+    - [ ] Make `insights` section declarative
+- [ ] Russian (RU) Locale Cleanup
+    - [ ] Remove question marks from all prompts
+    - [ ] Translate English fallbacks in `community.admin.tasks`
+    - [ ] Make `insights` section declarative
+    - [ ] Fix placeholder corruption `????`
+- [ ] Validation
+    - [ ] Run `Select-String "[?？]"` across all locales
+    - [ ] Verify JSON syntax for all files
+    - [ ] Submit for review

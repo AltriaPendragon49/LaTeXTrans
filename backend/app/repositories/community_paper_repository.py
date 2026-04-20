@@ -794,6 +794,28 @@ class CommunityPaperRepository:
                 if normalized is not None
             ]
 
+    def list_curation_jobs_for_arxiv_id(self, arxiv_id: str) -> list[dict[str, Any]]:
+        normalized_arxiv_id = str(arxiv_id or "").strip()
+        if not normalized_arxiv_id:
+            return []
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(CURATION_JOB_COLUMNS)
+                    + " from community_curation_jobs where arxiv_id = "
+                    + _placeholder(0)
+                    + " order by created_at asc, job_id asc"
+                ),
+                (normalized_arxiv_id,),
+            )
+            return [
+                normalized
+                for normalized in (self._normalize_curation_job_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
     def list_pending_curation_jobs(self) -> list[dict[str, Any]]:
         with db_connection() as connection:
             cursor = connection.cursor()

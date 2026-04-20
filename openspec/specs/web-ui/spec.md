@@ -4,13 +4,19 @@
 定义 LaTeXTrans 前端 Web UI 规范，包括 Dashboard、翻译配置、进度监控、PDF 预览等界面。
 ## Requirements
 ### Requirement: Responsive Web Dashboard
-The system MUST provide a responsive web-based translation workspace while allowing the product homepage to become a community browse surface. The translation functionalities will be visually orchestrated by the Stitch Tools Hub - Functional Core definitions.
+
+The system MUST provide a responsive translation workspace while allowing the product shell to become community-first. Translation capabilities SHALL remain first-class, but the dashboard SHALL no longer define the application's primary identity.
 
 #### Scenario: User navigates to the translation workspace
 - **WHEN** the user accesses `/translate`
-- **THEN** the Dashboard tools page should be displayed following the Functional Core spacing and layout schema
-- **AND** a prominent input field for ArXiv ID should be visible
-- **AND** shared sidebar navigation should remain available.
+- **THEN** the translation workspace SHALL be displayed as its own route page
+- **AND** shared navigation SHALL remain available
+- **AND** the previous translation capabilities for arXiv input, upload, batch translation, and advanced configuration SHALL remain accessible
+
+#### Scenario: Legacy tools entry remains compatible during migration
+- **WHEN** the user accesses a legacy tools entry such as `/tools?panel=translate`
+- **THEN** the frontend MAY redirect or bridge that route to the canonical translation workspace
+- **AND** the translation workflow SHALL remain reachable during rollout
 
 ### Requirement: Translation Configuration
 The system MUST allow users to configure translation parameters via the UI.
@@ -259,9 +265,8 @@ The application MUST display professional PaperX branding across shared web shel
 - **WHEN** a user views the shared application sidebar or tools workspace
 - **THEN** the UI MUST display the PaperX brand name and configured PaperX logo asset instead of legacy LaTeXTrans naming.
 
-#### Scenario: Locale-managed PaperX copy stays language-aligned
-- **WHEN** PaperX branding or related community-reader copy is surfaced through locale files
-- **THEN** each maintained locale MUST provide copy in its target language rather than leaving legacy source-language text, untranslated English fallback, or placeholder corruption such as question-mark strings.
+- **THEN** each maintained locale MUST provide copy in its target language rather than leaving legacy source-language text or untranslated English fallback
+- **AND** final visible strings MUST NOT contain question marks (?) or placeholder corruption such as '????' strings.
 
 ### Requirement: Premium Download Progress UI
 The frontend MUST display an interactive and premium progress bar according to ui-ux-pro-max guidelines.
@@ -288,11 +293,12 @@ Frontend MUST require `VITE_API_BASE_URL` for all API calls.
 - **AND** missing value MUST throw an explicit configuration error
 
 ### Requirement: User-visible static UI copy uses centralized i18n resources
+
 All non-diagnostic user-visible frontend copy MUST come from centralized i18n resources instead of hardcoded strings.
 
 #### Scenario: Main pages render localized UI copy
-- **WHEN** the user visits Dashboard, Settings, History, Processing, Preview, Login, or Profile
-- **THEN** titles, buttons, descriptions, empty states, Toast copy, and accessibility text MUST be resolved from locale resources
+- **WHEN** the user visits the community homepage, paper detail, translation workspace, workspace history, workspace settings, workspace glossary, processing, preview, login, or profile
+- **THEN** titles, buttons, descriptions, empty states, toast copy, and accessibility text MUST be resolved from locale resources
 - **AND** changing the active UI language MUST update those strings consistently
 
 ### Requirement: Task progress UI is driven by structured task metadata
@@ -322,32 +328,23 @@ The frontend SHALL provide a shared theme preference for the application shell s
 - **AND** navigating between `/`, `/paper/:paperId`, `/translate`, and other shared-shell routes SHALL keep the selected theme active.
 
 ### Requirement: Shared shell prioritizes community and minimizes operational complexity
-The frontend shared shell SHALL foreground the community reading flow and minimize the need for users to think in terms of separate operational modes or tool surfaces.
+
+The frontend shared shell SHALL foreground community discovery and reading while preserving translation as an explicit primary action for authenticated users.
 
 #### Scenario: Community is the primary shell destination
-- **WHEN** a user enters the authenticated/shared frontend shell
+- **WHEN** a user enters the shared frontend shell
 - **THEN** the shell SHALL make the community homepage the primary first-level destination
-- **AND** the legacy translation-oriented pages SHALL remain available through a secondary tools entry rather than competing equally with the community shell.
+- **AND** translation SHALL remain a visible top-level route rather than a hidden utility
 
-#### Scenario: Shared shell uses a compact navigation rail
+#### Scenario: Shared shell uses a persistent readable navigation instead of a hover-expand rail
 - **WHEN** the shared shell renders on desktop
-- **THEN** the left navigation SHALL behave like a compact research rail rather than a wide dashboard sidebar
-- **AND** the main content canvas SHALL remain visually dominant.
+- **THEN** the left navigation SHALL reserve stable space with readable labels by default
+- **AND** it SHALL not depend on hover expansion to become understandable
 
-#### Scenario: Sidebar and canvas remain spatially coordinated
-- **WHEN** the shared shell renders the community layout
-- **THEN** the sidebar SHALL reserve space with visible labels instead of collapsing into an unlabeled icon strip
-- **AND** the main content SHALL not be visually overlapped or cramped by the navigation rail.
-
-#### Scenario: Agent shell preserves per-user conversation history
-- **WHEN** an authenticated user uses the agent workspace
-- **THEN** the shared shell SHALL preserve access to saved conversations for that user
-- **AND** creating a new chat SHALL remain lightweight and not reset the overall shell structure.
-
-#### Scenario: Tools hub preserves the old direct translation workflow
-- **WHEN** a user opens the tools hub
-- **THEN** the translation tool SHALL still expose the old direct translation workflow as a first-class utility
-- **AND** community-first navigation SHALL not erase that explicit tool path.
+#### Scenario: Admin capabilities appear in the main navigation only for admins
+- **WHEN** an admin user renders the shared shell
+- **THEN** the main navigation SHALL include admin curation and admin task entries
+- **AND** those entries SHALL remain hidden for non-admin users
 
 ### Requirement: Community conversation UI renders natural assistant chat output
 The community conversation workspace SHALL render assistant runs as normal chat messages instead of reconstructing hard-coded summary cards from structured section headings, and it SHALL preserve that chat-bubble shape during live streaming.
@@ -674,4 +671,22 @@ The Processing page SHALL open as a fixed-height workbench that keeps the major 
 - **WHEN** the task transitions into `completed` or `completed_with_warnings`
 - **THEN** the completion heading and action controls SHALL remain part of the fixed workbench composition
 - **AND** the user SHALL not need to scroll past an overgrown log panel just to discover that the translation finished
+
+### Requirement: Anonymous users are browse and read only
+
+The shared shell SHALL allow unauthenticated users to explore community papers and read paper detail, while gating translation and persistent workspace capabilities behind login.
+
+#### Scenario: Guest opens the community homepage
+- **WHEN** an unauthenticated user visits `/`
+- **THEN** the homepage SHALL remain usable for search, browse, and paper discovery
+
+#### Scenario: Guest opens paper detail
+- **WHEN** an unauthenticated user visits `/paper/:paperId`
+- **THEN** the reading experience SHALL remain available
+- **AND** the page SHALL not require login merely to browse and read
+
+#### Scenario: Guest attempts to access translation or workspace routes
+- **WHEN** an unauthenticated user opens `/translate`, `/workspace/history`, `/workspace/settings`, or `/workspace/glossary`
+- **THEN** the frontend SHALL prompt or redirect the user into the local login flow
+- **AND** those routes SHALL not behave as anonymous-first product surfaces
 

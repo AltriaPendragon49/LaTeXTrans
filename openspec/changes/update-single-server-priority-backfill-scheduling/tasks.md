@@ -1,8 +1,8 @@
 ## 1. Phase-1 Token Pool
-- [ ] 1.1 Implement a system-managed token pool that models five independent endpoint-credential members across two configured `base_url` groups.
-- [ ] 1.2 Add fast failover when one pool member encounters consecutive `429` or consecutive `503` responses, with only a short request-local retry window measured in seconds.
-- [ ] 1.3 Preserve current single-credential behavior for request-supplied and user-stored custom API credentials.
-- [ ] 1.4 Keep all-members-exhausted behavior stable: continue retrying on the current member instead of blind rotation.
+- [x] 1.1 Implement a system-managed token pool that models five independent endpoint-credential members across two configured `base_url` groups.
+- [x] 1.2 Add fast failover when one pool member encounters consecutive `429` or consecutive `503` responses, with only a short request-local retry window measured in seconds.
+- [x] 1.3 Preserve current single-credential behavior for request-supplied and user-stored custom API credentials.
+- [x] 1.4 Keep all-members-exhausted behavior stable: continue retrying on the current member instead of blind rotation.
 - [x] 1.5 Route post-translation system-managed structured insight generation through the shared pool helper instead of a direct single-member HTTP call.
 
 ## 2. Phase-1 Verification
@@ -31,9 +31,9 @@
 - [x] 6.2 Prewarm public source/translated thumbnails when a paper becomes publicly readable.
 
 ## 7. Task-State Consistency And Exception Containment
-- [ ] 7.1 Add attempt-scoped task update guards so same-attempt terminal states cannot regress back to `queued` / `processing` through stale progress callbacks.
-- [ ] 7.2 Clear stale `completed_at` markers only when a fresh control-plane retry or new execution attempt legitimately reactivates a task.
-- [ ] 7.3 Reconcile impossible persistent task rows (`completed_at` set while status is non-terminal) into explicit terminal failures during recovery/wait paths.
-- [ ] 7.4 Make admin curation terminal waits fall back to durable `translation_tasks` state instead of depending only on in-memory task snapshots.
-- [ ] 7.5 Ensure unexpected queue-level exceptions that escape the translation coroutine still force a terminal failure write and paper-status sync.
-- [ ] 7.6 Add automated coverage for terminal regression rejection, retry reactivation clearing, persistent-state reconciliation, durable wait fallback, and unexpected worker exception handling.
+- [x] 7.1 Add attempt-scoped task update guards so same-attempt terminal states cannot regress back to `queued` / `processing` through stale progress callbacks.
+- [x] 7.2 Clear stale `completed_at` markers only when a fresh control-plane retry or new execution attempt legitimately reactivates a task.
+- [x] 7.3 Reconcile impossible persistent task rows (`completed_at` set while status is non-terminal) into explicit terminal failures during recovery/wait paths.
+- [x] 7.4 Make admin curation terminal waits fall back to durable `translation_tasks` state instead of depending only on in-memory task snapshots.
+- [x] 7.5 Ensure unexpected queue-level exceptions that escape the translation coroutine still force a terminal failure write and paper-status sync.
+- [x] 7.6 Add automated coverage for terminal regression rejection, retry reactivation clearing, persistent-state reconciliation, durable wait fallback, and unexpected worker exception handling.

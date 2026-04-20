@@ -396,3 +396,7 @@
 - `backend/app/api/routes/papers.py`: 社区论文列表与卡片相关路由现已提供 `source-download` 入口，并在 paper summary 中暴露 `arxiv_url` 与 `github_url` 等研究动作元数据。
 - `backend/app/api/routes/download.py`: 源文 PDF 预览逻辑现已抽取为可复用的 `_serve_source_pdf`，同时支持 inline 预览与 attachment 下载两种返回方式。
 - `backend/app/services/paper_service.py`: 社区论文汇总服务现已负责从 preview HTML 中提取 GitHub 外部链接，为首页论文卡片的直达研究动作提供数据。
+## Recent Responsibility Updates (2026-04-20 Admin Reset)
+
+- ackend/app/services/paper_service.py: 管理员 arXiv 重复入库现已在提交前枚举同 rxiv_id 的旧 curation job，先取消仍在运行的策展协程并执行全流程硬删除，再创建新的 curation job 与全新 paper_id。
+- ackend/app/repositories/community_paper_repository.py: 社区策展仓储现已提供按 rxiv_id 顺序枚举 curation jobs 的查询，供重复入库预删除编排复用。

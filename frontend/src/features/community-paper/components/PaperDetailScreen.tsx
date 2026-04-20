@@ -191,10 +191,10 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
           t("community.detail.abstractUnavailable")
 
         return (
-          <div className="min-w-0 flex-1 bg-[color:var(--px-shell-bg)] px-2 py-2 md:px-3 md:py-3">
+          <div className="flex flex-col min-h-0 min-w-0 flex-1 bg-[color:var(--px-shell-bg)] px-2 py-2 md:px-3 md:py-3">
             <div
               data-testid="paper-detail-page-shell"
-              className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[24px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-[var(--px-shell-shadow)]"
+              className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[8px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-[var(--px-shell-shadow)]"
             >
               <PaperDetailHeader
                 paper={activePaper}

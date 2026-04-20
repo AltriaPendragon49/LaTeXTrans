@@ -4,7 +4,8 @@
 TBD - created by archiving change add-community-day-03-feed-and-paper-detail-shell. Update Purpose after archive.
 ## Requirements
 ### Requirement: Community feed homepage route
-The community homepage SHALL prioritize internal community-paper search and feed browsing instead of exposing a public agent-first entry surface, while preserving the current overall layout silhouette for the page.
+
+The community homepage SHALL remain the primary application entry and SHALL evolve into a magazine-like discovery surface that prioritizes internal paper exploration while preserving the existing search and feed capability.
 
 #### Scenario: Homepage uses internal community search as the top interaction
 - **WHEN** a user lands on the community homepage
@@ -12,12 +13,16 @@ The community homepage SHALL prioritize internal community-paper search and feed
 - **AND** that search surface SHALL match community papers by `arXiv ID`, title, author, and abstract fields
 - **AND** it SHALL only search formal public community papers
 - **AND** it SHALL exclude ordinary tool results, incomplete curation items, and deleting or deleted papers
-- **AND** it SHALL NOT expose the public homepage agent composer as the default first-screen action.
 
-#### Scenario: Homepage keeps its established overall shell
-- **WHEN** the homepage renders after this change
-- **THEN** the page SHALL keep the existing overall feed layout direction intact
-- **AND** the change SHALL focus on replacing the top interaction behavior rather than redesigning the entire page architecture.
+#### Scenario: Homepage adopts a stronger editorial hierarchy
+- **WHEN** the homepage renders after this rollout
+- **THEN** the page MAY significantly redesign its visual language, typography, spacing, hero treatment, and feed framing
+- **AND** it SHALL still preserve the functional ability to browse, sort, and open papers without reducing capability
+
+#### Scenario: Feed cards expose direct research actions
+- **WHEN** a public paper card is rendered on the homepage
+- **THEN** the card SHALL expose direct actions for downloading the source PDF, downloading the translated PDF when available, opening the canonical arXiv page, and opening the associated GitHub repository when available
+- **AND** those actions SHALL reuse the shared `ui/` primitive layer instead of introducing card-local button patterns
 
 ### Requirement: Feed sort and browse shell
 The community homepage SHALL provide the MVP browse controls needed to inspect official-first community content.
@@ -74,17 +79,18 @@ The Day 3 detail page SHALL visually reserve the future action positions needed 
 - **AND** the UI SHALL explain that those actions are coming in later changes.
 
 ### Requirement: Translation workspace relocation compatibility
-The discovery UI SHALL keep the direct translation workflow in the tools hub and SHALL keep ordinary tool translations separate from community publication.
+
+The discovery UI SHALL keep the direct translation workflow as a first-class route while removing `ToolsHub` as the long-term architecture center.
 
 #### Scenario: User needs the explicit direct translation workflow
-- **WHEN** the user needs the explicit direct translation workflow
-- **THEN** the UI SHALL provide that workflow through the tools hub
-- **AND** the community homepage SHALL not be forced to carry that workflow as its primary surface.
+- **WHEN** the user chooses to translate content directly
+- **THEN** the UI SHALL provide that workflow through the canonical `/translate` route
+- **AND** the community homepage SHALL not be forced to carry the entire translation workbench as its primary first-screen surface
 
-#### Scenario: Ordinary tool translation does not publish community content
-- **WHEN** a normal user completes a translation through the tools workflow
-- **THEN** that result SHALL remain outside the public community library by default
-- **AND** only the dedicated admin curation path SHALL publish new community papers.
+#### Scenario: Legacy tools routes remain compatible during migration
+- **WHEN** the user accesses `/tools`, `/translate`, `/history`, `/settings`, or `/glossary` through legacy entry behavior
+- **THEN** the UI MAY redirect to canonical workspace routes
+- **AND** the old architecture SHALL not remain the long-term source of truth
 
 ### Requirement: Admin-only community controls appear inside the existing community shell
 The community UI SHALL expose admin-only curation and deletion controls without revealing those controls to ordinary users.

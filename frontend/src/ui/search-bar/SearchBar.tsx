@@ -1,5 +1,4 @@
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
-import { Search } from "lucide-react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -13,9 +12,9 @@ const searchBarVariants = cva(
     variants: {
       variant: {
         inline:
-          "rounded-[20px] bg-[color:var(--px-shell-panel)] px-4 py-3",
+          "rounded-md bg-[color:var(--px-shell-panel)] px-4 py-3",
         feature:
-          "rounded-[20px] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-panel-strong)_96%,white),color-mix(in_srgb,var(--px-shell-accent-soft)_18%,white))] px-4 py-4 md:px-5 md:py-5",
+          "rounded-md bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-panel-strong)_96%,white),color-mix(in_srgb,var(--px-shell-accent-soft)_18%,white))] px-4 py-4 md:px-5 md:py-5",
       },
     },
     defaultVariants: {
@@ -78,10 +77,6 @@ export function SearchBar({
       className={cn(searchBarVariants({ variant }), className)}
     >
       <div className={cn("flex gap-3", variant === "feature" ? "items-start" : "items-center")}>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] text-[color:var(--px-shell-accent)] shadow-sm">
-          <Search className="h-4 w-4" />
-        </div>
-
         <div className="min-w-0 flex-1 space-y-2.5">
           {multiline ? (
             <Textarea

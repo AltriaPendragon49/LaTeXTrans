@@ -28,7 +28,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-1 rounded-[18px] border border-[color:var(--px-shell-line)] bg-white/72 p-1.5 shadow-sm",
+        "flex w-full items-center gap-1 rounded-md border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] p-1 shadow-inner",
         className,
       )}
     >
@@ -43,10 +43,10 @@ export function SegmentedControl<T extends string>({
             disabled={item.disabled}
             onClick={() => onValueChange(item.value)}
             className={cn(
-              "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[14px] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] transition-all duration-200",
+              "flex-1 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-sm px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] transition-all duration-200",
               active
-                ? "bg-[color:var(--px-shell-panel)] text-[color:var(--px-shell-ink)] shadow-[0_12px_28px_-20px_rgba(8,23,38,0.28)]"
-                : "text-[color:var(--px-shell-muted)] hover:text-[color:var(--px-shell-ink)] disabled:cursor-not-allowed disabled:opacity-45",
+                ? "bg-[color:var(--px-shell-panel)] text-[color:var(--px-shell-ink)] shadow-sm border border-[color:var(--px-shell-line)]"
+                : "text-[color:var(--px-shell-muted)] hover:text-[color:var(--px-shell-ink)] disabled:cursor-not-allowed disabled:opacity-45 border border-transparent",
               itemClassName,
             )}
           >

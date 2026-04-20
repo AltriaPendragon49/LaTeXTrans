@@ -43,6 +43,8 @@ The frontend shared shell SHALL foreground community discovery and reading while
 - **THEN** the main navigation SHALL include admin curation and admin task entries
 - **AND** those entries SHALL remain hidden for non-admin users
 
+## ADDED Requirements
+
 ### Requirement: Anonymous users are browse and read only
 
 The shared shell SHALL allow unauthenticated users to explore community papers and read paper detail, while gating translation and persistent workspace capabilities behind login.
