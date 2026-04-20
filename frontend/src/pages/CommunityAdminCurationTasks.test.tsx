@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import i18n from "@/i18n"
-import CommunityAdminCurationTasksPage from "@/pages/CommunityAdminCurationTasks"
+import CommunityAdminCurationTasksPage from "@/pages/community-admin-curation-tasks"
 
 const { listAdminCurationJobs, deleteAdminCurationJob, batchDeleteAdminCurationJobs } = vi.hoisted(() => ({
   listAdminCurationJobs: vi.fn(),
@@ -91,7 +91,8 @@ describe("CommunityAdminCurationTasksPage", () => {
       expect(listAdminCurationJobs).toHaveBeenCalledWith({ status: "all", q: "" })
     })
 
-    await user.selectOptions(screen.getByRole("combobox"), "processing")
+    await user.click(screen.getByRole("combobox"))
+    await user.click(screen.getByRole("option", { name: "Processing" }))
 
     await waitFor(() => {
       expect(listAdminCurationJobs).toHaveBeenLastCalledWith({ status: "processing", q: "" })

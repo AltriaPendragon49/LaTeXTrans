@@ -19,6 +19,18 @@ describe("api base url resolution", () => {
     }
   })
 
+  it("falls back to the hosted backend during browser-based local development when api base env is missing", () => {
+    const previous = import.meta.env.VITE_API_BASE_URL
+
+    import.meta.env.VITE_API_BASE_URL = ""
+
+    try {
+      expect(getApiBaseUrl()).toBe("https://api.latextrans.online")
+    } finally {
+      import.meta.env.VITE_API_BASE_URL = previous
+    }
+  })
+
   it("uses the dedicated paper preview api base when configured", () => {
     const previousPreviewBase = import.meta.env.VITE_PAPER_PREVIEW_API_BASE_URL
 

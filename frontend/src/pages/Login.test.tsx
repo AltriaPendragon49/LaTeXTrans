@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import i18n from "@/i18n"
-import LoginPage from "@/pages/Login"
+import LoginPage from "@/pages/login"
 
 const useAuthMock = vi.fn()
 

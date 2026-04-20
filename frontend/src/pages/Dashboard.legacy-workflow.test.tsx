@@ -3,7 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
-import Dashboard from "@/pages/Dashboard"
+import TranslatePage from "@/pages/translate"
+
+const dashboardStoreState = vi.hoisted(() => ({
+  taskId: null as string | null,
+  status: "idle",
+  config: {
+    source_language: "en",
+    target_language: "zh",
+    advanced_config: {},
+  },
+  downloadProgress: 0,
+  downloadStage: null as string | null,
+  isDownloading: false,
+  startArxivDownload: vi.fn(),
+  startTranslation: vi.fn(),
+  loadUserSettings: vi.fn(),
+}))
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -11,54 +27,42 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
-    taskId: null,
-    status: "idle",
-    config: {
-      source_language: "en",
-      target_language: "zh",
-      advanced_config: {},
-    },
-    downloadProgress: 0,
-    downloadStage: null,
-    isDownloading: false,
-    startArxivDownload: vi.fn(),
-    startTranslation: vi.fn(),
-    loadUserSettings: vi.fn(),
-  }),
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof dashboardStoreState) => unknown) =>
+    selector ? selector(dashboardStoreState) : dashboardStoreState,
 }))
 
-vi.mock("@/components/AdvancedConfig", () => ({
+vi.mock("@/features/translation-workflow/components/AdvancedConfig", () => ({
   AdvancedConfig: () => <div>Advanced Config</div>,
 }))
 
-vi.mock("@/components/DropZone", () => ({
+vi.mock("@/features/translation-workflow/components/DropZone", () => ({
   DropZone: () => <div>DropZone</div>,
 }))
 
-vi.mock("@/components/BatchTranslation", () => ({
+vi.mock("@/features/translation-workflow/components/BatchTranslation", () => ({
   BatchTranslation: () => <div>BatchTranslation</div>,
 }))
 
-vi.mock("@/components/LoginPrompt", () => ({
+vi.mock("@/features/auth-shell/components/LoginPrompt", () => ({
   LoginPrompt: () => <div>LoginPrompt</div>,
 }))
 
-vi.mock("@/components/community/CommunitySubmitPanel", () => ({
+vi.mock("@/features/community-paper/components/CommunitySubmitPanel", () => ({
   CommunitySubmitPanel: () => <div>CommunitySubmitPanel</div>,
 }))
 
-describe("Dashboard legacy workflow", () => {
+describe("Translate page workflow", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    dashboardStoreState.loadUserSettings.mockReset()
     await i18n.changeLanguage("en")
   })
 
   it("shows only the old direct translation workflow and hides the community submit panel", () => {
     render(
       <MemoryRouter>
-        <Dashboard />
+        <TranslatePage />
       </MemoryRouter>,
     )
 

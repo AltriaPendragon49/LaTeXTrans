@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import i18n from "@/i18n"
-import ProcessingPage from "@/pages/Processing"
+import ProcessingPage from "@/pages/processing"
 
 const storeState = vi.hoisted(() => ({
   taskId: "task-1",
@@ -19,8 +19,9 @@ const storeState = vi.hoisted(() => ({
   setTaskId: vi.fn(),
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => storeState,
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof storeState) => unknown) =>
+    selector ? selector(storeState) : storeState,
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({

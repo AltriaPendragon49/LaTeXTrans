@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
 @plugin "tailwindcss-animate";
 
@@ -46,114 +47,140 @@
 }
 
 :root {
-  --radius: 1rem;
-  --background: #faf8ff;
-  --foreground: #1a1b23;
-  --card: #ffffff;
-  --card-foreground: #1a1b23;
-  --popover: #ffffff;
-  --popover-foreground: #1a1b23;
-  --primary: #0037b0;
-  --primary-foreground: #ffffff;
-  --secondary: #4d5b94;
-  --secondary-foreground: #ffffff;
-  --muted: #e2e1ed;
-  --muted-foreground: #434655;
-  --accent: #e8e7f3;
-  --accent-foreground: #1a1b23;
+  --radius: 0.875rem;
+  --background: var(--px-shell-bg);
+  --foreground: var(--px-shell-ink);
+  --card: var(--px-shell-panel-strong);
+  --card-foreground: var(--px-shell-ink);
+  --popover: var(--px-shell-panel-strong);
+  --popover-foreground: var(--px-shell-ink);
+  --primary: var(--px-shell-accent);
+  --primary-foreground: var(--px-shell-accent-contrast);
+  --secondary: color-mix(in srgb, var(--px-shell-accent) 10%, var(--px-shell-panel-strong));
+  --secondary-foreground: var(--px-shell-ink);
+  --muted: color-mix(in srgb, var(--px-shell-panel-strong) 84%, var(--px-shell-bg));
+  --muted-foreground: var(--px-shell-muted);
+  --accent: var(--px-shell-accent-soft);
+  --accent-foreground: var(--px-shell-accent-strong);
   --destructive: #ba1a1a;
-  --border: #c4c5d7;
-  --input: #c4c5d7;
-  --ring: #0037b0;
+  --border: var(--px-shell-line);
+  --input: var(--px-shell-line);
+  --ring: var(--px-shell-accent);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: #f3f2fe;
-  --sidebar-foreground: #1a1b23;
-  --sidebar-primary: #0037b0;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e8e7f3;
-  --sidebar-accent-foreground: #1a1b23;
-  --sidebar-border: #c4c5d7;
-  --sidebar-ring: #0037b0;
-  --shell-bg: #f4f7fb;
-  --shell-surface: rgba(255, 255, 255, 0.94);
-  --shell-surface-strong: #ffffff;
-  --shell-surface-muted: #edf2f7;
-  --shell-border: rgba(148, 163, 184, 0.22);
-  --shell-border-strong: rgba(148, 163, 184, 0.28);
-  --shell-pill: rgba(255, 255, 255, 0.86);
-  --shell-pill-hover: #ffffff;
-  --shell-heading: #0f172a;
-  --shell-text: #1e293b;
-  --shell-text-soft: #475569;
-  --shell-text-muted: #64748b;
-  --shell-icon: #64748b;
-  --shell-accent: #607487;
-  --shell-accent-hover: #536676;
-  --shell-accent-foreground: #f8fafc;
-  --shell-shadow: 0 18px 40px -36px rgba(15, 23, 42, 0.24);
-  --shell-panel-shadow: 0 24px 50px -44px rgba(15, 23, 42, 0.22);
-  --shell-panel-shadow-strong: 0 22px 44px -34px rgba(15, 23, 42, 0.2);
-  --shell-code-bg: #f2f4f8;
-  --shell-code-border: rgba(148, 163, 184, 0.18);
+  --sidebar: var(--px-shell-panel);
+  --sidebar-foreground: var(--px-shell-ink);
+  --sidebar-primary: var(--px-shell-accent);
+  --sidebar-primary-foreground: var(--px-shell-accent-contrast);
+  --sidebar-accent: var(--px-shell-accent-soft);
+  --sidebar-accent-foreground: var(--px-shell-ink);
+  --sidebar-border: var(--px-shell-line);
+  --sidebar-ring: var(--px-shell-accent);
+  --shell-bg: var(--px-shell-bg);
+  --shell-surface: var(--px-shell-panel);
+  --shell-surface-strong: var(--px-shell-panel-strong);
+  --shell-surface-muted: var(--px-shell-surface);
+  --shell-border: var(--px-shell-line);
+  --shell-border-strong: var(--px-shell-line-strong);
+  --shell-pill: color-mix(in srgb, var(--px-shell-panel-strong) 82%, white);
+  --shell-pill-hover: white;
+  --shell-heading: var(--px-shell-ink);
+  --shell-text: var(--px-shell-ink);
+  --shell-text-soft: color-mix(in srgb, var(--px-shell-muted) 86%, black 14%);
+  --shell-text-muted: var(--px-shell-muted);
+  --shell-icon: var(--px-shell-muted);
+  --shell-accent: var(--px-shell-accent);
+  --shell-accent-hover: var(--px-shell-accent-strong);
+  --shell-accent-foreground: var(--px-shell-accent-contrast);
+  --shell-info: var(--px-shell-info);
+  --shell-info-soft: var(--px-shell-info-soft);
+  --shell-info-line: var(--px-shell-info-line);
+  --shell-success: var(--px-shell-success);
+  --shell-success-soft: var(--px-shell-success-soft);
+  --shell-success-line: var(--px-shell-success-line);
+  --shell-warning: var(--px-shell-warning);
+  --shell-warning-soft: var(--px-shell-warning-soft);
+  --shell-warning-line: var(--px-shell-warning-line);
+  --shell-danger: var(--px-shell-danger);
+  --shell-danger-strong: var(--px-shell-danger-strong);
+  --shell-danger-soft: var(--px-shell-danger-soft);
+  --shell-danger-line: var(--px-shell-danger-line);
+  --shell-shadow: var(--px-shell-shadow);
+  --shell-panel-shadow: var(--px-shell-shadow);
+  --shell-panel-shadow-strong: var(--px-shell-shadow);
+  --shell-code-bg: color-mix(in srgb, var(--px-shell-panel-strong) 85%, var(--px-shell-surface));
+  --shell-code-border: color-mix(in srgb, var(--px-shell-line) 88%, rgba(23, 20, 17, 0.14));
 }
 
 .dark {
-  --background: #1a1b23;
-  --foreground: #faf8ff;
-  --card: #1a1b23;
-  --card-foreground: #faf8ff;
-  --popover: #1a1b23;
-  --popover-foreground: #faf8ff;
-  --primary: #b7c4ff;
-  --primary-foreground: #001551;
-  --secondary: #b0befe;
-  --secondary-foreground: #03164d;
-  --muted: #2e3039;
-  --muted-foreground: #c4c5d7;
-  --accent: #434655;
-  --accent-foreground: #faf8ff;
+  --background: var(--px-shell-bg);
+  --foreground: var(--px-shell-ink);
+  --card: var(--px-shell-panel-strong);
+  --card-foreground: var(--px-shell-ink);
+  --popover: var(--px-shell-panel-strong);
+  --popover-foreground: var(--px-shell-ink);
+  --primary: var(--px-shell-accent);
+  --primary-foreground: var(--px-shell-accent-contrast);
+  --secondary: color-mix(in srgb, var(--px-shell-accent) 18%, var(--px-shell-panel-strong));
+  --secondary-foreground: var(--px-shell-ink);
+  --muted: color-mix(in srgb, var(--px-shell-panel-strong) 90%, black 10%);
+  --muted-foreground: var(--px-shell-muted);
+  --accent: var(--px-shell-accent-soft);
+  --accent-foreground: var(--px-shell-ink);
   --destructive: #ffdad6;
-  --border: #434655;
-  --input: #434655;
-  --ring: #b7c4ff;
+  --border: var(--px-shell-line);
+  --input: var(--px-shell-line);
+  --ring: var(--px-shell-accent);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #1a1b23;
-  --sidebar-foreground: #faf8ff;
-  --sidebar-primary: #b7c4ff;
-  --sidebar-primary-foreground: #001551;
-  --sidebar-accent: #2e3039;
-  --sidebar-accent-foreground: #faf8ff;
-  --sidebar-border: #434655;
-  --sidebar-ring: #b7c4ff;
-  --shell-bg: #151515;
-  --shell-surface: #1b1b1b;
-  --shell-surface-strong: #202020;
-  --shell-surface-muted: #181818;
-  --shell-border: rgba(255, 255, 255, 0.1);
-  --shell-border-strong: rgba(255, 255, 255, 0.08);
-  --shell-pill: rgba(255, 255, 255, 0.03);
-  --shell-pill-hover: rgba(255, 255, 255, 0.06);
-  --shell-heading: #ffffff;
-  --shell-text: #e2e8f0;
-  --shell-text-soft: #cbd5e1;
-  --shell-text-muted: #64748b;
-  --shell-icon: #94a3b8;
-  --shell-accent: #607487;
-  --shell-accent-hover: #6c8195;
-  --shell-accent-foreground: #ffffff;
-  --shell-shadow: 0 18px 40px -36px rgba(0, 0, 0, 0.8);
-  --shell-panel-shadow: 0 24px 50px -44px rgba(0, 0, 0, 0.78);
-  --shell-panel-shadow-strong: 0 22px 44px -34px rgba(0, 0, 0, 0.86);
-  --shell-code-bg: #171717;
-  --shell-code-border: rgba(255, 255, 255, 0.1);
+  --sidebar: var(--px-shell-panel);
+  --sidebar-foreground: var(--px-shell-ink);
+  --sidebar-primary: var(--px-shell-accent);
+  --sidebar-primary-foreground: var(--px-shell-accent-contrast);
+  --sidebar-accent: var(--px-shell-accent-soft);
+  --sidebar-accent-foreground: var(--px-shell-ink);
+  --sidebar-border: var(--px-shell-line);
+  --sidebar-ring: var(--px-shell-accent);
+  --shell-bg: var(--px-shell-bg);
+  --shell-surface: var(--px-shell-panel);
+  --shell-surface-strong: var(--px-shell-panel-strong);
+  --shell-surface-muted: var(--px-shell-surface);
+  --shell-border: var(--px-shell-line);
+  --shell-border-strong: var(--px-shell-line-strong);
+  --shell-pill: color-mix(in srgb, var(--px-shell-panel-strong) 92%, black 8%);
+  --shell-pill-hover: color-mix(in srgb, var(--px-shell-panel-strong) 96%, white 4%);
+  --shell-heading: var(--px-shell-ink);
+  --shell-text: var(--px-shell-ink);
+  --shell-text-soft: color-mix(in srgb, var(--px-shell-muted) 82%, white 18%);
+  --shell-text-muted: var(--px-shell-muted);
+  --shell-icon: var(--px-shell-muted);
+  --shell-accent: var(--px-shell-accent);
+  --shell-accent-hover: var(--px-shell-accent-strong);
+  --shell-accent-foreground: var(--px-shell-accent-contrast);
+  --shell-info: var(--px-shell-info);
+  --shell-info-soft: var(--px-shell-info-soft);
+  --shell-info-line: var(--px-shell-info-line);
+  --shell-success: var(--px-shell-success);
+  --shell-success-soft: var(--px-shell-success-soft);
+  --shell-success-line: var(--px-shell-success-line);
+  --shell-warning: var(--px-shell-warning);
+  --shell-warning-soft: var(--px-shell-warning-soft);
+  --shell-warning-line: var(--px-shell-warning-line);
+  --shell-danger: var(--px-shell-danger);
+  --shell-danger-strong: var(--px-shell-danger-strong);
+  --shell-danger-soft: var(--px-shell-danger-soft);
+  --shell-danger-line: var(--px-shell-danger-line);
+  --shell-shadow: var(--px-shell-shadow);
+  --shell-panel-shadow: var(--px-shell-shadow);
+  --shell-panel-shadow-strong: var(--px-shell-shadow);
+  --shell-code-bg: color-mix(in srgb, var(--px-shell-panel-strong) 88%, black 12%);
+  --shell-code-border: color-mix(in srgb, var(--px-shell-line) 90%, rgba(247, 240, 231, 0.12));
 }
 
 @layer base {
@@ -168,7 +195,53 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--px-shell-surface);
+    color: var(--px-shell-ink);
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    background-image:
+      radial-gradient(circle at top left, rgba(88, 201, 255, 0.12), transparent 28%),
+      radial-gradient(circle at top right, rgba(18, 118, 199, 0.08), transparent 24%),
+      linear-gradient(180deg, color-mix(in srgb, var(--px-shell-surface) 94%, white) 0%, var(--px-shell-bg) 100%);
+    background-attachment: fixed;
+  }
+
+  :where(h1, h2, h3, .font-display) {
+    font-family: "Rajdhani", "IBM Plex Sans", sans-serif;
+    letter-spacing: 0.01em;
+  }
+
+  :where(
+    button:not(:disabled),
+    [role="button"]:not([aria-disabled="true"]),
+    a[href],
+    summary,
+    label[for],
+    input[type="checkbox"]:not(:disabled),
+    input[type="radio"]:not(:disabled)
+  ) {
+    cursor: pointer;
+  }
+
+  :where(button:disabled, input:disabled, textarea:disabled, select:disabled) {
+    cursor: not-allowed;
+  }
+
+  :where(button, [role="button"], a[href]) {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :where(button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a[href]) {
+    transition:
+      transform 0.18s ease,
+      background-color 0.18s ease,
+      border-color 0.18s ease,
+      color 0.18s ease,
+      opacity 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  :where(button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a[href]):active {
+    transform: translateY(1px);
   }
 
   .paper-preview {

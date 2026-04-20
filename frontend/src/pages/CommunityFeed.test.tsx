@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
-import CommunityFeedPage from "@/pages/CommunityFeed"
+import CommunityFeedSurface from "@/features/community-paper/components/CommunityFeedSurface"
 
 const useCommunityPapersMock = vi.fn()
 const useAuthMock = vi.fn()
 const deleteCommunityPaperMock = vi.fn()
 
-vi.mock("@/hooks/use-community-papers", () => ({
+vi.mock("@/features/community-paper/hooks/useCommunityPapers", () => ({
   useCommunityPapers: (...args: unknown[]) => useCommunityPapersMock(...args),
 }))
 
@@ -26,7 +26,7 @@ vi.mock("@/lib/community-api", async () => {
   }
 })
 
-vi.mock("@/components/community/PaperCard", () => ({
+vi.mock("@/features/community-paper/components/PaperCard", () => ({
   PaperCard: ({
     paper,
     onDelete,
@@ -45,7 +45,7 @@ vi.mock("@/components/community/PaperCard", () => ({
   ),
 }))
 
-describe("CommunityFeedPage", () => {
+describe("CommunityFeedSurface", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
@@ -65,7 +65,7 @@ describe("CommunityFeedPage", () => {
   it("renders the search-first feed shell and defaults to the latest sort", () => {
     render(
       <MemoryRouter>
-        <CommunityFeedPage />
+        <CommunityFeedSurface />
       </MemoryRouter>,
     )
 
@@ -77,7 +77,7 @@ describe("CommunityFeedPage", () => {
   it("does not render the translated sort tab", () => {
     render(
       <MemoryRouter>
-        <CommunityFeedPage />
+        <CommunityFeedSurface />
       </MemoryRouter>,
     )
 
@@ -91,7 +91,7 @@ describe("CommunityFeedPage", () => {
 
     render(
       <MemoryRouter>
-        <CommunityFeedPage />
+        <CommunityFeedSurface />
       </MemoryRouter>,
     )
 
@@ -131,7 +131,7 @@ describe("CommunityFeedPage", () => {
 
     render(
       <MemoryRouter>
-        <CommunityFeedPage />
+        <CommunityFeedSurface />
       </MemoryRouter>,
     )
 
@@ -163,7 +163,7 @@ describe("CommunityFeedPage", () => {
 
     render(
       <MemoryRouter>
-        <CommunityFeedPage />
+        <CommunityFeedSurface />
       </MemoryRouter>,
     )
 

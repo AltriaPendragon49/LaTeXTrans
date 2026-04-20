@@ -6,8 +6,7 @@ import { describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
-import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarProvider } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/layout/AppSidebar"
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -21,7 +20,7 @@ describe("brand surfaces", () => {
     const indexPath = path.resolve(import.meta.dirname, "../index.html")
     const html = fs.readFileSync(indexPath, "utf8")
 
-    expect(html).toContain('href="./paperx.png"')
+    expect(html).toContain('href="./paperx-mark.svg"')
     expect(html).toContain("<title>PaperX</title>")
   })
 
@@ -30,12 +29,13 @@ describe("brand surfaces", () => {
 
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <SidebarProvider>
-          <AppSidebar />
-        </SidebarProvider>
+        <AppSidebar />
       </MemoryRouter>,
     )
 
+    expect(screen.getByRole("button", { name: "PaperX" })).toBeInTheDocument()
     expect(screen.getByText("PaperX")).toBeInTheDocument()
+    expect(screen.getByText(/powered by niutrans/i)).toBeInTheDocument()
+    expect(screen.queryByRole("img", { name: "PaperX" })).not.toBeInTheDocument()
   })
 })

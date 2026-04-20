@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import i18n from "@/i18n"
-import { BatchTranslation } from "@/components/BatchTranslation"
-import HistoryPage from "@/pages/History"
-import LoginPage from "@/pages/Login"
-import ProfilePage from "@/pages/Profile"
+import { BatchTranslation } from "@/features/translation-workflow/components/BatchTranslation"
+import HistoryPage from "@/pages/workspace-history"
+import LoginPage from "@/pages/login"
+import ProfilePage from "@/pages/profile"
 
 const authState = vi.hoisted(() => ({
   isAuthenticated: false,
@@ -21,15 +21,18 @@ const authState = vi.hoisted(() => ({
   clearError: vi.fn(),
 }))
 
+const remainingPagesStoreState = vi.hoisted(() => ({
+  setTaskId: vi.fn(),
+  setArxivId: vi.fn(),
+}))
+
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
-    setTaskId: vi.fn(),
-    setArxivId: vi.fn(),
-  }),
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof remainingPagesStoreState) => unknown) =>
+    selector ? selector(remainingPagesStoreState) : remainingPagesStoreState,
 }))
 
 describe("remaining page i18n", () => {
@@ -70,6 +73,19 @@ describe("remaining page i18n", () => {
     expect(screen.getByText("Not signed in")).toBeInTheDocument()
     expect(screen.getByText("Sign in to manage your account")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Go to sign in" })).toBeInTheDocument()
+  })
+
+  it("renders the governed loading shell on the profile page while auth is resolving", () => {
+    authState.loading = true
+
+    render(
+      <MemoryRouter>
+        <ProfilePage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("Loading...")).toBeInTheDocument()
+    expect(screen.getByTestId("loading-state-spinner")).toBeInTheDocument()
   })
 
   it("renders translated login form copy", () => {

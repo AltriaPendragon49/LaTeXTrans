@@ -5,10 +5,9 @@ import { join } from "path"
 import { describe, expect, it } from "vitest"
 
 const srcRoot = join(process.cwd(), "src")
-const scanRoots = ["pages", "components", "contexts", "store"].map((dir) => join(srcRoot, dir))
-const excludedFiles = new Set([
-  join(srcRoot, "components", "log-viewer.tsx"),
-])
+const scanRoots = ["pages", "layout", "contexts", "store"]
+  .map((dir) => join(srcRoot, dir))
+  .filter((dir) => statSync(dir, { throwIfNoEntry: false })?.isDirectory())
 const forbiddenPatterns = [
   /message\?\.includes/g,
   /\.includes\("download"\)/g,
@@ -32,7 +31,7 @@ function walk(dir: string): string[] {
       continue
     }
 
-    if (!/\.(ts|tsx)$/.test(entry) || /\.test\./.test(entry) || excludedFiles.has(fullPath)) {
+    if (!/\.(ts|tsx)$/.test(entry) || /\.test\./.test(entry)) {
       continue
     }
 

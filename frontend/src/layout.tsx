@@ -1,20 +1,17 @@
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppSidebar } from "@/layout/AppSidebar"
 import { Outlet } from "react-router-dom"
-import { Toaster } from "@/components/ui/sonner"
-
+import { Toaster } from "@/ui/primitives/sonner"
 
 export default function Layout() {
-    return (
-        <div className="h-screen w-screen bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed overflow-hidden">
-            <AppSidebar />
-            <main className="ml-20 h-screen flex flex-col transition-all duration-300">
-                <div className="flex-1 overflow-auto flex flex-col relative">
-                    <Outlet />
-                </div>
-            </main>
-            <Toaster />
-            
-
+  return (
+    <div className="flex min-h-screen bg-[color:var(--px-shell-bg)] text-[color:var(--px-shell-ink)] selection:bg-[color:var(--px-shell-accent)] selection:text-white">
+      <AppSidebar />
+      <main className="min-w-0 flex-1">
+        <div className="min-h-screen overflow-auto">
+          <Outlet />
         </div>
-    )
+      </main>
+      <Toaster />
+    </div>
+  )
 }

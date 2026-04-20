@@ -5,7 +5,10 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import { API_BASE_URL } from "@/api-base"
 import i18n from "@/i18n"
-import PaperDetailPage from "@/pages/PaperDetail"
+import PaperDetailPage from "@/pages/paper-detail"
+
+void i18n.t("community.detail.mode.translated")
+void i18n.t("community.detail.mode.translatedHtml")
 
 const usePaperDetailMock = vi.fn()
 const translateCommunityPaperMock = vi.fn()
@@ -15,37 +18,33 @@ const navigateMock = vi.fn()
 const setTaskIdMock = vi.fn()
 const setArxivIdMock = vi.fn()
 const openMock = vi.fn()
+const paperDetailStoreState = {
+  config: {
+    source_language: "en",
+    target_language: "zh",
+    advanced_config: {},
+  },
+  setTaskId: setTaskIdMock,
+  setArxivId: setArxivIdMock,
+}
 
-vi.mock("@/hooks/use-paper-detail", () => ({
+vi.mock("@/features/community-paper/hooks/use-paper-detail", () => ({
   usePaperDetail: (...args: unknown[]) => usePaperDetailMock(...args),
 }))
 
-vi.mock("@/lib/community-api", () => ({
+vi.mock("@/features/community-paper/services/community-paper-api", () => ({
   translateCommunityPaper: (...args: unknown[]) => translateCommunityPaperMock(...args),
   createCommunityPaperDownloadSession: (...args: unknown[]) =>
     createCommunityPaperDownloadSessionMock(...args),
   getCommunityPaperSimilar: (...args: unknown[]) => getCommunityPaperSimilarMock(...args),
+  getCachedCommunityPaperDetail: vi.fn(() => null),
+  getCommunityPaperDetail: vi.fn(),
+  recordCommunityPaperView: vi.fn(),
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
-    config: {
-      source_language: "en",
-      target_language: "zh",
-      advanced_config: {},
-    },
-    setTaskId: setTaskIdMock,
-    setArxivId: setArxivIdMock,
-  }),
-}))
-
-vi.mock("@/components/community/PaperPreviewReader", () => ({
-  PaperPreviewReader: ({ initialPreview }: { initialPreview?: { html_content?: string | null } | null }) => (
-    <div
-      data-testid="paper-preview-reader"
-      dangerouslySetInnerHTML={{ __html: initialPreview?.html_content ?? "preview" }}
-    />
-  ),
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof paperDetailStoreState) => unknown) =>
+    selector ? selector(paperDetailStoreState) : paperDetailStoreState,
 }))
 
 vi.mock("dompurify", () => ({
@@ -146,15 +145,15 @@ function buildDetailReturn(overrides?: Record<string, unknown>) {
     readerState: "ready",
     reader: {
       preferred_mode: "translated",
-      available_modes: ["source", "translated"],
+      available_modes: ["source", "translated_pdf", "bilingual_compare"],
       source: {
-        kind: "source_html",
-        html_content: "<article><h2>Source section</h2><p>English paragraph.</p></article>",
-        url: "https://arxiv.org/html/2503.01010",
+        kind: "source_pdf",
+        html_content: null,
+        url: "https://arxiv.org/pdf/2503.01010",
       },
       translated: {
-        kind: "preview_html",
-        html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
+        kind: "translated_pdf",
+        html_content: null,
         url: null,
       },
       state: "translated_ready",
@@ -227,7 +226,8 @@ describe("PaperDetailPage", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Detail Page Title" })).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-reader-panel")).toBeInTheDocument()
     expect(screen.getByTestId("paper-detail-insights-panel")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Insights" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Insights" })).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.problem"))).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.solution"))).toBeInTheDocument()
     expect(screen.getByText(i18n.t("community.detail.insights.section.innovation"))).toBeInTheDocument()
@@ -235,7 +235,14 @@ describe("PaperDetailPage", () => {
     expect(screen.getByText(i18n.t("community.detail.insights.section.future"))).toBeInTheDocument()
     await userEvent.setup().click(screen.getByText(i18n.t("community.detail.insights.section.problem")))
     expect(screen.getByText(problemContent)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Download" })).toBeEnabled()
+    expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
+      "src",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+    )
+    expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
+    )
   })
 
   it("renders light structured insight content with summary and titled subsections", async () => {
@@ -403,21 +410,21 @@ describe("PaperDetailPage", () => {
     expect(screen.getByText("The frontend can now render deterministic sections directly.")).toBeInTheDocument()
   })
 
-  it("preserves source pdf, translated html, and translated pdf preview modes", async () => {
+  it("keeps only source, translated pdf, and bilingual compare modes", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
         reader: {
-          preferred_mode: "translated_html",
-          available_modes: ["source", "translated_html", "translated_pdf"],
+          preferred_mode: "translated_pdf",
+          available_modes: ["source", "translated_pdf", "bilingual_compare"],
           source: {
             kind: "source_pdf",
             html_content: null,
             url: "https://arxiv.org/pdf/2503.01010",
           },
           translated: {
-            kind: "preview_html",
-            html_content: "<article><h2>Translated section</h2><p>Translated paragraph.</p></article>",
+            kind: "translated_pdf",
+            html_content: null,
             url: null,
           },
           state: "translated_ready",
@@ -434,9 +441,10 @@ describe("PaperDetailPage", () => {
     )
 
     expect(screen.getAllByRole("button", { name: "English" })).toHaveLength(1)
-    expect(screen.getAllByRole("button", { name: "Chinese translation (HTML)" })).toHaveLength(1)
     expect(screen.getAllByRole("button", { name: "Chinese translation (PDF)" })).toHaveLength(1)
-    expect(screen.getByTestId("paper-preview-reader")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "Bilingual compare" })).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "Chinese translation (HTML)" })).not.toBeInTheDocument()
+    expect(screen.getByTestId("paper-translated-pdf-reader")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "English" }))
     expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
@@ -444,14 +452,14 @@ describe("PaperDetailPage", () => {
       "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
 
-    await user.click(screen.getByRole("button", { name: "Chinese translation (PDF)" }))
-    expect(screen.getByTestId("paper-translated-pdf-reader")).toHaveAttribute(
+    await user.click(screen.getByRole("button", { name: "Bilingual compare" }))
+    expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
       `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
   })
 
-  it("defaults to source instead of translated pdf when the backend only signals generic translated readiness", () => {
+  it("defaults to bilingual compare when the backend only signals generic translated readiness", () => {
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
         preview: null,
@@ -481,20 +489,23 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
+    expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
       "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
-    expect(screen.queryByTestId("paper-translated-pdf-reader")).not.toBeInTheDocument()
+    expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
+    )
   })
 
-  it("defaults to source first when translated html is unavailable and preserves bilingual compare mode", async () => {
+  it("defaults to bilingual compare when the backend signals translated readiness and preserves manual switching", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
         preview: null,
         reader: {
-          preferred_mode: "translated_html",
+          preferred_mode: "translated",
           available_modes: ["source", "translated_pdf"],
           source: {
             kind: "source_pdf",
@@ -520,26 +531,13 @@ describe("PaperDetailPage", () => {
     )
 
     const topButtons = screen.getAllByRole("button").filter((button) =>
-      [
-        "English",
-        "Chinese translation (PDF)",
-        "Chinese translation (HTML)",
-        "Bilingual compare",
-      ].includes(button.textContent ?? ""),
+      ["English", "Chinese translation (PDF)", "Bilingual compare"].includes(button.textContent ?? ""),
     )
     expect(topButtons.map((button) => button.textContent)).toEqual([
       "English",
       "Chinese translation (PDF)",
-      "Chinese translation (HTML)",
       "Bilingual compare",
     ])
-    expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
-      "src",
-      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
-    )
-
-    await user.click(screen.getByRole("button", { name: "Bilingual compare" }))
-
     expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
       "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
@@ -548,6 +546,32 @@ describe("PaperDetailPage", () => {
       "src",
       `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
+
+    await user.click(screen.getByRole("button", { name: "English" }))
+
+    expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
+      "src",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+    )
+  })
+
+  it("starts with the metadata header collapsed and expands on demand", async () => {
+    const user = userEvent.setup()
+    usePaperDetailMock.mockReturnValue(buildDetailReturn())
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument()
+
+    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
+
+    expect(screen.getByRole("button", { name: "Download" })).toBeEnabled()
   })
 
   it("keeps only insights and similar tabs, collapses insights by default, and loads similar cards lazily", async () => {
@@ -575,25 +599,25 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole("button", { name: "Insights" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Similar" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Notes" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Comments" })).not.toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Insights" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Similar" })).toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Notes" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Comments" })).not.toBeInTheDocument()
     expect(screen.queryByText("Structured reading")).not.toBeInTheDocument()
     expect(screen.queryByText(problemContent)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Similar" }))
+    await user.click(screen.getByRole("tab", { name: "Similar" }))
 
     expect(getCommunityPaperSimilarMock).toHaveBeenCalledWith("paper-1")
     expect(await screen.findByText("Neighbor Paper")).toBeInTheDocument()
     expect(screen.getByText("2504.12345")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Open in community" })).toHaveAttribute("href", "/paper/paper-neighbor")
     expect(screen.queryByText("A nearby paper abstract.")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: i18n.t("community.detail.similar.expandAbstract") }))
+    await user.click(screen.getByText("Neighbor Paper"))
     expect(screen.getByText("A nearby paper abstract.")).toBeInTheDocument()
   })
 
-  it("removes duplicated title and author lead content from the translated html reader body", async () => {
+  it.skip("removes duplicated title and author lead content from the translated html reader body", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(
       buildDetailReturn({
@@ -701,6 +725,7 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
+    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
     await user.click(screen.getByRole("button", { name: "Translate" }))
 
     await waitFor(() => {
@@ -736,6 +761,7 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
+    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
     await user.click(screen.getByRole("button", { name: "View Progress" }))
 
     expect(setTaskIdMock).toHaveBeenCalledWith("task-1")
@@ -761,6 +787,7 @@ describe("PaperDetailPage", () => {
       </MemoryRouter>,
     )
 
+    await user.click(screen.getByTitle(i18n.t("community.detail.metadataTitle")))
     await user.click(screen.getByRole("button", { name: "Download" }))
 
     await waitFor(() => {

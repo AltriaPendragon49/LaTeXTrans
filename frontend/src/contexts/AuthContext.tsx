@@ -10,7 +10,7 @@ import {
 } from '@/lib/local-auth'
 import type { LocalAuthError, LocalAuthSession, LocalAuthUser } from '@/lib/local-auth'
 import { toast } from 'sonner'
-import { useStore } from '@/store/useStore'
+import { useTranslationStore } from '@/features/translation-workflow/store/useTranslationStore'
 
 interface AuthState {
     user: LocalAuthUser | null
@@ -92,8 +92,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser(nextSession.user)
 
             try {
-                useStore.getState().invalidateUserSettings()
-                await useStore.getState().loadUserSettings(true)
+                useTranslationStore.getState().invalidateUserSettings()
+                await useTranslationStore.getState().loadUserSettings(true)
                 toast.success(i18n.t('auth.toast.settingsLoaded.title'), {
                     description: i18n.t('auth.toast.settingsLoaded.description'),
                     duration: 4000,
@@ -126,7 +126,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await signOutCurrentSession(session?.access_token)
         setSession(null)
         setUser(null)
-        useStore.getState().invalidateUserSettings()
+        useTranslationStore.getState().invalidateUserSettings()
     }
 
     const clearError = () => {

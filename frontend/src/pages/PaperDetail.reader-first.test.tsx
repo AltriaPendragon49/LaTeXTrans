@@ -4,33 +4,38 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import i18n from "@/i18n"
-import PaperDetailPage from "@/pages/PaperDetail"
+import PaperDetailPage from "@/pages/paper-detail"
 
 const usePaperDetailMock = vi.fn()
+const paperDetailReaderStoreState = vi.hoisted(() => ({
+  config: {
+    source_language: "en",
+    target_language: "zh",
+    advanced_config: {},
+  },
+  setTaskId: vi.fn(),
+  setArxivId: vi.fn(),
+}))
 
-vi.mock("@/hooks/use-paper-detail", () => ({
+vi.mock("@/features/community-paper/hooks/use-paper-detail", () => ({
   usePaperDetail: (...args: unknown[]) => usePaperDetailMock(...args),
 }))
 
-vi.mock("@/lib/community-api", () => ({
+vi.mock("@/features/community-paper/services/community-paper-api", () => ({
   translateCommunityPaper: vi.fn(),
   createCommunityPaperDownloadSession: vi.fn(),
   getCommunityPaperSimilar: vi.fn(() => Promise.resolve({ items: [] })),
+  getCachedCommunityPaperDetail: vi.fn(() => null),
+  getCommunityPaperDetail: vi.fn(),
+  recordCommunityPaperView: vi.fn(),
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
-    config: {
-      source_language: "en",
-      target_language: "zh",
-      advanced_config: {},
-    },
-    setTaskId: vi.fn(),
-    setArxivId: vi.fn(),
-  }),
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof paperDetailReaderStoreState) => unknown) =>
+    selector ? selector(paperDetailReaderStoreState) : paperDetailReaderStoreState,
 }))
 
-vi.mock("@/components/community/PaperPreviewReader", () => ({
+vi.mock("@/features/community-paper/components/PaperPreviewReader", () => ({
   PaperPreviewReader: ({ initialPreview }: { initialPreview?: { html_content?: string | null } | null }) => (
     <div
       data-testid="paper-preview-reader"

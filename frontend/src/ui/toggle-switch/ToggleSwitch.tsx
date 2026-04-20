@@ -1,0 +1,47 @@
+import type { ButtonHTMLAttributes } from "react"
+
+import { cn } from "@/lib/utils"
+
+interface ToggleSwitchProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}
+
+export function ToggleSwitch({
+  checked,
+  onCheckedChange,
+  className,
+  disabled,
+  ...props
+}: ToggleSwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) {
+          onCheckedChange(!checked)
+        }
+      }}
+      className={cn(
+        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-transparent transition-all duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--px-shell-panel)]",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        checked
+          ? "bg-[color:var(--px-shell-accent)] shadow-[0_0_0_4px_color-mix(in_srgb,var(--px-shell-accent)_16%,transparent)]"
+          : "bg-[color:var(--px-shell-line)] hover:bg-[color:var(--px-shell-line-strong)]",
+        className,
+      )}
+      {...props}
+    >
+      <span
+        className={cn(
+          "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/5 transition-transform duration-200",
+          checked ? "translate-x-5" : "translate-x-0",
+        )}
+      />
+    </button>
+  )
+}

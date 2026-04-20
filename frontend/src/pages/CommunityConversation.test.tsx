@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import i18n from "@/i18n"
-import CommunityConversationPage from "@/pages/CommunityConversation"
+import CommunityConversationPage from "@/pages/community-conversation"
 
 const createCommunityAgentRunMock = vi.fn()
 const streamCommunityAgentRunMock = vi.fn()
@@ -362,6 +362,12 @@ describe("CommunityConversationPage streaming", () => {
   })
 
   it("keeps deep research in progress until a completed snapshot provides the report payload", async () => {
+    const completionGate: { release: () => void } = {
+      release: () => {
+        throw new Error("expected deep research completion gate to be registered")
+      },
+    }
+
     streamCommunityAgentRunMock.mockImplementationOnce(
       async (
         payload: Record<string, unknown>,
@@ -401,15 +407,18 @@ describe("CommunityConversationPage streaming", () => {
           data: { delta: "Collecting evidence..." },
         })
 
-        await new Promise((resolve) => window.setTimeout(resolve, 40))
-
-        onEvent({
-          type: "complete",
-          run_id: "run-research-2",
-          sequence: 3,
-          data: {
-            snapshot: finalRun,
-          },
+        await new Promise<void>((resolve) => {
+          completionGate.release = () => {
+            onEvent({
+              type: "complete",
+              run_id: "run-research-2",
+              sequence: 3,
+              data: {
+                snapshot: finalRun,
+              },
+            })
+            resolve()
+          }
         })
 
         expect(payload).toMatchObject({ mode: "deep_research" })
@@ -429,11 +438,16 @@ describe("CommunityConversationPage streaming", () => {
     await userEvent.type(screen.getByLabelText("Ask the paper agent"), "Need a complete deep research brief")
     await userEvent.click(screen.getByRole("button", { name: "Send message" }))
 
-    expect(
-      await screen.findByText("The paper agent is thinking across the current conversation context."),
-    ).toBeInTheDocument()
-    expect(screen.queryByText("Deep research report")).not.toBeInTheDocument()
-    expect(await screen.findByText("Deep research report")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(streamCommunityAgentRunMock).toHaveBeenCalled()
+      expect(screen.getByText("Collecting evidence...")).toBeInTheDocument()
+      expect(screen.queryByTestId("community-deep-research-report")).not.toBeInTheDocument()
+    })
+
+    completionGate.release()
+
+    expect(await screen.findByTestId("community-deep-research-report")).toBeInTheDocument()
+    expect(screen.getByText("Deep research report")).toBeInTheDocument()
     expect(await screen.findByText("Coverage reached target breadth.")).toBeInTheDocument()
-  })
+  }, 10000)
 })

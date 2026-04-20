@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import i18n from "@/i18n"
-import CommunityAdminCurationPage from "@/pages/CommunityAdminCuration"
+import CommunityAdminCurationPage from "@/pages/community-admin-curation"
 
 const {
   submitAdminArxivCurationBatch,
@@ -18,6 +18,14 @@ const {
   loadUserSettings: vi.fn(),
 }))
 
+const adminCurationStoreState = vi.hoisted(() => ({
+  config: {
+    source_language: "en",
+    target_language: "zh",
+  },
+  loadUserSettings,
+}))
+
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     isAuthenticated: true,
@@ -25,14 +33,9 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }))
 
-vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
-    config: {
-      source_language: "en",
-      target_language: "zh",
-    },
-    loadUserSettings,
-  }),
+vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
+  useTranslationStore: (selector?: (state: typeof adminCurationStoreState) => unknown) =>
+    selector ? selector(adminCurationStoreState) : adminCurationStoreState,
 }))
 
 vi.mock("@/lib/community-api", () => ({

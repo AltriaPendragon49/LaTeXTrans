@@ -286,6 +286,7 @@ async def _proxy_arxiv_pdf(
     filename: str,
     *,
     request: Optional[Request] = None,
+    content_disposition: str = "inline",
 ) -> StreamingResponse:
     """
     Stream arXiv PDF through backend to avoid frontend CORS issues.
@@ -323,7 +324,7 @@ async def _proxy_arxiv_pdf(
         await upstream.aclose()
         await client.aclose()
 
-    headers = {"Content-Disposition": f"inline; filename=\"{filename}\""}
+    headers = {"Content-Disposition": f"{content_disposition}; filename=\"{filename}\""}
     for source_name, target_name in (
         ("content-length", "Content-Length"),
         ("accept-ranges", "Accept-Ranges"),
@@ -603,8 +604,12 @@ async def preview_pdf(task_id: str):
     )
 
 
-@router.get("/preview/{task_id}/source-pdf")
-async def preview_source_pdf(task_id: str, request: Request):
+async def _serve_source_pdf(
+    task_id: str,
+    request: Request,
+    *,
+    content_disposition: str = "inline",
+):
     """
     Preview original source PDF (inline display for iframe)
     
@@ -642,7 +647,7 @@ async def preview_source_pdf(task_id: str, request: Request):
             path=str(local_source_pdf),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                "Content-Disposition": f"{content_disposition}; filename=\"source_{task_id}.pdf\""
             },
         )
 
@@ -656,6 +661,7 @@ async def preview_source_pdf(task_id: str, request: Request):
                 clean_id,
                 f"source_{clean_id}.pdf",
                 request=request,
+                content_disposition=content_disposition,
             )
 
     # Get source path with fallback to deterministic uploads location.
@@ -709,6 +715,7 @@ async def preview_source_pdf(task_id: str, request: Request):
             extracted_arxiv_id,
             f"source_{extracted_arxiv_id}.pdf",
             request=request,
+            content_disposition=content_disposition,
         )
     
     # Strategy 4: Look for existing original PDF in source directory
@@ -727,7 +734,7 @@ async def preview_source_pdf(task_id: str, request: Request):
                 path=str(pdf_file),
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                    "Content-Disposition": f"{content_disposition}; filename=\"source_{task_id}.pdf\""
                 }
             )
     
@@ -771,7 +778,7 @@ async def preview_source_pdf(task_id: str, request: Request):
                 path=str(compiled_pdf_path),
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                    "Content-Disposition": f"{content_disposition}; filename=\"source_{task_id}.pdf\""
                 }
             )
         logger.error("Cached source PDF failed validation, removing: %s", compiled_pdf_path)
@@ -790,7 +797,7 @@ async def preview_source_pdf(task_id: str, request: Request):
                 path=str(compiled_pdf_path),
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": f"inline; filename=\"source_{task_id}.pdf\""
+                    "Content-Disposition": f"{content_disposition}; filename=\"source_{task_id}.pdf\""
                 }
             )
         else:
@@ -804,6 +811,11 @@ async def preview_source_pdf(task_id: str, request: Request):
             status_code=503,
             detail=f"Failed to compile source PDF: {str(e)}"
         )
+
+
+@router.get("/preview/{task_id}/source-pdf")
+async def preview_source_pdf(task_id: str, request: Request):
+    return await _serve_source_pdf(task_id, request, content_disposition="inline")
 
 
 @router.get("/download/{task_id}/source")

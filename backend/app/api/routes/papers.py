@@ -69,6 +69,8 @@ class PaperSummary(BaseModel):
     id: str
     source: str
     arxiv_id: Optional[str] = None
+    arxiv_url: Optional[str] = None
+    github_url: Optional[str] = None
     title: str
     authors: List[Any] = []
     categories: List[str] = []
@@ -383,6 +385,7 @@ async def _serve_local_pdf_preview(
     filename: str,
     request: Request,
     cache_control: str,
+    content_disposition: str = "inline",
 ) -> Response:
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF file not found")
@@ -391,7 +394,7 @@ async def _serve_local_pdf_preview(
     base_headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": cache_control,
-        "Content-Disposition": f'inline; filename="{filename}"',
+        "Content-Disposition": f'{content_disposition}; filename="{filename}"',
     }
     range_header = request.headers.get("range")
     byte_range = _parse_single_byte_range(range_header, total_size)
@@ -890,7 +893,11 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
 
     legacy_task_id = str(payload.get("legacy_task_id") or "").strip()
     if legacy_task_id:
-        return await download_route.preview_source_pdf(legacy_task_id, request)
+        return await download_route._serve_source_pdf(
+            legacy_task_id,
+            request,
+            content_disposition="inline",
+        )
 
     filename = str(payload.get("filename") or f"{paper_id}.pdf")
     return await _serve_local_pdf_preview(
@@ -898,6 +905,37 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
         filename=filename,
         request=request,
         cache_control="public, max-age=300, stale-while-revalidate=600",
+    )
+
+
+@router.get("/{paper_id}/source-download")
+async def download_source_paper_pdf(paper_id: str, request: Request):
+    payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
+
+    arxiv_id = str(payload.get("arxiv_id") or "").strip()
+    if arxiv_id:
+        return await download_route._proxy_arxiv_pdf(
+            arxiv_id,
+            f"source_{arxiv_id}.pdf",
+            request=request,
+            content_disposition="attachment",
+        )
+
+    legacy_task_id = str(payload.get("legacy_task_id") or "").strip()
+    if legacy_task_id:
+        return await download_route._serve_source_pdf(
+            legacy_task_id,
+            request,
+            content_disposition="attachment",
+        )
+
+    filename = str(payload.get("filename") or f"{paper_id}.pdf")
+    return await _serve_local_pdf_preview(
+        file_path=Path(payload["file_path"]),
+        filename=filename,
+        request=request,
+        cache_control="public, max-age=300, stale-while-revalidate=600",
+        content_disposition="attachment",
     )
 
 
