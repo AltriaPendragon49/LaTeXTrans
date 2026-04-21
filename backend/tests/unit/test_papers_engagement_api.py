@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime
 from types import SimpleNamespace
 
 import httpx
@@ -58,6 +59,42 @@ def test_list_favorite_folders_route_returns_service_payload(monkeypatch) -> Non
 
     assert response.status_code == 200
     assert response.json()["items"][0]["name"] == "Reading list"
+
+
+def test_create_favorite_folder_route_serializes_datetime_fields(monkeypatch) -> None:
+    async def fake_create_favorite_folder(*, user_id: str, name: str):  # type: ignore[no-untyped-def]
+        assert user_id == "user-1"
+        assert name == "Reading list"
+        return {
+            "folder": {
+                "id": "folder-1",
+                "name": "Reading list",
+                "paper_count": 0,
+                "created_at": datetime(2026, 4, 21, 17, 33, 41),
+                "updated_at": datetime(2026, 4, 21, 17, 33, 41),
+            }
+        }
+
+    monkeypatch.setattr(paper_service, "create_favorite_folder", fake_create_favorite_folder, raising=False)
+    app.dependency_overrides[papers_route.require_current_user] = lambda: {"id": "user-1", "roles": ["user"]}
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.post("/api/papers/favorite-folders", json={"name": "Reading list"})
+
+    response = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "folder": {
+            "id": "folder-1",
+            "name": "Reading list",
+            "paper_count": 0,
+            "created_at": "2026-04-21T17:33:41",
+            "updated_at": "2026-04-21T17:33:41",
+        }
+    }
 
 
 def test_put_paper_favorite_folders_route_returns_updated_state(monkeypatch) -> None:

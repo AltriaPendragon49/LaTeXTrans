@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { API_BASE_URL } from "@/api-base"
 import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
 import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
+import { publishCommunityPaperEngagement } from "@/lib/community-api"
 import type { CommunityPaper, CommunityPaperReaderMode, ViewerState } from "@/types/community"
 
 import { PaperDetailHeader } from "./PaperDetailHeader"
@@ -178,14 +179,20 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
                 onSelectMode={handleSelectMode}
                 onDownload={() => void handleDownload()}
                 onFavoriteStateChange={(payload) => {
+                  const nextViewerState = {
+                    liked: Boolean(activePaper.viewer_state?.liked),
+                    favorited: payload.favorited,
+                    favorite_folder_count: payload.favorite_folder_count,
+                  }
                   setFavoriteStatePatch({
                     paperId: activePaper.id,
                     favoriteCount: payload.favorite_count,
-                    viewerState: {
-                      liked: Boolean(activePaper.viewer_state?.liked),
-                      favorited: payload.favorited,
-                      favorite_folder_count: payload.favorite_folder_count,
-                    },
+                    viewerState: nextViewerState,
+                  })
+                  publishCommunityPaperEngagement({
+                    paperId: activePaper.id,
+                    favoriteCount: payload.favorite_count,
+                    viewerState: nextViewerState,
                   })
                 }}
               />

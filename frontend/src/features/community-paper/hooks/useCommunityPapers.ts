@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 
-import { getCommunityPapers } from "@/lib/community-api"
+import {
+  getCommunityPapers,
+  mergeCommunityPaperEngagement,
+  subscribeCommunityPaperEngagement,
+} from "@/lib/community-api"
 import type { CommunityFeedSort, CommunityPaper } from "@/types/community"
 
 const SEARCH_DEBOUNCE_MS = 250
@@ -13,9 +17,50 @@ function getBootstrappedFeed(sort: CommunityFeedSort, query: string) {
   return window.__COMMUNITY_BOOTSTRAP__?.feed ?? null
 }
 
+function resolvePrimaryTimestamp(paper: CommunityPaper): number {
+  const primary = paper.official_published_at ?? paper.created_at
+  const resolved = primary ? Date.parse(primary) : Number.NaN
+  return Number.isFinite(resolved) ? resolved : 0
+}
+
+function sortFeedItems(items: CommunityPaper[], sort: CommunityFeedSort) {
+  return [...items].sort((left, right) => {
+    const leftOfficialRank = left.community_status === "official" ? 0 : 1
+    const rightOfficialRank = right.community_status === "official" ? 0 : 1
+    if (leftOfficialRank !== rightOfficialRank) {
+      return leftOfficialRank - rightOfficialRank
+    }
+
+    if (sort === "views") {
+      const viewDelta = Number(right.view_count ?? 0) - Number(left.view_count ?? 0)
+      if (viewDelta !== 0) {
+        return viewDelta
+      }
+    }
+
+    if (sort === "likes") {
+      const likeDelta = Number(right.like_count ?? 0) - Number(left.like_count ?? 0)
+      if (likeDelta !== 0) {
+        return likeDelta
+      }
+    }
+
+    return resolvePrimaryTimestamp(right) - resolvePrimaryTimestamp(left)
+  })
+}
+
+function applyEngagementState(items: CommunityPaper[], sort: CommunityFeedSort) {
+  return sortFeedItems(
+    items.map((paper) => mergeCommunityPaperEngagement(paper)),
+    sort,
+  )
+}
+
 export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
   const bootstrappedFeed = getBootstrappedFeed(sort, query)
-  const [items, setItems] = useState<CommunityPaper[]>(bootstrappedFeed?.items ?? [])
+  const [items, setItems] = useState<CommunityPaper[]>(() =>
+    applyEngagementState(bootstrappedFeed?.items ?? [], sort),
+  )
   const [total, setTotal] = useState(bootstrappedFeed?.total ?? 0)
   const [hasMore, setHasMore] = useState(Boolean(bootstrappedFeed?.has_more))
   const [nextOffset, setNextOffset] = useState<number | null>(bootstrappedFeed?.next_offset ?? null)
@@ -39,7 +84,7 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
         if (bootstrapPromise && !window.__COMMUNITY_BOOTSTRAP__?.feed) {
           const bootstrapResponse = await bootstrapPromise
           if (!isCancelled && bootstrapResponse) {
-            setItems(bootstrapResponse.items)
+            setItems(applyEngagementState(bootstrapResponse.items, sort))
             setTotal(bootstrapResponse.total)
             setHasMore(Boolean(bootstrapResponse.has_more))
             setNextOffset(bootstrapResponse.next_offset ?? null)
@@ -54,7 +99,7 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
           offset: 0,
         })
         if (!isCancelled) {
-          setItems(response.items)
+          setItems(applyEngagementState(response.items, sort))
           setTotal(response.total)
           setHasMore(Boolean(response.has_more))
           setNextOffset(response.next_offset ?? null)
@@ -88,6 +133,17 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
     }
   }, [bootstrappedFeed, normalizedQuery, reloadToken, sort])
 
+  useEffect(() => {
+    return subscribeCommunityPaperEngagement((patch) => {
+      setItems((current) => {
+        if (!current.some((paper) => paper.id === patch.paperId)) {
+          return current
+        }
+        return applyEngagementState(current, sort)
+      })
+    })
+  }, [sort])
+
   return {
     items,
     total,
@@ -108,7 +164,7 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
           limit: COMMUNITY_PAGE_SIZE,
           offset: nextOffset,
         })
-        setItems((current) => [...current, ...response.items])
+        setItems((current) => applyEngagementState([...current, ...response.items], sort))
         setTotal(response.total)
         setHasMore(Boolean(response.has_more))
         setNextOffset(response.next_offset ?? null)

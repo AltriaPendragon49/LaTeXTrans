@@ -20,7 +20,12 @@ import { API_BASE_URL } from "@/api-base"
 import { useAuth } from "@/contexts/AuthContext"
 import { FavoritePicker } from "@/features/community-paper/components/FavoritePicker"
 import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
-import { likeCommunityPaper, prefetchCommunityPaperDetail, unlikeCommunityPaper } from "@/lib/community-api"
+import {
+  likeCommunityPaper,
+  prefetchCommunityPaperDetail,
+  publishCommunityPaperEngagement,
+  unlikeCommunityPaper,
+} from "@/lib/community-api"
 import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import type { CommunityPaper } from "@/types/community"
 import { Button } from "@/ui/button/Button"
@@ -353,6 +358,19 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         : await unlikeCommunityPaper(paper.id)
       setLiked(response.liked)
       setLikeCount(response.like_count)
+      setFavoriteState((current) => ({
+        ...current,
+        liked: response.liked,
+      }))
+      publishCommunityPaperEngagement({
+        paperId: paper.id,
+        likeCount: response.like_count,
+        viewerState: {
+          liked: response.liked,
+          favorited: favoriteState.favorited,
+          favorite_folder_count: favoriteState.favorite_folder_count,
+        },
+      })
       toast.success(
         response.liked
           ? t("community.likes.toast.liked")
@@ -386,19 +404,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
               ) : null}
             </div>
 
-            {onDelete ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={deleting}
-                onClick={() => onDelete(paper)}
-                className="h-9 w-9 text-[color:var(--px-shell-danger)] hover:bg-[color:var(--px-shell-danger-soft)]"
-                aria-label={t("community.admin.deleteAction")}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : (
+            <div className="flex items-center gap-2">
               <FavoritePicker
                 paperId={paper.id}
                 favoriteCount={favoriteCount}
@@ -411,9 +417,31 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
                     favorited: response.favorited,
                     favorite_folder_count: response.favorite_folder_count,
                   }))
+                  publishCommunityPaperEngagement({
+                    paperId: paper.id,
+                    favoriteCount: response.favorite_count,
+                    viewerState: {
+                      liked,
+                      favorited: response.favorited,
+                      favorite_folder_count: response.favorite_folder_count,
+                    },
+                  })
                 }}
               />
-            )}
+              {onDelete ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={deleting}
+                  onClick={() => onDelete(paper)}
+                  className="h-9 w-9 text-[color:var(--px-shell-danger)] hover:bg-[color:var(--px-shell-danger-soft)]"
+                  aria-label={t("community.admin.deleteAction")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-3">

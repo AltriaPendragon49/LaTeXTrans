@@ -169,7 +169,7 @@ describe("PaperCard", () => {
     expect(preloadPaperPreviewEnhancerMock).toHaveBeenCalled()
   })
 
-  it("renders the admin delete affordance only when an action is provided", () => {
+  it("keeps the favorite entry available even when the admin delete action is shown", () => {
     const onDelete = vi.fn()
 
     const { rerender } = render(
@@ -178,6 +178,7 @@ describe("PaperCard", () => {
       </MemoryRouter>,
     )
 
+    expect(screen.getByRole("button", { name: "Favorite paper" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Delete paper" }))
     expect(onDelete).toHaveBeenCalledWith(paper)
 
@@ -188,6 +189,7 @@ describe("PaperCard", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Delete paper" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Favorite paper" })).toBeInTheDocument()
   })
 
   it("uses paper-level preview routes even when the selected task id is missing", () => {

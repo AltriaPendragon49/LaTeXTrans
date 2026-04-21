@@ -6,6 +6,7 @@ import hashlib
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -71,8 +72,8 @@ class FavoriteFolderSummary(BaseModel):
     id: str
     name: str
     paper_count: int = 0
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class FavoriteFolderListResponse(BaseModel):

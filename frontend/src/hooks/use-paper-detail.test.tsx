@@ -6,6 +6,7 @@ import {
   clearCommunityPaperDetailCache,
   primeCommunityPaperDetailCache,
 } from "@/features/community-paper/services/community-paper-api"
+import type { CommunityPaperDetailResponse } from "@/types/community"
 
 const getCommunityPaperDetailMock = vi.fn()
 const recordCommunityPaperViewMock = vi.fn()
@@ -28,6 +29,7 @@ function HookProbe({ paperId }: { paperId?: string }) {
     <div>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="title">{paper?.title ?? ""}</span>
+      <span data-testid="favorited">{String(Boolean(paper?.viewer_state?.favorited))}</span>
       <span data-testid="reader-state">{readerState}</span>
       <span data-testid="preview-name">{preview?.asset.file_name ?? ""}</span>
     </div>
@@ -100,5 +102,67 @@ describe("usePaperDetail", () => {
 
     await waitFor(() => expect(getCommunityPaperDetailMock).toHaveBeenCalledWith("paper-1"))
     await waitFor(() => expect(recordCommunityPaperViewMock).toHaveBeenCalledTimes(1))
+  })
+
+  it("replaces stale cached detail with the refreshed response", async () => {
+    const cachedDetail: CommunityPaperDetailResponse = {
+      paper: {
+        id: "paper-1",
+        source: "arxiv",
+        arxiv_id: "2503.01010",
+        title: "Cached paper",
+        authors: [],
+        categories: [],
+        community_status: "official",
+        trans_status: "completed",
+        created_at: "2026-03-18T00:00:00Z",
+        official_published_at: "2026-03-18T02:00:00Z",
+        community_selected_task_id: "task-1",
+        community_selected_asset_id: "asset-preview",
+        viewer_state: {
+          liked: false,
+          favorited: false,
+          favorite_folder_count: 0,
+        },
+      },
+      preview: null,
+      reader_state: "ready",
+    }
+    primeCommunityPaperDetailCache("paper-1", cachedDetail)
+    const freshDetail: CommunityPaperDetailResponse = {
+      paper: {
+        id: "paper-1",
+        source: "arxiv",
+        arxiv_id: "2503.01010",
+        title: "Fresh paper",
+        authors: [],
+        categories: [],
+        community_status: "official",
+        trans_status: "completed",
+        created_at: "2026-03-18T00:00:00Z",
+        official_published_at: "2026-03-18T02:00:00Z",
+        community_selected_task_id: "task-1",
+        community_selected_asset_id: "asset-preview",
+        viewer_state: {
+          liked: true,
+          favorited: true,
+          favorite_folder_count: 1,
+        },
+      },
+      preview: null,
+      reader_state: "ready",
+    }
+    getCommunityPaperDetailMock.mockImplementation(async () => {
+      primeCommunityPaperDetailCache("paper-1", freshDetail)
+      return freshDetail
+    })
+
+    render(<HookProbe paperId="paper-1" />)
+
+    expect(screen.getByTestId("title")).toHaveTextContent("Cached paper")
+    expect(screen.getByTestId("favorited")).toHaveTextContent("false")
+
+    await waitFor(() => expect(screen.getByTestId("title")).toHaveTextContent("Fresh paper"))
+    await waitFor(() => expect(screen.getByTestId("favorited")).toHaveTextContent("true"))
   })
 })

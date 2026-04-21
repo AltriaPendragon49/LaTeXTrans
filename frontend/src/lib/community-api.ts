@@ -14,6 +14,7 @@ import type {
   CommunityAgentStreamEvent,
   CommunityAgentSkillToggles,
   CommunityConversationRecord,
+  CommunityPaper,
   CommunityFeedSort,
   FavoriteFolderDeleteResponse,
   FavoriteFolderListResponse,
@@ -31,12 +32,135 @@ import type {
   CommunityPaperSimilarResponse,
   CommunityPaperSubmitResponse,
   CommunityPaperTranslateResponse,
+  ViewerState,
 } from "@/types/community"
 import type { TranslateRequest } from "@/lib/api"
 
 const communityPaperDetailCache = new Map<string, CommunityPaperDetailResponse>()
 const communityPaperDetailInflight = new Map<string, Promise<CommunityPaperDetailResponse>>()
+type CommunityPaperEngagementPatch = {
+  paperId: string
+  likeCount?: number
+  favoriteCount?: number
+  viewCount?: number
+  viewerState?: Partial<ViewerState>
+}
+const communityPaperEngagementOverrides = new Map<string, CommunityPaperEngagementPatch>()
+const communityPaperEngagementListeners = new Set<(patch: CommunityPaperEngagementPatch) => void>()
 const COMMUNITY_ANON_ID_STORAGE_KEY = "paperx.community.anonymous-id"
+
+function mergeViewerState(
+  current: ViewerState | null | undefined,
+  patch: Partial<ViewerState> | undefined,
+): ViewerState | null | undefined {
+  if (!patch) {
+    return current
+  }
+
+  return {
+    liked: Boolean(current?.liked),
+    favorited: Boolean(current?.favorited),
+    favorite_folder_count: Number(current?.favorite_folder_count ?? 0),
+    ...current,
+    ...patch,
+  }
+}
+
+function mergeEngagementPatch(
+  current: CommunityPaperEngagementPatch | undefined,
+  patch: CommunityPaperEngagementPatch,
+): CommunityPaperEngagementPatch {
+  return {
+    paperId: patch.paperId,
+    likeCount: patch.likeCount ?? current?.likeCount,
+    favoriteCount: patch.favoriteCount ?? current?.favoriteCount,
+    viewCount: patch.viewCount ?? current?.viewCount,
+    viewerState: {
+      ...(current?.viewerState ?? {}),
+      ...(patch.viewerState ?? {}),
+    },
+  }
+}
+
+function applyEngagementPatchToPaper(
+  paper: CommunityPaper,
+  patch: CommunityPaperEngagementPatch | undefined,
+): CommunityPaper {
+  if (!patch || patch.paperId !== paper.id) {
+    return paper
+  }
+
+  return {
+    ...paper,
+    like_count: patch.likeCount ?? paper.like_count,
+    favorite_count: patch.favoriteCount ?? paper.favorite_count,
+    view_count: patch.viewCount ?? paper.view_count,
+    viewer_state: mergeViewerState(paper.viewer_state, patch.viewerState) ?? paper.viewer_state,
+  }
+}
+
+function updateBootstrappedFeed(patch: CommunityPaperEngagementPatch): void {
+  const bootstrapFeed = window.__COMMUNITY_BOOTSTRAP__?.feed
+  if (!bootstrapFeed?.items?.length) {
+    return
+  }
+
+  window.__COMMUNITY_BOOTSTRAP__ = {
+    ...window.__COMMUNITY_BOOTSTRAP__,
+    feed: {
+      ...bootstrapFeed,
+      items: bootstrapFeed.items.map((paper) => applyEngagementPatchToPaper(paper, patch)),
+    },
+  }
+}
+
+export function mergeCommunityPaperEngagement(paper: CommunityPaper): CommunityPaper {
+  const patch = communityPaperEngagementOverrides.get(paper.id)
+  return applyEngagementPatchToPaper(paper, patch)
+}
+
+export function publishCommunityPaperEngagement(patch: CommunityPaperEngagementPatch): void {
+  const paperId = String(patch.paperId || "").trim()
+  if (!paperId) {
+    return
+  }
+
+  const normalizedPatch: CommunityPaperEngagementPatch = {
+    ...patch,
+    paperId,
+  }
+  const nextPatch = mergeEngagementPatch(
+    communityPaperEngagementOverrides.get(paperId),
+    normalizedPatch,
+  )
+  communityPaperEngagementOverrides.set(paperId, nextPatch)
+
+  const cachedDetail = communityPaperDetailCache.get(paperId)
+  if (cachedDetail?.paper) {
+    communityPaperDetailCache.set(paperId, {
+      ...cachedDetail,
+      paper: applyEngagementPatchToPaper(cachedDetail.paper, nextPatch),
+    })
+  }
+  updateBootstrappedFeed(nextPatch)
+
+  for (const listener of communityPaperEngagementListeners) {
+    listener(nextPatch)
+  }
+}
+
+export function subscribeCommunityPaperEngagement(
+  listener: (patch: CommunityPaperEngagementPatch) => void,
+): () => void {
+  communityPaperEngagementListeners.add(listener)
+  return () => {
+    communityPaperEngagementListeners.delete(listener)
+  }
+}
+
+export function clearCommunityPaperEngagementState(): void {
+  communityPaperEngagementOverrides.clear()
+}
 
 function getCommunityAnonymousId(): string | null {
   if (typeof window === "undefined") {
@@ -74,7 +198,10 @@ export async function getCommunityPapers(params: {
       }),
     { attempts: 3, baseDelayMs: 150 },
   )
-  return response.data
+  return {
+    ...response.data,
+    items: response.data.items.map((paper) => mergeCommunityPaperEngagement(paper)),
+  }
 }
 
 export async function createCommunityAgentRun(payload: {
@@ -254,8 +381,12 @@ export async function getCommunityPaperDetail(
     () => api.get<CommunityPaperDetailResponse>(`/papers/${paperId}`),
     { attempts: 3, baseDelayMs: 150 },
   )
-  communityPaperDetailCache.set(paperId, response.data)
-  return response.data
+  const payload = {
+    ...response.data,
+    paper: mergeCommunityPaperEngagement(response.data.paper),
+  }
+  communityPaperDetailCache.set(paperId, payload)
+  return payload
 }
 
 export async function getCommunityPaperSimilar(

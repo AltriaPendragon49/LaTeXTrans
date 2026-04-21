@@ -38,26 +38,9 @@ const EMPTY_REMOTE_STATE: PaperDetailRemoteState = {
 }
 
 export function usePaperDetail(paperId: string | undefined) {
-  const cachedDetail = useMemo(
-    () => (paperId ? getCachedCommunityPaperDetail(paperId) : null),
-    [paperId],
-  )
+  const cachedDetail = paperId ? getCachedCommunityPaperDetail(paperId) : null
   const viewedPaperIdRef = useRef<string | null>(null)
-  const [remoteState, setRemoteState] = useState<PaperDetailRemoteState>(() =>
-    paperId && cachedDetail
-      ? {
-          paperId,
-          paper: cachedDetail.paper ?? null,
-          preview: cachedDetail.preview ?? null,
-          readerState: cachedDetail.reader_state ?? "unavailable",
-          error: null,
-          notFound: false,
-          reader: cachedDetail.reader ?? null,
-          experience: cachedDetail.experience ?? null,
-          structuredInsights: cachedDetail.structured_insights ?? null,
-        }
-      : EMPTY_REMOTE_STATE,
-  )
+  const [remoteState, setRemoteState] = useState<PaperDetailRemoteState>(EMPTY_REMOTE_STATE)
 
   useEffect(() => {
     if (!paperId) {
@@ -122,6 +105,10 @@ export function usePaperDetail(paperId: string | undefined) {
         ...EMPTY_REMOTE_STATE,
         notFound: true,
       }
+    }
+
+    if (remoteState.paperId === paperId && remoteState.paper) {
+      return remoteState
     }
 
     if (cachedDetail) {
