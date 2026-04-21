@@ -28,6 +28,7 @@ security = HTTPBearer(auto_error=False)
 settings = get_settings()
 LOCAL_PDF_PREVIEW_CHUNK_SIZE = 64 * 1024
 THUMBNAIL_CACHE_VERSION = "v3"
+COMMUNITY_ANON_COOKIE_NAME = "community_anonymous_id"
 
 
 def _ensure_paper_authorized(
@@ -63,6 +64,64 @@ class AssetSummary(BaseModel):
 class ViewerState(BaseModel):
     liked: bool = False
     favorited: bool = False
+    favorite_folder_count: int = 0
+
+
+class FavoriteFolderSummary(BaseModel):
+    id: str
+    name: str
+    paper_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class FavoriteFolderListResponse(BaseModel):
+    items: List[FavoriteFolderSummary]
+
+
+class FavoriteFolderMutationRequest(BaseModel):
+    name: str
+
+
+class FavoriteFolderMutationResponse(BaseModel):
+    folder: FavoriteFolderSummary
+
+
+class FavoriteFolderDeleteResponse(BaseModel):
+    folder_id: str
+    deleted: bool = True
+
+
+class FavoriteFolderPaperListResponse(BaseModel):
+    folder: FavoriteFolderSummary
+    items: List["PaperSummary"]
+    total: int
+
+
+class PaperFavoriteFolderStateResponse(BaseModel):
+    paper_id: str
+    items: List[FavoriteFolderSummary]
+    selected_folder_ids: List[str]
+    favorited: bool
+    favorite_folder_count: int
+
+
+class PaperFavoriteFolderUpdateRequest(BaseModel):
+    folder_ids: List[str] = []
+
+
+class PaperFavoriteFolderUpdateResponse(BaseModel):
+    paper_id: str
+    favorited: bool
+    favorite_folder_count: int
+    favorite_count: int
+    selected_folder_ids: List[str]
+
+
+class PaperLikeResponse(BaseModel):
+    paper_id: str
+    liked: bool
+    like_count: int
 
 
 class PaperSummary(BaseModel):
@@ -659,6 +718,75 @@ async def get_content_pool_job_log(
     return community_content_pool_service.get_content_pool_job_log(arxiv_id=arxiv_id, limit=limit)
 
 
+@router.get(
+    "/favorite-folders",
+    response_model=FavoriteFolderListResponse,
+    response_model_exclude_none=True,
+)
+async def list_favorite_folders(
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.list_favorite_folders(user_id=user_id)
+
+
+@router.post(
+    "/favorite-folders",
+    response_model=FavoriteFolderMutationResponse,
+    response_model_exclude_none=True,
+)
+async def create_favorite_folder(
+    request: FavoriteFolderMutationRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.create_favorite_folder(user_id=user_id, name=request.name)
+
+
+@router.patch(
+    "/favorite-folders/{folder_id}",
+    response_model=FavoriteFolderMutationResponse,
+    response_model_exclude_none=True,
+)
+async def rename_favorite_folder(
+    folder_id: str,
+    request: FavoriteFolderMutationRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.rename_favorite_folder(
+        folder_id=folder_id,
+        user_id=user_id,
+        name=request.name,
+    )
+
+
+@router.delete(
+    "/favorite-folders/{folder_id}",
+    response_model=FavoriteFolderDeleteResponse,
+    response_model_exclude_none=True,
+)
+async def delete_favorite_folder(
+    folder_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.delete_favorite_folder(folder_id=folder_id, user_id=user_id)
+
+
+@router.get(
+    "/favorite-folders/{folder_id}/papers",
+    response_model=FavoriteFolderPaperListResponse,
+    response_model_exclude_none=True,
+)
+async def get_favorite_folder_papers(
+    folder_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.get_favorite_folder_papers(folder_id=folder_id, user_id=user_id)
+
+
 @router.post(
     "/admin/curation/arxiv",
     response_model=AdminCurationBatchResponse,
@@ -786,6 +914,63 @@ async def delete_admin_community_paper(
     )
 
 
+@router.get(
+    "/{paper_id}/favorite-folders",
+    response_model=PaperFavoriteFolderStateResponse,
+    response_model_exclude_none=True,
+)
+async def get_paper_favorite_folders(
+    paper_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.get_paper_favorite_folders(paper_id=paper_id, user_id=user_id)
+
+
+@router.put(
+    "/{paper_id}/favorite-folders",
+    response_model=PaperFavoriteFolderUpdateResponse,
+    response_model_exclude_none=True,
+)
+async def update_paper_favorite_folders(
+    paper_id: str,
+    request: PaperFavoriteFolderUpdateRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.update_paper_favorite_folders(
+        paper_id=paper_id,
+        user_id=user_id,
+        folder_ids=request.folder_ids,
+    )
+
+
+@router.post(
+    "/{paper_id}/like",
+    response_model=PaperLikeResponse,
+    response_model_exclude_none=True,
+)
+async def like_paper(
+    paper_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.like_paper(paper_id=paper_id, user_id=user_id)
+
+
+@router.delete(
+    "/{paper_id}/like",
+    response_model=PaperLikeResponse,
+    response_model_exclude_none=True,
+)
+async def unlike_paper(
+    paper_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip()
+    return await paper_service.unlike_paper(paper_id=paper_id, user_id=user_id)
+
+
 @router.get("/{paper_id}", response_model=PaperDetailResponse)
 async def get_paper_detail(
     paper_id: str,
@@ -820,8 +1005,29 @@ async def get_paper_similar(
 
 
 @router.post("/{paper_id}/view", response_model=PaperViewResponse)
-async def record_paper_view(paper_id: str):
-    return await paper_service.record_community_paper_view(paper_id=paper_id)
+async def record_paper_view(
+    paper_id: str,
+    request: Request,
+    response: Response,
+    current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
+):
+    user_id = str((current_user or {}).get("id") or "").strip() or None
+    anon_id = str(request.headers.get("X-Community-Anonymous-Id") or "").strip() or None
+    if not anon_id:
+        anon_id = str(request.cookies.get(COMMUNITY_ANON_COOKIE_NAME) or "").strip() or None
+    if anon_id:
+        response.set_cookie(
+            COMMUNITY_ANON_COOKIE_NAME,
+            anon_id,
+            httponly=False,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 365,
+        )
+    return await paper_service.record_community_paper_view(
+        paper_id=paper_id,
+        user_id=user_id,
+        anon_id=anon_id,
+    )
 
 
 @router.post("/{paper_id}/translate", response_model=PaperTranslateResponse)

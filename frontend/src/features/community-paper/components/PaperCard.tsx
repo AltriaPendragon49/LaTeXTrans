@@ -1,4 +1,3 @@
-import { useMemo, useState, type ReactNode } from "react"
 import {
   Bookmark,
   Download,
@@ -6,17 +5,22 @@ import {
   Eye,
   FileText,
   Github,
+  Heart,
   Languages,
   LoaderCircle,
   MessageSquareText,
   Trash2,
 } from "lucide-react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 
 import { API_BASE_URL } from "@/api-base"
+import { useAuth } from "@/contexts/AuthContext"
+import { FavoritePicker } from "@/features/community-paper/components/FavoritePicker"
 import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
-import { prefetchCommunityPaperDetail } from "@/lib/community-api"
+import { likeCommunityPaper, prefetchCommunityPaperDetail, unlikeCommunityPaper } from "@/lib/community-api"
 import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import type { CommunityPaper } from "@/types/community"
 import { Button } from "@/ui/button/Button"
@@ -210,9 +214,31 @@ function PreviewLink({
 
 export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const [sourceDownloadPending, setSourceDownloadPending] = useState(false)
   const [downloadPending, setDownloadPending] = useState(false)
+  const [likePending, setLikePending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [liked, setLiked] = useState(Boolean(paper.viewer_state?.liked))
+  const [likeCount, setLikeCount] = useState(Number(paper.like_count ?? 0))
+  const [favoriteCount, setFavoriteCount] = useState(Number(paper.favorite_count ?? 0))
+  const [favoriteState, setFavoriteState] = useState({
+    liked: Boolean(paper.viewer_state?.liked),
+    favorited: Boolean(paper.viewer_state?.favorited),
+    favorite_folder_count: Number(paper.viewer_state?.favorite_folder_count ?? 0),
+  })
+
+  useEffect(() => {
+    setLiked(Boolean(paper.viewer_state?.liked))
+    setLikeCount(Number(paper.like_count ?? 0))
+    setFavoriteCount(Number(paper.favorite_count ?? 0))
+    setFavoriteState({
+      liked: Boolean(paper.viewer_state?.liked),
+      favorited: Boolean(paper.viewer_state?.favorited),
+      favorite_folder_count: Number(paper.viewer_state?.favorite_folder_count ?? 0),
+    })
+  }, [paper.favorite_count, paper.id, paper.like_count, paper.viewer_state])
 
   function prefetchDetailNavigation() {
     void prefetchCommunityPaperDetail(paper.id)
@@ -303,6 +329,45 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     }
   }
 
+  async function handleLikeToggle() {
+    if (likePending) {
+      return
+    }
+    if (!isAuthenticated) {
+      toast.error(t("auth.loginRequiredForThisFeature"))
+      navigate("/login")
+      return
+    }
+
+    const nextLiked = !liked
+    const optimisticCount = Math.max(0, likeCount + (nextLiked ? 1 : -1))
+
+    try {
+      setLikePending(true)
+      setActionError(null)
+      setLiked(nextLiked)
+      setLikeCount(optimisticCount)
+
+      const response = nextLiked
+        ? await likeCommunityPaper(paper.id)
+        : await unlikeCommunityPaper(paper.id)
+      setLiked(response.liked)
+      setLikeCount(response.like_count)
+      toast.success(
+        response.liked
+          ? t("community.likes.toast.liked")
+          : t("community.likes.toast.unliked"),
+      )
+    } catch (likeError) {
+      setLiked(liked)
+      setLikeCount(likeCount)
+      setActionError(extractActionErrorMessage(likeError) ?? t("community.likes.toast.failed"))
+      toast.error(extractActionErrorMessage(likeError) ?? t("community.likes.toast.failed"))
+    } finally {
+      setLikePending(false)
+    }
+  }
+
   return (
     <article className="grid gap-5 rounded-md border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-5 shadow-[var(--px-shell-shadow)] transition-colors duration-200 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
       <div className="flex min-w-0 flex-col justify-between">
@@ -334,7 +399,20 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
                 <Trash2 className="h-4 w-4" />
               </Button>
             ) : (
-              <Bookmark className="h-5 w-5 shrink-0 text-[color:var(--px-shell-muted)]/45" />
+              <FavoritePicker
+                paperId={paper.id}
+                favoriteCount={favoriteCount}
+                viewerState={favoriteState}
+                variant="icon"
+                onFavoriteStateChange={(response) => {
+                  setFavoriteCount(response.favorite_count)
+                  setFavoriteState((current) => ({
+                    ...current,
+                    favorited: response.favorited,
+                    favorite_folder_count: response.favorite_folder_count,
+                  }))
+                }}
+              />
             )}
           </div>
 
@@ -460,6 +538,31 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
             <span className="flex items-center gap-1.5">
               <Eye className="h-4 w-4" />
               {paper.view_count || 0}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="chip"
+              aria-pressed={liked}
+              aria-label={liked ? t("community.likes.action.active") : t("community.likes.action.idle")}
+              disabled={likePending}
+              onClick={() => void handleLikeToggle()}
+              className={`min-h-8 gap-1.5 rounded-full px-3 text-xs normal-case tracking-normal transition-transform ${
+                liked
+                  ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)] text-[color:var(--px-shell-accent)]"
+                  : ""
+              }`}
+            >
+              {likePending ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <Heart className={`h-4 w-4 ${liked ? "fill-current" : ""}`} />
+              )}
+              {likeCount}
+            </Button>
+            <span className="flex items-center gap-1.5">
+              <Bookmark className={`h-4 w-4 ${favoriteState.favorited ? "fill-[color:var(--px-shell-accent)] text-[color:var(--px-shell-accent)]" : ""}`} />
+              {favoriteCount}
             </span>
             <span className="flex items-center gap-1.5">
               <MessageSquareText className="h-4 w-4" />

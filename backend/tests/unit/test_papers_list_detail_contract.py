@@ -975,4 +975,107 @@ def test_list_papers_reuses_cached_first_page_for_latest_sort(monkeypatch):
     assert calls == {"count": 1, "list": 1}
 
 
+def test_list_papers_supports_views_and_likes_sort(monkeypatch):
+    list_calls = []
+
+    class _FakeCommunityRepository:
+        def count_public_papers(self, *, query=None):
+            return 1
+
+        def list_public_papers_page(self, *, sort, query, limit, offset):
+            list_calls.append((sort, query, limit, offset))
+            return [
+                {
+                    "id": "paper-sort",
+                    "source": "arxiv",
+                    "arxiv_id": "2501.99998",
+                    "title": "Sorted paper",
+                    "authors": [],
+                    "categories": [],
+                    "visibility": "public",
+                    "status": "published",
+                    "trans_status": "completed",
+                    "created_by": "admin-1",
+                    "trans_latest_task_id": "task-sort",
+                    "trans_latest_asset_pdf_id": None,
+                    "like_count": 3,
+                    "favorite_count": 1,
+                    "comment_count": 0,
+                    "view_count": 9,
+                    "download_count": 0,
+                    "created_at": "2026-03-18T02:00:00+00:00",
+                    "updated_at": "2026-03-18T02:00:00+00:00",
+                    "community_status": "official",
+                    "community_selected_task_id": "task-sort",
+                    "community_selected_asset_id": None,
+                    "official_published_at": "2026-03-18T04:00:00+00:00",
+                }
+            ]
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+    monkeypatch.setattr(paper_service, "_PUBLIC_FEED_CACHE", {}, raising=False)
+
+    asyncio.run(paper_service.list_community_papers(sort="views", q=None, limit=12, offset=0))
+    asyncio.run(paper_service.list_community_papers(sort="likes", q=None, limit=12, offset=0))
+
+    assert list_calls == [("views", None, 12, 0), ("likes", None, 12, 0)]
+
+
+def test_detail_reports_favorite_folder_count_in_viewer_state(monkeypatch):
+    paper = {
+        "id": "paper-detail",
+        "source": "arxiv",
+        "arxiv_id": "2501.33333",
+        "title": "Detail paper",
+        "authors": [],
+        "categories": [],
+        "visibility": "public",
+        "status": "published",
+        "trans_status": "completed",
+        "created_by": "admin-1",
+        "trans_latest_task_id": "task-detail",
+        "trans_latest_asset_pdf_id": None,
+        "like_count": 10,
+        "favorite_count": 2,
+        "comment_count": 1,
+        "view_count": 99,
+        "download_count": 4,
+        "created_at": "2026-03-18T02:00:00+00:00",
+        "updated_at": "2026-03-18T02:00:00+00:00",
+        "community_status": "official",
+        "community_selected_task_id": "task-detail",
+        "community_selected_asset_id": "asset-detail",
+        "official_published_at": "2026-03-18T04:00:00+00:00",
+    }
+
+    monkeypatch.setattr(paper_service, "_fetch_paper_by_id", lambda _paper_id: asyncio.sleep(0, result=paper))
+    monkeypatch.setattr(paper_service, "_fetch_asset_map_for_paper", lambda **_kwargs: asyncio.sleep(0, result={}))
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_viewer_state",
+        lambda _paper_ids, user_id=None: asyncio.sleep(
+            0,
+            result={"paper-detail": {"liked": False, "favorited": True, "favorite_folder_count": 2}},
+        ),
+    )
+
+    result = asyncio.run(
+        paper_service.get_community_paper_detail(
+            paper_id="paper-detail",
+            viewer_user_id="user-1",
+        )
+    )
+
+    assert result["paper"]["viewer_state"] == {
+        "liked": False,
+        "favorited": True,
+        "favorite_folder_count": 2,
+    }
+
+
 

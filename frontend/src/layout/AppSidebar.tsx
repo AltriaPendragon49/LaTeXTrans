@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
-import { Compass, PenTool } from "lucide-react"
+import { Bookmark, Compass, PenTool } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
+import { useAuth } from "@/contexts/AuthContext"
 import { WorkspaceAccountMenu } from "@/features/user-workspace/components/WorkspaceAccountMenu"
 import { SidebarBrandButton } from "@/ui/sidebar-shell/SidebarBrandButton"
 import { SidebarNavItem } from "@/ui/sidebar-shell/SidebarNavItem"
@@ -25,6 +26,7 @@ function isPaperToolRoute(pathname: string) {
 
 export function AppSidebar() {
   const { t } = useTranslation()
+  const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const routeDefaultCollapsed = location.pathname.startsWith("/paper/")
@@ -43,7 +45,7 @@ export function AppSidebar() {
           brandName={brandName}
           subtitle={brandSubtitle}
           collapsed={collapsed}
-          collapsedActionLabel="Expand sidebar"
+          collapsedActionLabel={t("sidebar.expand")}
           onClick={() => {
             if (collapsed) {
               setCollapsed(false)
@@ -56,7 +58,7 @@ export function AppSidebar() {
       }
       collapsed={collapsed}
       onToggleCollapse={() => setCollapsed((current) => !current)}
-      collapseLabel="Collapse sidebar"
+      collapseLabel={t("sidebar.collapse")}
       nav={
         <nav aria-label={t("community.nav.explore")} className="space-y-2">
           <SidebarNavItem
@@ -66,6 +68,15 @@ export function AppSidebar() {
             collapsed={collapsed}
             active={isCommunityRoute(location.pathname)}
           />
+          {isAuthenticated ? (
+            <SidebarNavItem
+              to="/favorites"
+              icon={<Bookmark className="h-5 w-5" />}
+              label={t("community.nav.favorites")}
+              collapsed={collapsed}
+              active={location.pathname === "/favorites" || location.pathname.startsWith("/favorites/")}
+            />
+          ) : null}
           <SidebarNavItem
             to="/tools"
             icon={<PenTool className="h-5 w-5" />}

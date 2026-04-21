@@ -65,3 +65,27 @@ def test_record_view_gracefully_degrades_when_local_repository_is_unavailable(mo
     result = asyncio.run(paper_service.record_community_paper_view(paper_id="paper-view"))
 
     assert result == {"paper_id": "paper-view", "view_count": 0}
+
+
+def test_record_view_passes_user_id_and_anon_id_to_repository(monkeypatch):
+    captured = {}
+
+    class _FakeCommunityRepository:
+        def record_daily_view(self, *, paper_id: str, user_id: str | None = None, anon_id: str | None = None):
+            captured["paper_id"] = paper_id
+            captured["user_id"] = user_id
+            captured["anon_id"] = anon_id
+            return 6
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+
+    result = asyncio.run(
+        paper_service.record_community_paper_view(
+            paper_id="paper-view",
+            user_id="user-1",
+            anon_id="anon-1",
+        )
+    )
+
+    assert captured == {"paper_id": "paper-view", "user_id": "user-1", "anon_id": "anon-1"}
+    assert result == {"paper_id": "paper-view", "view_count": 6}

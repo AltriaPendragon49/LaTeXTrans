@@ -9,7 +9,7 @@ vi.mock("@/lib/community-api", () => ({
   getCommunityPapers: (...args: unknown[]) => getCommunityPapersMock(...args),
 }))
 
-function HookProbe({ sort, query }: { sort: "latest" | "translated" | "hot"; query: string }) {
+function HookProbe({ sort, query }: { sort: "latest" | "views" | "likes"; query: string }) {
   const { items, total, loading, hasMore, loadMore, loadingMore } = useCommunityPapers(sort, query)
 
   return (

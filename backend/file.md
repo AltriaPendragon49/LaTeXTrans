@@ -169,6 +169,7 @@
 - `backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql`
 - `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`
 - `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`
+- `backend/migrations_mysql/20260421_0008_community_paper_engagement.sql`
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
 - `backend/scripts/bootstrap_local_community_papers.py`
@@ -413,3 +414,10 @@
 - `backend/app/services/agents/translator_agent.py`: 翻译代理现已补充 task 级补救 LLM 调用预算、`HARD_FREEZE_PROTOCOL_VIOLATION` 预算，以及预算耗尽后的稳定 fallback reason，确保补救调用不会无限放大。
 - `backend/app/services/agents/langgraph_orchestrator.py`: 编排层现已按 `2` 次 validate 重翻预算执行，并在补救预算耗尽时停止继续进入 repair 环，直接转入有界降级路径。
 - `backend/app/services/agents/translation_repair_agent.py`: repair agent 现已接入同一 task 级补救预算口径，避免外层 repair LLM 调用绕过主翻译预算上限。
+
+## Recent Responsibility Updates (2026-04-21 Community Engagement)
+
+- `backend/migrations_mysql/20260421_0008_community_paper_engagement.sql`: 新增社区论文收藏文件夹、文件夹论文关联、按天去重浏览记录三组持久化表，并补齐唯一约束与查询索引。
+- `backend/app/api/routes/papers.py`: 社区论文路由现已提供收藏文件夹管理、论文收藏夹同步、点赞切换与真实浏览计数接口，并支持匿名浏览标识请求头与 cookie 回写。
+- `backend/app/services/paper_service.py`: 社区论文服务现已负责收藏夹关系同步、派生收藏态聚合、点赞一人一票切换、UTC+8 自然日浏览去重以及最新/浏览量/点赞量排序编排。
+- `backend/app/repositories/community_paper_repository.py`: 社区论文仓储现已持久化收藏文件夹、文件夹论文关联、点赞切换、浏览去重记录与聚合计数维护，供首页列表、详情页与收藏页共享。

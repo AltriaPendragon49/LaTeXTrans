@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { API_BASE_URL } from "@/api-base"
 import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
 import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
-import type { CommunityPaperReaderMode } from "@/types/community"
+import type { CommunityPaper, CommunityPaperReaderMode, ViewerState } from "@/types/community"
 
 import { PaperDetailHeader } from "./PaperDetailHeader"
 import { PaperDetailStateBoundary } from "./PaperDetailStateBoundary"
@@ -65,6 +65,12 @@ interface PaperDetailScreenProps {
   paperId: string | null
 }
 
+interface PaperFavoriteStatePatch {
+  paperId: string
+  favoriteCount: number
+  viewerState: ViewerState
+}
+
 export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const { t } = useTranslation()
   const {
@@ -85,6 +91,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     mode: null,
   })
   const [actionError, setActionError] = useState<string | null>(null)
+  const [favoriteStatePatch, setFavoriteStatePatch] = useState<PaperFavoriteStatePatch | null>(null)
 
   const availableModes = useMemo<CommunityPaperReaderMode[]>(
     () => resolveAvailableModes(paper, preview, reader),
@@ -144,6 +151,17 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
           activePaper.abstract_raw ||
           activePaper.abstract_translated ||
           t("community.detail.abstractUnavailable")
+        const effectivePaper: CommunityPaper =
+          favoriteStatePatch?.paperId === activePaper.id
+            ? {
+                ...activePaper,
+                favorite_count: favoriteStatePatch.favoriteCount,
+                viewer_state: {
+                  ...activePaper.viewer_state,
+                  ...favoriteStatePatch.viewerState,
+                },
+              }
+            : activePaper
 
         return (
           <div className="flex flex-col min-h-0 min-w-0 flex-1 bg-[color:var(--px-shell-bg)] px-2 py-2 md:px-3 md:py-3">
@@ -152,19 +170,30 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
               className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[8px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-[var(--px-shell-shadow)]"
             >
               <PaperDetailHeader
-                paper={activePaper}
+                paper={effectivePaper}
                 selectedMode={selectedMode}
                 availableModes={availableModes}
                 authorsLabel={authorsLabel}
                 canDownload={canDownload}
                 onSelectMode={handleSelectMode}
                 onDownload={() => void handleDownload()}
+                onFavoriteStateChange={(payload) => {
+                  setFavoriteStatePatch({
+                    paperId: activePaper.id,
+                    favoriteCount: payload.favorite_count,
+                    viewerState: {
+                      liked: Boolean(activePaper.viewer_state?.liked),
+                      favorited: payload.favorited,
+                      favorite_folder_count: payload.favorite_folder_count,
+                    },
+                  })
+                }}
               />
 
               <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[color:var(--px-shell-panel-strong)]">
                 <PaperDetailWorkspace
-                  key={activePaper.id}
-                  paper={activePaper}
+                  key={effectivePaper.id}
+                  paper={effectivePaper}
                   preview={preview}
                   readerState={readerState}
                   reader={reader}

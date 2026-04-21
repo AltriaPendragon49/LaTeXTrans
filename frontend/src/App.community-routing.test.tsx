@@ -49,6 +49,10 @@ vi.mock("@/pages/login", () => ({
   default: () => <div>Login page</div>,
 }))
 
+vi.mock("@/pages/favorites", () => ({
+  default: () => <div>Favorites page</div>,
+}))
+
 vi.mock("@/pages/translate", () => ({
   default: () => <div>Translate page</div>,
 }))
@@ -197,6 +201,29 @@ describe("App community routing", () => {
 
     expect(await screen.findByText("Login page")).toBeInTheDocument()
     expect(screen.queryByText("Translate page")).not.toBeInTheDocument()
+  })
+
+  it("redirects unauthenticated users from /favorites to login", async () => {
+    window.history.pushState({}, "", "/favorites")
+
+    render(<App />)
+
+    expect(await screen.findByText("Login page")).toBeInTheDocument()
+    expect(screen.queryByText("Favorites page")).not.toBeInTheDocument()
+  })
+
+  it("allows authenticated users to access /favorites/:folderId", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["user"] },
+    }
+
+    window.history.pushState({}, "", "/favorites/folder-1")
+
+    render(<App />)
+
+    expect(await screen.findByText("Favorites page")).toBeInTheDocument()
   })
 
   it("allows authenticated users to access /translate", async () => {

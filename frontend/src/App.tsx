@@ -15,6 +15,7 @@ const CommunityAdminCurationTasksPage = lazy(() => import("./pages/community-adm
 const CommunityConversationPage = lazy(() => import("./pages/community-conversation"))
 const ProcessingPage = lazy(() => import("./pages/processing"))
 const Login = lazy(() => import("./pages/login"))
+const FavoritesPage = lazy(() => import("./pages/favorites"))
 const ProfilePage = lazy(() => import("./pages/profile"))
 const PaperDetailPage = lazy(() => import("@/pages/paper-detail"))
 const PreviewPage = lazy(() => import("@/pages/preview"))
@@ -91,6 +92,22 @@ function App() {
                 }
               />
               <Route path="tools" element={withSuspense(<ToolsHubPage />)} />
+              <Route
+                path="favorites"
+                element={
+                  <AuthenticatedWorkspaceRoute>
+                    {withSuspense(<FavoritesPage />)}
+                  </AuthenticatedWorkspaceRoute>
+                }
+              />
+              <Route
+                path="favorites/:folderId"
+                element={
+                  <AuthenticatedWorkspaceRoute>
+                    {withSuspense(<FavoritesPage />)}
+                  </AuthenticatedWorkspaceRoute>
+                }
+              />
               <Route
                 path="translate"
                 element={

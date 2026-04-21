@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, Bookmark, Download, Info, Share2 } from "lucide-react"
+import { ArrowLeft, Download, Info, Share2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router-dom"
 
+import { FavoritePicker } from "@/features/community-paper/components/FavoritePicker"
+import type { PaperFavoriteFolderUpdateResponse } from "@/types/community"
 import { Button } from "@/ui/button/Button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/primitives/popover"
 import { SegmentedControl } from "@/ui/segmented-control/SegmentedControl"
@@ -16,6 +18,7 @@ interface PaperDetailHeaderProps {
   canDownload: boolean
   onSelectMode: (mode: CommunityPaperReaderMode) => void
   onDownload: () => void
+  onFavoriteStateChange?: (payload: PaperFavoriteFolderUpdateResponse) => void
 }
 
 export function PaperDetailHeader({
@@ -26,6 +29,7 @@ export function PaperDetailHeader({
   canDownload,
   onSelectMode,
   onDownload,
+  onFavoriteStateChange,
 }: PaperDetailHeaderProps) {
   const { t } = useTranslation()
   const location = useLocation()
@@ -130,16 +134,13 @@ export function PaperDetailHeader({
             {shareStatus === "copied" ? t("community.detail.shareCopied") : " "}
           </span>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("community.detail.favoriteAction")}
-            title={t("community.detail.favoriteAction")}
-            className="h-8 w-8 rounded-[10px] border border-transparent text-[color:var(--px-shell-muted)] hover:border-[color:var(--px-shell-line)] hover:bg-[color:var(--px-shell-panel-strong)] hover:text-[color:var(--px-shell-ink)]"
-          >
-            <Bookmark className="h-4 w-4" />
-          </Button>
+          <FavoritePicker
+            paperId={paper.id}
+            favoriteCount={paper.favorite_count ?? 0}
+            viewerState={paper.viewer_state}
+            variant="icon"
+            onFavoriteStateChange={onFavoriteStateChange}
+          />
 
           <Button
             type="button"

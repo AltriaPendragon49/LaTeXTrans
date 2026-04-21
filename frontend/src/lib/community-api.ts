@@ -15,10 +15,17 @@ import type {
   CommunityAgentSkillToggles,
   CommunityConversationRecord,
   CommunityFeedSort,
+  FavoriteFolderDeleteResponse,
+  FavoriteFolderListResponse,
+  FavoriteFolderMutationResponse,
+  FavoriteFolderPapersResponse,
   CommunityPaperDetailResponse,
   CommunityPaperDownloadSessionResponse,
   CommunityPaperImportRequest,
   CommunityPaperImportResponse,
+  PaperFavoriteFolderStateResponse,
+  PaperFavoriteFolderUpdateResponse,
+  PaperLikeResponse,
   CommunityPaperListResponse,
   CommunityPaperPreviewResponse,
   CommunityPaperSimilarResponse,
@@ -29,6 +36,25 @@ import type { TranslateRequest } from "@/lib/api"
 
 const communityPaperDetailCache = new Map<string, CommunityPaperDetailResponse>()
 const communityPaperDetailInflight = new Map<string, Promise<CommunityPaperDetailResponse>>()
+const COMMUNITY_ANON_ID_STORAGE_KEY = "paperx.community.anonymous-id"
+
+function getCommunityAnonymousId(): string | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  const existing = window.localStorage.getItem(COMMUNITY_ANON_ID_STORAGE_KEY)
+  if (existing) {
+    return existing
+  }
+
+  const generated =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  window.localStorage.setItem(COMMUNITY_ANON_ID_STORAGE_KEY, generated)
+  return generated
+}
 
 export async function getCommunityPapers(params: {
   sort: CommunityFeedSort
@@ -353,7 +379,70 @@ export async function prefetchCommunityPaperDetail(
 }
 
 export async function recordCommunityPaperView(paperId: string): Promise<void> {
-  await api.post(`/papers/${paperId}/view`)
+  await api.post(
+    `/papers/${paperId}/view`,
+    undefined,
+    {
+      headers: {
+        "X-Community-Anonymous-Id": getCommunityAnonymousId() ?? "",
+      },
+    },
+  )
+}
+
+export async function listFavoriteFolders(): Promise<FavoriteFolderListResponse> {
+  const response = await api.get<FavoriteFolderListResponse>("/papers/favorite-folders")
+  return response.data
+}
+
+export async function createFavoriteFolder(name: string): Promise<FavoriteFolderMutationResponse> {
+  const response = await api.post<FavoriteFolderMutationResponse>("/papers/favorite-folders", { name })
+  return response.data
+}
+
+export async function renameFavoriteFolder(
+  folderId: string,
+  name: string,
+): Promise<FavoriteFolderMutationResponse> {
+  const response = await api.patch<FavoriteFolderMutationResponse>(`/papers/favorite-folders/${folderId}`, { name })
+  return response.data
+}
+
+export async function deleteFavoriteFolder(folderId: string): Promise<FavoriteFolderDeleteResponse> {
+  const response = await api.delete<FavoriteFolderDeleteResponse>(`/papers/favorite-folders/${folderId}`)
+  return response.data
+}
+
+export async function getFavoriteFolderPapers(folderId: string): Promise<FavoriteFolderPapersResponse> {
+  const response = await api.get<FavoriteFolderPapersResponse>(`/papers/favorite-folders/${folderId}/papers`)
+  return response.data
+}
+
+export async function getPaperFavoriteFolders(
+  paperId: string,
+): Promise<PaperFavoriteFolderStateResponse> {
+  const response = await api.get<PaperFavoriteFolderStateResponse>(`/papers/${paperId}/favorite-folders`)
+  return response.data
+}
+
+export async function updatePaperFavoriteFolders(
+  paperId: string,
+  folderIds: string[],
+): Promise<PaperFavoriteFolderUpdateResponse> {
+  const response = await api.put<PaperFavoriteFolderUpdateResponse>(`/papers/${paperId}/favorite-folders`, {
+    folder_ids: folderIds,
+  })
+  return response.data
+}
+
+export async function likeCommunityPaper(paperId: string): Promise<PaperLikeResponse> {
+  const response = await api.post<PaperLikeResponse>(`/papers/${paperId}/like`)
+  return response.data
+}
+
+export async function unlikeCommunityPaper(paperId: string): Promise<PaperLikeResponse> {
+  const response = await api.delete<PaperLikeResponse>(`/papers/${paperId}/like`)
+  return response.data
 }
 
 export async function submitCommunityPaperFromArxiv(payload: {

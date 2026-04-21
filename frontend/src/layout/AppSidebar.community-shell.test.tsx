@@ -44,12 +44,34 @@ describe("AppSidebar community shell", () => {
 
     expect(screen.getByRole("link", { name: "Community" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Paper Tool" })).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Favorites" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Translate" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "History" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Glossary" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Admin curation/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "User" })).toBeInTheDocument()
+  })
+
+  it("shows favorites in the sidebar only for authenticated users", async () => {
+    await i18n.changeLanguage("en")
+    mockAuthState = {
+      isAuthenticated: true,
+      user: {
+        roles: ["user"],
+        display_name: "Researcher",
+        email: "researcher@example.com",
+        external_user_id: "researcher-1",
+      },
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/favorites"]}>
+        <AppSidebar />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole("link", { name: "Favorites" })).toBeInTheDocument()
   })
 
   it("defaults to the collapsed shell on paper detail routes", async () => {

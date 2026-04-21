@@ -19,6 +19,56 @@ export interface PaperAssetSummary {
 export interface ViewerState {
   liked: boolean
   favorited: boolean
+  favorite_folder_count?: number
+}
+
+export interface FavoriteFolder {
+  id: string
+  name: string
+  paper_count: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface FavoriteFolderListResponse {
+  items: FavoriteFolder[]
+}
+
+export interface FavoriteFolderMutationResponse {
+  folder: FavoriteFolder
+}
+
+export interface FavoriteFolderDeleteResponse {
+  folder_id: string
+  deleted: boolean
+}
+
+export interface PaperFavoriteFolderStateResponse {
+  paper_id: string
+  items: FavoriteFolder[]
+  selected_folder_ids: string[]
+  favorited: boolean
+  favorite_folder_count: number
+}
+
+export interface PaperFavoriteFolderUpdateResponse {
+  paper_id: string
+  favorited: boolean
+  favorite_folder_count: number
+  favorite_count: number
+  selected_folder_ids: string[]
+}
+
+export interface PaperLikeResponse {
+  paper_id: string
+  liked: boolean
+  like_count: number
+}
+
+export interface FavoriteFolderPapersResponse {
+  folder: FavoriteFolder
+  items: CommunityPaper[]
+  total: number
 }
 
 export interface CommunityPaper {
@@ -422,4 +472,4 @@ export interface CommunityPaperImportResponse {
   reader_state: CommunityPaperReaderState
 }
 
-export type CommunityFeedSort = "latest" | "translated" | "hot"
+export type CommunityFeedSort = "latest" | "views" | "likes"

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from typing import Any, Optional
+from uuid import uuid4
 
 from backend.app.db import DatabaseUnavailableError, db_connection, get_database_dialect
 
@@ -102,6 +104,26 @@ DELETE_JOB_COLUMNS = (
     "updated_at",
 )
 
+FAVORITE_FOLDER_COLUMNS = (
+    "id",
+    "user_id",
+    "name",
+    "created_at",
+    "updated_at",
+)
+
+
+class FavoriteFolderLimitError(ValueError):
+    """Raised when a user exceeds the folder cap."""
+
+
+class FavoriteFolderNameConflictError(ValueError):
+    """Raised when a folder name already exists for the user."""
+
+
+class FavoriteFolderNotFoundError(LookupError):
+    """Raised when a folder does not exist or is not owned by the user."""
+
 _PAPER_JSON_COLUMNS = {"authors", "categories"}
 _DELETE_JOB_INT_COLUMNS = {"attempt_count"}
 _PAPER_INT_COLUMNS = {
@@ -115,6 +137,10 @@ _PAPER_INT_COLUMNS = {
 
 def _utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+
+
+def _business_day_utc8() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).date().isoformat()
 
 
 def _placeholder(_index: int) -> str:
@@ -155,6 +181,18 @@ def _decode_json_list(value: Any) -> list[Any]:
             return []
         return list(parsed) if isinstance(parsed, list) else []
     return []
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        normalized = str(raw or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(normalized)
+    return ordered
 
 
 class CommunityPaperRepository:
@@ -274,6 +312,104 @@ class CommunityPaperRepository:
                 serialized[key] = value
         return serialized
 
+    def _normalize_favorite_folder_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+        normalized = dict(row)
+        for column in FAVORITE_FOLDER_COLUMNS:
+            normalized[column] = normalized.get(column)
+        if normalized.get("paper_count") is not None:
+            normalized["paper_count"] = int(normalized["paper_count"])
+        return normalized
+
+    def _refresh_like_count(self, cursor, *, paper_id: str) -> int:
+        cursor.execute(
+            "select count(*) as total from paper_likes where paper_id = " + _placeholder(0),
+            (paper_id,),
+        )
+        total = int((_fetchone(cursor) or {}).get("total") or 0)
+        cursor.execute(
+            (
+                "update papers set like_count = "
+                + _placeholder(0)
+                + ", updated_at = "
+                + _placeholder(1)
+                + " where id = "
+                + _placeholder(2)
+            ),
+            (total, _utc_now_naive().isoformat(), paper_id),
+        )
+        return total
+
+    def _refresh_favorite_count(self, cursor, *, paper_id: str) -> int:
+        cursor.execute(
+            "select count(*) as total from paper_favorites where paper_id = " + _placeholder(0),
+            (paper_id,),
+        )
+        total = int((_fetchone(cursor) or {}).get("total") or 0)
+        cursor.execute(
+            (
+                "update papers set favorite_count = "
+                + _placeholder(0)
+                + ", updated_at = "
+                + _placeholder(1)
+                + " where id = "
+                + _placeholder(2)
+            ),
+            (total, _utc_now_naive().isoformat(), paper_id),
+        )
+        return total
+
+    def _sync_paper_favorite_marker(self, cursor, *, paper_id: str, user_id: str) -> bool:
+        cursor.execute(
+            (
+                "select 1 from favorite_folder_papers membership "
+                "inner join favorite_folders folders on folders.id = membership.folder_id "
+                "where folders.user_id = "
+                + _placeholder(0)
+                + " and membership.paper_id = "
+                + _placeholder(1)
+                + " limit 1"
+            ),
+            (user_id, paper_id),
+        )
+        has_membership = _fetchone(cursor) is not None
+        if has_membership:
+            cursor.execute(
+                (
+                    "select 1 from paper_favorites where paper_id = "
+                    + _placeholder(0)
+                    + " and user_id = "
+                    + _placeholder(1)
+                    + " limit 1"
+                ),
+                (paper_id, user_id),
+            )
+            if _fetchone(cursor) is None:
+                cursor.execute(
+                    (
+                        "insert into paper_favorites (paper_id, user_id, created_at) values ("
+                        + _placeholder(0)
+                        + ", "
+                        + _placeholder(1)
+                        + ", "
+                        + _placeholder(2)
+                        + ")"
+                    ),
+                    (paper_id, user_id, _utc_now_naive().isoformat()),
+                )
+        else:
+            cursor.execute(
+                (
+                    "delete from paper_favorites where paper_id = "
+                    + _placeholder(0)
+                    + " and user_id = "
+                    + _placeholder(1)
+                ),
+                (paper_id, user_id),
+            )
+        return has_membership
+
     def get_paper_by_id(self, paper_id: str) -> Optional[dict[str, Any]]:
         with db_connection() as connection:
             cursor = connection.cursor()
@@ -389,15 +525,16 @@ class CommunityPaperRepository:
             " order by case when community_status = 'official' then 0 else 1 end asc, "
             "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
         )
-        if normalized_sort == "hot":
+        if normalized_sort == "views":
             order_by = (
                 " order by case when community_status = 'official' then 0 else 1 end asc, "
-                "coalesce(view_count, 0) desc, coalesce(like_count, 0) desc, coalesce(created_at, '') desc"
+                "coalesce(view_count, 0) desc, "
+                "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
             )
-        elif normalized_sort == "translated":
+        elif normalized_sort == "likes":
             order_by = (
                 " order by case when community_status = 'official' then 0 else 1 end asc, "
-                "case when trans_status = 'completed' then 0 else 1 end asc, "
+                "coalesce(like_count, 0) desc, "
                 "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
             )
 
@@ -1007,10 +1144,471 @@ class CommunityPaperRepository:
                 if normalized is not None
             ]
 
-    def get_viewer_state(self, paper_ids: list[str], *, user_id: str) -> dict[str, dict[str, bool]]:
+    def list_favorite_folders(self, *, user_id: str) -> list[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(f"folders.{column}" for column in FAVORITE_FOLDER_COLUMNS)
+                    + ", coalesce(folder_counts.paper_count, 0) as paper_count "
+                    + "from favorite_folders folders "
+                    + "left join ("
+                    + "  select folder_id, count(*) as paper_count "
+                    + "  from favorite_folder_papers group by folder_id"
+                    + ") folder_counts on folder_counts.folder_id = folders.id "
+                    + "where folders.user_id = "
+                    + _placeholder(0)
+                    + " order by folders.updated_at desc, folders.created_at desc, folders.id desc"
+                ),
+                (user_id,),
+            )
+            return [
+                normalized
+                for normalized in (self._normalize_favorite_folder_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
+    def create_favorite_folder(self, *, user_id: str, name: str) -> dict[str, Any]:
+        normalized_name = str(name or "").strip()
+        if not normalized_name:
+            raise ValueError("folder_name_required")
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "select count(*) as total from favorite_folders where user_id = " + _placeholder(0),
+                (user_id,),
+            )
+            if int((_fetchone(cursor) or {}).get("total") or 0) >= 9:
+                raise FavoriteFolderLimitError("favorite_folder_limit_reached")
+            cursor.execute(
+                (
+                    "select id from favorite_folders where user_id = "
+                    + _placeholder(0)
+                    + " and name = "
+                    + _placeholder(1)
+                    + " limit 1"
+                ),
+                (user_id, normalized_name),
+            )
+            if _fetchone(cursor) is not None:
+                raise FavoriteFolderNameConflictError("favorite_folder_name_conflict")
+            folder_id = f"favorite-folder-{uuid4().hex[:24]}"
+            timestamp = _utc_now_naive().isoformat()
+            cursor.execute(
+                (
+                    "insert into favorite_folders (id, user_id, name, created_at, updated_at) values ("
+                    + _placeholder(0)
+                    + ", "
+                    + _placeholder(1)
+                    + ", "
+                    + _placeholder(2)
+                    + ", "
+                    + _placeholder(3)
+                    + ", "
+                    + _placeholder(4)
+                    + ")"
+                ),
+                (folder_id, user_id, normalized_name, timestamp, timestamp),
+            )
+        return self.get_favorite_folder(folder_id=folder_id, user_id=user_id) or {
+            "id": folder_id,
+            "user_id": user_id,
+            "name": normalized_name,
+            "paper_count": 0,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+        }
+
+    def get_favorite_folder(self, *, folder_id: str, user_id: str) -> Optional[dict[str, Any]]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(f"folders.{column}" for column in FAVORITE_FOLDER_COLUMNS)
+                    + ", coalesce(folder_counts.paper_count, 0) as paper_count "
+                    + "from favorite_folders folders "
+                    + "left join ("
+                    + "  select folder_id, count(*) as paper_count "
+                    + "  from favorite_folder_papers group by folder_id"
+                    + ") folder_counts on folder_counts.folder_id = folders.id "
+                    + "where folders.id = "
+                    + _placeholder(0)
+                    + " and folders.user_id = "
+                    + _placeholder(1)
+                    + " limit 1"
+                ),
+                (folder_id, user_id),
+            )
+            return self._normalize_favorite_folder_row(_fetchone(cursor))
+
+    def rename_favorite_folder(self, *, folder_id: str, user_id: str, name: str) -> dict[str, Any]:
+        normalized_name = str(name or "").strip()
+        if not normalized_name:
+            raise ValueError("folder_name_required")
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select id from favorite_folders where id = "
+                    + _placeholder(0)
+                    + " and user_id = "
+                    + _placeholder(1)
+                    + " limit 1"
+                ),
+                (folder_id, user_id),
+            )
+            if _fetchone(cursor) is None:
+                raise FavoriteFolderNotFoundError("favorite_folder_not_found")
+            cursor.execute(
+                (
+                    "select id from favorite_folders where user_id = "
+                    + _placeholder(0)
+                    + " and name = "
+                    + _placeholder(1)
+                    + " and id <> "
+                    + _placeholder(2)
+                    + " limit 1"
+                ),
+                (user_id, normalized_name, folder_id),
+            )
+            if _fetchone(cursor) is not None:
+                raise FavoriteFolderNameConflictError("favorite_folder_name_conflict")
+            cursor.execute(
+                (
+                    "update favorite_folders set name = "
+                    + _placeholder(0)
+                    + ", updated_at = "
+                    + _placeholder(1)
+                    + " where id = "
+                    + _placeholder(2)
+                    + " and user_id = "
+                    + _placeholder(3)
+                ),
+                (normalized_name, _utc_now_naive().isoformat(), folder_id, user_id),
+            )
+        folder = self.get_favorite_folder(folder_id=folder_id, user_id=user_id)
+        if folder is None:
+            raise FavoriteFolderNotFoundError("favorite_folder_not_found")
+        return folder
+
+    def delete_favorite_folder(self, *, folder_id: str, user_id: str) -> list[str]:
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select membership.paper_id from favorite_folder_papers membership "
+                    "inner join favorite_folders folders on folders.id = membership.folder_id "
+                    "where folders.id = "
+                    + _placeholder(0)
+                    + " and folders.user_id = "
+                    + _placeholder(1)
+                ),
+                (folder_id, user_id),
+            )
+            affected_paper_ids = _dedupe_preserve_order(
+                [str(row.get("paper_id") or "").strip() for row in _fetchall(cursor)]
+            )
+            cursor.execute(
+                (
+                    "delete from favorite_folders where id = "
+                    + _placeholder(0)
+                    + " and user_id = "
+                    + _placeholder(1)
+                ),
+                (folder_id, user_id),
+            )
+            if int(cursor.rowcount or 0) <= 0:
+                raise FavoriteFolderNotFoundError("favorite_folder_not_found")
+            for paper_id in affected_paper_ids:
+                self._sync_paper_favorite_marker(cursor, paper_id=paper_id, user_id=user_id)
+                self._refresh_favorite_count(cursor, paper_id=paper_id)
+        return affected_paper_ids
+
+    def list_paper_favorite_folder_ids(self, *, paper_id: str, user_id: str) -> list[str]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select membership.folder_id from favorite_folder_papers membership "
+                    "inner join favorite_folders folders on folders.id = membership.folder_id "
+                    "where folders.user_id = "
+                    + _placeholder(0)
+                    + " and membership.paper_id = "
+                    + _placeholder(1)
+                    + " order by membership.created_at asc, membership.folder_id asc"
+                ),
+                (user_id, paper_id),
+            )
+            return _dedupe_preserve_order(
+                [str(row.get("folder_id") or "").strip() for row in _fetchall(cursor)]
+            )
+
+    def sync_paper_favorite_folders(
+        self,
+        *,
+        paper_id: str,
+        user_id: str,
+        folder_ids: list[str],
+    ) -> dict[str, Any]:
+        normalized_folder_ids = _dedupe_preserve_order(list(folder_ids or []))
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            if normalized_folder_ids:
+                placeholders = ", ".join(_placeholder(index + 1) for index in range(len(normalized_folder_ids)))
+                cursor.execute(
+                    (
+                        "select id from favorite_folders where user_id = "
+                        + _placeholder(0)
+                        + " and id in ("
+                        + placeholders
+                        + ")"
+                    ),
+                    (user_id, *normalized_folder_ids),
+                )
+                owned_folder_ids = _dedupe_preserve_order(
+                    [str(row.get("id") or "").strip() for row in _fetchall(cursor)]
+                )
+                if set(owned_folder_ids) != set(normalized_folder_ids):
+                    raise FavoriteFolderNotFoundError("favorite_folder_not_found")
+
+            cursor.execute(
+                (
+                    "select membership.folder_id from favorite_folder_papers membership "
+                    "inner join favorite_folders folders on folders.id = membership.folder_id "
+                    "where folders.user_id = "
+                    + _placeholder(0)
+                    + " and membership.paper_id = "
+                    + _placeholder(1)
+                    + " order by membership.created_at asc, membership.folder_id asc"
+                ),
+                (user_id, paper_id),
+            )
+            current_folder_ids = _dedupe_preserve_order(
+                [str(row.get("folder_id") or "").strip() for row in _fetchall(cursor)]
+            )
+            current_folder_id_set = set(current_folder_ids)
+            target_folder_id_set = set(normalized_folder_ids)
+            timestamp = _utc_now_naive().isoformat()
+
+            for folder_id in normalized_folder_ids:
+                if folder_id in current_folder_id_set:
+                    continue
+                cursor.execute(
+                    (
+                        "insert into favorite_folder_papers (folder_id, paper_id, created_at) values ("
+                        + _placeholder(0)
+                        + ", "
+                        + _placeholder(1)
+                        + ", "
+                        + _placeholder(2)
+                        + ")"
+                    ),
+                    (folder_id, paper_id, timestamp),
+                )
+
+            for folder_id in current_folder_ids:
+                if folder_id in target_folder_id_set:
+                    continue
+                cursor.execute(
+                    (
+                        "delete from favorite_folder_papers where folder_id = "
+                        + _placeholder(0)
+                        + " and paper_id = "
+                        + _placeholder(1)
+                    ),
+                    (folder_id, paper_id),
+                )
+
+            touched_folder_ids = _dedupe_preserve_order(current_folder_ids + normalized_folder_ids)
+            if touched_folder_ids:
+                placeholders = ", ".join(_placeholder(index + 1) for index in range(len(touched_folder_ids)))
+                cursor.execute(
+                    (
+                        "update favorite_folders set updated_at = "
+                        + _placeholder(0)
+                        + " where user_id = "
+                        + _placeholder(1)
+                        + " and id in ("
+                        + placeholders
+                        + ")"
+                    ),
+                    (timestamp, user_id, *touched_folder_ids),
+                )
+
+            favorited = self._sync_paper_favorite_marker(cursor, paper_id=paper_id, user_id=user_id)
+            favorite_count = self._refresh_favorite_count(cursor, paper_id=paper_id)
+
+        return {
+            "paper_id": paper_id,
+            "favorited": favorited,
+            "favorite_folder_count": len(normalized_folder_ids),
+            "favorite_count": favorite_count,
+            "selected_folder_ids": normalized_folder_ids,
+        }
+
+    def list_favorite_folder_papers(
+        self,
+        *,
+        folder_id: str,
+        user_id: str,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        folder = self.get_favorite_folder(folder_id=folder_id, user_id=user_id)
+        if folder is None:
+            raise FavoriteFolderNotFoundError("favorite_folder_not_found")
+
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select "
+                    + ", ".join(f"papers.{column}" for column in PAPER_COLUMNS)
+                    + " from favorite_folder_papers membership "
+                    + "inner join papers on papers.id = membership.paper_id "
+                    + "where membership.folder_id = "
+                    + _placeholder(0)
+                    + " and papers.visibility = "
+                    + _placeholder(1)
+                    + " and papers.status <> "
+                    + _placeholder(2)
+                    + " order by membership.created_at desc, papers.created_at desc"
+                ),
+                (folder_id, "public", "removed"),
+            )
+            papers = [
+                normalized
+                for normalized in (self._normalize_paper_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+        return folder, papers
+
+    def like_paper(self, *, paper_id: str, user_id: str) -> int:
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "select 1 from paper_likes where paper_id = "
+                    + _placeholder(0)
+                    + " and user_id = "
+                    + _placeholder(1)
+                    + " limit 1"
+                ),
+                (paper_id, user_id),
+            )
+            if _fetchone(cursor) is None:
+                cursor.execute(
+                    (
+                        "insert into paper_likes (paper_id, user_id, created_at) values ("
+                        + _placeholder(0)
+                        + ", "
+                        + _placeholder(1)
+                        + ", "
+                        + _placeholder(2)
+                        + ")"
+                    ),
+                    (paper_id, user_id, _utc_now_naive().isoformat()),
+                )
+            return self._refresh_like_count(cursor, paper_id=paper_id)
+
+    def unlike_paper(self, *, paper_id: str, user_id: str) -> int:
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "delete from paper_likes where paper_id = "
+                    + _placeholder(0)
+                    + " and user_id = "
+                    + _placeholder(1)
+                ),
+                (paper_id, user_id),
+            )
+            return self._refresh_like_count(cursor, paper_id=paper_id)
+
+    def record_daily_view(
+        self,
+        *,
+        paper_id: str,
+        user_id: str | None = None,
+        anon_id: str | None = None,
+    ) -> Optional[int]:
+        principal_type: str | None = None
+        principal_key: str | None = None
+        if str(user_id or "").strip():
+            principal_type = "user"
+            principal_key = str(user_id).strip()
+        elif str(anon_id or "").strip():
+            principal_type = "anon"
+            principal_key = sha256(str(anon_id).strip().encode("utf-8")).hexdigest()
+
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "select view_count from papers where id = " + _placeholder(0) + " limit 1",
+                (paper_id,),
+            )
+            row = _fetchone(cursor)
+            if row is None:
+                return None
+
+            if principal_type and principal_key:
+                business_day = _business_day_utc8()
+                cursor.execute(
+                    (
+                        "select 1 from paper_daily_views where paper_id = "
+                        + _placeholder(0)
+                        + " and view_date = "
+                        + _placeholder(1)
+                        + " and principal_type = "
+                        + _placeholder(2)
+                        + " and principal_key = "
+                        + _placeholder(3)
+                        + " limit 1"
+                    ),
+                    (paper_id, business_day, principal_type, principal_key),
+                )
+                if _fetchone(cursor) is not None:
+                    return int(row.get("view_count") or 0)
+                cursor.execute(
+                    (
+                        "insert into paper_daily_views (paper_id, view_date, principal_type, principal_key, created_at) values ("
+                        + _placeholder(0)
+                        + ", "
+                        + _placeholder(1)
+                        + ", "
+                        + _placeholder(2)
+                        + ", "
+                        + _placeholder(3)
+                        + ", "
+                        + _placeholder(4)
+                        + ")"
+                    ),
+                    (paper_id, business_day, principal_type, principal_key, _utc_now_naive().isoformat()),
+                )
+
+            cursor.execute(
+                (
+                    "update papers set view_count = coalesce(view_count, 0) + 1, "
+                    "updated_at = "
+                    + _placeholder(0)
+                    + " where id = "
+                    + _placeholder(1)
+                ),
+                (_utc_now_naive().isoformat(), paper_id),
+            )
+            cursor.execute(
+                "select view_count from papers where id = " + _placeholder(0) + " limit 1",
+                (paper_id,),
+            )
+            row = _fetchone(cursor)
+        if row is None:
+            return None
+        return int(row.get("view_count") or 0)
+
+    def get_viewer_state(self, paper_ids: list[str], *, user_id: str) -> dict[str, dict[str, Any]]:
         normalized_ids = [str(paper_id or "").strip() for paper_id in paper_ids if str(paper_id or "").strip()]
         default_state = {
-            paper_id: {"liked": False, "favorited": False}
+            paper_id: {"liked": False, "favorited": False, "favorite_folder_count": 0}
             for paper_id in normalized_ids
         }
         if not normalized_ids or not user_id:
@@ -1050,6 +1648,24 @@ class CommunityPaperRepository:
                     for row in _fetchall(cursor)
                     if str(row.get("paper_id") or "").strip()
                 }
+                cursor.execute(
+                    (
+                        "select membership.paper_id, count(*) as folder_count "
+                        "from favorite_folder_papers membership "
+                        "inner join favorite_folders folders on folders.id = membership.folder_id "
+                        "where folders.user_id = "
+                        + _placeholder(0)
+                        + " and membership.paper_id in ("
+                        + placeholders
+                        + ") group by membership.paper_id"
+                    ),
+                    (user_id, *normalized_ids),
+                )
+                folder_counts = {
+                    str(row.get("paper_id") or "").strip(): int(row.get("folder_count") or 0)
+                    for row in _fetchall(cursor)
+                    if str(row.get("paper_id") or "").strip()
+                }
         except Exception:
             return default_state
 
@@ -1057,6 +1673,7 @@ class CommunityPaperRepository:
             default_state[paper_id] = {
                 "liked": paper_id in liked_ids,
                 "favorited": paper_id in favorited_ids,
+                "favorite_folder_count": int(folder_counts.get(paper_id) or 0),
             }
         return default_state
 

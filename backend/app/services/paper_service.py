@@ -39,6 +39,11 @@ from backend.app.api.routes import upload as upload_route
 from backend.app.core.config import TaskStatus, get_settings
 from backend.app.db import DatabaseUnavailableError, db_connection, get_database_dialect
 from backend.app.repositories import CommunityPaperRepository, TranslationTaskRepository
+from backend.app.repositories.community_paper_repository import (
+    FavoriteFolderLimitError,
+    FavoriteFolderNameConflictError,
+    FavoriteFolderNotFoundError,
+)
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_thumbnail_service
@@ -3244,8 +3249,11 @@ async def _fetch_viewer_state(
     paper_ids: List[str],
     *,
     user_id: Optional[str],
-) -> Dict[str, Dict[str, bool]]:
-    default_state = {paper_id: {"liked": False, "favorited": False} for paper_id in paper_ids}
+) -> Dict[str, Dict[str, Any]]:
+    default_state = {
+        paper_id: {"liked": False, "favorited": False, "favorite_folder_count": 0}
+        for paper_id in paper_ids
+    }
     if not user_id or not paper_ids:
         return default_state
 
@@ -3258,6 +3266,32 @@ async def _fetch_viewer_state(
         logger.warning("Failed to fetch viewer paper state from local repository: %s", exc)
 
     return default_state
+
+
+async def _attach_viewer_state_to_feed_payload(
+    payload: Dict[str, Any],
+    *,
+    viewer_user_id: Optional[str],
+) -> Dict[str, Any]:
+    items = list(payload.get("items") or [])
+    if not items:
+        return dict(payload)
+
+    paper_ids = [str(item.get("id") or "").strip() for item in items if str(item.get("id") or "").strip()]
+    viewer_states = await _fetch_viewer_state(paper_ids, user_id=viewer_user_id) if paper_ids else {}
+
+    enriched_items: list[Dict[str, Any]] = []
+    for item in items:
+        normalized_item = dict(item)
+        paper_id = str(item.get("id") or "").strip()
+        if paper_id and viewer_states:
+            normalized_item["viewer_state"] = viewer_states.get(
+                paper_id,
+                {"liked": False, "favorited": False, "favorite_folder_count": 0},
+            )
+        enriched_items.append(normalized_item)
+
+    return {**payload, "items": enriched_items}
 
 
 def _download_token_secret() -> str:
@@ -3955,11 +3989,11 @@ def _timestamp_key(value: Any) -> float:
         return 0.0
 
 
-def _hot_tuple(paper: Dict[str, Any]) -> Any:
+def _views_tuple(paper: Dict[str, Any]) -> Any:
     return (
         _community_rank(paper),
         -(paper.get("view_count") or 0),
-        -(paper.get("like_count") or 0),
+        -_timestamp_key(paper.get("official_published_at")),
         -_timestamp_key(paper.get("created_at")),
     )
 
@@ -3972,10 +4006,10 @@ def _latest_tuple(paper: Dict[str, Any]) -> Any:
     )
 
 
-def _translated_tuple(paper: Dict[str, Any]) -> Any:
+def _likes_tuple(paper: Dict[str, Any]) -> Any:
     return (
         _community_rank(paper),
-        _translated_rank(paper),
+        -(paper.get("like_count") or 0),
         -_timestamp_key(paper.get("official_published_at")),
         -_timestamp_key(paper.get("created_at")),
     )
@@ -3984,8 +4018,8 @@ def _translated_tuple(paper: Dict[str, Any]) -> Any:
 def _sort_papers(papers: List[Dict[str, Any]], sort: str) -> List[Dict[str, Any]]:
     key_map = {
         "latest": _latest_tuple,
-        "translated": _translated_tuple,
-        "hot": _hot_tuple,
+        "views": _views_tuple,
+        "likes": _likes_tuple,
     }
     key = key_map.get(sort, _latest_tuple)
     return sorted(papers, key=key)
@@ -7195,7 +7229,6 @@ async def list_community_papers(
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> Dict[str, Any]:
-    del viewer_user_id
     repository = get_community_paper_repository()
     normalized_limit = int(limit) if limit is not None and int(limit) > 0 else None
     normalized_offset = max(0, int(offset or 0))
@@ -7206,7 +7239,10 @@ async def list_community_papers(
         offset=normalized_offset,
     )
     if cached_payload is not None:
-        return cached_payload
+        return await _attach_viewer_state_to_feed_payload(
+            cached_payload,
+            viewer_user_id=viewer_user_id,
+        )
 
     papers: List[Dict[str, Any]] = []
     source_mode = "database"
@@ -7277,7 +7313,10 @@ async def list_community_papers(
         offset=normalized_offset,
         payload=payload,
     )
-    return payload
+    return await _attach_viewer_state_to_feed_payload(
+        payload,
+        viewer_user_id=viewer_user_id,
+    )
 
 
 async def get_community_paper_detail(
@@ -7316,7 +7355,7 @@ async def get_community_paper_detail(
         )
     viewer_state = (await _fetch_viewer_state([paper_id], user_id=viewer_user_id)).get(
         paper_id,
-        {"liked": False, "favorited": False},
+        {"liked": False, "favorited": False, "favorite_folder_count": 0},
     )
     structured_insights = _build_structured_insights_payload(
         await _fetch_structured_insight_sections(paper_id)
@@ -7397,6 +7436,179 @@ async def get_community_paper_similar(*, paper_id: str) -> Dict[str, Any]:
     return {"items": await _fetch_persisted_similar_recommendations(paper_id)}
 
 
+def _favorite_folder_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, FavoriteFolderLimitError):
+        return HTTPException(status_code=400, detail="Favorite folder limit reached")
+    if isinstance(exc, FavoriteFolderNameConflictError):
+        return HTTPException(status_code=409, detail="Favorite folder name already exists")
+    if isinstance(exc, FavoriteFolderNotFoundError):
+        return HTTPException(status_code=404, detail="Favorite folder not found")
+    if isinstance(exc, ValueError) and str(exc) == "folder_name_required":
+        return HTTPException(status_code=400, detail="Favorite folder name is required")
+    return HTTPException(status_code=500, detail="Favorite folder operation failed")
+
+
+async def list_favorite_folders(*, user_id: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        items = await _run_local_repo(lambda: repository.list_favorite_folders(user_id=user_id))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to list favorite folders for user %s: %s", user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+    return {"items": items}
+
+
+async def create_favorite_folder(*, user_id: str, name: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        folder = await _run_local_repo(lambda: repository.create_favorite_folder(user_id=user_id, name=name))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to create favorite folder for user %s: %s", user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+    return {"folder": folder}
+
+
+async def rename_favorite_folder(*, folder_id: str, user_id: str, name: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        folder = await _run_local_repo(
+            lambda: repository.rename_favorite_folder(folder_id=folder_id, user_id=user_id, name=name)
+        )
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to rename favorite folder %s for user %s: %s", folder_id, user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+    return {"folder": folder}
+
+
+async def delete_favorite_folder(*, folder_id: str, user_id: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        affected_paper_ids = await _run_local_repo(
+            lambda: repository.delete_favorite_folder(folder_id=folder_id, user_id=user_id)
+        )
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to delete favorite folder %s for user %s: %s", folder_id, user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+    if affected_paper_ids:
+        invalidate_public_feed_cache()
+    return {"folder_id": folder_id, "deleted": True}
+
+
+async def get_paper_favorite_folders(*, paper_id: str, user_id: str) -> Dict[str, Any]:
+    await _ensure_public_paper(paper_id)
+    repository = get_community_paper_repository()
+    try:
+        folders, selected_folder_ids = await asyncio.gather(
+            _run_local_repo(lambda: repository.list_favorite_folders(user_id=user_id)),
+            _run_local_repo(lambda: repository.list_paper_favorite_folder_ids(paper_id=paper_id, user_id=user_id)),
+        )
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to fetch favorite picker state for paper %s user %s: %s", paper_id, user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+    return {
+        "paper_id": paper_id,
+        "items": folders,
+        "selected_folder_ids": selected_folder_ids,
+        "favorited": len(selected_folder_ids) > 0,
+        "favorite_folder_count": len(selected_folder_ids),
+    }
+
+
+async def update_paper_favorite_folders(
+    *,
+    paper_id: str,
+    user_id: str,
+    folder_ids: list[str],
+) -> Dict[str, Any]:
+    await _ensure_public_paper(paper_id)
+    repository = get_community_paper_repository()
+    try:
+        payload = await _run_local_repo(
+            lambda: repository.sync_paper_favorite_folders(
+                paper_id=paper_id,
+                user_id=user_id,
+                folder_ids=folder_ids,
+            )
+        )
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to sync favorite folders for paper %s user %s: %s", paper_id, user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+    invalidate_public_feed_cache()
+    return payload
+
+
+async def get_favorite_folder_papers(*, folder_id: str, user_id: str) -> Dict[str, Any]:
+    repository = get_community_paper_repository()
+    try:
+        folder, papers = await _run_local_repo(
+            lambda: repository.list_favorite_folder_papers(folder_id=folder_id, user_id=user_id)
+        )
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to list favorite folder papers for folder %s user %s: %s", folder_id, user_id, exc)
+        raise _favorite_folder_http_error(exc) from exc
+
+    paper_ids = [str(paper.get("id") or "").strip() for paper in papers if str(paper.get("id") or "").strip()]
+    asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if paper_ids else {}
+    viewer_states = await _fetch_viewer_state(paper_ids, user_id=user_id) if paper_ids else {}
+    items = [
+        _paper_feed_summary(
+            paper,
+            asset_map=asset_maps.get(paper["id"]),
+        )
+        for paper in papers
+    ]
+    for item in items:
+        paper_id = str(item.get("id") or "").strip()
+        if paper_id:
+            item["viewer_state"] = viewer_states.get(
+                paper_id,
+                {"liked": False, "favorited": False, "favorite_folder_count": 0},
+            )
+    return {"folder": folder, "items": items, "total": len(items)}
+
+
+async def like_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
+    await _ensure_public_paper(paper_id)
+    repository = get_community_paper_repository()
+    try:
+        like_count = await _run_local_repo(lambda: repository.like_paper(paper_id=paper_id, user_id=user_id))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to like paper %s for user %s: %s", paper_id, user_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to like paper") from exc
+    invalidate_public_feed_cache()
+    return {"paper_id": paper_id, "liked": True, "like_count": like_count}
+
+
+async def unlike_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
+    await _ensure_public_paper(paper_id)
+    repository = get_community_paper_repository()
+    try:
+        like_count = await _run_local_repo(lambda: repository.unlike_paper(paper_id=paper_id, user_id=user_id))
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local database unavailable") from exc
+    except Exception as exc:
+        logger.warning("Failed to unlike paper %s for user %s: %s", paper_id, user_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to unlike paper") from exc
+    invalidate_public_feed_cache()
+    return {"paper_id": paper_id, "liked": False, "like_count": like_count}
+
+
 async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]:
     """
     Import an external paper into the community library, or reuse an existing one.
@@ -7430,16 +7642,31 @@ async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]
     }
 
 
-async def record_community_paper_view(*, paper_id: str) -> Dict[str, Any]:
+async def record_community_paper_view(
+    *,
+    paper_id: str,
+    user_id: Optional[str] = None,
+    anon_id: Optional[str] = None,
+) -> Dict[str, Any]:
     repository = get_community_paper_repository()
     try:
-        count = await _run_local_repo(lambda: repository.increment_view_count(paper_id))
+        if hasattr(repository, "record_daily_view"):
+            count = await _run_local_repo(
+                lambda: repository.record_daily_view(
+                    paper_id=paper_id,
+                    user_id=user_id,
+                    anon_id=anon_id,
+                )
+            )
+        else:
+            count = await _run_local_repo(lambda: repository.increment_view_count(paper_id))
     except DatabaseUnavailableError:
         count = None
     except Exception as exc:
         logger.warning("Failed to increment view count for paper %s locally: %s", paper_id, exc)
         count = None
     if count is not None:
+        invalidate_public_feed_cache()
         return {"paper_id": paper_id, "view_count": count}
     paper = await _fetch_paper_by_id(paper_id)
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
