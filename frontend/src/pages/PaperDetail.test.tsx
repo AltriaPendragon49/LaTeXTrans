@@ -7,9 +7,6 @@ import { API_BASE_URL } from "@/api-base"
 import i18n from "@/i18n"
 import PaperDetailPage from "@/pages/paper-detail"
 
-void i18n.t("community.detail.mode.translated")
-void i18n.t("community.detail.mode.translatedHtml")
-
 const usePaperDetailMock = vi.fn()
 const translateCommunityPaperMock = vi.fn()
 const createCommunityPaperDownloadSessionMock = vi.fn()
@@ -252,11 +249,11 @@ describe("PaperDetailPage", () => {
     expect(screen.getByText(problemContent)).toBeInTheDocument()
     expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
-      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
     expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
   })
 
@@ -470,7 +467,7 @@ describe("PaperDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "Bilingual compare" }))
     expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
   })
 
@@ -506,11 +503,11 @@ describe("PaperDetailPage", () => {
 
     expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
-      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
     expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
   })
 
@@ -555,11 +552,11 @@ describe("PaperDetailPage", () => {
     ])
     expect(screen.getByTestId("paper-bilingual-source-pdf-reader")).toHaveAttribute(
       "src",
-      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
     expect(screen.getByTestId("paper-bilingual-translated-pdf-reader")).toHaveAttribute(
       "src",
-      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
+      `${API_BASE_URL}/api/papers/paper-1/translated-pdf#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`,
     )
 
     await user.click(screen.getByRole("button", { name: "English" }))

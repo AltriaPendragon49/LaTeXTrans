@@ -774,12 +774,11 @@ async def _serve_source_pdf(
     if compiled_pdf_path.exists() and compiled_pdf_path.stat().st_size > 0:
         if _validate_pdf_with_pdfinfo(compiled_pdf_path):
             logger.info(f"Using cached compiled source PDF: {compiled_pdf_path}")
-            return FileResponse(
-                path=str(compiled_pdf_path),
-                media_type="application/pdf",
-                headers={
-                    "Content-Disposition": f"{content_disposition}; filename=\"source_{task_id}.pdf\""
-                }
+            return await _serve_local_pdf_preview(
+                file_path=compiled_pdf_path,
+                filename=f"source_{task_id}.pdf",
+                request=request,
+                content_disposition=content_disposition,
             )
         logger.error("Cached source PDF failed validation, removing: %s", compiled_pdf_path)
         compiled_pdf_path.unlink(missing_ok=True)

@@ -5,6 +5,20 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 import i18n from "@/i18n"
 import ProcessingPage from "@/pages/processing"
 
+type ProcessingTestStoreState = {
+  taskId: string
+  status: string
+  stage: string
+  detailCode: string | null
+  detailParams: { current: number; total: number } | null
+  failureReasonCode: string | null
+  logs: string[]
+  taskWarnings: string | null
+  pollStatus: ReturnType<typeof vi.fn>
+  stopPolling: ReturnType<typeof vi.fn>
+  setTaskId: ReturnType<typeof vi.fn>
+}
+
 const storeState = vi.hoisted(() => ({
   taskId: "task-1",
   status: "processing",
@@ -17,7 +31,7 @@ const storeState = vi.hoisted(() => ({
   pollStatus: vi.fn(),
   stopPolling: vi.fn(),
   setTaskId: vi.fn(),
-}))
+}) as ProcessingTestStoreState)
 
 vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
   useTranslationStore: (selector?: (state: typeof storeState) => unknown) =>
@@ -56,6 +70,22 @@ describe("ProcessingPage", () => {
 
     expect(screen.getAllByText("Translating (2/5)")[0]).toBeInTheDocument()
     expect(screen.getAllByText("Translating").length).toBeGreaterThan(0)
+  })
+
+  it("does not leak interpolation placeholders when structured progress params are absent", async () => {
+    storeState.detailParams = null
+    await i18n.changeLanguage("zh")
+
+    render(
+      <MemoryRouter initialEntries={["/processing?taskId=task-1"]}>
+        <Routes>
+          <Route path="/processing" element={<ProcessingPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByText(/{{value}}/)).not.toBeInTheDocument()
+    expect(screen.getAllByText("翻译中")[0]).toBeInTheDocument()
   })
 
   it("renders the balanced processing workbench structure", () => {

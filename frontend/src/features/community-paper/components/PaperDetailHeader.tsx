@@ -110,7 +110,7 @@ export function PaperDetailHeader({
           </Button>
         </div>
 
-        <div className="flex justify-center px-1 xl:justify-start xl:pl-[12%] 2xl:pl-[14%]">
+        <div className="flex justify-center px-1 lg:pr-[20vw]">
           <SegmentedControl
             value={selectedMode}
             onValueChange={onSelectMode}

@@ -131,6 +131,7 @@ D:/future/antigravity/LaTexTrans/frontend/src
 |   |   `-- index.tsx
 |   `-- workspace-settings
 |       `-- index.tsx
+|-- pdf-viewer.css
 |-- styles
 |   `-- tokens.css
 |-- theme
@@ -173,6 +174,14 @@ D:/future/antigravity/LaTexTrans/frontend/src
     |   `-- PageIntro.tsx
     |-- panel-shell
     |   `-- PanelShell.tsx
+    |-- pdf
+    |   |-- PdfSurface.tsx
+    |   |-- page-view-retention.ts
+    |   |-- pdf-url.ts
+    |   |-- pdfjs-assets.ts
+    |   |-- preload-pdf-document.ts
+    |   |-- preload-pdf-viewer-frame.ts
+    |   `-- preload-pdf-viewer.ts
     |-- pill
     |   `-- Pill.tsx
     |-- primitives
@@ -3853,7 +3862,10 @@ import { prefetchCommunityPaperDetail } from "@/lib/community-api"
 import { preloadPaperPreviewEnhancer } from "@/lib/paper-preview-enhancer"
 import type { CommunityPaper } from "@/types/community"
 import { Button } from "@/ui/button/Button"
+import { preloadPdfDocument } from "@/ui/pdf/preload-pdf-document"
+import { preloadPdfViewerFrameDocument } from "@/ui/pdf/preload-pdf-viewer-frame"
 import { Pill } from "@/ui/pill/Pill"
+import { preloadPdfViewerAssets } from "@/ui/pdf/preload-pdf-viewer"
 
 interface PaperCardProps {
   paper: CommunityPaper
@@ -3950,8 +3962,8 @@ function PdfPreviewFrame({
             src={imageUrl}
             alt=""
             loading="lazy"
-            /* 修改 3：恢复 object-contain 和 p-1，保证看到完整原汁原味的 PDF */
-            className={`absolute inset-0 h-full w-full object-contain object-top p-1 transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+            /* 修改 3：额外留出纵向呼吸空间，尽量完整展示第一页内容 */
+            className={`absolute inset-0 h-full w-full bg-white object-contain object-center px-1 py-2 transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
               setLoadedImageUrl(imageUrl)
             }}
@@ -4050,6 +4062,11 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   function prefetchDetailNavigation() {
     void prefetchCommunityPaperDetail(paper.id)
     void preloadPaperPreviewEnhancer()
+    void preloadPdfViewerAssets()
+    preloadPdfDocument(sourcePdfDocumentUrl)
+    preloadPdfDocument(translatedPdfDocumentUrl)
+    preloadPdfViewerFrameDocument(sourcePdfDocumentUrl, `${paper.title} PDF`)
+    preloadPdfViewerFrameDocument(translatedPdfDocumentUrl, `${paper.title} Translated PDF`)
   }
 
   const sourcePdfUrl =
@@ -4341,6 +4358,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     </article>
   )
 }
+
 ```
 
 ## File: D:\future\antigravity\LaTexTrans\frontend\src\features\community-paper\components\PaperCardSkeleton.tsx
@@ -4489,12 +4507,12 @@ export function PaperDetailHeader({
           </Button>
         </div>
 
-        <div className="flex justify-center px-1 xl:justify-start xl:pl-[12%] 2xl:pl-[14%]">
+        <div className="flex justify-center px-1 xl:justify-start xl:pl-[12%]">
           <SegmentedControl
             value={selectedMode}
             onValueChange={onSelectMode}
             items={modeItems}
-            className="w-full max-w-[34rem] rounded-[12px] border border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white)] bg-transparent p-0.5 shadow-none"
+            className="w-full max-w-[34rem] rounded-[12px] border border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white)] bg-transparent p-0.5 shadow-none xl:translate-x-12 2xl:translate-x-14"
             itemClassName="min-h-8 rounded-[8px] px-3 text-[12px] font-semibold normal-case tracking-normal md:min-h-9 md:px-4"
           />
         </div>
@@ -4643,13 +4661,16 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 Relative path: features\community-paper\components\PaperDetailScreen.tsx
 
 ```tsx
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { API_BASE_URL } from "@/api-base"
 import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
 import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
 import type { CommunityPaperReaderMode } from "@/types/community"
+import { preloadPdfDocument } from "@/ui/pdf/preload-pdf-document"
+import { preloadPdfViewerFrameDocument } from "@/ui/pdf/preload-pdf-viewer-frame"
+import { preloadPdfViewerAssets } from "@/ui/pdf/preload-pdf-viewer"
 
 import { PaperDetailHeader } from "./PaperDetailHeader"
 import { PaperDetailStateBoundary } from "./PaperDetailStateBoundary"
@@ -4730,6 +4751,31 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     mode: null,
   })
   const [actionError, setActionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void preloadPdfViewerAssets()
+  }, [])
+
+  useEffect(() => {
+    if (!paperId || !paper) {
+      return
+    }
+
+    const sourcePdfUrl =
+      paper.source === "arxiv" || Boolean(paper.assets?.source_archive) || Boolean(paper.community_selected_task_id)
+        ? `${API_BASE_URL}/api/papers/${paperId}/source-pdf`
+        : null
+    const translatedPdfUrl =
+      paper.trans_status === "completed" &&
+        (Boolean(paper.assets?.translated_pdf) || Boolean(paper.community_selected_task_id))
+        ? `${API_BASE_URL}/api/papers/${paperId}/translated-pdf`
+        : null
+
+    preloadPdfDocument(sourcePdfUrl)
+    preloadPdfDocument(translatedPdfUrl)
+    preloadPdfViewerFrameDocument(sourcePdfUrl, `${paper.title} PDF`)
+    preloadPdfViewerFrameDocument(translatedPdfUrl, `${paper.title} Translated PDF`)
+  }, [paper, paperId])
 
   const availableModes = useMemo<CommunityPaperReaderMode[]>(
     () => resolveAvailableModes(paper, preview, reader),
@@ -4946,6 +4992,8 @@ import { stripLeadingDuplicatePaperHeaderHtml } from "@/lib/paper-reader-html"
 import { cn } from "@/lib/utils"
 import { DisclosureCard } from "@/ui/disclosure-card/DisclosureCard"
 import { NoticeBanner } from "@/ui/notice-banner/NoticeBanner"
+import { resolvePdfAssetUrl } from "@/ui/pdf/pdf-url"
+import { PdfSurface } from "@/ui/pdf/PdfSurface"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 import { EditorialTabs, EditorialTabsList, EditorialTabsTrigger } from "@/ui/tabs/EditorialTabs"
 import type {
@@ -4991,29 +5039,6 @@ function isTranslatedPdfMode(mode: CommunityPaperReaderMode) {
 
 function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
   return mode === "bilingual_compare"
-}
-
-function buildPdfViewerUrl(url: string) {
-  const viewerParams = "page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0"
-  return url.includes("#") ? `${url}&${viewerParams}` : `${url}#${viewerParams}`
-}
-
-function resolvePdfDocumentUrl(
-  fallbackUrl: string,
-  resource: { kind?: string | null; url?: string | null } | null | undefined,
-  expectedKind: "source_pdf" | "translated_pdf",
-) {
-  const candidateUrl = String(resource?.url || "").trim()
-  if ((resource?.kind ?? null) !== expectedKind || !candidateUrl) {
-    return fallbackUrl
-  }
-  if (candidateUrl.startsWith("http://") || candidateUrl.startsWith("https://")) {
-    return candidateUrl
-  }
-  if (candidateUrl.startsWith("/")) {
-    return `${API_BASE_URL}${candidateUrl}`
-  }
-  return fallbackUrl
 }
 
 function clampSplitRatio(ratio: number, width: number) {
@@ -5424,18 +5449,16 @@ export function PaperDetailWorkspace({
     preferredMode === "source" && reader?.source?.kind === "source_html"
       ? (reader.source.html_content ?? null)
       : null
-  const sourceDocumentUrl = resolvePdfDocumentUrl(
+  const sourceDocumentUrl = resolvePdfAssetUrl(
     `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`,
     reader?.source,
     "source_pdf",
   )
-  const translatedPdfUrl = resolvePdfDocumentUrl(
+  const translatedPdfUrl = resolvePdfAssetUrl(
     `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`,
     reader?.translated,
     "translated_pdf",
   )
-  const sourcePdfViewerUrl = buildPdfViewerUrl(sourceDocumentUrl)
-  const translatedPdfViewerUrl = buildPdfViewerUrl(translatedPdfUrl)
   const sanitizedSourceHtml = useMemo(
     () =>
       sourceHtmlContent
@@ -5488,11 +5511,11 @@ export function PaperDetailWorkspace({
         <div data-testid="paper-reader-scroll-root" className="relative flex-1 overflow-auto bg-[color:var(--px-shell-panel-strong)]">
           {preferredMode === "source" ? (
             sourceDocumentUrl ? (
-              <iframe
-                data-testid="paper-source-pdf-reader"
+              <PdfSurface
+                dataTestId="paper-source-pdf-reader"
                 title={`${paper.title} PDF`}
-                src={sourcePdfViewerUrl}
-                className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+                url={sourceDocumentUrl}
+                className="h-full"
               />
             ) : sanitizedSourceHtml ? (
               <article
@@ -5515,25 +5538,25 @@ export function PaperDetailWorkspace({
               </article>
             )
           ) : isTranslatedPdfMode(preferredMode) && canDownload ? (
-            <iframe
-              data-testid="paper-translated-pdf-reader"
+            <PdfSurface
+              dataTestId="paper-translated-pdf-reader"
               title={`${paper.title} Translated PDF`}
-              src={translatedPdfViewerUrl}
-              className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+              url={translatedPdfUrl}
+              className="h-full"
             />
           ) : isBilingualCompareMode(preferredMode) && canDownload ? (
             <div className="grid h-full min-h-0 grid-cols-2 gap-1 bg-[color:var(--px-shell-panel-strong)] p-1">
-              <iframe
-                data-testid="paper-bilingual-source-pdf-reader"
+              <PdfSurface
+                dataTestId="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}
-                src={sourcePdfViewerUrl}
-                className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+                url={sourceDocumentUrl}
+                className="h-full"
               />
-              <iframe
-                data-testid="paper-bilingual-translated-pdf-reader"
+              <PdfSurface
+                dataTestId="paper-bilingual-translated-pdf-reader"
                 title={`${paper.title} Translated PDF Compare`}
-                src={translatedPdfViewerUrl}
-                className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+                url={translatedPdfUrl}
+                className="h-full"
               />
             </div>
           ) : (
@@ -7673,8 +7696,8 @@ import { API_BASE_URL } from "@/api-base"
 import { TerminologyTable } from "@/features/translation-workflow/components/TerminologyTable"
 import { useTranslationTask } from "@/features/translation-workflow/hooks/useTranslationTask"
 import { Button } from "@/ui/button/Button"
-import { Card, CardContent } from "@/ui/card/Card"
-import { PageIntro } from "@/ui/page-intro/PageIntro"
+import { buildSourcePdfPreviewUrl } from "@/ui/pdf/pdf-url"
+import { PdfSurface } from "@/ui/pdf/PdfSurface"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
 type ViewMode = "split" | "single"
@@ -7704,10 +7727,10 @@ function PdfViewer({ emptyMessage, title, url }: PdfViewerProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[color:var(--px-shell-panel-strong)]">
-      <div className="border-b border-[color:var(--px-shell-line)] px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--px-shell-muted)]">
+      <div className="bg-[color:color-mix(in_srgb,var(--px-shell-panel)_72%,white)] px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--px-shell-muted)]">
         {title}
       </div>
-      <iframe src={url} className="h-full w-full border-0" title={title} />
+      <PdfSurface url={url} title={title} className="flex-1" />
     </div>
   )
 }
@@ -7719,8 +7742,8 @@ export function ComparisonWorkbench() {
   const { t } = useTranslation()
 
   const sourceUrl = taskId
-    ? `${API_BASE_URL}/api/preview/${taskId}/source-pdf`
-    : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
+    ? buildSourcePdfPreviewUrl(taskId)
+    : (arxivId ? buildSourcePdfPreviewUrl(arxivId) : null)
   const previewUrl = taskId ? `${API_BASE_URL}/api/preview/${taskId}/pdf` : null
   const downloadUrl = taskId ? `${API_BASE_URL}/api/download/${taskId}/pdf` : null
 
@@ -7746,72 +7769,75 @@ export function ComparisonWorkbench() {
   const translatedTitle = t("comparison.translated_pdf_translation_result")
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
-      <PageIntro
-        title={t("comparison.title")}
-        description={t("comparison.description")}
-        actions={(
-          <>
-            <TerminologyTable taskId={taskId} />
-            <Button variant="outline" size="sm" onClick={handleNewTranslation}>
-              <Plus className="mr-2 h-4 w-4" />
-              {t("common.new_translation")}
-            </Button>
-            <Button size="sm" onClick={handleDownload} disabled={!downloadUrl}>
-              <Download className="mr-2 h-4 w-4" />
-              {t("comparison.download_pdf")}
-            </Button>
-          </>
-        )}
-      />
+    <div
+      data-testid="comparison-workbench"
+      className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-3 md:px-5 md:py-3"
+    >
+      <div
+        data-testid="comparison-header"
+        className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center"
+      >
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-semibold leading-none tracking-tight text-[color:var(--px-shell-ink)] md:text-[1.7rem]">
+            {t("comparison.title")}
+          </h1>
+        </div>
 
-      <Card className="overflow-hidden rounded-[28px] shadow-none">
-        <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
-          <div className="flex flex-col gap-4 border-b border-[color:var(--px-shell-line)] pb-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-1">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--px-shell-muted)]">
-                {t("comparison.layoutLabel")}
-              </p>
-              <p className="text-sm text-[color:var(--px-shell-muted)]">
-                {t("comparison.layoutDescription")}
-              </p>
-            </div>
-
-            <ToggleGroup type="single" value={viewMode} onValueChange={handleViewModeChange} className="justify-start">
-              <ToggleGroupItem value="split" aria-label={t("comparison.split_view")} className="gap-2">
+        <div data-testid="comparison-view-toggle" className="justify-self-center">
+          <ToggleGroup
+            type="single"
+            value={viewMode}
+            onValueChange={handleViewModeChange}
+            className="justify-start rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel)_78%,white)] p-0.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.55)]"
+          >
+              <ToggleGroupItem value="split" aria-label={t("comparison.split_view")} className="h-8 gap-1.5 px-3 text-[11px]">
                 <Columns className="h-4 w-4" />
                 <span>{t("comparison.split_view")}</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="single" aria-label={t("comparison.single_view")} className="gap-2">
+              <ToggleGroupItem value="single" aria-label={t("comparison.single_view")} className="h-8 gap-1.5 px-3 text-[11px]">
                 <Smartphone className="h-4 w-4" />
                 <span>{t("comparison.single_view")}</span>
               </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
+          </ToggleGroup>
+        </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-surface)]">
-            {viewMode === "split" ? (
-              <ResizablePanelGroup orientation="horizontal">
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="h-full min-h-0 overflow-hidden">
-                    <PdfViewer emptyMessage={emptyMessage} title={sourceTitle} url={sourceUrl} />
-                  </div>
-                </ResizablePanel>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="h-full min-h-0 overflow-hidden">
-                    <PdfViewer emptyMessage={emptyMessage} title={translatedTitle} url={previewUrl} />
-                  </div>
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            ) : (
-              <div className="h-full min-h-0 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+          <TerminologyTable taskId={taskId} />
+          <Button variant="outline" size="sm" onClick={handleNewTranslation} className="min-h-8 px-3">
+            <Plus className="mr-2 h-4 w-4" />
+            {t("common.new_translation")}
+          </Button>
+          <Button size="sm" onClick={handleDownload} disabled={!downloadUrl} className="min-h-8 px-3">
+            <Download className="mr-2 h-4 w-4" />
+            {t("comparison.download_pdf")}
+          </Button>
+        </div>
+      </div>
+
+      <div
+        data-testid="comparison-preview-region"
+        className="min-h-[560px] min-w-0 flex-1 overflow-hidden rounded-[22px] bg-transparent"
+      >
+        {viewMode === "split" ? (
+          <ResizablePanelGroup orientation="horizontal">
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="h-full min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--px-shell-panel-strong)]">
+                <PdfViewer emptyMessage={emptyMessage} title={sourceTitle} url={sourceUrl} />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="h-full min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--px-shell-panel-strong)]">
                 <PdfViewer emptyMessage={emptyMessage} title={translatedTitle} url={previewUrl} />
               </div>
-            )}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <div className="h-full min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--px-shell-panel-strong)]">
+            <PdfViewer emptyMessage={emptyMessage} title={translatedTitle} url={previewUrl} />
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
     </div>
   )
 }
@@ -11543,6 +11569,23 @@ const failureKeyMap: Record<string, string> = {
   structure_latexwalker_unexpected_closing_env: "task.failure.structureUnexpectedClosingEnv",
 }
 
+const valueDetailCodes = new Set([
+  "translation_running",
+  "translation_retry_failed_chunks",
+  "translation_restore_structure",
+  "translation_restore_environment",
+  "translation_apply_fallback",
+])
+
+const percentDetailCodes = new Set([
+  "download_source_progress",
+  "download_pdf_progress",
+])
+
+const warningDetailCodes = new Set([
+  "formatting_warning",
+])
+
 function normalizeStatus(status?: string | null) {
   return status?.toLowerCase() ?? ""
 }
@@ -11595,6 +11638,29 @@ function getDetailValues(detailCode?: string | null, detailParams?: TaskDetailPa
   return params
 }
 
+function hasRequiredDetailValues(
+  detailCode?: string | null,
+  detailValues?: Record<string, string | number | boolean | null>,
+) {
+  if (!detailCode) {
+    return true
+  }
+
+  if (valueDetailCodes.has(detailCode)) {
+    return typeof detailValues?.value === "string" && detailValues.value.length > 0
+  }
+
+  if (percentDetailCodes.has(detailCode)) {
+    return detailValues?.percent != null
+  }
+
+  if (warningDetailCodes.has(detailCode)) {
+    return typeof detailValues?.warningText === "string" && detailValues.warningText.length > 0
+  }
+
+  return true
+}
+
 export function getTaskStatusLabel(
   translate: Translate,
   status?: string | null,
@@ -11645,7 +11711,12 @@ export function getTaskDetailLabel(
     return getTaskStageLabel(translate, stage)
   }
 
-  return translate(key, getDetailValues(detailCode, detailParams))
+  const detailValues = getDetailValues(detailCode, detailParams)
+  if (!hasRequiredDetailValues(detailCode, detailValues)) {
+    return getTaskStageLabel(translate, stage)
+  }
+
+  return translate(key, detailValues)
 }
 
 export function getTaskCopy(
@@ -14122,6 +14193,356 @@ export default function WorkspaceSettingsPage() {
 
 ```
 
+## File: D:\future\antigravity\LaTexTrans\frontend\src\pdf-viewer.css
+Relative path: pdf-viewer.css
+
+```css
+@import "./styles/tokens.css";
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(88, 201, 255, 0.14), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--px-shell-surface) 92%, white) 0%, var(--px-shell-bg) 100%);
+  color: var(--px-shell-ink);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.pdf-viewer-route {
+  display: flex;
+  min-height: 100%;
+  color: var(--px-shell-ink);
+}
+
+.pdf-viewer-main {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+}
+
+.pdf-viewer-status {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.pdf-viewer-status--loading {
+  background: color-mix(in srgb, var(--px-shell-panel-strong) 82%, white);
+  color: var(--px-shell-muted);
+}
+
+.pdf-viewer-status--error {
+  background: color-mix(in srgb, var(--px-shell-panel-strong) 88%, white);
+  color: var(--px-shell-danger);
+  font-size: 0.95rem;
+}
+
+.pdf-viewer-status-copy {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.pdf-viewer-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid color-mix(in srgb, var(--px-shell-line-strong) 70%, transparent);
+  border-top-color: var(--px-shell-accent);
+  border-radius: 999px;
+  animation: pdf-viewer-spin 0.85s linear infinite;
+}
+
+.viewerContainer {
+  inset: 0;
+  border: 0;
+  background: var(--px-shell-panel-strong);
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--px-shell-line-strong) transparent;
+}
+
+.viewerContainer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.viewerContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.viewerContainer::-webkit-scrollbar-thumb {
+  background-color: var(--px-shell-line-strong);
+  border-radius: 4px;
+}
+
+.pdfViewer {
+  --scale-factor: 1;
+  --page-bg-color: unset;
+  --hcm-highlight-filter: none;
+  --hcm-highlight-selected-filter: none;
+  padding: 20px 0 28px;
+}
+
+@media screen and (forced-colors: active) {
+  .pdfViewer {
+    --hcm-highlight-filter: invert(100%);
+  }
+}
+
+.pdfViewer .canvasWrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pdfViewer .canvasWrapper canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  contain: content;
+}
+
+.pdfViewer .page {
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  position: relative;
+  direction: ltr;
+  margin: 0 auto 18px;
+  overflow: visible;
+  border: none;
+  border-radius: 14px;
+  background-clip: content-box;
+  background-color: var(--page-bg-color, var(--px-shell-panel, #f1f5f9));
+  box-shadow: 0 20px 44px -34px rgba(15, 23, 42, 0.42);
+  isolation: isolate;
+  contain: layout paint style;
+}
+
+.pdfViewer.removePageBorders .page {
+  margin: 0 auto 18px;
+}
+
+.pdfViewer .dummyPage {
+  position: relative;
+  width: 0;
+  height: var(--viewer-container-height);
+}
+
+.pdfViewer.noUserSelect {
+  user-select: none;
+}
+
+.pdfViewer.singlePageView {
+  display: inline-block;
+}
+
+.pdfViewer.singlePageView .page {
+  margin: 0;
+}
+
+.spread,
+.pdfViewer:is(.scrollHorizontal, .scrollWrapped) {
+  margin-inline: 3.5px;
+  text-align: center;
+}
+
+.spread,
+.pdfViewer.scrollHorizontal {
+  white-space: nowrap;
+}
+
+.pdfViewer.removePageBorders,
+.pdfViewer:is(.scrollHorizontal, .scrollWrapped) .spread {
+  margin-inline: 0;
+}
+
+.spread :is(.page, .dummyPage),
+.pdfViewer:is(.scrollHorizontal, .scrollWrapped) :is(.page, .spread) {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.spread .page,
+.pdfViewer:is(.scrollHorizontal, .scrollWrapped) .page {
+  margin-inline: 5px;
+}
+
+.pdfViewer .page canvas {
+  mix-blend-mode: multiply;
+}
+
+.annotationLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  transform-origin: 0 0;
+  color-scheme: only light;
+}
+
+.annotationLayer[data-main-rotation="90"] .norotate {
+  transform: rotate(270deg) translateX(-100%);
+}
+
+.annotationLayer[data-main-rotation="180"] .norotate {
+  transform: rotate(180deg) translate(-100%, -100%);
+}
+
+.annotationLayer[data-main-rotation="270"] .norotate {
+  transform: rotate(90deg) translateY(-100%);
+}
+
+.annotationLayer.disabled section,
+.annotationLayer.disabled .popup {
+  pointer-events: none;
+}
+
+.annotationLayer section {
+  position: absolute;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.annotationLayer .annotationContent {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.annotationLayer :is(.linkAnnotation, .buttonWidgetAnnotation.pushButton) > a {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.annotationLayer :is(.linkAnnotation, .buttonWidgetAnnotation.pushButton):not(.hasBorder) > a:hover,
+.annotationLayer .linkAnnotation.hasBorder:hover {
+  background: rgb(255 255 0 / 0.18);
+}
+
+.annotationLayer .hasBorder {
+  background-size: 100% 100%;
+}
+
+.annotationLayer .popupAnnotation {
+  position: absolute;
+  max-width: 45%;
+  width: max-content;
+  height: auto;
+  font-size: calc(9px * var(--total-scale-factor));
+  pointer-events: none;
+}
+
+.annotationLayer .popup {
+  background: rgb(255 255 153);
+  color: black;
+  border-radius: calc(2px * var(--total-scale-factor));
+  outline: 1.5px solid rgb(255 255 74);
+  box-shadow: 0 calc(2px * var(--total-scale-factor)) calc(5px * var(--total-scale-factor)) rgb(136 136 136);
+  padding: calc(6px * var(--total-scale-factor));
+  font: message-box;
+  white-space: normal;
+  word-wrap: break-word;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: text;
+}
+
+.annotationLayer .popup > .header {
+  display: inline-block;
+}
+
+.annotationLayer .popup > .header > .title {
+  display: inline;
+  font-weight: 700;
+}
+
+.annotationLayer .popup > .header .popupDate {
+  display: inline-block;
+  margin-left: calc(5px * var(--total-scale-factor));
+  width: fit-content;
+}
+
+.annotationLayer .popupContent {
+  margin-top: calc(2px * var(--total-scale-factor));
+  padding-top: calc(2px * var(--total-scale-factor));
+  border-top: 1px solid rgb(51 51 51);
+}
+
+.annotationLayer .popupTriggerArea {
+  cursor: pointer;
+}
+
+.annotationLayer section svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.annotationLayer .annotationTextContent {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  color: transparent;
+  pointer-events: none;
+  user-select: none;
+}
+
+.annotationLayer .annotationTextContent span {
+  display: inline-block;
+  width: 100%;
+}
+
+.annotationLayer svg.quadrilateralsContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 0;
+  height: 0;
+  contain: strict;
+}
+
+@keyframes pdf-viewer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+```
+
 ## File: D:\future\antigravity\LaTexTrans\frontend\src\styles\tokens.css
 Relative path: styles\tokens.css
 
@@ -15998,6 +16419,333 @@ export function PanelShell({
     className: cn(panelShellVariants({ tone, padding }), className),
     ...props,
   })
+}
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\page-view-retention.ts
+Relative path: ui\pdf\page-view-retention.ts
+
+```ts
+export const DEFAULT_RETAINED_PAGE_VIEWS = 24
+export const PDF_PAGE_RENDERING_FINISHED = 3
+
+interface RetainablePageView {
+  id: number
+  canvas?: HTMLCanvasElement | null
+  renderingState: number
+  destroy: () => void
+}
+
+interface PdfPageViewRetainer {
+  destroy: () => void
+  patchPageView: (pageView: RetainablePageView | null | undefined) => void
+  touchPageView: (pageView: RetainablePageView | null | undefined) => void
+}
+
+export function createPdfPageViewRetainer(
+  maxRetainedPageViews = DEFAULT_RETAINED_PAGE_VIEWS,
+): PdfPageViewRetainer {
+  const originalDestroyByPageView = new WeakMap<RetainablePageView, () => void>()
+  const patchedPageViews = new Set<RetainablePageView>()
+  const retainedPageViews = new Map<number, RetainablePageView>()
+
+  const callOriginalDestroy = (pageView: RetainablePageView) => {
+    retainedPageViews.delete(pageView.id)
+    originalDestroyByPageView.get(pageView)?.()
+  }
+
+  const trimRetainedPageViews = () => {
+    while (retainedPageViews.size > maxRetainedPageViews) {
+      const oldestRetainedPageView = retainedPageViews.values().next().value
+      if (!oldestRetainedPageView) {
+        return
+      }
+      callOriginalDestroy(oldestRetainedPageView)
+    }
+  }
+
+  const retainPageView = (pageView: RetainablePageView) => {
+    retainedPageViews.delete(pageView.id)
+    retainedPageViews.set(pageView.id, pageView)
+    trimRetainedPageViews()
+  }
+
+  return {
+    patchPageView(pageView) {
+      if (!pageView || patchedPageViews.has(pageView)) {
+        return
+      }
+
+      const originalDestroy = pageView.destroy.bind(pageView)
+      originalDestroyByPageView.set(pageView, originalDestroy)
+      patchedPageViews.add(pageView)
+
+      pageView.destroy = () => {
+        if (
+          maxRetainedPageViews <= 0 ||
+          pageView.renderingState !== PDF_PAGE_RENDERING_FINISHED ||
+          !pageView.canvas
+        ) {
+          callOriginalDestroy(pageView)
+          return
+        }
+
+        retainPageView(pageView)
+      }
+    },
+
+    touchPageView(pageView) {
+      if (!pageView || !retainedPageViews.has(pageView.id)) {
+        return
+      }
+
+      retainPageView(pageView)
+    },
+
+    destroy() {
+      for (const pageView of patchedPageViews) {
+        callOriginalDestroy(pageView)
+      }
+      patchedPageViews.clear()
+      retainedPageViews.clear()
+    },
+  }
+}
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\pdf-url.ts
+Relative path: ui\pdf\pdf-url.ts
+
+```ts
+import { API_BASE_URL } from "@/api-base"
+
+export function buildPdfViewerFrameUrl(url: string, _title: string) {
+  void _title
+  const params = new URLSearchParams({
+    file: url,
+  })
+
+  return `/pdf-viewer.html?${params.toString()}`
+}
+
+export function buildSourcePdfPreviewUrl(taskOrArxivId: string) {
+  return `${API_BASE_URL}/api/preview/${taskOrArxivId}/source-pdf`
+}
+
+export function resolvePdfAssetUrl(
+  fallbackUrl: string,
+  resource: { kind?: string | null; url?: string | null } | null | undefined,
+  expectedKind: "source_pdf" | "translated_pdf",
+) {
+  const candidateUrl = String(resource?.url || "").trim()
+  if ((resource?.kind ?? null) !== expectedKind || !candidateUrl) {
+    return fallbackUrl
+  }
+
+  if (candidateUrl.startsWith("http://") || candidateUrl.startsWith("https://")) {
+    try {
+      const candidate = new URL(candidateUrl)
+      const fallback = new URL(fallbackUrl)
+      return candidate.origin === fallback.origin ? candidateUrl : fallbackUrl
+    } catch {
+      return fallbackUrl
+    }
+  }
+
+  if (candidateUrl.startsWith("/")) {
+    return `${API_BASE_URL}${candidateUrl}`
+  }
+
+  return fallbackUrl
+}
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\pdfjs-assets.ts
+Relative path: ui\pdf\pdfjs-assets.ts
+
+```ts
+const PDFJS_ASSET_ROOT = "/pdfjs/"
+
+function toAssetUrl(path: string) {
+  return new URL(path, window.location.origin + PDFJS_ASSET_ROOT).toString()
+}
+
+export const PDFJS_DOCUMENT_OPTIONS = {
+  cMapPacked: true,
+  cMapUrl: toAssetUrl("cmaps/"),
+  iccUrl: toAssetUrl("iccs/"),
+  standardFontDataUrl: toAssetUrl("standard_fonts/"),
+  useSystemFonts: true,
+  wasmUrl: toAssetUrl("wasm/"),
+  enableXfa: false,
+  // Let pdf.js stream the file and warm later pages after the first page is visible.
+  disableStream: false,
+  disableAutoFetch: false,
+} as const
+
+export const PDF_VIEWER_REQUIRED_FEATURES = {
+  // We only need page rendering plus real PDF link annotations.
+  textLayerMode: 0,
+  annotationMode: 1,
+  enableAutoLinking: false,
+  enablePermissions: false,
+} as const
+
+export const PDF_VIEWER_SCALE = {
+  default: "page-fit",
+  max: 5,
+  min: 0.25,
+  wheelStep: 1.1,
+} as const
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\PdfSurface.tsx
+Relative path: ui\pdf\PdfSurface.tsx
+
+```tsx
+import { cn } from "@/lib/utils"
+import { buildPdfViewerFrameUrl } from "@/ui/pdf/pdf-url"
+
+interface PdfSurfaceProps {
+  url: string
+  title: string
+  className?: string
+  dataTestId?: string
+}
+
+export function PdfSurface({ url, title, className, dataTestId }: PdfSurfaceProps) {
+  return (
+    <iframe
+      data-testid={dataTestId}
+      data-pdf-url={url}
+      title={title}
+      src={buildPdfViewerFrameUrl(url, title)}
+      className={cn("h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]", className)}
+    />
+  )
+}
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\preload-pdf-document.ts
+Relative path: ui\pdf\preload-pdf-document.ts
+
+```ts
+function ensurePdfDocumentPreloadLink(url: string) {
+  if (typeof document === "undefined" || !url) {
+    return
+  }
+
+  const existingLink = document.head.querySelector<HTMLLinkElement>(
+    `link[data-pdf-document-preload="true"][href="${url}"]`,
+  )
+  if (existingLink) {
+    return
+  }
+
+  const preloadLink = document.createElement("link")
+  preloadLink.rel = "prefetch"
+  preloadLink.as = "fetch"
+  preloadLink.setAttribute("as", "fetch")
+  preloadLink.href = url
+  preloadLink.type = "application/pdf"
+  preloadLink.setAttribute("data-pdf-document-preload", "true")
+  document.head.appendChild(preloadLink)
+}
+
+export function preloadPdfDocument(url: string | null | undefined) {
+  if (!url) {
+    return
+  }
+
+  ensurePdfDocumentPreloadLink(url)
+}
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\preload-pdf-viewer-frame.ts
+Relative path: ui\pdf\preload-pdf-viewer-frame.ts
+
+```ts
+import { buildPdfViewerFrameUrl } from "@/ui/pdf/pdf-url"
+
+function ensurePdfViewerFrameDocumentPreloadLink(frameUrl: string) {
+  if (typeof document === "undefined" || !frameUrl) {
+    return
+  }
+
+  const existingLink = document.head.querySelector<HTMLLinkElement>(
+    `link[data-pdf-viewer-document-preload="true"][href="${frameUrl}"]`,
+  )
+  if (existingLink) {
+    return
+  }
+
+  const preloadLink = document.createElement("link")
+  preloadLink.rel = "prefetch"
+  preloadLink.as = "document"
+  preloadLink.setAttribute("as", "document")
+  preloadLink.href = frameUrl
+  preloadLink.setAttribute("data-pdf-viewer-document-preload", "true")
+  document.head.appendChild(preloadLink)
+}
+
+export function preloadPdfViewerFrameDocument(url: string | null | undefined, title: string) {
+  if (!url) {
+    return
+  }
+
+  ensurePdfViewerFrameDocumentPreloadLink(buildPdfViewerFrameUrl(url, title))
+}
+
+```
+
+## File: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\preload-pdf-viewer.ts
+Relative path: ui\pdf\preload-pdf-viewer.ts
+
+```ts
+let preloadPromise: Promise<void> | null = null
+
+function ensureWorkerPreloadLink(workerUrl: string) {
+  if (typeof document === "undefined" || !workerUrl) {
+    return
+  }
+
+  const existingLink = document.head.querySelector<HTMLLinkElement>(
+    `link[data-pdf-viewer-preload="true"][href="${workerUrl}"]`,
+  )
+  if (existingLink) {
+    return
+  }
+
+  const preloadLink = document.createElement("link")
+  preloadLink.rel = "preload"
+  preloadLink.as = "script"
+  preloadLink.setAttribute("as", "script")
+  preloadLink.href = workerUrl
+  preloadLink.setAttribute("data-pdf-viewer-preload", "true")
+  document.head.appendChild(preloadLink)
+}
+
+export function preloadPdfViewerAssets() {
+  if (preloadPromise) {
+    return preloadPromise
+  }
+
+  const canPreloadViewerBundle = typeof DOMMatrix !== "undefined"
+
+  preloadPromise = Promise.all([
+    canPreloadViewerBundle ? import("@/pdf-viewer-app") : Promise.resolve(),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url").then((module) => {
+      ensureWorkerPreloadLink(module.default)
+    }),
+  ]).then(() => undefined)
+
+  return preloadPromise
 }
 
 ```
@@ -18391,6 +19139,7 @@ export function WorkflowStepper({ items, className }: WorkflowStepperProps) {
 - test: D:\future\antigravity\LaTexTrans\frontend\src\features\community-paper\components\PaperPreviewReader.test.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\features\community-paper\hooks\useCommunityPapers.test.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\features\translation-workflow\components\BatchTranslation.test.tsx
+- test: D:\future\antigravity\LaTexTrans\frontend\src\features\translation-workflow\components\ComparisonWorkbench.test.tsx
 - other: D:\future\antigravity\LaTexTrans\frontend\src\hooks\use-mobile.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\hooks\use-paper-detail.test.tsx
 - other: D:\future\antigravity\LaTexTrans\frontend\src\hooks\use-task-status-sse.ts
@@ -18425,9 +19174,18 @@ export function WorkflowStepper({ items, className }: WorkflowStepperProps) {
 - test: D:\future\antigravity\LaTexTrans\frontend\src\pages\Processing.test.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\pages\remaining-pages-i18n.test.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\pages\tools-hub\index.test.tsx
+- other: D:\future\antigravity\LaTexTrans\frontend\src\pdf-viewer-app.tsx
+- test: D:\future\antigravity\LaTexTrans\frontend\src\pdf-viewer.bundle-hygiene.test.ts
+- other: D:\future\antigravity\LaTexTrans\frontend\src\pdf-viewer.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\styles\tokens.test.ts
 - test: D:\future\antigravity\LaTexTrans\frontend\src\test\setup.ts
 - test: D:\future\antigravity\LaTexTrans\frontend\src\test\theme.ts
 - test: D:\future\antigravity\LaTexTrans\frontend\src\ui\language-selector\LanguageSelector.test.tsx
 - test: D:\future\antigravity\LaTexTrans\frontend\src\ui\loading-state\LoadingState.test.tsx
+- test: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\page-view-retention.test.ts
+- test: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\pdf-url.test.ts
+- test: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\pdfjs-assets.test.ts
+- test: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\preload-pdf-document.test.ts
+- test: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\preload-pdf-viewer-frame.test.ts
+- test: D:\future\antigravity\LaTexTrans\frontend\src\ui\pdf\preload-pdf-viewer.test.ts
 - test: D:\future\antigravity\LaTexTrans\frontend\src\ui\theme-toggle\ThemeToggle.test.tsx

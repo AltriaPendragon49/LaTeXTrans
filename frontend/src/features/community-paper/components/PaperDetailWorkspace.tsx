@@ -56,8 +56,11 @@ function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
   return mode === "bilingual_compare"
 }
 
-function buildPdfViewerUrl(url: string) {
-  const viewerParams = "page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0"
+type PdfViewerMode = "single" | "bilingual"
+
+function buildPdfViewerUrl(url: string, mode: PdfViewerMode = "single") {
+  const view = mode === "bilingual" ? "FitH" : "FitH"
+  const viewerParams = `page=1&view=${view}&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`
   return url.includes("#") ? `${url}&${viewerParams}` : `${url}#${viewerParams}`
 }
 
@@ -499,6 +502,8 @@ export function PaperDetailWorkspace({
   )
   const sourcePdfViewerUrl = buildPdfViewerUrl(sourceDocumentUrl)
   const translatedPdfViewerUrl = buildPdfViewerUrl(translatedPdfUrl)
+  const bilingualSourcePdfViewerUrl = buildPdfViewerUrl(sourceDocumentUrl, "bilingual")
+  const bilingualTranslatedPdfViewerUrl = buildPdfViewerUrl(translatedPdfUrl, "bilingual")
   const sanitizedSourceHtml = useMemo(
     () =>
       sourceHtmlContent
@@ -555,7 +560,7 @@ export function PaperDetailWorkspace({
                 data-testid="paper-source-pdf-reader"
                 title={`${paper.title} PDF`}
                 src={sourcePdfViewerUrl}
-                className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+                className="h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]"
               />
             ) : sanitizedSourceHtml ? (
               <article
@@ -582,20 +587,20 @@ export function PaperDetailWorkspace({
               data-testid="paper-translated-pdf-reader"
               title={`${paper.title} Translated PDF`}
               src={translatedPdfViewerUrl}
-              className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+              className="h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]"
             />
           ) : isBilingualCompareMode(preferredMode) && canDownload ? (
             <div className="grid h-full min-h-0 grid-cols-2 gap-1 bg-[color:var(--px-shell-panel-strong)] p-1">
               <iframe
                 data-testid="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}
-                src={sourcePdfViewerUrl}
+                src={bilingualSourcePdfViewerUrl}
                 className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
               />
               <iframe
                 data-testid="paper-bilingual-translated-pdf-reader"
                 title={`${paper.title} Translated PDF Compare`}
-                src={translatedPdfViewerUrl}
+                src={bilingualTranslatedPdfViewerUrl}
                 className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
               />
             </div>
