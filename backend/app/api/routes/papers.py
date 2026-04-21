@@ -32,6 +32,19 @@ THUMBNAIL_CACHE_VERSION = "v3"
 COMMUNITY_ANON_COOKIE_NAME = "community_anonymous_id"
 
 
+def _apply_viewer_aware_cache_headers(
+    response: Response,
+    *,
+    current_user: Optional[Dict[str, Any]],
+    public_cache_control: str,
+) -> None:
+    response.headers["Vary"] = "Authorization, Cookie"
+    if current_user:
+        response.headers["Cache-Control"] = "private, no-store"
+        return
+    response.headers["Cache-Control"] = public_cache_control
+
+
 def _ensure_paper_authorized(
     current_user: Optional[Dict[str, Any]],
     action: str,
@@ -696,7 +709,11 @@ async def list_papers(
         limit=limit,
         offset=offset,
     )
-    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+    _apply_viewer_aware_cache_headers(
+        response,
+        current_user=current_user,
+        public_cache_control="public, max-age=60, stale-while-revalidate=300",
+    )
     response.headers["X-Community-Source-Mode"] = payload.get("source_mode", "database")
     return payload
 
@@ -984,7 +1001,11 @@ async def get_paper_detail(
         viewer_user_id=user_id,
         fast_path=True,
     )
-    response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=120"
+    _apply_viewer_aware_cache_headers(
+        response,
+        current_user=current_user,
+        public_cache_control="public, max-age=30, stale-while-revalidate=120",
+    )
     response.headers["X-Reader-State"] = payload.get("reader_state", "unavailable")
     return payload
 

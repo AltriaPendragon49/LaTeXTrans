@@ -163,6 +163,82 @@ def test_like_toggle_routes_return_persistent_like_state(monkeypatch) -> None:
     assert unlike_response.json() == {"paper_id": "paper-1", "liked": False, "like_count": 7}
 
 
+def test_list_papers_route_uses_private_cache_for_authenticated_viewers(monkeypatch) -> None:
+    async def fake_list_community_papers(**_: object):  # type: ignore[no-untyped-def]
+        return {
+            "items": [],
+            "total": 0,
+            "offset": 0,
+            "limit": 12,
+            "has_more": False,
+            "next_offset": None,
+            "source_mode": "database",
+        }
+
+    monkeypatch.setattr(paper_service, "list_community_papers", fake_list_community_papers, raising=False)
+
+    async def _call() -> tuple[httpx.Response, httpx.Response]:
+        async with _make_client() as client:
+            app.dependency_overrides[papers_route.optional_current_user] = lambda: {"id": "user-1", "roles": ["user"]}
+            authenticated = await client.get("/api/papers")
+            app.dependency_overrides[papers_route.optional_current_user] = lambda: None
+            anonymous = await client.get("/api/papers")
+            return authenticated, anonymous
+
+    authenticated, anonymous = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert authenticated.status_code == 200
+    assert authenticated.headers["cache-control"] == "private, no-store"
+    assert authenticated.headers["vary"] == "Authorization, Cookie"
+    assert anonymous.status_code == 200
+    assert anonymous.headers["cache-control"] == "public, max-age=60, stale-while-revalidate=300"
+    assert anonymous.headers["vary"] == "Authorization, Cookie"
+
+
+def test_paper_detail_route_uses_private_cache_for_authenticated_viewers(monkeypatch) -> None:
+    async def fake_get_community_paper_detail(**_: object):  # type: ignore[no-untyped-def]
+        return {
+            "paper": {
+                "id": "paper-1",
+                "source": "arxiv",
+                "title": "Example paper",
+                "authors": [],
+                "categories": [],
+                "community_status": "official",
+                "trans_status": "completed",
+                "created_at": "2026-04-21T00:00:00",
+                "official_published_at": "2026-04-21T00:00:00",
+            },
+            "reader_state": "ready",
+        }
+
+    monkeypatch.setattr(
+        paper_service,
+        "get_community_paper_detail",
+        fake_get_community_paper_detail,
+        raising=False,
+    )
+
+    async def _call() -> tuple[httpx.Response, httpx.Response]:
+        async with _make_client() as client:
+            app.dependency_overrides[papers_route.optional_current_user] = lambda: {"id": "user-1", "roles": ["user"]}
+            authenticated = await client.get("/api/papers/paper-1")
+            app.dependency_overrides[papers_route.optional_current_user] = lambda: None
+            anonymous = await client.get("/api/papers/paper-1")
+            return authenticated, anonymous
+
+    authenticated, anonymous = asyncio.run(_call())
+    app.dependency_overrides.clear()
+
+    assert authenticated.status_code == 200
+    assert authenticated.headers["cache-control"] == "private, no-store"
+    assert authenticated.headers["vary"] == "Authorization, Cookie"
+    assert anonymous.status_code == 200
+    assert anonymous.headers["cache-control"] == "public, max-age=30, stale-while-revalidate=120"
+    assert anonymous.headers["vary"] == "Authorization, Cookie"
+
+
 def test_record_view_route_accepts_authenticated_and_anonymous_principals(monkeypatch) -> None:
     captured: dict[str, str | None] = {}
 
