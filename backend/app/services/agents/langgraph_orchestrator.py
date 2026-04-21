@@ -54,10 +54,13 @@ logger = logging.getLogger(__name__)
 MAX_PIPELINE_TIMEOUT_SEC: float = 1800.0  # 30 分钟
 
 # Gate 4b-2 常量：validate_and_retry 最大轮次
-MAX_VALIDATE_RETRIES: int = 3
+MAX_VALIDATE_RETRIES: int = 2
 
 # eliminate-silent-fallback：修复节点最大重试次数
 MAX_REPAIR_RETRIES: int = 3
+
+# Layered remedial budget：连续无进展补救尝试上限
+MAX_CONSECUTIVE_NO_PROGRESS_REMEDIAL_ATTEMPTS: int = 3
 
 COMPILE_FALLBACK_PENDING_STATUSES = {
     TranslatorAgent.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
@@ -167,6 +170,7 @@ class PipelineState(TypedDict, total=False):
     repair_retry_count: int          # 当前已完成修复轮次
     last_validation_error_signature: tuple[tuple[Any, ...], ...]
     last_fallback_signature: tuple[tuple[Any, ...], ...]
+    remedial_budget_exhausted_reason: Optional[str]
     post_compile_fallback_attempted: bool
 
     # 输出字段
@@ -354,9 +358,10 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
         errors_report = await run_blocking(lambda: validator_agent.execute())
         initial_errors_count = len(errors_report) if errors_report else 0
 
-        MAX_RETRIES = 3
+        MAX_RETRIES = MAX_VALIDATE_RETRIES
         retry_count = 0
         previous_error_signature = _normalize_error_signature(errors_report)
+        no_progress_retry_count = 0
 
         if mode == 3:
             # Quick scan mode: skip repair to preserve semantic boundary
@@ -385,20 +390,30 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                 current_error_signature = _normalize_error_signature(errors_report)
                 retry_count += 1
                 if errors_report and current_error_signature == previous_error_signature:
-                    logger.warning(
-                        "Validation retry made no progress; short-circuiting remaining retries after attempt %d/%d",
-                        retry_count,
-                        MAX_RETRIES,
-                    )
-                    _write_task_log(
-                        transed_project_dir,
-                        "validation_retry_short_circuited_no_progress",
-                        {
-                            "attempt": retry_count,
-                            "remaining_errors_count": len(errors_report),
-                        },
-                    )
-                    break
+                    no_progress_retry_count += 1
+                    if no_progress_retry_count >= MAX_CONSECUTIVE_NO_PROGRESS_REMEDIAL_ATTEMPTS:
+                        logger.warning(
+                            "Validation retry made no progress for %d consecutive attempts; short-circuiting remaining retries after attempt %d/%d",
+                            no_progress_retry_count,
+                            retry_count,
+                            MAX_RETRIES,
+                        )
+                        _write_task_log(
+                            transed_project_dir,
+                            "validation_retry_short_circuited_no_progress",
+                            {
+                                "attempt": retry_count,
+                                "remaining_errors_count": len(errors_report),
+                                "no_progress_retry_count": no_progress_retry_count,
+                            },
+                        )
+                        if hasattr(translator_agent, "_set_remedial_budget_exhausted_reason"):
+                            translator_agent._set_remedial_budget_exhausted_reason(
+                                "task_no_progress_remedial_budget_exhausted"
+                            )
+                        break
+                else:
+                    no_progress_retry_count = 0
                 previous_error_signature = current_error_signature
 
         final_errors_count = len(errors_report) if errors_report else 0
@@ -637,6 +652,9 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
     current_validation_error_signature = _normalize_error_signature(errors_report)
     current_fallback_signature = _normalize_fallback_signature(collected_fallback_reports)
     updated_repair_retry_count = int(state.get("repair_retry_count") or 0)
+    remedial_budget_exhausted_reason = str(
+        getattr(translator_agent, "_remedial_budget_exhausted_reason", "") or ""
+    ) or None
     previous_validation_error_signature = tuple(
         state.get("last_validation_error_signature") or ()
     )
@@ -676,6 +694,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
         "repair_retry_count": updated_repair_retry_count,
         "last_validation_error_signature": current_validation_error_signature,
         "last_fallback_signature": current_fallback_signature,
+        "remedial_budget_exhausted_reason": remedial_budget_exhausted_reason,
     }
 
 
@@ -1002,7 +1021,10 @@ def _route_after_validate(state: PipelineState) -> str:
     """
     fallback_reports = state.get("fallback_reports") or []
     repair_retry_count = int(state.get("repair_retry_count") or 0)
+    remedial_budget_exhausted_reason = str(state.get("remedial_budget_exhausted_reason") or "").strip()
     if fallback_reports:
+        if remedial_budget_exhausted_reason:
+            return "ultimate_downgrade"
         if repair_retry_count < MAX_REPAIR_RETRIES:
             return "repair_translation"
         else:
@@ -1173,7 +1195,11 @@ async def node_repair_translation(state: PipelineState) -> PipelineState:
         from .translation_repair_agent import TranslationRepairAgent
         from .structure_repair_node import StructureRepairNode
 
-        repair_agent = TranslationRepairAgent(config=config)
+        translator_agent = state.get("translator_agent")
+        config_with_budget = dict(config)
+        if translator_agent is not None and hasattr(translator_agent, "_reserve_remedial_llm_call"):
+            config_with_budget["_reserve_remedial_llm_call"] = translator_agent._reserve_remedial_llm_call
+        repair_agent = TranslationRepairAgent(config=config_with_budget)
         structure_node = StructureRepairNode()
 
         sections_path = Path(transed_project_dir) / "sections_map.json"
@@ -1218,7 +1244,14 @@ async def node_repair_translation(state: PipelineState) -> PipelineState:
                          {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000, "error": str(e)})
 
     # Clear fallback_reports so validate_and_retry re-evaluates from scratch
-    return {**state, "fallback_reports": [], "repair_retry_count": repair_retry_count + 1}
+    return {
+        **state,
+        "fallback_reports": [],
+        "repair_retry_count": repair_retry_count + 1,
+        "remedial_budget_exhausted_reason": str(
+            getattr(state.get("translator_agent"), "_remedial_budget_exhausted_reason", "") or ""
+        ) or None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1498,6 +1531,7 @@ async def run_pipeline(
         "repair_retry_count": 0,
         "last_validation_error_signature": (),
         "last_fallback_signature": (),
+        "remedial_budget_exhausted_reason": None,
         "post_compile_fallback_attempted": False,
         "final_result": {
             "status": "failed",

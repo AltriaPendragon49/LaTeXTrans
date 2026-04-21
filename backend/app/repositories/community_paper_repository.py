@@ -81,6 +81,8 @@ CURATION_JOB_COLUMNS = (
     "target_language",
     "status",
     "terminal_task_status",
+    "terminal_reason",
+    "timeout_reason",
     "error",
     "failed_artifact_path",
     "artifact_storage_backend",

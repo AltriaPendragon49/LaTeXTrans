@@ -332,7 +332,7 @@
   "community.feed.officialPriorityHint": "官方发布的译文始终优先出现在社区主列表中；用户补位内容只在官方尚未覆盖时保留社区席位。",
   "community.feed.sort.latest": "最新",
   "community.feed.sort.hot": "热门",
-  "community.feed.searchPlaceholder": "通过标题或 arXiv ID 进行搜索",
+  "community.feed.searchPlaceholder": "可以通过arxivID、标题、摘要、作者、关键词搜索论文",
   "community.feed.searchAriaLabel": "搜索社区论文",
   "community.card.authorsUnavailable": "作者信息暂缺",
   "community.card.categoriesUnavailable": "分类信息暂缺",
@@ -548,9 +548,9 @@
   "dashboard.summary.targetLanguage": "目标语言",
   "community.nav.explore": "探索",
   "community.agent.send": "发送消息",
-  "community.card.action.downloadSourcePdf": "下载原文 PDF",
-  "community.card.action.downloadTranslatedPdf": "下载译文 PDF",
+  "community.card.action.downloadSourcePdf": "原文PDF",
+  "community.card.action.downloadTranslatedPdf": "译文PDF",
   "community.card.action.preparingTranslatedPdf": "准备中",
-  "community.card.action.openArxiv": "打开 arXiv",
-  "community.card.action.openGithub": "打开 GitHub"
+  "community.card.action.openArxiv": "ArXiv",
+  "community.card.action.openGithub": "GitHub"
 }

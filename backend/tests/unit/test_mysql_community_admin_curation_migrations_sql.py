@@ -6,6 +6,7 @@ ASSET_ID_EXPANSION_MIGRATION = Path("backend/migrations_mysql/20260411_0003_expa
 CONTENT_BACKFILL_MIGRATION = Path("backend/migrations_mysql/20260411_0004_add_content_column_to_community_structured_insights.sql")
 SIMILAR_RECOMMENDATIONS_MIGRATION = Path("backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql")
 RETENTION_MIGRATION = Path("backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql")
+TERMINAL_REASON_MIGRATION = Path("backend/migrations_mysql/20260421_0007_admin_curation_terminal_reasons.sql")
 
 
 def _normalized_sql(path: Path) -> str:
@@ -65,3 +66,13 @@ def test_mysql_admin_curation_retention_migration_exists_and_declares_required_c
     assert "failed_artifact_path text null" in sql
     assert "artifact_storage_backend varchar(32) null" in sql
     assert "published_paper_id varchar(64) null" in sql
+
+
+def test_mysql_admin_curation_terminal_reason_migration_exists_and_declares_required_columns() -> None:
+    assert TERMINAL_REASON_MIGRATION.exists()
+    sql = _normalized_sql(TERMINAL_REASON_MIGRATION)
+    assert "table_name = 'community_curation_jobs'" in sql
+    assert "column_name = 'terminal_reason'" in sql
+    assert "column_name = 'timeout_reason'" in sql
+    assert "alter table community_curation_jobs add column terminal_reason varchar(64) null after terminal_task_status" in sql
+    assert "alter table community_curation_jobs add column timeout_reason varchar(64) null after terminal_reason" in sql

@@ -97,7 +97,8 @@ function PdfPreviewFrame({
   return (
     <div
       data-testid={frameTestId}
-      className="relative flex h-full min-h-[240px] overflow-visible"
+      /* 修改 1：移除 h-full 和 min-h，加入 w-full 和标准 A4 比例 aspect-[210/297] */
+      className="relative flex w-full aspect-[210/297] overflow-visible"
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
       onPointerCancel={() => setIsHovered(false)}
@@ -106,7 +107,8 @@ function PdfPreviewFrame({
     >
       <div
         data-testid={testId.replace(/-image$/, "-surface")}
-        className={`relative z-0 flex h-full min-h-[240px] w-full origin-center overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-[transform,box-shadow] duration-200 ${isHovered ? "z-10 scale-[1.40] shadow-[0_34px_82px_-28px_rgba(8,23,38,0.62)]" : "scale-100"}
+        /* 修改 2：保持 h-full 让它填满上面定义的 A4 比例容器，移除 min-h */
+        className={`relative z-0 flex h-full w-full origin-center overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-[transform,box-shadow] duration-200 ${isHovered ? "z-10 scale-[1.40] shadow-[0_34px_82px_-28px_rgba(8,23,38,0.62)]" : "scale-100"}
 `}
       >
         {imageUrl ? (
@@ -115,7 +117,8 @@ function PdfPreviewFrame({
             src={imageUrl}
             alt=""
             loading="lazy"
-            className={`absolute inset-0 h-full w-full bg-white object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+            /* 修改 3：额外留出纵向呼吸空间，尽量完整展示第一页内容 */
+            className={`absolute inset-0 h-full w-full bg-white object-contain object-center px-1 py-2 transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
               setLoadedImageUrl(imageUrl)
             }}
@@ -182,7 +185,8 @@ function PreviewLink({
 }) {
   if (!to) {
     return (
-      <div data-testid={testId} className="flex h-full flex-col gap-2">
+      /* 修改 4：移除 h-full，让它自然贴合内部的 A4 比例容器 */
+      <div data-testid={testId} className="flex flex-col gap-2">
         {children}
       </div>
     )
@@ -196,7 +200,8 @@ function PreviewLink({
       onMouseEnter={onIntent}
       onFocus={onIntent}
       onPointerDown={onIntent}
-      className="group flex h-full flex-col gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
+      /* 修改 5：同样移除这里的 h-full */
+      className="group flex flex-col gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
     >
       {children}
     </Link>
@@ -299,7 +304,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   }
 
   return (
-    <article className="grid gap-5 rounded-md border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-5 shadow-[var(--px-shell-shadow)] transition-colors duration-200 xl:grid-cols-[minmax(0,0.85fr)_minmax(340px,1.15fr)]">
+    <article className="grid gap-5 rounded-md border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-5 shadow-[var(--px-shell-shadow)] transition-colors duration-200 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
       <div className="flex min-w-0 flex-col justify-between">
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -350,11 +355,13 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
               {authorsLabel}
             </p>
 
-            <p className="select-text text-sm leading-7 text-[color:var(--px-shell-muted)]">{abstractText}</p>
+            <p className="select-text text-sm leading-7 text-[color:var(--px-shell-muted)] line-clamp-3">
+              {abstractText}
+            </p>
           </div>
 
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex w-full flex-row items-center gap-2 pb-1">
               {sourceDownloadUrl ? (
                 <Button
                   type="button"
@@ -363,16 +370,18 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
                   disabled={sourceDownloadPending}
                   onClick={() => void handleSourceDownload()}
                   aria-label={t("community.card.action.downloadSourcePdf")}
-                  className="min-w-fit"
+                  className="flex-1 min-w-0 px-2"
                 >
                   {sourceDownloadPending ? (
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
                   ) : (
-                    <Download className="h-3.5 w-3.5" />
+                    <Download className="h-3.5 w-3.5 shrink-0" />
                   )}
-                  {sourceDownloadPending
-                    ? t("community.card.action.preparingTranslatedPdf")
-                    : t("community.card.action.downloadSourcePdf")}
+                  <span className="truncate">
+                    {sourceDownloadPending
+                      ? t("community.card.action.preparingTranslatedPdf")
+                      : t("community.card.action.downloadSourcePdf")}
+                  </span>
                 </Button>
               ) : null}
 
@@ -384,16 +393,18 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
                   disabled={downloadPending}
                   onClick={() => void handleTranslatedDownload()}
                   aria-label={t("community.card.action.downloadTranslatedPdf")}
-                  className="min-w-fit"
+                  className="flex-1 min-w-0 px-2"
                 >
                   {downloadPending ? (
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
                   ) : (
-                    <Languages className="h-3.5 w-3.5" />
+                    <Languages className="h-3.5 w-3.5 shrink-0" />
                   )}
-                  {downloadPending
-                    ? t("community.card.action.preparingTranslatedPdf")
-                    : t("community.card.action.downloadTranslatedPdf")}
+                  <span className="truncate">
+                    {downloadPending
+                      ? t("community.card.action.preparingTranslatedPdf")
+                      : t("community.card.action.downloadTranslatedPdf")}
+                  </span>
                 </Button>
               ) : null}
 
@@ -402,16 +413,17 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
                   asChild
                   variant="action"
                   size="chip"
-                  className="min-w-fit"
+                  className="flex-1 min-w-0 px-2"
                 >
                   <a
                     href={arxivUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={t("community.card.action.openArxiv")}
+                    className="flex w-full items-center justify-center gap-1.5"
                   >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {t("community.card.action.openArxiv")}
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{t("community.card.action.openArxiv")}</span>
                   </a>
                 </Button>
               ) : null}
@@ -421,16 +433,17 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
                   asChild
                   variant="action"
                   size="chip"
-                  className="min-w-fit"
+                  className="flex-1 min-w-0 px-2"
                 >
                   <a
                     href={githubUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={t("community.card.action.openGithub")}
+                    className="flex w-full items-center justify-center gap-1.5"
                   >
-                    <Github className="h-3.5 w-3.5" />
-                    {t("community.card.action.openGithub")}
+                    <Github className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{t("community.card.action.openGithub")}</span>
                   </a>
                 </Button>
               ) : null}
@@ -456,7 +469,8 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         </div>
       </div>
 
-      <div className="grid min-h-[280px] grid-cols-2 gap-4">
+      {/* 修改 6：加入 items-start 让右侧网格容器顶部对齐，彻底阻断向下延展 */}
+      <div className="grid grid-cols-2 gap-4 items-start">
         <PreviewLink
           to={detailHref}
           label={t("community.detail.originalSource")}

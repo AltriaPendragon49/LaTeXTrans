@@ -242,6 +242,8 @@ class AdminCurationJobHistoryItemResponse(BaseModel):
     original_filename: Optional[str] = None
     status: str
     terminal_task_status: Optional[str] = None
+    terminal_reason: Optional[str] = None
+    timeout_reason: Optional[str] = None
     error: Optional[str] = None
     failed_artifact_path: Optional[str] = None
     created_at: Optional[str] = None

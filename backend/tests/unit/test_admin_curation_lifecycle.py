@@ -96,6 +96,78 @@ def test_wait_for_task_terminal_state_uses_30_minute_timeout_budget(monkeypatch)
     assert len(sleep_calls) == 1800
 
 
+def test_wait_for_task_terminal_state_reports_admission_timeout_before_processing(monkeypatch):
+    sleep_calls: list[int] = []
+
+    class _Repo:
+        def get_task(self, _task_id: str):
+            return {"task_id": "task-admission", "status": "queued", "progress": 0}
+
+    async def _fake_sleep(_seconds: int):
+        sleep_calls.append(1)
+
+    async def _fake_run_db_blocking(operation):
+        return operation()
+
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS", 3)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS", 3, raising=False)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS", 2, raising=False)
+    monkeypatch.setattr(paper_service.task_manager, "get_task", lambda _task_id: None)
+    monkeypatch.setattr(paper_service, "_get_translation_task_repository", lambda: _Repo())
+    monkeypatch.setattr(paper_service, "run_db_blocking", _fake_run_db_blocking)
+    monkeypatch.setattr(paper_service.asyncio, "sleep", _fake_sleep)
+
+    try:
+        asyncio.run(paper_service._wait_for_task_terminal_state("task-admission"))
+    except Exception as exc:
+        assert getattr(exc, "timeout_reason", None) == "admission_timeout"
+    else:
+        raise AssertionError("expected admission-stage timeout")
+
+    assert len(sleep_calls) == 3
+
+
+def test_wait_for_task_terminal_state_reports_execution_timeout_after_processing(monkeypatch):
+    sleep_calls: list[int] = []
+    states = iter(
+        [
+            {"task_id": "task-execution", "status": "queued", "progress": 0},
+            {"task_id": "task-execution", "status": "processing", "progress": 15},
+            {"task_id": "task-execution", "status": "processing", "progress": 25},
+        ]
+    )
+
+    class _Repo:
+        def get_task(self, _task_id: str):
+            try:
+                return next(states)
+            except StopIteration:
+                return {"task_id": "task-execution", "status": "processing", "progress": 25}
+
+    async def _fake_sleep(_seconds: int):
+        sleep_calls.append(1)
+
+    async def _fake_run_db_blocking(operation):
+        return operation()
+
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS", 4)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS", 4, raising=False)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS", 2, raising=False)
+    monkeypatch.setattr(paper_service.task_manager, "get_task", lambda _task_id: None)
+    monkeypatch.setattr(paper_service, "_get_translation_task_repository", lambda: _Repo())
+    monkeypatch.setattr(paper_service, "run_db_blocking", _fake_run_db_blocking)
+    monkeypatch.setattr(paper_service.asyncio, "sleep", _fake_sleep)
+
+    try:
+        asyncio.run(paper_service._wait_for_task_terminal_state("task-execution"))
+    except Exception as exc:
+        assert getattr(exc, "timeout_reason", None) == "execution_timeout"
+    else:
+        raise AssertionError("expected execution-stage timeout")
+
+    assert len(sleep_calls) >= 2
+
+
 def test_cleanup_failed_admin_curation_artifacts_removes_placeholder_paper_and_task_artifacts(monkeypatch, tmp_path):
     repository = _FakeRepository({"job_id": "job-1"})
     task_id = "task-new"
@@ -199,6 +271,8 @@ def test_mark_admin_curation_job_failed_persists_retained_failure_metadata(monke
             "failed_artifact_path": "failed_tasks/task-1",
             "artifact_storage_backend": "object_storage",
             "terminal_task_status": "failed_compilation",
+            "terminal_reason": "task_execution_timeout",
+            "timeout_reason": "execution_timeout",
         }
 
     monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
@@ -220,6 +294,97 @@ def test_mark_admin_curation_job_failed_persists_retained_failure_metadata(monke
     assert repository.job["failed_artifact_path"] == "failed_tasks/task-1"
     assert repository.job["artifact_storage_backend"] == "object_storage"
     assert repository.job["terminal_task_status"] == "failed_compilation"
+    assert repository.job["terminal_reason"] == "task_execution_timeout"
+    assert repository.job["timeout_reason"] == "execution_timeout"
+
+
+def test_cleanup_failed_admin_curation_artifacts_requests_terminal_timeout_cancellation(monkeypatch):
+    repository = _FakeRepository({"job_id": "job-1"})
+    cancel_calls: list[dict] = []
+
+    async def _run_local(operation):
+        return operation()
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "cancel_task",
+        lambda task_id, **kwargs: cancel_calls.append({"task_id": task_id, **kwargs}) or True,
+    )
+    monkeypatch.setattr(paper_service.task_manager, "get_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "delete_task_full",
+        lambda _task_id: {"success": True, "deleted_dirs": [], "errors": []},
+    )
+
+    asyncio.run(
+        paper_service._cleanup_failed_admin_curation_artifacts(
+            repository=repository,
+            job={"paper_id": None, "task_id": "task-timeout"},
+            translated_task_id="task-timeout",
+            cancel_running_task=True,
+            terminal_reason="task_execution_timeout",
+            timeout_reason="execution_timeout",
+        )
+    )
+
+    assert cancel_calls == [
+        {
+            "task_id": "task-timeout",
+            "terminal_reason": "task_execution_timeout",
+            "timeout_reason": "execution_timeout",
+        }
+    ]
+
+
+def test_run_curation_job_disables_terminology_table_for_admin_intake(monkeypatch):
+    repository = _FakeRepository(
+        {
+            "job_id": "job-1",
+            "paper_id": "paper-1",
+            "source_type": "arxiv",
+            "arxiv_id": "2406.15882",
+            "task_id": None,
+            "source_language": "en",
+            "target_language": "zh",
+            "created_by": "admin-1",
+            "status": "queued",
+        }
+    )
+    captured: dict[str, Any] = {}
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _resolve_context(_user_id: str):
+        return {"user_id": "admin-1", "is_admin": True, "roles": ["admin"]}
+
+    async def _fetch_metadata(_arxiv_id: str):
+        return {"title": "Paper", "authors": [], "categories": [], "abstract_raw": "abstract"}
+
+    async def _start_arxiv_translation(**kwargs):
+        request = kwargs["request"]
+        captured["generate_terminology_table"] = request.advanced_config.generate_terminology_table
+        return {"task_id": "task-new"}
+
+    async def _wait_for_terminal(_task_id: str):
+        return {"status": "failed", "error": "stop"}
+
+    async def _mark_failed(**_kwargs):
+        return None
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
+    monkeypatch.setattr(paper_service, "resolve_submitter_context_by_user_id", _resolve_context)
+    monkeypatch.setattr(paper_service, "_fetch_arxiv_metadata", _fetch_metadata)
+    monkeypatch.setattr(paper_service, "_start_arxiv_paper_translation", _start_arxiv_translation)
+    monkeypatch.setattr(paper_service, "_wait_for_task_terminal_state", _wait_for_terminal)
+    monkeypatch.setattr(paper_service, "_mark_admin_curation_job_failed", _mark_failed)
+
+    asyncio.run(paper_service._run_curation_job("job-1"))
+
+    assert captured["generate_terminology_table"] is False
 
 
 def test_run_curation_job_reuses_existing_arxiv_translation_task(monkeypatch):

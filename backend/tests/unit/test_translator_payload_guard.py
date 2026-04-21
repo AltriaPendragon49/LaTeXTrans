@@ -510,9 +510,12 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
             translated = asyncio.run(agent._translate_env(env, session))
 
         self.assertEqual(translated["trans_content"], env["content"])
-        user_payload = session.post.call_args.kwargs["json"]["messages"][1]["content"]
-        self.assertIn("@@HF:CMD:", user_payload)
-        self.assertNotIn("\\item", user_payload)
+        payloads = [
+            call.kwargs["json"]["messages"][1]["content"]
+            for call in session.post.call_args_list
+        ]
+        self.assertTrue(any("@@HF:CMD:" in payload for payload in payloads))
+        self.assertTrue(any("\\item" not in payload for payload in payloads))
 
     def test_translate_eqnarray_env_round_trips_hard_freeze_tokens(self):
         agent = _build_agent(trans_mode=0)

@@ -398,6 +398,18 @@
 - `backend/app/services/paper_service.py`: 社区论文汇总服务现已负责从 preview HTML 中提取 GitHub 外部链接，为首页论文卡片的直达研究动作提供数据。
 ## Recent Responsibility Updates (2026-04-20 Admin Reset)
 
+- `backend/app/services/paper_service.py`: 管理员策展任务现已区分 `admission` / `execution` 两段超时，失败时会写入 `terminal_reason` 与 `timeout_reason`，并在管理员入库链路默认关闭术语表生成。
+- `backend/app/services/task_manager.py`: 任务取消现已同时写入终态、触发运行时取消，并尝试终止活跃编译进程，避免超时或预算取消后残留 `processing`。
+- `backend/app/api/routes/task.py`: 任务状态查询与 SSE 推送现已返回稳定的 `terminal_reason`。
+- `backend/app/api/routes/papers.py`: 管理员策展历史接口现已返回 `terminal_reason` 与 `timeout_reason`。
+- `backend/app/repositories/community_paper_repository.py`: 策展任务仓储现已持久化 `terminal_reason` 与 `timeout_reason` 字段。
+- `backend/app/services/agents/translator_agent.py`: 翻译代理现已收紧 nested rescue 的 per-part / per-task 预算，并将外部 API 致命失败视为外层重试跳过信号。
+- `backend/app/services/agents/langgraph_orchestrator.py`: 外层 validate/retranslate 轮次现已收紧到 `2` 轮。
+- `backend/migrations_mysql/20260421_0007_admin_curation_terminal_reasons.sql`: 为 `community_curation_jobs` 增补 `terminal_reason` 与 `timeout_reason` 列。
+
 - ackend/app/services/paper_service.py: 管理员 arXiv 重复入库现已在提交前枚举同 rxiv_id 的旧 curation job，先取消仍在运行的策展协程并执行全流程硬删除，再创建新的 curation job 与全新 paper_id。
 - ackend/app/repositories/community_paper_repository.py: 社区策展仓储现已提供按 rxiv_id 顺序枚举 curation jobs 的查询，供重复入库预删除编排复用。
 - `backend/scripts/backfill_translated_pdf_delivery.py`: 社区译文 PDF 交付回填脚本，现已负责批量将现有论文的译文 PDF 升级为已完成首页空白裁剪的最终交付资产。
+- `backend/app/services/agents/translator_agent.py`: 翻译代理现已补充 task 级补救 LLM 调用预算、`HARD_FREEZE_PROTOCOL_VIOLATION` 预算，以及预算耗尽后的稳定 fallback reason，确保补救调用不会无限放大。
+- `backend/app/services/agents/langgraph_orchestrator.py`: 编排层现已按 `2` 次 validate 重翻预算执行，并在补救预算耗尽时停止继续进入 repair 环，直接转入有界降级路径。
+- `backend/app/services/agents/translation_repair_agent.py`: repair agent 现已接入同一 task 级补救预算口径，避免外层 repair LLM 调用绕过主翻译预算上限。

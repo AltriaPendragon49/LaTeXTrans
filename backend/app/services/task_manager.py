@@ -18,7 +18,10 @@ import logging
 import shutil
 import json
 import re
-import os
+import os
+import platform
+import signal
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Union, List
@@ -120,6 +123,24 @@ def clear_cached_runtime_artifacts(task_id: str, retained_paths: List[Path]) -> 
             cleared_paths,
         )
     return cleared_paths
+
+
+def _kill_process_tree(pid: int) -> None:
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(pid)],
+                capture_output=True,
+                timeout=10,
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except Exception as exc:
+        logger.warning("[TaskManager] Failed to kill process tree for PID %s: %s", pid, exc)
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
 
 
 
@@ -1309,7 +1330,15 @@ class TaskManager:
         with self._lock:
             return task_id in self._cancelled_tasks
     
-    def cancel_task(self, task_id: str) -> bool:
+    def cancel_task(
+        self,
+        task_id: str,
+        *,
+        terminal_reason: Optional[str] = None,
+        timeout_reason: Optional[str] = None,
+        message: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> bool:
         """
         Cancel a task: forcibly interrupt the running asyncio.Task (if any),
         then mark the in-memory record as failed.
@@ -1321,16 +1350,19 @@ class TaskManager:
             True if task exists and was marked as cancelled
         """
         task_exists = False
+        task_snapshot: Optional[Dict[str, Any]] = None
         with self._lock:
             if task_id in self._tasks:
                 self._cancelled_tasks.add(task_id)
-                task = self._tasks[task_id]
-                task["status"] = TaskStatus.FAILED.value
-                task["message"] = "Task cancelled by user"
+                task_snapshot = dict(self._tasks[task_id])
+                if timeout_reason is not None:
+                    self._tasks[task_id]["timeout_reason"] = timeout_reason
                 task_exists = True
 
         if not task_exists:
             return False
+
+        compile_pid = task_snapshot.get("compile_pid") if task_snapshot else None
 
         try:
             if task_queue is not None:
@@ -1339,6 +1371,50 @@ class TaskManager:
             logger.warning(
                 f"[TaskManager] cancel_task: cancel_execution raised for {task_id}: {exc}"
             )
+
+        if compile_pid:
+            try:
+                _kill_process_tree(int(compile_pid))
+            except Exception as exc:
+                logger.warning("[TaskManager] Failed to terminate compile process for %s: %s", task_id, exc)
+
+        resolved_terminal_reason = str(terminal_reason or "").strip() or "task_cancelled"
+        resolved_message = (
+            str(message).strip()
+            if message is not None and str(message).strip()
+            else (
+                "Task execution timed out"
+                if resolved_terminal_reason == "task_execution_timeout"
+                else "Task admission timed out"
+                if resolved_terminal_reason == "task_admission_timeout"
+                else "Task cancelled by user"
+            )
+        )
+        resolved_error = error if error is not None else resolved_message
+        self.update_task(
+            task_id,
+            status=TaskStatus.FAILED.value,
+            progress=100,
+            stage="done",
+            message=resolved_message,
+            error=resolved_error,
+            detail_code=resolved_terminal_reason,
+            failure_reason_code=resolved_terminal_reason,
+            user_id=(task_snapshot or {}).get("user_id"),
+        )
+
+        refreshed_task = self.get_task(task_id) or {}
+        persisted_updates = {
+            "status": refreshed_task.get("status") or TaskStatus.FAILED.value,
+            "progress": refreshed_task.get("progress") if refreshed_task.get("progress") is not None else 100,
+            "stage": refreshed_task.get("stage") or "done",
+            "message": refreshed_task.get("message") or resolved_message,
+            "error": refreshed_task.get("error") or resolved_error,
+            "detail_code": refreshed_task.get("detail_code") or resolved_terminal_reason,
+            "completed_at": refreshed_task.get("completed_at") or get_cst_now_iso(),
+        }
+        if (task_snapshot or {}).get("user_id"):
+            self._persist_task_update(task_id, persisted_updates)
 
         return True
     

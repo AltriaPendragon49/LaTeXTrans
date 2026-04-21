@@ -88,6 +88,13 @@ _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
 _delete_job_tasks: Dict[str, asyncio.Task] = {}
 ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
+_DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
+ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+ADMIN_CURATION_TIMEOUT_TERMINAL_REASONS = {
+    "admission_timeout": "task_admission_timeout",
+    "execution_timeout": "task_execution_timeout",
+}
 ADMIN_CURATION_CLEANUP_PAPER_TABLES = (
     "comments",
     "paper_assets",
@@ -129,6 +136,61 @@ STRUCTURED_INSIGHT_SECTION_QUESTIONS = {
     "experiment": "论文如何验证方法有效性，主要结论是什么？",
     "future": "这项工作有什么潜在改进或扩展方向，对相关研究有哪些启发？",
 }
+
+
+class AdminCurationTaskWaitTimeout(TimeoutError):
+    def __init__(self, task_id: str, timeout_reason: str):
+        self.task_id = str(task_id or "").strip()
+        self.timeout_reason = str(timeout_reason or "").strip() or "execution_timeout"
+        self.terminal_reason = ADMIN_CURATION_TIMEOUT_TERMINAL_REASONS.get(
+            self.timeout_reason,
+            "task_execution_timeout",
+        )
+        super().__init__(f"Timed out waiting for task {self.task_id} ({self.timeout_reason})")
+
+
+def _resolve_admin_curation_timeout_seconds(stage: str) -> int:
+    legacy_timeout = ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+    try:
+        resolved_legacy = int(legacy_timeout)
+    except (TypeError, ValueError):
+        resolved_legacy = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+    if resolved_legacy <= 0:
+        resolved_legacy = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+
+    stage_value = (
+        ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS
+        if stage == "admission"
+        else ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS
+    )
+    try:
+        resolved_stage = int(stage_value)
+    except (TypeError, ValueError):
+        resolved_stage = resolved_legacy
+    if resolved_stage <= 0:
+        resolved_stage = resolved_legacy
+
+    if (
+        resolved_stage == _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+        and resolved_legacy != _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+    ):
+        return resolved_legacy
+    return resolved_stage
+
+
+def _task_has_active_execution_started(task: Optional[Dict[str, Any]]) -> bool:
+    normalized_status = str((task or {}).get("status") or "").strip().lower()
+    return normalized_status in {"processing", *TERMINAL_TASK_STATUSES}
+
+
+def _resolve_task_terminal_reason(task: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not task:
+        return None
+    failure_reason_code = str(task.get("failure_reason_code") or "").strip()
+    if failure_reason_code:
+        return failure_reason_code
+    detail_code = str(task.get("detail_code") or "").strip()
+    return detail_code or None
 _PDF_DELIVERY_CACHE_VERSION = "v1"
 _PDF_DELIVERY_MEANINGFUL_TEXT_THRESHOLD = 8
 _PDF_DELIVERY_NEXT_PAGE_TEXT_THRESHOLD = 32
@@ -5791,6 +5853,8 @@ async def _cleanup_failed_admin_curation_artifacts(
     job: Dict[str, Any],
     translated_task_id: str = "",
     cancel_running_task: bool,
+    terminal_reason: Optional[str] = None,
+    timeout_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     ordered_candidates = [
         str(translated_task_id or "").strip(),
@@ -5802,11 +5866,17 @@ async def _cleanup_failed_admin_curation_artifacts(
     failed_artifact_path: Optional[str] = None
     artifact_storage_backend: Optional[str] = None
     terminal_task_status: Optional[str] = None
+    resolved_terminal_reason = str(terminal_reason or "").strip() or None
+    resolved_timeout_reason = str(timeout_reason or "").strip() or None
 
     for task_id in task_ids:
         if cancel_running_task:
             try:
-                task_manager.cancel_task(task_id)
+                task_manager.cancel_task(
+                    task_id,
+                    terminal_reason=resolved_terminal_reason,
+                    timeout_reason=resolved_timeout_reason,
+                )
             except Exception as exc:
                 errors.append(f"Failed to cancel task {task_id}: {exc}")
 
@@ -5815,6 +5885,8 @@ async def _cleanup_failed_admin_curation_artifacts(
             candidate_status = str((task_snapshot or {}).get("status") or "").strip()
             if candidate_status:
                 terminal_task_status = candidate_status
+        if resolved_terminal_reason is None:
+            resolved_terminal_reason = _resolve_task_terminal_reason(task_snapshot)
         failed_output_path = str((task_snapshot or {}).get("failed_output_path") or "").strip()
         if failed_artifact_path is None:
             try:
@@ -5852,6 +5924,8 @@ async def _cleanup_failed_admin_curation_artifacts(
         "failed_artifact_path": failed_artifact_path,
         "artifact_storage_backend": artifact_storage_backend,
         "terminal_task_status": terminal_task_status,
+        "terminal_reason": resolved_terminal_reason,
+        "timeout_reason": resolved_timeout_reason,
     }
 
 
@@ -5863,12 +5937,16 @@ async def _mark_admin_curation_job_failed(
     translated_task_id: str,
     failure_message: str,
     cancel_running_task: bool,
+    terminal_reason: Optional[str] = None,
+    timeout_reason: Optional[str] = None,
 ) -> None:
     cleanup_result = await _cleanup_failed_admin_curation_artifacts(
         repository=repository,
         job=job,
         translated_task_id=translated_task_id,
         cancel_running_task=cancel_running_task,
+        terminal_reason=terminal_reason,
+        timeout_reason=timeout_reason,
     )
     final_error = str(failure_message or "Curation translation failed")
     cleanup_errors = [str(error) for error in cleanup_result.get("errors", []) if str(error or "").strip()]
@@ -5880,6 +5958,8 @@ async def _mark_admin_curation_job_failed(
             {
                 "status": "failed",
                 "terminal_task_status": cleanup_result.get("terminal_task_status"),
+                "terminal_reason": cleanup_result.get("terminal_reason") or terminal_reason,
+                "timeout_reason": cleanup_result.get("timeout_reason") or timeout_reason,
                 "error": final_error,
                 "failed_artifact_path": cleanup_result.get("failed_artifact_path"),
                 "artifact_storage_backend": cleanup_result.get("artifact_storage_backend"),
@@ -5915,7 +5995,12 @@ async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
     persistent_retry_disabled_until = 0.0
     persistent_call_timeout_seconds = 1.0
     persistent_retry_backoff_seconds = 30.0
-    for _ in range(ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS):
+    admission_timeout_seconds = _resolve_admin_curation_timeout_seconds("admission")
+    execution_timeout_seconds = _resolve_admin_curation_timeout_seconds("execution")
+    observed_execution_start = False
+    current_stage_elapsed_seconds = 0
+
+    while True:
         task = task_manager.get_task(task_id)
         if task and task.get("status") in TERMINAL_TASK_STATUSES:
             return task
@@ -5989,8 +6074,23 @@ async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
             if str(persisted_task.get("status") or "").strip() in TERMINAL_TASK_STATUSES:
                 _cache_terminal_task_snapshot(task_id, persisted_task)
                 return persisted_task
+        if not observed_execution_start and (
+            _task_has_active_execution_started(persisted_task)
+            or _task_has_active_execution_started(task)
+        ):
+            observed_execution_start = True
+            current_stage_elapsed_seconds = 0
+
+        stage_timeout_seconds = (
+            execution_timeout_seconds if observed_execution_start else admission_timeout_seconds
+        )
+        if current_stage_elapsed_seconds >= stage_timeout_seconds:
+            raise AdminCurationTaskWaitTimeout(
+                task_id,
+                "execution_timeout" if observed_execution_start else "admission_timeout",
+            )
         await asyncio.sleep(1)
-    raise TimeoutError(f"Timed out waiting for task {task_id}")
+        current_stage_elapsed_seconds += 1
 
 
 def _schedule_curation_job(job_id: str) -> None:
@@ -6107,6 +6207,7 @@ async def _run_curation_job(job_id: str) -> None:
                 source_language=str(job.get("source_language") or "en"),
                 target_language=str(job.get("target_language") or "zh"),
             )
+            request.advanced_config.generate_terminology_table = False
             translated_task_id = str(job.get("task_id") or "").strip()
             if str(job.get("source_type") or "") == "arxiv":
                 metadata = await _fetch_arxiv_metadata(str(job.get("arxiv_id") or ""))
@@ -6176,6 +6277,7 @@ async def _run_curation_job(job_id: str) -> None:
                     translated_task_id=translated_task_id,
                     failure_message=str(task.get("error") or task.get("message") or "Curation translation failed"),
                     cancel_running_task=False,
+                    terminal_reason=_resolve_task_terminal_reason(task),
                 )
                 return
 
@@ -6198,6 +6300,8 @@ async def _run_curation_job(job_id: str) -> None:
                         "published_paper_id": published.get("id"),
                         "status": "completed",
                         "terminal_task_status": "completed",
+                        "terminal_reason": None,
+                        "timeout_reason": None,
                         "error": None,
                         "failed_artifact_path": None,
                         "artifact_storage_backend": None,
@@ -6205,7 +6309,7 @@ async def _run_curation_job(job_id: str) -> None:
                     },
                 )
             )
-        except TimeoutError as exc:
+        except AdminCurationTaskWaitTimeout as exc:
             logger.warning("Admin curation job %s timed out while waiting for %s", job_id, translated_task_id)
             latest_task = task_manager.get_task(translated_task_id) if translated_task_id else None
             if latest_task and latest_task.get("status") in {"completed", "completed_with_warnings"}:
@@ -6228,6 +6332,8 @@ async def _run_curation_job(job_id: str) -> None:
                             "published_paper_id": published.get("id"),
                             "status": "completed",
                             "terminal_task_status": "completed",
+                            "terminal_reason": None,
+                            "timeout_reason": None,
                             "error": None,
                             "failed_artifact_path": None,
                             "artifact_storage_backend": None,
@@ -6248,6 +6354,8 @@ async def _run_curation_job(job_id: str) -> None:
                         or exc
                     ),
                     cancel_running_task=False,
+                    terminal_reason=_resolve_task_terminal_reason(latest_task) or exc.terminal_reason,
+                    timeout_reason=exc.timeout_reason,
                 )
                 return
             await _mark_admin_curation_job_failed(
@@ -6257,6 +6365,8 @@ async def _run_curation_job(job_id: str) -> None:
                 translated_task_id=translated_task_id,
                 failure_message=str(exc),
                 cancel_running_task=bool(translated_task_id),
+                terminal_reason=exc.terminal_reason,
+                timeout_reason=exc.timeout_reason,
             )
         except Exception as exc:
             logger.warning("Admin curation job %s failed: %s", job_id, exc, exc_info=True)
@@ -6268,6 +6378,9 @@ async def _run_curation_job(job_id: str) -> None:
                     translated_task_id=translated_task_id,
                     failure_message=str(exc),
                     cancel_running_task=bool(translated_task_id),
+                    terminal_reason=_resolve_task_terminal_reason(
+                        task_manager.get_task(translated_task_id) if translated_task_id else None
+                    ),
                 )
             except Exception:
                 logger.warning("Failed to persist curation job failure for %s", job_id, exc_info=True)
@@ -6490,6 +6603,8 @@ def _admin_curation_history_item(job: Dict[str, Any]) -> Dict[str, Any]:
         "original_filename": job.get("original_filename"),
         "status": job.get("status"),
         "terminal_task_status": job.get("terminal_task_status"),
+        "terminal_reason": job.get("terminal_reason"),
+        "timeout_reason": job.get("timeout_reason"),
         "error": job.get("error"),
         "failed_artifact_path": job.get("failed_artifact_path"),
         "created_at": _serialize_timestamp_value(job.get("created_at")),

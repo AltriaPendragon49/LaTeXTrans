@@ -181,6 +181,8 @@ def test_admin_can_list_curation_jobs(monkeypatch) -> None:
                     "arxiv_id": "2312.00752",
                     "status": "failed",
                     "terminal_task_status": "failed_compilation",
+                    "terminal_reason": "task_execution_timeout",
+                    "timeout_reason": "execution_timeout",
                     "error": "compile failed",
                     "failed_artifact_path": "failed_tasks/task-1",
                     "created_at": "2026-04-19T00:00:00Z",
@@ -215,6 +217,8 @@ def test_admin_can_list_curation_jobs(monkeypatch) -> None:
     assert payload["total"] == 1
     assert payload["items"][0]["job_id"] == "job-1"
     assert payload["items"][0]["terminal_task_status"] == "failed_compilation"
+    assert payload["items"][0]["terminal_reason"] == "task_execution_timeout"
+    assert payload["items"][0]["timeout_reason"] == "execution_timeout"
 
 
 def test_admin_list_curation_jobs_treats_all_status_as_unfiltered(monkeypatch) -> None:

@@ -159,9 +159,19 @@ class TranslationRepairAgent:
         self.timeout_seconds = resolve_llm_timeout(config, default=120)
         self.target_language = config.get("target_language", "zh")
         self.source_language = config.get("source_language", "en")
+        self._reserve_remedial_llm_call = config.get("_reserve_remedial_llm_call")
 
     def _uses_system_pool(self) -> bool:
         return str(self.config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
+
+    @staticmethod
+    def _infer_part_type(chunk_scope: str) -> str:
+        scope = str(chunk_scope or "")
+        if scope.startswith("<PLACEHOLDER_ENV_"):
+            return "env"
+        if scope.startswith("<PLACEHOLDER_CAP_"):
+            return "cap"
+        return "sec"
 
     @staticmethod
     def _normalized_failure_signature(report: FallbackReport) -> str:
@@ -282,10 +292,23 @@ class TranslationRepairAgent:
         self,
         prompt: str,
         original_text: str,
+        *,
+        chunk_scope: str,
     ) -> Optional[str]:
         """Call LLM for repair. Returns repaired text or None on failure."""
         if not self.base_url or not self.api_key:
             logger.warning("TranslationRepairAgent: no API config, skipping LLM repair")
+            return None
+        reserve = self._reserve_remedial_llm_call
+        if callable(reserve) and not reserve(
+            "repair_translation",
+            part_type=self._infer_part_type(chunk_scope),
+            identifier=str(chunk_scope),
+        ):
+            logger.warning(
+                "TranslationRepairAgent: skipping repair for %s because remedial budget is exhausted",
+                chunk_scope,
+            )
             return None
 
         try:
@@ -361,7 +384,11 @@ class TranslationRepairAgent:
                 return None, "token-gate"
 
         prompt = self._build_repair_prompt(report, original_text)
-        repaired = await self._call_llm_repair(prompt, original_text)
+        repaired = await self._call_llm_repair(
+            prompt,
+            original_text,
+            chunk_scope=str(report.chunk_scope),
+        )
         if repaired is None:
             return None, "llm-failure"
 

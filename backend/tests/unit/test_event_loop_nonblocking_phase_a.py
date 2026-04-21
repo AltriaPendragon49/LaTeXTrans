@@ -126,7 +126,7 @@ def test_validate_node_does_not_pin_event_loop(monkeypatch, tmp_path):
     assert max_gap < 0.05, f"event loop stalled during validate node (max_gap={max_gap:.3f}s)"
 
 
-def test_validate_node_short_circuits_stagnant_retries(monkeypatch, tmp_path):
+def test_validate_node_uses_full_two_retry_budget_before_stagnation_stop(monkeypatch, tmp_path):
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     class _StaticValidator:
@@ -183,9 +183,9 @@ def test_validate_node_short_circuits_stagnant_retries(monkeypatch, tmp_path):
 
     result = asyncio.run(orch.node_validate_and_retry(state))
 
-    assert translator.calls == 1
+    assert translator.calls == 2
     logs = json.loads((transed_project_dir / "task_log.json").read_text(encoding="utf-8"))
-    assert any(entry["event"] == "validation_retry_short_circuited_no_progress" for entry in logs)
+    assert not any(entry["event"] == "validation_retry_short_circuited_no_progress" for entry in logs)
     assert "fallback_reports" in result
 
 
@@ -250,7 +250,7 @@ def test_validate_node_raises_when_residual_english_prose_survives_retries(monke
     with pytest.raises(RuntimeError, match="Residual English prose remains"):
         asyncio.run(orch.node_validate_and_retry(state))
 
-    assert translator.calls == 1
+    assert translator.calls == 2
     logs = json.loads((transed_project_dir / "task_log.json").read_text(encoding="utf-8"))
     assert any(entry["event"] == "validation_blocked_residual_english_prose" for entry in logs)
 

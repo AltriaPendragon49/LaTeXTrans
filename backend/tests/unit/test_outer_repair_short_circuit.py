@@ -7,7 +7,7 @@ os.environ.setdefault("LLM_BASE_URL", "http://dummy")
 os.environ.setdefault("LLM_MODEL", "gpt-4o")
 
 
-def test_pipeline_short_circuits_repeated_outer_repair_without_progress(monkeypatch, tmp_path):
+def test_pipeline_short_circuits_repeated_outer_repair_without_progress_after_task_streak_hits_three(monkeypatch, tmp_path):
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
     from backend.app.services.agents.pipeline_schema import FallbackReport
 

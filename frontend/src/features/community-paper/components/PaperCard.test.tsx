@@ -243,7 +243,7 @@ describe("PaperCard", () => {
     const previewFrame = screen.getByTestId("paper-card-source-preview-frame")
     const previewSurface = screen.getByTestId("paper-card-source-preview-surface")
 
-    expect(previewSurface).not.toHaveClass("scale-[1.08]")
+    expect(previewSurface).not.toHaveClass("scale-[1.40]")
 
     fireEvent.pointerEnter(previewFrame, {
       clientX: 48,
@@ -251,14 +251,14 @@ describe("PaperCard", () => {
     })
 
     await waitFor(() => {
-      expect(previewSurface).toHaveClass("scale-[1.08]")
+      expect(previewSurface).toHaveClass("scale-[1.40]")
     })
     expect(screen.queryByTestId("paper-card-source-preview-inspector")).not.toBeInTheDocument()
 
     fireEvent.pointerLeave(previewFrame)
 
     await waitFor(() => {
-      expect(previewSurface).not.toHaveClass("scale-[1.08]")
+      expect(previewSurface).not.toHaveClass("scale-[1.40]")
     })
   })
 

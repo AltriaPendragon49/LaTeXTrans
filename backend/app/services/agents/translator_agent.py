@@ -36,6 +36,7 @@ from .llm_token_pool import post_chat_completion_with_pool
 from backend.app.services.translation.ultimate_downgrade import sanitize_section_translation_shells
 from pathlib import Path
 import os
+import inspect
 import re
 import regex
 import asyncio
@@ -125,7 +126,11 @@ class TranslatorAgent(BaseToolAgent):
     )
     _RESCUE_WINDOW_CHAR_BUDGET = 120
     _RESCUE_WINDOW_MAX_DEPTH = 2
-    _RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART = 12
+    _RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART = 4
+    _RESCUE_MAX_NESTED_LLM_CALLS_PER_TASK = 24
+    _RESCUE_MAX_REMEDIAL_LLM_CALLS_PER_TASK = 40
+    _RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK = 8
+    _RESCUE_MAX_CONSECUTIVE_NO_PROGRESS_ATTEMPTS = 3
     _RESCUE_MAX_FAILED_ALPHA_CHARS = 32
     _BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT = "相关内容已转为简要中文表述"
     _TERMINAL_NO_RETRY_STATUSES = frozenset({
@@ -215,6 +220,10 @@ class TranslatorAgent(BaseToolAgent):
         self.payload_invariant_sections: List[str] = []
         self._oversize_downgrade_events: List[Dict[str, Any]] = []
         self._nested_rescue_attempt_counts: Dict[str, int] = {}
+        self._nested_rescue_attempts_total = 0
+        self._remedial_llm_call_count = 0
+        self._hard_freeze_protocol_violation_count = 0
+        self._remedial_budget_exhausted_reason: Optional[str] = None
         # eliminate-silent-fallback: structured fallback reports for repair loop
         self.fallback_reports: List[FallbackReport] = []
         (
@@ -408,6 +417,105 @@ class TranslatorAgent(BaseToolAgent):
             self.fail_section_nums or self.fail_caption_phs or self.fail_env_phs
         )
 
+    def _set_remedial_budget_exhausted_reason(
+        self,
+        reason: str,
+        *,
+        part_type: Optional[str] = None,
+        identifier: Optional[str] = None,
+    ) -> None:
+        normalized_reason = str(reason or "").strip()
+        if not normalized_reason:
+            return
+        if not self._remedial_budget_exhausted_reason:
+            self._remedial_budget_exhausted_reason = normalized_reason
+        if part_type and identifier:
+            self._mark_api_fallback(
+                part_type,
+                str(identifier),
+                self._remedial_budget_exhausted_reason,
+            )
+
+    def _reserve_remedial_llm_call(
+        self,
+        remedial_kind: Optional[str],
+        *,
+        part_type: str,
+        identifier: str,
+    ) -> bool:
+        if not remedial_kind:
+            return True
+
+        existing_reason = str(self._remedial_budget_exhausted_reason or "").strip()
+        if existing_reason:
+            self._mark_api_fallback(part_type, str(identifier), existing_reason)
+            logger.warning(
+                "Skipping remedial LLM call %s for %s (%s): %s",
+                remedial_kind,
+                part_type,
+                identifier,
+                existing_reason,
+            )
+            return False
+
+        max_calls = self._resolve_positive_int(
+            getattr(
+                self,
+                "_RESCUE_MAX_REMEDIAL_LLM_CALLS_PER_TASK",
+                self._RESCUE_MAX_REMEDIAL_LLM_CALLS_PER_TASK,
+            ),
+            self._RESCUE_MAX_REMEDIAL_LLM_CALLS_PER_TASK,
+        )
+        if self._remedial_llm_call_count >= max_calls:
+            self._set_remedial_budget_exhausted_reason(
+                "task_remedial_llm_budget_exhausted",
+                part_type=part_type,
+                identifier=identifier,
+            )
+            logger.warning(
+                "Task remedial LLM budget exhausted before %s for %s (%s): %s/%s",
+                remedial_kind,
+                part_type,
+                identifier,
+                self._remedial_llm_call_count,
+                max_calls,
+            )
+            return False
+
+        self._remedial_llm_call_count += 1
+        return True
+
+    def _record_hard_freeze_protocol_violation(
+        self,
+        *,
+        part_type: str,
+        identifier: str,
+    ) -> bool:
+        self._hard_freeze_protocol_violation_count += 1
+        max_violations = self._resolve_positive_int(
+            getattr(
+                self,
+                "_RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK",
+                self._RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK,
+            ),
+            self._RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK,
+        )
+        exhausted = self._hard_freeze_protocol_violation_count >= max_violations
+        if exhausted:
+            self._set_remedial_budget_exhausted_reason(
+                "hard_freeze_protocol_violation_budget_exhausted",
+                part_type=part_type,
+                identifier=identifier,
+            )
+            logger.warning(
+                "Hard-freeze protocol violation budget exhausted for %s (%s): %s/%s",
+                part_type,
+                identifier,
+                self._hard_freeze_protocol_violation_count,
+                max_violations,
+            )
+        return exhausted
+
     def _reserve_nested_rescue_attempt(self, part_type: str, fail_part: str) -> bool:
         identifier = str(fail_part or "")
         if ":" not in identifier:
@@ -425,8 +533,28 @@ class TranslatorAgent(BaseToolAgent):
             ),
             self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
         )
+        task_budget = self._resolve_positive_int(
+            getattr(
+                self,
+                "_RESCUE_MAX_NESTED_LLM_CALLS_PER_TASK",
+                self._RESCUE_MAX_NESTED_LLM_CALLS_PER_TASK,
+            ),
+            self._RESCUE_MAX_NESTED_LLM_CALLS_PER_TASK,
+        )
         budget_key = self._part_retry_key(part_type, normalized)
         current = int(self._nested_rescue_attempt_counts.get(budget_key, 0) or 0)
+        next_total = self._nested_rescue_attempts_total + 1
+        if next_total > task_budget:
+            self._mark_api_fallback(part_type, identifier, "rescue_task_budget_exhausted")
+            logger.warning(
+                "Nested rescue task budget exhausted for %s (%s): %s/%s",
+                budget_key,
+                identifier,
+                self._nested_rescue_attempts_total,
+                task_budget,
+            )
+            return False
+        self._nested_rescue_attempts_total = next_total
         if current >= budget:
             self._mark_api_fallback(part_type, identifier, "rescue_budget_exhausted")
             logger.warning(
@@ -861,6 +989,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=placeholder,
                 type="env",
                 session=session,
+                **(
+                    {"remedial_kind": "paragraph_rescue"}
+                    if self._supports_request_kwarg("_request_llm_for_trans_with_terms", "remedial_kind")
+                    else {}
+                ),
             )
         else:
             recovered = await self._request_llm_for_trans(
@@ -869,6 +1002,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=placeholder,
                 type="env",
                 session=session,
+                **(
+                    {"remedial_kind": "paragraph_rescue"}
+                    if self._supports_request_kwarg("_request_llm_for_trans", "remedial_kind")
+                    else {}
+                ),
             )
 
         if not isinstance(recovered, str):
@@ -1066,6 +1204,16 @@ class TranslatorAgent(BaseToolAgent):
     def _has_instance_override(self, attribute_name: str) -> bool:
         return attribute_name in getattr(self, "__dict__", {})
 
+    def _supports_request_kwarg(self, attribute_name: str, kwarg_name: str) -> bool:
+        try:
+            target = getattr(self, attribute_name)
+        except AttributeError:
+            return False
+        try:
+            return kwarg_name in inspect.signature(target).parameters
+        except (TypeError, ValueError):
+            return False
+
     async def _request_masked_plain_text_rescue(
         self,
         *,
@@ -1076,6 +1224,14 @@ class TranslatorAgent(BaseToolAgent):
         session: aiohttp.ClientSession,
         include_glossary: bool = False,
     ) -> str:
+        if not self._reserve_remedial_llm_call(
+            "masked_rescue",
+            part_type=part_type,
+            identifier=str(fail_part),
+        ):
+            self._register_llm_part_failure(part_type, str(fail_part))
+            return masked_text
+
         expected_tokens = self._extract_rescue_token_sequence(masked_text)
         system_content = system_prompt
         if include_glossary:
@@ -1448,6 +1604,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=fail_part,
                 type=part_type,
                 session=session,
+                **(
+                    {"remedial_kind": "nested_rescue"}
+                    if self._supports_request_kwarg("_request_llm_for_trans_with_terms", "remedial_kind")
+                    else {}
+                ),
             )
         else:
             rescued_piece = await self._request_llm_for_trans(
@@ -1456,6 +1617,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=fail_part,
                 type=part_type,
                 session=session,
+                **(
+                    {"remedial_kind": "nested_rescue"}
+                    if self._supports_request_kwarg("_request_llm_for_trans", "remedial_kind")
+                    else {}
+                ),
             )
 
         api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
@@ -1501,6 +1667,11 @@ class TranslatorAgent(BaseToolAgent):
                     fail_part=retry_fail_part,
                     type=part_type,
                     session=session,
+                    **(
+                        {"remedial_kind": "force_retry"}
+                        if self._supports_request_kwarg("_request_llm_for_trans_with_terms", "remedial_kind")
+                        else {}
+                    ),
                 )
             else:
                 rescued_piece = await self._request_llm_for_trans(
@@ -1509,6 +1680,11 @@ class TranslatorAgent(BaseToolAgent):
                     fail_part=retry_fail_part,
                     type=part_type,
                     session=session,
+                    **(
+                        {"remedial_kind": "force_retry"}
+                        if self._supports_request_kwarg("_request_llm_for_trans", "remedial_kind")
+                        else {}
+                    ),
                 )
 
         if not isinstance(rescued_piece, str) or not rescued_piece.strip():
@@ -1571,6 +1747,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=fail_part,
                 type=part_type,
                 session=session,
+                **(
+                    {"remedial_kind": "masked_rescue"}
+                    if self._supports_request_kwarg("_request_llm_for_trans", "remedial_kind")
+                    else {}
+                ),
             )
         else:
             system_prompt = self.prompts[prompt_key] + prompt_suffix
@@ -1819,6 +2000,23 @@ class TranslatorAgent(BaseToolAgent):
             return restore_inline_math(env_restored, math_map)
         except Exception:
             return env_restored
+
+    def _restore_llm_output_text_with_budget(
+        self,
+        raw_text: str,
+        context: Dict[str, Any],
+        *,
+        part_type: str,
+        identifier: str,
+    ) -> str:
+        try:
+            return self._restore_llm_output_text(raw_text, context)
+        except HardFreezeProtocolViolation:
+            self._record_hard_freeze_protocol_violation(
+                part_type=part_type,
+                identifier=str(identifier),
+            )
+            raise
 
     def _register_llm_part_failure(self, part_type: str, identifier: str) -> None:
         normalized = self._normalize_llm_failure_identifier(part_type, identifier)
@@ -2110,6 +2308,7 @@ class TranslatorAgent(BaseToolAgent):
             self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
             self.STATUS_SOURCE_PASS_THROUGH,
             self.STATUS_IMMUTABLE_PASSTHROUGH,
+            self.STATUS_FALLBACK_SOURCE_API_FAILURE,
         }
 
     def _update_caption_metadata(
@@ -2207,7 +2406,12 @@ class TranslatorAgent(BaseToolAgent):
                             on_retry_message=lambda message: self.update_progress(-1, message),
                         )
                         raw_result = result["choices"][0]["message"]["content"].strip()
-                        restored = self._restore_llm_output_text(raw_result, llm_context)
+                        restored = self._restore_llm_output_text_with_budget(
+                            raw_result,
+                            llm_context,
+                            part_type=part_type,
+                            identifier=str(fail_part),
+                        )
                         self._log_protection_actions(
                             llm_context.get("mask_mapping", {}),
                             fail_part,
@@ -2242,7 +2446,12 @@ class TranslatorAgent(BaseToolAgent):
                             response.raise_for_status()
                             result = await response.json()
                             raw_result = result["choices"][0]["message"]["content"].strip()
-                            restored = self._restore_llm_output_text(raw_result, llm_context)
+                            restored = self._restore_llm_output_text_with_budget(
+                                raw_result,
+                                llm_context,
+                                part_type=part_type,
+                                identifier=str(fail_part),
+                            )
                             self._log_protection_actions(
                                 llm_context.get("mask_mapping", {}),
                                 fail_part,
@@ -3743,6 +3952,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=placeholder,
                 type="env",
                 session=session,
+                **(
+                    {"remedial_kind": "env_recovery"}
+                    if error_message and self._supports_request_kwarg("_request_llm_for_trans", "remedial_kind")
+                    else {}
+                ),
             )
 
         if self.trans_mode == 2:
@@ -3753,6 +3967,11 @@ class TranslatorAgent(BaseToolAgent):
                     fail_part=placeholder,
                     type="env",
                     session=session,
+                    **(
+                        {"remedial_kind": "env_recovery"}
+                        if error_message and self._supports_request_kwarg("_request_llm_for_trans_with_terms", "remedial_kind")
+                        else {}
+                    ),
                 )
             return await self._request_llm_for_trans(
                 self.prompts["env_system_prompt"] + prompt_suffix,
@@ -3760,6 +3979,11 @@ class TranslatorAgent(BaseToolAgent):
                 fail_part=placeholder,
                 type="env",
                 session=session,
+                **(
+                    {"remedial_kind": "env_recovery"}
+                    if error_message and self._supports_request_kwarg("_request_llm_for_trans", "remedial_kind")
+                    else {}
+                ),
             )
 
         return text
@@ -4307,11 +4531,19 @@ class TranslatorAgent(BaseToolAgent):
                                      fail_part: str,
                                      type: str,
                                      session: aiohttp.ClientSession,
-                                     previous_context: Optional[str] = None) -> str:
+                                     previous_context: Optional[str] = None,
+                                     remedial_kind: Optional[str] = None) -> str:
         # Inject Reference Context Template if available
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
             template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
             system_prompt += template.format(context=previous_context)
+        if not self._reserve_remedial_llm_call(
+            remedial_kind,
+            part_type=type,
+            identifier=str(fail_part),
+        ):
+            self._register_llm_part_failure(type, str(fail_part))
+            return text
         try:
             return await self._call_llm_with_freeze(
                 system_prompt=system_prompt,
@@ -4340,11 +4572,19 @@ class TranslatorAgent(BaseToolAgent):
                                           fail_part: str,
                                           type: str,
                                           session: aiohttp.ClientSession,
-                                          previous_context: Optional[str] = None) -> str:
+                                          previous_context: Optional[str] = None,
+                                          remedial_kind: Optional[str] = None) -> str:
         # Inject Reference Context Template if available
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
             template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
             system_prompt += template.format(context=previous_context)
+        if not self._reserve_remedial_llm_call(
+            remedial_kind,
+            part_type=type,
+            identifier=str(fail_part),
+        ):
+            self._register_llm_part_failure(type, str(fail_part))
+            return text
         try:
             return await self._call_llm_with_freeze(
                 system_prompt=system_prompt,
@@ -4374,7 +4614,8 @@ class TranslatorAgent(BaseToolAgent):
                                                    error_message: str,
                                                    fail_part: str,
                                                    type: str,
-                                                   session: aiohttp.ClientSession) -> str:
+                                                   session: aiohttp.ClientSession,
+                                                   remedial_kind: str = "validate_retranslation") -> str:
         safe_error_message = self._sanitize_retrans_error_message(error_message or "")
         raw_user_prompt = (
             f"[Original]:\n{part.get('content', '')}\n"
@@ -4382,6 +4623,13 @@ class TranslatorAgent(BaseToolAgent):
             f"[Error]:\n{safe_error_message}"
         )
         fallback_text = part.get("trans_content") or part.get("content", "")
+        if not self._reserve_remedial_llm_call(
+            remedial_kind,
+            part_type=type,
+            identifier=str(fail_part),
+        ):
+            self._register_llm_part_failure(type, str(fail_part))
+            return fallback_text
         try:
             return await self._call_llm_with_freeze(
                 system_prompt=system_prompt,

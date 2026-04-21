@@ -123,6 +123,58 @@ async def test_task_queue_does_not_retry_explicit_cancel_during_immediate_cleanu
     set_runtime_shutting_down(False)
 
 
+def test_cancel_task_persists_terminal_reason_and_requests_runtime_stop(monkeypatch):
+    captured_updates = []
+    cancelled_task_ids = []
+
+    task_id = "cancel-terminal-task"
+    task_manager_module.task_manager._tasks[task_id] = {
+        "task_id": task_id,
+        "status": "processing",
+        "progress": 42,
+        "message": "running",
+        "stage": "translating",
+        "user_id": "user-1",
+        "compile_pid": None,
+    }
+    task_manager_module.task_manager._cancelled_tasks.discard(task_id)
+
+    monkeypatch.setattr(
+        task_manager_module.task_manager,
+        "update_task",
+        lambda candidate_task_id, **kwargs: captured_updates.append((candidate_task_id, dict(kwargs))) or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task_manager_module,
+        "task_queue",
+        type(
+            "_FakeQueue",
+            (),
+            {"cancel_execution": staticmethod(lambda candidate_task_id: cancelled_task_ids.append(candidate_task_id) or True)},
+        )(),
+        raising=False,
+    )
+
+    assert (
+        task_manager_module.task_manager.cancel_task(
+            task_id,
+            terminal_reason="task_execution_timeout",
+            timeout_reason="execution_timeout",
+        )
+        is True
+    )
+
+    assert cancelled_task_ids == [task_id]
+    assert any(
+        candidate_task_id == task_id
+        and payload.get("status") == "failed"
+        and payload.get("failure_reason_code") == "task_execution_timeout"
+        and payload.get("detail_code") == "task_execution_timeout"
+        for candidate_task_id, payload in captured_updates
+    )
+
+
 @pytest.mark.asyncio
 async def test_task_queue_worker_continues_after_unexpected_worker_cancel(monkeypatch):
     monkeypatch.setattr(

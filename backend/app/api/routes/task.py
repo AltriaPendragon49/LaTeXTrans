@@ -27,6 +27,7 @@ class TaskStatusResponse(BaseModel):
     progress: int
     stage: str
     message: str
+    terminal_reason: Optional[str] = None
     detail_code: Optional[str] = None
     detail_params: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
@@ -43,6 +44,15 @@ class TaskStatusResponse(BaseModel):
     persist_failed: bool = False
 
 
+TERMINAL_TASK_STATUSES = {
+    "completed",
+    "completed_with_warnings",
+    "failed",
+    "failed_compilation",
+    "structure_invalid",
+}
+
+
 def get_translation_task_repository() -> TranslationTaskRepository:
     return TranslationTaskRepository()
 
@@ -57,6 +67,17 @@ def _serialize_optional_timestamp(value: Any) -> Optional[str]:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value)
+
+
+def _resolve_terminal_reason(task: Dict[str, Any]) -> Optional[str]:
+    failure_reason_code = str(task.get("failure_reason_code") or "").strip()
+    if failure_reason_code:
+        return failure_reason_code
+    status = str(task.get("status") or "").strip()
+    if status in TERMINAL_TASK_STATUSES:
+        detail_code = str(task.get("detail_code") or "").strip()
+        return detail_code or None
+    return None
 
 
 def _is_guest_task(task: Dict[str, Any]) -> bool:
@@ -132,6 +153,7 @@ async def get_task_status(
         progress=task["progress"],
         stage=task["stage"],
         message=task["message"],
+        terminal_reason=_resolve_terminal_reason(task),
         detail_code=task.get("detail_code"),
         detail_params=task.get("detail_params"),
         error=task.get("error"),
@@ -266,6 +288,7 @@ async def stream_task_status(
                         "progress": current_progress,
                         "stage": current_stage,
                         "message": current_message,
+                        "terminal_reason": _resolve_terminal_reason(task),
                         "detail_code": task.get("detail_code"),
                         "detail_params": task.get("detail_params"),
                         "error": task.get("error"),
@@ -293,6 +316,7 @@ async def stream_task_status(
                         "progress": current_progress,
                         "stage": current_stage,
                         "message": current_message,
+                        "terminal_reason": _resolve_terminal_reason(task),
                         "detail_code": task.get("detail_code"),
                         "detail_params": task.get("detail_params"),
                         "failure_reason_code": task.get("failure_reason_code"),
