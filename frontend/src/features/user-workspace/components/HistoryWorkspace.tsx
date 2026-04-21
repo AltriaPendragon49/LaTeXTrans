@@ -27,7 +27,6 @@ import { PageIntro } from '@/ui/page-intro/PageIntro'
 import { StatePanel } from '@/ui/state-panel/StatePanel'
 import { NoticeBanner } from '@/ui/notice-banner/NoticeBanner'
 import { InfoTile } from '@/ui/info-tile/InfoTile'
-import { PanelShell } from '@/ui/panel-shell/PanelShell'
 import { StatusBadge } from '@/ui/status-badge/StatusBadge'
 import { LoadingState } from '@/ui/loading-state/LoadingState'
 import { Pill } from '@/ui/pill/Pill'
@@ -328,9 +327,10 @@ export function HistoryWorkspace() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <PageIntro
-        title={t('history.history')}
+    <div className="mx-auto w-full max-w-[1400px] px-6 py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <PageIntro
+          title={t('history.history')}
         description={t('history.total_translation_tasks', { count: total })}
         actions={selectionMode ? (
           <>
@@ -393,8 +393,8 @@ export function HistoryWorkspace() {
         />
       ) : null}
 
-      <DataTable className="shadow-sm">
-        <DataTableHeader className="hidden md:block">
+      <DataTable className="!bg-transparent !border-none !shadow-none p-0">
+        <DataTableHeader className="hidden md:block !bg-transparent !border-b !border-[color:var(--px-shell-line)]">
           <DataTableHeaderRow className="grid-cols-12">
             <DataTableHeaderCell className="col-span-1" />
             <DataTableHeaderCell className="col-span-4">{t('history.table.document')}</DataTableHeaderCell>
@@ -420,197 +420,198 @@ export function HistoryWorkspace() {
               <Collapsible
                 key={task.task_id}
                 open={expandedTasks.has(task.task_id)}
-                onOpenChange={() => {}}
-                  className="group transition-colors hover:bg-[color:var(--px-shell-panel-strong)]/70"
+                onOpenChange={() => { }}
+                className="group transition-colors hover:bg-[color:var(--px-shell-panel-strong)]/70"
               >
-                <DataTableRow className="flex flex-col items-start gap-4 p-4 md:grid md:grid-cols-12 md:items-center sm:px-6 sm:py-5">
-                    <DataTableCell className="pt-1 md:col-span-1 md:pt-0">
-                      {selectionMode ? (
-                        <Checkbox
-                          checked={selectedTasks.has(task.task_id)}
-                          onCheckedChange={() => toggleSelection(task.task_id)}
-                          aria-label={t('history.select_task', { task: task.arxiv_id || task.task_id.slice(0, 8) })}
-                        />
-                      ) : (
-                        <FileText className="h-5 w-5 text-[color:var(--px-shell-accent)] opacity-80" />
-                      )}
-                    </DataTableCell>
+                <DataTableRow className="flex flex-col items-start gap-4 p-4 md:grid md:grid-cols-12 md:items-center sm:px-6 sm:py-5 border-b border-[color:var(--px-shell-line)]/50 transition-colors hover:bg-[color:var(--px-shell-panel-strong)] group-data-[state=open]:bg-[color:var(--px-shell-panel-strong)] rounded-2xl md:rounded-none">
+                  <DataTableCell className="pt-1 md:col-span-1 md:pt-0">
+                    {selectionMode ? (
+                      <Checkbox
+                        checked={selectedTasks.has(task.task_id)}
+                        onCheckedChange={() => toggleSelection(task.task_id)}
+                        aria-label={t('history.select_task', { task: task.arxiv_id || task.task_id.slice(0, 8) })}
+                      />
+                    ) : (
+                      <FileText className="h-5 w-5 text-[color:var(--px-shell-accent)] opacity-80" />
+                    )}
+                  </DataTableCell>
 
-                    <DataTableCell
-                      className="md:col-span-4 flex min-w-0 self-stretch items-center cursor-pointer"
-                      onClick={() => !selectionMode && handleTaskClick(task)}
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-bold text-[color:var(--px-shell-ink)]">
-                          {task.arxiv_id || task.task_id.slice(0, 8)}
-                        </div>
-                        <div className="truncate text-[10px] text-[color:var(--px-shell-muted)]">
-                          {task.source_type === 'upload' ? t('history.source.localProject') : t('history.source.arxiv')}
-                        </div>
+                  <DataTableCell
+                    className="md:col-span-4 flex min-w-0 self-stretch items-center cursor-pointer"
+                    onClick={() => !selectionMode && handleTaskClick(task)}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-bold text-[color:var(--px-shell-ink)]">
+                        {task.arxiv_id || task.task_id.slice(0, 8)}
                       </div>
-                    </DataTableCell>
+                      <div className="truncate text-[10px] text-[color:var(--px-shell-muted)]">
+                        {task.source_type === 'upload' ? t('history.source.localProject') : t('history.source.arxiv')}
+                      </div>
+                    </div>
+                  </DataTableCell>
 
-                    <DataTableCell className="md:col-span-3 flex flex-col text-sm text-[color:var(--px-shell-muted)] md:block">
-                      <span className="md:block">{formatDate(task.created_at)}</span>
-                      <span className="text-[11px] text-[color:var(--px-shell-muted)] md:mt-0.5">
-                        {getTranslationModeLabel(t, task.translation_mode)}
-                      </span>
-                    </DataTableCell>
+                  <DataTableCell className="md:col-span-3 flex flex-col text-sm text-[color:var(--px-shell-muted)] md:block">
+                    <span className="md:block">{formatDate(task.created_at)}</span>
+                    <span className="text-[11px] text-[color:var(--px-shell-muted)] md:mt-0.5">
+                      {getTranslationModeLabel(t, task.translation_mode)}
+                    </span>
+                  </DataTableCell>
 
-                    <DataTableCell className="md:col-span-2">
-                      <StatusBadge tone={statusTones[task.status] || 'danger'}>
-                        {getTaskStatusLabel(t, task.status)}
-                      </StatusBadge>
-                    </DataTableCell>
+                  <DataTableCell className="md:col-span-2">
+                    <StatusBadge tone={statusTones[task.status] || 'danger'}>
+                      {getTaskStatusLabel(t, task.status)}
+                    </StatusBadge>
+                  </DataTableCell>
 
-                    <DataTableCell className="md:col-span-2 flex w-full items-center justify-end gap-1 md:w-auto">
-                      {!selectionMode ? (
-                        <>
+                  <DataTableCell className="md:col-span-2 flex w-full items-center justify-end gap-1 md:w-auto">
+                    {!selectionMode ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 rounded-lg p-0 text-[color:var(--px-shell-muted)] transition-all hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-accent)]"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleTaskClick(task)
+                          }}
+                          title={t('common.actions.view')}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 rounded-lg p-0 text-[color:var(--px-shell-muted)] transition-all hover:bg-[color:var(--px-shell-danger-soft)] hover:text-[color:var(--px-shell-danger)]"
+                          onClick={(event) => handleDeleteClick(task.task_id, event)}
+                          title={t('history.delete_task')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        <CollapsibleTrigger asChild>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 rounded-lg p-0 text-[color:var(--px-shell-muted)] transition-all hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-accent)]"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleTaskClick(task)
-                            }}
-                            title={t('common.actions.view')}
+                            className="h-8 w-8 rounded-lg p-0 text-[color:var(--px-shell-muted)] transition-all hover:bg-[color:var(--px-shell-panel-strong)]"
+                            onClick={(event) => toggleExpand(task.task_id, event)}
+                            title={t('history.expand_configuration_details')}
                           >
-                            <Eye className="h-4 w-4" />
+                            <Settings2 className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 rounded-lg p-0 text-[color:var(--px-shell-muted)] transition-all hover:bg-[color:var(--px-shell-danger-soft)] hover:text-[color:var(--px-shell-danger)]"
-                            onClick={(event) => handleDeleteClick(task.task_id, event)}
-                            title={t('history.delete_task')}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 rounded-lg p-0 text-[color:var(--px-shell-muted)] transition-all hover:bg-[color:var(--px-shell-panel-strong)]"
-                              onClick={(event) => toggleExpand(task.task_id, event)}
-                              title={t('history.expand_configuration_details')}
-                            >
-                              <Settings2 className="h-4 w-4" />
-                            </Button>
-                          </CollapsibleTrigger>
-                        </>
-                      ) : null}
-                    </DataTableCell>
+                        </CollapsibleTrigger>
+                      </>
+                    ) : null}
+                  </DataTableCell>
                 </DataTableRow>
 
-                  <CollapsibleContent className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200 md:mt-2">
-                    <div className="space-y-3 border-t border-[color:var(--px-shell-line)] pt-4 md:ml-12 lg:ml-[11.1%]">
-                      <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)]">
-                        <Settings2 className="h-3 w-3" />
-                        {t('history.translation_configuration')}
-                      </div>
+                <CollapsibleContent className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200 md:mt-2">
+                  <div className="space-y-3 border-t border-[color:var(--px-shell-line)] pt-4 md:ml-12 lg:ml-[11.1%]">
+                    <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)]">
+                      <Settings2 className="h-3 w-3" />
+                      {t('history.translation_configuration')}
+                    </div>
 
-                      <div className="grid grid-cols-1 gap-3 pb-2 text-sm md:grid-cols-2">
-                        <InfoTile
-                          icon={<Languages className="h-4 w-4" />}
-                          title={t('history.language')}
-                          value={`${task.source_language} → ${task.target_language}`}
-                        />
+                    <div className="grid grid-cols-1 gap-3 pb-2 text-sm md:grid-cols-2">
+                      <InfoTile
+                        icon={<Languages className="h-4 w-4" />}
+                        title={t('history.language')}
+                        value={`${task.source_language} → ${task.target_language}`}
+                      />
 
-                        <InfoTile
-                          icon={<Wrench className="h-4 w-4" />}
-                          title={t('history.compile_strategy')}
-                          value={getCompileStrategyLabel(t, task.compile_strategy)}
-                          valueClassName="capitalize"
-                        />
+                      <InfoTile
+                        icon={<Wrench className="h-4 w-4" />}
+                        title={t('history.compile_strategy')}
+                        value={getCompileStrategyLabel(t, task.compile_strategy)}
+                        valueClassName="capitalize"
+                      />
 
-                        {task.translation_model ? (
+                      {task.translation_model ? (
+                        <div className="md:col-span-2 mt-2">
                           <InfoTile
-                            className="md:col-span-2"
                             icon={<Sparkles className="h-4 w-4" />}
                             title={t('history.translation_model')}
                             value={task.translation_model}
                             valueClassName="font-mono text-xs"
                           />
-                        ) : null}
-
-                        <div className="md:col-span-2 mt-1 flex flex-wrap gap-2">
-                          <Pill className="px-3 py-1.5 text-[11px] font-bold normal-case tracking-normal">
-                            {task.generate_glossary ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
-                            ) : (
-                              <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />
-                            )}
-                            <span className="text-[11px] font-bold text-[color:var(--px-shell-ink)]">{t('common.generate_glossary')}</span>
-                          </Pill>
-
-                          <Pill className="px-3 py-1.5 text-[11px] font-bold normal-case tracking-normal">
-                            {task.use_author_api ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
-                            ) : (
-                              <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />
-                            )}
-                            <span className="text-[11px] font-bold text-[color:var(--px-shell-ink)]">{t('history.use_author_api')}</span>
-                          </Pill>
                         </div>
+                      ) : null}
 
-                        {task.formatting && Object.keys(task.formatting).length > 0 ? (
-                          <PanelShell className="md:col-span-2 mt-3">
-                            <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)]">
-                              {t('history.formatting_settings')}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {task.formatting.line_spacing != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.line_spacing', { value: String(task.formatting.line_spacing) })}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.font_size != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.font_size_pt', { value: String(task.formatting.font_size) })}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.column_mode != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {getFormattingValueLabel(t, 'column_mode', String(task.formatting.column_mode))}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.margin != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.margins', { value: getFormattingValueLabel(t, 'margin', String(task.formatting.margin)) })}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.cjk_font != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.font', { value: getFormattingValueLabel(t, 'cjk_font', String(task.formatting.cjk_font)) })}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.paragraph_indent === true ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('formatting.firstLineIndent')}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.localize_captions === true ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.localize_figures_tables')}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.bib_style != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.bibliography', { value: String(task.formatting.bib_style) })}
-                                </Pill>
-                              ) : null}
-                              {task.formatting.cite_style != null ? (
-                                <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                  {t('history.citation', { value: getFormattingValueLabel(t, 'cite_style', String(task.formatting.cite_style)) })}
-                                </Pill>
-                              ) : null}
-                            </div>
-                          </PanelShell>
-                        ) : null}
+                      <div className="md:col-span-2 mt-1 flex flex-wrap gap-2">
+                        <Pill className="px-3 py-1.5 text-[11px] font-bold normal-case tracking-normal">
+                          {task.generate_glossary ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />
+                          )}
+                          <span className="text-[11px] font-bold text-[color:var(--px-shell-ink)]">{t('common.generate_glossary')}</span>
+                        </Pill>
+
+                        <Pill className="px-3 py-1.5 text-[11px] font-bold normal-case tracking-normal">
+                          {task.use_author_api ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />
+                          )}
+                          <span className="text-[11px] font-bold text-[color:var(--px-shell-ink)]">{t('history.use_author_api')}</span>
+                        </Pill>
                       </div>
+
+                      {task.formatting && Object.keys(task.formatting).length > 0 ? (
+                        <div className="md:col-span-2 mt-3 rounded-2xl bg-[color:var(--px-shell-panel-strong)]/30 px-5 py-4">
+                          <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)]">
+                            {t('history.formatting_settings')}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {task.formatting.line_spacing != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.line_spacing', { value: String(task.formatting.line_spacing) })}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.font_size != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.font_size_pt', { value: String(task.formatting.font_size) })}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.column_mode != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {getFormattingValueLabel(t, 'column_mode', String(task.formatting.column_mode))}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.margin != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.margins', { value: getFormattingValueLabel(t, 'margin', String(task.formatting.margin)) })}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.cjk_font != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.font', { value: getFormattingValueLabel(t, 'cjk_font', String(task.formatting.cjk_font)) })}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.paragraph_indent === true ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('formatting.firstLineIndent')}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.localize_captions === true ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.localize_figures_tables')}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.bib_style != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.bibliography', { value: String(task.formatting.bib_style) })}
+                              </Pill>
+                            ) : null}
+                            {task.formatting.cite_style != null ? (
+                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
+                                {t('history.citation', { value: getFormattingValueLabel(t, 'cite_style', String(task.formatting.cite_style)) })}
+                              </Pill>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                  </CollapsibleContent>
+                  </div>
+                </CollapsibleContent>
               </Collapsible>
             ))
           )}
@@ -649,5 +650,6 @@ export function HistoryWorkspace() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  </div>
   )
 }

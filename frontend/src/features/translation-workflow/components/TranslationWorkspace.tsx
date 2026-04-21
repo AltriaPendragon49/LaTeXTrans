@@ -6,7 +6,7 @@ import { ChevronDown, Download, FileText, Info, Loader2, RefreshCw, X, Zap } fro
 
 import { Button } from "@/ui/button/Button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/primitives/collapsible"
-import { Card, CardContent } from "@/ui/card/Card"
+
 import { InfoTile } from "@/ui/info-tile/InfoTile"
 import { Input } from "@/ui/input/Input"
 import { NoticeBanner } from "@/ui/notice-banner/NoticeBanner"
@@ -102,8 +102,9 @@ export function TranslationWorkspace() {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+    <div className="mx-auto w-full max-w-[1400px] px-6 py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <div className="flex justify-start">
           <EditorialTabsList className="gap-1">
             <EditorialTabsTrigger value="arxiv">
@@ -118,8 +119,8 @@ export function TranslationWorkspace() {
           </EditorialTabsList>
         </div>
 
-        <Card className="overflow-visible rounded-[28px] shadow-none">
-          <CardContent className="p-6 sm:p-8">
+        <div className="overflow-visible">
+          <div className="py-6 sm:py-8">
             <TabsContent value="arxiv" className="mt-0 space-y-6">
               <div className="max-w-2xl">
                 <div className="mb-2 flex items-center gap-3">
@@ -226,12 +227,12 @@ export function TranslationWorkspace() {
                 className="mt-6 animate-in fade-in slide-in-from-top-2"
               />
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </EditorialTabs>
 
-      <Card className="overflow-hidden rounded-[28px] shadow-none">
-        <CardContent className="p-6 sm:p-8">
+      <div className="overflow-hidden">
+        <div className="py-6 sm:py-8 mt-2 border-t border-[color:var(--px-shell-line)]/50">
             <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
               <div className="flex flex-1 items-center gap-6 opacity-70 cursor-not-allowed">
                 <div className="flex-1">
@@ -277,7 +278,7 @@ export function TranslationWorkspace() {
               </Button>
             )}
           </div>
-        </CardContent>
+        </div>
 
         <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen} className="group border-t border-[color:var(--px-shell-line)]">
           <CollapsibleTrigger asChild>
@@ -302,9 +303,10 @@ export function TranslationWorkspace() {
             <AdvancedConfig />
           </CollapsibleContent>
         </Collapsible>
-      </Card>
+      </div>
 
-      <div className="pb-12" />
+        <div className="pb-12" />
+      </div>
     </div>
   )
 }

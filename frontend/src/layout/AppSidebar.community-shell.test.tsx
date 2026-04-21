@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
@@ -104,6 +104,32 @@ describe("AppSidebar community shell", () => {
     expect(expandButton).toHaveTextContent("PX")
     await user.click(expandButton)
     expect(shell).toHaveAttribute("data-collapsed", "false")
+  })
+
+  it("shows the collapsed expand cue when hovering anywhere inside the collapsed sidebar", async () => {
+    const user = userEvent.setup()
+    await i18n.changeLanguage("en")
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <AppSidebar />
+      </MemoryRouter>,
+    )
+
+    const shell = container.querySelector("aside")
+    const expandButton = screen.getByRole("button", { name: /expand sidebar/i })
+    const collapsedMark = within(expandButton).getByText("PX")
+    const expandCue = expandButton.querySelector('[data-sidebar-expand-cue="true"]')
+
+    expect(shell).not.toBeNull()
+    expect(expandCue).not.toBeNull()
+    expect(collapsedMark).not.toHaveClass("opacity-0")
+    expect(expandCue).toHaveClass("opacity-0")
+
+    await user.hover(shell!)
+
+    expect(collapsedMark).toHaveClass("opacity-0")
+    expect(expandCue).toHaveClass("opacity-100")
   })
 
   it("opens the account menu from the bottom-left avatar and exposes account settings actions", async () => {

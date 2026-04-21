@@ -1,0 +1,3 @@
+1. Rebuilt `TranslationWorkspace`: Removed `Card` wrappers, changed `EditorialTabs` behavior to flow as an unboxed header tab, and converted the "Advanced Config" accordion to blend seamlessly with the workspace background.
+2. Rebuilt `HistoryWorkspace`: Stripped shadows and borders from `DataTable`, changed table rows to act as edge-to-edge lists with simple hover effects, and eliminated nested panels in the row expansion area.
+3. Updated Layout bindings (if required): Ensure no unnecessary outer wrappers add gray bands or mismatched backgrounds between `AppSidebar` out to the workspace root.

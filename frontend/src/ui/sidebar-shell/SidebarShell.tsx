@@ -9,6 +9,7 @@ export function SidebarShell({
   utility,
   collapsed,
   onToggleCollapse,
+  onHoverChange,
   collapseLabel,
 }: {
   brand: ReactNode
@@ -16,11 +17,14 @@ export function SidebarShell({
   utility: ReactNode
   collapsed: boolean
   onToggleCollapse: () => void
+  onHoverChange?: (hovered: boolean) => void
   collapseLabel: string
 }) {
   return (
     <aside
       data-collapsed={collapsed ? "true" : "false"}
+      onMouseEnter={() => onHoverChange?.(true)}
+      onMouseLeave={() => onHoverChange?.(false)}
       className={`sticky top-0 flex h-screen shrink-0 flex-col justify-between border-r border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] backdrop-blur-xl transition-[width,padding] duration-300 ${
         collapsed ? "w-[92px] px-3 py-5" : "w-[272px] px-5 py-6"
       }`}

@@ -65,6 +65,23 @@ const failureKeyMap: Record<string, string> = {
   structure_latexwalker_unexpected_closing_env: "task.failure.structureUnexpectedClosingEnv",
 }
 
+const valueDetailCodes = new Set([
+  "translation_running",
+  "translation_retry_failed_chunks",
+  "translation_restore_structure",
+  "translation_restore_environment",
+  "translation_apply_fallback",
+])
+
+const percentDetailCodes = new Set([
+  "download_source_progress",
+  "download_pdf_progress",
+])
+
+const warningDetailCodes = new Set([
+  "formatting_warning",
+])
+
 function normalizeStatus(status?: string | null) {
   return status?.toLowerCase() ?? ""
 }
@@ -117,6 +134,29 @@ function getDetailValues(detailCode?: string | null, detailParams?: TaskDetailPa
   return params
 }
 
+function hasRequiredDetailValues(
+  detailCode?: string | null,
+  detailValues?: Record<string, string | number | boolean | null>,
+) {
+  if (!detailCode) {
+    return true
+  }
+
+  if (valueDetailCodes.has(detailCode)) {
+    return typeof detailValues?.value === "string" && detailValues.value.length > 0
+  }
+
+  if (percentDetailCodes.has(detailCode)) {
+    return detailValues?.percent != null
+  }
+
+  if (warningDetailCodes.has(detailCode)) {
+    return typeof detailValues?.warningText === "string" && detailValues.warningText.length > 0
+  }
+
+  return true
+}
+
 export function getTaskStatusLabel(
   translate: Translate,
   status?: string | null,
@@ -167,7 +207,12 @@ export function getTaskDetailLabel(
     return getTaskStageLabel(translate, stage)
   }
 
-  return translate(key, getDetailValues(detailCode, detailParams))
+  const detailValues = getDetailValues(detailCode, detailParams)
+  if (!hasRequiredDetailValues(detailCode, detailValues)) {
+    return getTaskStageLabel(translate, stage)
+  }
+
+  return translate(key, detailValues)
 }
 
 export function getTaskCopy(

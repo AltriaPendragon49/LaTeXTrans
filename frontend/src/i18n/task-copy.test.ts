@@ -29,4 +29,15 @@ describe("task copy mapping", () => {
 
     expect(copy.failureLabel).toBe("The generated LaTeX structure is invalid")
   })
+
+  it("falls back to the stage label when translation detail params are missing", () => {
+    const copy = getTaskCopy(i18n.t.bind(i18n), {
+      status: "processing",
+      stage: "translating",
+      detailCode: "translation_running",
+      detailParams: null,
+    })
+
+    expect(copy.detailLabel).toBe("Translating")
+  })
 })

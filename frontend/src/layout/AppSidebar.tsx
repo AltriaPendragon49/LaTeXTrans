@@ -31,12 +31,19 @@ export function AppSidebar() {
   const location = useLocation()
   const routeDefaultCollapsed = location.pathname.startsWith("/paper/")
   const [collapsed, setCollapsed] = useState(routeDefaultCollapsed)
+  const [sidebarHovered, setSidebarHovered] = useState(false)
   const brandName = t("brand.name")
   const brandSubtitle = t("brand.subtitle")
 
   useEffect(() => {
     setCollapsed(routeDefaultCollapsed)
   }, [routeDefaultCollapsed])
+
+  useEffect(() => {
+    if (!collapsed) {
+      setSidebarHovered(false)
+    }
+  }, [collapsed])
 
   return (
     <SidebarShell
@@ -45,7 +52,8 @@ export function AppSidebar() {
           brandName={brandName}
           subtitle={brandSubtitle}
           collapsed={collapsed}
-          collapsedActionLabel={t("sidebar.expand")}
+          showCollapsedActionHint={sidebarHovered}
+          collapsedActionLabel="Expand sidebar"
           onClick={() => {
             if (collapsed) {
               setCollapsed(false)
@@ -58,7 +66,8 @@ export function AppSidebar() {
       }
       collapsed={collapsed}
       onToggleCollapse={() => setCollapsed((current) => !current)}
-      collapseLabel={t("sidebar.collapse")}
+      onHoverChange={setSidebarHovered}
+      collapseLabel="Collapse sidebar"
       nav={
         <nav aria-label={t("community.nav.explore")} className="space-y-2">
           <SidebarNavItem
