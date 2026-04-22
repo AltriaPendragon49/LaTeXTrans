@@ -10,5 +10,7 @@ def test_mysql_arxiv_published_at_migration_exists() -> None:
 
 def test_mysql_arxiv_published_at_migration_adds_paper_column() -> None:
     sql = MIGRATION_PATH.read_text(encoding="utf-8").lower()
-    assert "alter table papers" in sql
-    assert "add column if not exists arxiv_published_at datetime null" in sql
+    assert "information_schema.columns" in sql
+    assert "table_name = 'papers'" in sql
+    assert "column_name = 'arxiv_published_at'" in sql
+    assert "alter table papers add column arxiv_published_at datetime null after official_published_at" in sql
