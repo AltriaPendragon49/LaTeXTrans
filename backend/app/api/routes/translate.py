@@ -726,6 +726,7 @@ async def run_translation(
             "use_compilation_diagnostics": True,
             "enable_compile_first_structural_fallback": settings.enable_compile_first_structural_fallback,
             "enable_post_compile_target_language_fallback": settings.enable_post_compile_target_language_fallback,
+            "enable_precompile_structure_guard": settings.enable_precompile_structure_guard,
             "structural_fallback_ratio_cap": settings.structural_fallback_ratio_cap,
             "structural_fallback_cap_mode": settings.structural_fallback_cap_mode,
             "model_context_tokens": settings.model_context_tokens or CLI_PARITY_MODEL_CONTEXT_TOKENS,

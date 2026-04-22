@@ -521,6 +521,11 @@ class TranslatorAgent(BaseToolAgent):
         if ":" not in identifier:
             return True
 
+        if re.search(r":(?:paragraph|item|row):\d+$", identifier):
+            return True
+        if identifier.endswith(":masked"):
+            return True
+
         normalized = self._normalize_llm_failure_identifier(part_type, identifier)
         if not normalized:
             return True
@@ -575,6 +580,38 @@ class TranslatorAgent(BaseToolAgent):
             return
         budget_key = self._part_retry_key(part_type, normalized)
         self._nested_rescue_attempt_counts.pop(budget_key, None)
+
+    def _is_nested_rescue_budget_exhausted(self, part_type: str, identifier: str) -> bool:
+        normalized = self._normalize_llm_failure_identifier(part_type, identifier)
+        if not normalized:
+            return False
+        budget = self._resolve_positive_int(
+            getattr(
+                self,
+                "_RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART",
+                self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
+            ),
+            self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
+        )
+        budget_key = self._part_retry_key(part_type, normalized)
+        current = int(self._nested_rescue_attempt_counts.get(budget_key, 0) or 0)
+        return current >= budget
+
+    def _remaining_nested_rescue_budget(self, part_type: str, identifier: str) -> int:
+        normalized = self._normalize_llm_failure_identifier(part_type, identifier)
+        if not normalized:
+            return 0
+        budget = self._resolve_positive_int(
+            getattr(
+                self,
+                "_RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART",
+                self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
+            ),
+            self._RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART,
+        )
+        budget_key = self._part_retry_key(part_type, normalized)
+        current = int(self._nested_rescue_attempt_counts.get(budget_key, 0) or 0)
+        return max(budget - current, 0)
 
     def _clear_llm_part_failure(self, part_type: str, identifier: str) -> None:
         normalized = self._normalize_llm_failure_identifier(part_type, identifier)
@@ -1062,6 +1099,11 @@ class TranslatorAgent(BaseToolAgent):
             prompt_suffix += f"\n{error_message}"
 
         pieces = re.split(r"(\n\s*\n+)", normalized)
+        rescueable_piece_count = sum(
+            1
+            for piece in pieces
+            if piece and not re.fullmatch(r"\n\s*\n+", piece) and piece.strip()
+        )
         rescued: List[str] = []
         translated_any = False
         failed_alpha_chars = 0
@@ -1080,6 +1122,14 @@ class TranslatorAgent(BaseToolAgent):
                 continue
 
             part_fail_key = f"{identifier}:paragraph:{idx}"
+            if self._is_nested_rescue_budget_exhausted(part_type, identifier):
+                failed_alpha_chars += self._count_ascii_alpha(piece)
+                rescued.append(piece)
+                continue
+            if rescueable_piece_count > 1 and self._remaining_nested_rescue_budget(part_type, identifier) <= 1:
+                failed_alpha_chars += self._count_ascii_alpha(piece)
+                rescued.append(piece)
+                continue
             rescued_piece = await self._translate_plain_text_rescue_piece(
                 piece=piece,
                 fail_part=part_fail_key,
@@ -1094,7 +1144,13 @@ class TranslatorAgent(BaseToolAgent):
             part_fallback_reason = self._get_api_fallback_reason(part_type, part_fail_key)
             if rescued_piece is None and not self._should_attempt_nested_rescue(part_fallback_reason):
                 return None
-            if rescued_piece is None:
+            should_try_masked_piece = (
+                "\\" in piece
+                or "<PLACEHOLDER_" in piece
+                or "<PROTECTED_CMD_" in piece
+                or rescueable_piece_count == 1
+            )
+            if rescued_piece is None and should_try_masked_piece:
                 rescued_piece = await self._translate_masked_plain_text_rescue_piece(
                     piece=piece,
                     fail_part=f"{part_fail_key}:masked",
@@ -1490,24 +1546,28 @@ class TranslatorAgent(BaseToolAgent):
         prompt_key: str,
         prompt_key_with_terms: Optional[str],
         depth: int = 0,
+        skip_direct_attempt: bool = False,
+        allow_force_retry: bool = True,
     ) -> Optional[str]:
-        rescued_piece = await self._translate_plain_text_rescue_piece(
-            piece=piece,
-            fail_part=fail_part,
-            part_type=part_type,
-            session=session,
-            error_message=error_message,
-            paragraph_hint=paragraph_hint,
-            prompt_suffix=prompt_suffix,
-            prompt_key=prompt_key,
-            prompt_key_with_terms=prompt_key_with_terms,
-        )
-        if rescued_piece is not None:
-            return rescued_piece
+        if not skip_direct_attempt:
+            rescued_piece = await self._translate_plain_text_rescue_piece(
+                piece=piece,
+                fail_part=fail_part,
+                part_type=part_type,
+                session=session,
+                error_message=error_message,
+                paragraph_hint=paragraph_hint,
+                prompt_suffix=prompt_suffix,
+                prompt_key=prompt_key,
+                prompt_key_with_terms=prompt_key_with_terms,
+                allow_force_retry=allow_force_retry,
+            )
+            if rescued_piece is not None:
+                return rescued_piece
 
-        api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
-        if not self._should_attempt_nested_rescue(api_fallback_reason):
-            return None
+            api_fallback_reason = self._get_api_fallback_reason(part_type, fail_part)
+            if not self._should_attempt_nested_rescue(api_fallback_reason):
+                return None
 
         if depth >= self._RESCUE_WINDOW_MAX_DEPTH:
             return None
@@ -1536,6 +1596,7 @@ class TranslatorAgent(BaseToolAgent):
                 prompt_key=prompt_key,
                 prompt_key_with_terms=prompt_key_with_terms,
                 depth=depth + 1,
+                allow_force_retry=False,
             )
             if rescued_window is None:
                 failed_alpha_chars += self._count_ascii_alpha(window)
@@ -1573,6 +1634,7 @@ class TranslatorAgent(BaseToolAgent):
         prompt_suffix: str,
         prompt_key: str,
         prompt_key_with_terms: Optional[str],
+        allow_force_retry: bool = True,
     ) -> Optional[str]:
         if self._should_passthrough_rescue_fragment(piece):
             return piece
@@ -1628,14 +1690,7 @@ class TranslatorAgent(BaseToolAgent):
         if not self._should_attempt_nested_rescue(api_fallback_reason):
             return None
 
-        allow_force_retry = (
-            ":fragment:" in str(fail_part)
-            or (
-                "\\" not in piece
-                and "<PLACEHOLDER_" not in piece
-                and "<PROTECTED_CMD_" not in piece
-            )
-        )
+        allow_force_retry = allow_force_retry and (":fragment:" in str(fail_part))
         if allow_force_retry and self._is_source_preserved_translation(piece, rescued_piece):
             force_retry_hint = (
                 f"{prompt_suffix}\n"
@@ -1812,6 +1867,7 @@ class TranslatorAgent(BaseToolAgent):
                 prompt_suffix=prompt_suffix,
                 prompt_key=prompt_key,
                 prompt_key_with_terms=prompt_key_with_terms,
+                skip_direct_attempt=True,
             )
             if rescued_single is None:
                 return None
@@ -1826,6 +1882,7 @@ class TranslatorAgent(BaseToolAgent):
         translated_any = False
         failed_alpha_chars = 0
         total_alpha_chars = sum(self._count_ascii_alpha(fragment) for fragment in translatable_fragments)
+        force_retry_used = False
         for idx, fragment in enumerate(fragments):
             if self._should_passthrough_rescue_fragment(fragment):
                 rescued.append(fragment)
@@ -1840,7 +1897,9 @@ class TranslatorAgent(BaseToolAgent):
                 prompt_suffix=prompt_suffix,
                 prompt_key=prompt_key,
                 prompt_key_with_terms=prompt_key_with_terms,
+                allow_force_retry=not force_retry_used,
             )
+            force_retry_used = True
             if rescued_fragment is None:
                 failed_alpha_chars += self._count_ascii_alpha(fragment)
                 rescued.append(fragment)
@@ -1980,8 +2039,16 @@ class TranslatorAgent(BaseToolAgent):
         mask_mapping = context.get("mask_mapping", {}) if context else {}
         hard_freeze_token_map = context.get("hard_freeze_token_map", {}) if context else {}
         hard_freeze_token_sequence = context.get("hard_freeze_token_sequence", []) if context else []
+        hard_freeze_audit_entries = context.get("hard_freeze_audit_entries", []) if context else []
+        hard_freeze_verification_mode = context.get("hard_freeze_verification_mode", "strict") if context else "strict"
         try:
-            verify_hard_freeze_token_stream(raw_text, hard_freeze_token_sequence)
+            verify_hard_freeze_token_stream(
+                raw_text,
+                hard_freeze_token_sequence,
+                audit_entries=hard_freeze_audit_entries,
+                mask_mapping=mask_mapping,
+                verification_mode=hard_freeze_verification_mode,
+            )
             hard_freeze_restored = restore_hard_freeze_tokens(raw_text, hard_freeze_token_map)
         except Exception as exc:
             raise HardFreezeProtocolViolation(str(exc)) from exc
@@ -2354,8 +2421,12 @@ class TranslatorAgent(BaseToolAgent):
         fallback_text: str,
         include_glossary: bool = False,
         user_prefix: str = "",
+        verification_mode: Optional[str] = None,
     ) -> str:
         prepared_text, llm_context = self._prepare_llm_payload_text(user_text)
+        llm_context["hard_freeze_verification_mode"] = verification_mode or (
+            "section_relaxed" if part_type == "sec" else "strict"
+        )
         user_content = f"{user_prefix}{prepared_text}"
         assert_no_raw_structure(user_content, context=f"translator:{part_type}:{fail_part}")
 

@@ -480,7 +480,8 @@ def validate_project_structure(main_tex_path: str) -> Dict[str, Any]:
         ))
 
     full_text = _collect_project_text(main_path)
-    placeholder_residuals = _PLACEHOLDER_RESIDUAL_RE.findall(full_text)
+    commentless_full_text = _strip_line_comments(full_text)
+    placeholder_residuals = _PLACEHOLDER_RESIDUAL_RE.findall(commentless_full_text)
     if placeholder_residuals:
         return _finalize(StructureGuardResult(
             ok=False,
@@ -490,7 +491,7 @@ def validate_project_structure(main_tex_path: str) -> Dict[str, Any]:
             guard_blocking=True,
         ))
 
-    env_placeholder_residuals = _ENV_PLACEHOLDER_RESIDUAL_RE.findall(full_text)
+    env_placeholder_residuals = _ENV_PLACEHOLDER_RESIDUAL_RE.findall(commentless_full_text)
     if env_placeholder_residuals:
         return _finalize(StructureGuardResult(
             ok=False,

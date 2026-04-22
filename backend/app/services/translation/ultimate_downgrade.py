@@ -21,6 +21,7 @@ over LaTeX source purity.
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 from typing import Optional, TYPE_CHECKING
 
 from backend.app.services.latex.utils import _extract_sectioning_commands
@@ -118,6 +119,15 @@ _PARAGRAPH_HEADING_COMMAND_PATTERN = (
     r"\\(?:PAR|PARR|parhead|parheadno|parheadsc)\*?"
     + _NESTED_BRACED_ARG_PATTERN
 )
+_BOILERPLATE_FALLBACK_TEXTS = (
+    "相关内容已转为简要中文表述",
+)
+_TARGET_SCRIPT_PATTERNS = {
+    "zh": re.compile(r"[\u4e00-\u9fff]"),
+    "ch": re.compile(r"[\u4e00-\u9fff]"),
+    "ja": re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]"),
+    "ko": re.compile(r"[\uac00-\ud7af]"),
+}
 _SECTION_FALLBACK_PRESERVE_PATTERN = re.compile(
     r"(<PLACEHOLDER_(?:ENV|CAP|ITEM|EQROW|MATH)_\d+>"
     r"|\$\$.*?\$\$"
@@ -244,6 +254,57 @@ def _strip_downgrade_comment_lines(text: str) -> str:
             continue
         break
     return "\n".join(lines[start:]).strip()
+
+
+def _normalize_natural_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _is_only_boilerplate_fallback(text: str) -> bool:
+    normalized = _normalize_natural_text(text)
+    if not normalized:
+        return False
+    for boilerplate in _BOILERPLATE_FALLBACK_TEXTS:
+        residual = normalized.replace(boilerplate, "")
+        residual = re.sub(r"[，。；：、,.;:!?！？\s]+", "", residual)
+        if not residual:
+            return True
+    return False
+
+
+def is_target_language_downgrade_candidate(
+    text: str,
+    *,
+    source_text: str = "",
+    target_language: str = "",
+) -> bool:
+    natural = _normalize_natural_text(_extract_natural_language(_strip_downgrade_comment_lines(text or "")))
+    if not natural:
+        return False
+    if _is_only_boilerplate_fallback(natural):
+        return False
+
+    source_natural = _normalize_natural_text(_extract_natural_language(source_text or ""))
+    if source_natural and natural == source_natural:
+        return False
+
+    english_words = re.findall(r"\b[A-Za-z]{3,}\b", natural)
+    language_key = str(target_language or "").strip().lower()
+    script_pattern = _TARGET_SCRIPT_PATTERNS.get(language_key)
+    target_script_chars = script_pattern.findall(natural) if script_pattern else []
+
+    if script_pattern:
+        if len(target_script_chars) < 4:
+            return False
+        if len(english_words) >= 12 and len(target_script_chars) < 8:
+            return False
+
+    if source_natural:
+        similarity = SequenceMatcher(None, source_natural, natural).ratio()
+        if similarity >= 0.97 and len(target_script_chars) < 8:
+            return False
+
+    return True
 
 
 def _looks_like_downgrade_output(text: str) -> bool:

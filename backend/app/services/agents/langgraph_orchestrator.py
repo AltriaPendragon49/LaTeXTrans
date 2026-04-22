@@ -1197,6 +1197,7 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
 
     try:
         from backend.app.services.translation.ultimate_downgrade import (
+            is_target_language_downgrade_candidate,
             ultimate_downgrade_section_segment,
             ultimate_downgrade_segment,
         )
@@ -1205,6 +1206,7 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
         envs_path = Path(transed_project_dir) / "envs_map.json"
         sections = json.loads(sections_path.read_text(encoding="utf-8")) if sections_path.exists() else []
         envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
+        target_language = str(state.get("config", {}).get("target_language") or "")
 
         report_by_scope = {str(r.chunk_scope): r for r in compile_fallback_reports}
         residual_english_blocked_scopes = {
@@ -1290,7 +1292,11 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                     sec["document_root_fallback_preserved"] = True
                     continue
                 current_target_text = sec.get("trans_content") or ""
-                if current_target_text.strip():
+                if current_target_text.strip() and is_target_language_downgrade_candidate(
+                    current_target_text,
+                    source_text=sec.get("content") or "",
+                    target_language=target_language,
+                ):
                     sec["trans_content"] = ultimate_downgrade_section_segment(
                         sec.get("content") or "",
                         current_target_text,
@@ -1302,6 +1308,7 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                     applied_sections += 1
                 else:
                     sec["translation_status"] = "final_target_language_fallback_failed"
+                    sec["fallback_reason"] = "non_target_language_structured_downgrade_blocked"
                     failed_sections += 1
 
         for env in envs:
@@ -1353,7 +1360,11 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                 and translation_status in COMPILE_FALLBACK_PENDING_STATUSES
             ):
                 current_target_text = env.get("trans_content") or ""
-                if current_target_text.strip():
+                if current_target_text.strip() and is_target_language_downgrade_candidate(
+                    current_target_text,
+                    source_text=env.get("content") or "",
+                    target_language=target_language,
+                ):
                     env["trans_content"] = ultimate_downgrade_segment(
                         current_target_text,
                         report_by_scope.get(scope_key),
@@ -1362,6 +1373,7 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                     applied_envs += 1
                 else:
                     env["translation_status"] = "final_target_language_fallback_failed"
+                    env["fallback_reason"] = "non_target_language_structured_downgrade_blocked"
                     failed_envs += 1
 
         if sections_path.exists():
@@ -1535,6 +1547,7 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
 
     try:
         from backend.app.services.translation.ultimate_downgrade import (
+            is_target_language_downgrade_candidate,
             ultimate_downgrade_section_segment,
             ultimate_downgrade_segment,
         )
@@ -1543,6 +1556,7 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
         envs_path = Path(transed_project_dir) / "envs_map.json"
         sections = json.loads(sections_path.read_text(encoding="utf-8")) if sections_path.exists() else []
         envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
+        target_language = str(state.get("config", {}).get("target_language") or "")
 
         # Build lookup sets for quick matching
         section_scope_set = {
@@ -1560,7 +1574,11 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
                     sec["document_root_fallback_preserved"] = True
                     continue
                 current_target_text = sec.get("trans_content") or sec.get("content") or ""
-                if current_target_text:
+                if current_target_text and is_target_language_downgrade_candidate(
+                    current_target_text,
+                    source_text=sec.get("content") or "",
+                    target_language=target_language,
+                ):
                     report = next(
                         (r for r in fallback_reports if r.chunk_scope == scope_key), None
                     )
@@ -1573,6 +1591,9 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
                     )
                     sec["translation_status"] = "ultimate_downgrade_applied"
                     downgraded_sections += 1
+                else:
+                    sec["translation_status"] = "ultimate_downgrade_failed"
+                    sec["fallback_reason"] = "non_target_language_structured_downgrade_blocked"
 
         env_scope_set = {
             r.chunk_scope for r in fallback_reports
@@ -1582,13 +1603,20 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
             scope_key = str(env.get("placeholder", ""))
             if scope_key in env_scope_set:
                 original_text = env.get("trans_content") or env.get("content") or ""
-                if original_text:
+                if original_text and is_target_language_downgrade_candidate(
+                    original_text,
+                    source_text=env.get("content") or "",
+                    target_language=target_language,
+                ):
                     report = next(
                         (r for r in fallback_reports if r.chunk_scope == scope_key), None
                     )
                     env["trans_content"] = ultimate_downgrade_segment(original_text, report)
                     env["translation_status"] = "ultimate_downgrade_applied"
                     downgraded_envs += 1
+                else:
+                    env["translation_status"] = "ultimate_downgrade_failed"
+                    env["fallback_reason"] = "non_target_language_structured_downgrade_blocked"
 
         if sections_path.exists():
             sections_path.write_text(json.dumps(sections, ensure_ascii=False, indent=2), encoding="utf-8")

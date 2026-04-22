@@ -24,6 +24,7 @@ from backend.app.services.latex.structure_guard import (
     REASON_WALKER_UNEXPECTED_CLOSING,
     validate_project_structure,
 )
+from backend.app.core.config import get_settings
 from backend.app.services.latex.utils import apply_formatting_config
 from pathlib import Path
 import os
@@ -43,6 +44,18 @@ _STRUCTURE_GUARD_OFFSET_RE = re.compile(r"@\(\d+,\d+\)")
 
 
 class GeneratorAgent(BaseToolAgent):
+    @staticmethod
+    def _coerce_bool(value: Any, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return default
+
     def __init__(self, 
                  config: Dict[str, Any],
                  project_dir: str = None,
@@ -55,6 +68,12 @@ class GeneratorAgent(BaseToolAgent):
         self.output_dir = output_dir
         self.latex_engine = config.get("latex_engine", "auto")
         self._structure_guard_warning: Optional[Dict[str, Any]] = None
+
+    def _is_precompile_structure_guard_enabled(self) -> bool:
+        explicit_value = self.config.get("enable_precompile_structure_guard")
+        if explicit_value is not None:
+            return self._coerce_bool(explicit_value, default=True)
+        return self._coerce_bool(get_settings().enable_precompile_structure_guard, default=True)
 
     def _update_replay_bundle(self, **fields: Any) -> Optional[str]:
         if not self.output_dir:
@@ -158,6 +177,9 @@ class GeneratorAgent(BaseToolAgent):
         structure_result = validate_project_structure(str(main_tex))
         structure_result = self._downgrade_source_equivalent_guard_failure(
             main_tex=main_tex,
+            structure_result=structure_result,
+        )
+        structure_result = self._downgrade_disabled_precompile_guard_failure(
             structure_result=structure_result,
         )
         self._structure_guard_warning = None
@@ -300,6 +322,39 @@ class GeneratorAgent(BaseToolAgent):
         result["replay_bundle_ref"] = warning.get("replay_bundle_ref")
         result["guard_details"] = warning.get("details")
         return result
+
+    def _downgrade_disabled_precompile_guard_failure(
+        self,
+        *,
+        structure_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if structure_result.get("ok", False):
+            return structure_result
+
+        if self._is_precompile_structure_guard_enabled():
+            return structure_result
+
+        reason_code = str(structure_result.get("reason_code") or "structure_guard_disabled")
+        details = dict(structure_result.get("details") or {})
+        details.update(
+            {
+                "guard_disabled_via_config": True,
+                "disabled_flag": "enable_precompile_structure_guard",
+            }
+        )
+        logger.warning(
+            "Precompile structure guard disabled via config; downgrading blocking failure to warning: %s",
+            reason_code,
+        )
+        return {
+            "ok": True,
+            "reason_code": reason_code,
+            "message": "Structure guard warning only: precompile structure guard disabled via config",
+            "details": details,
+            "warning_only": True,
+            "guard_blocking": False,
+            "guard_scope": structure_result.get("guard_scope") or "project",
+        }
 
     def execute(self) -> Dict[str, Any]:
         """

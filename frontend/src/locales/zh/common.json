@@ -442,7 +442,7 @@
   "common.actions.delete": "删除",
   "task.status": "状态",
   "community.feed.searchLabel": "站内搜索",
-  "community.feed.resultsFiltered": "?{{query}}??? {{count}} ???",
+  "community.feed.resultsFiltered": "“{{query}}” 的搜索结果共 {{count}} 条",
   "community.admin.nav.curation": "管理员管理",
   "community.admin.deleteAction": "删除论文",
   "community.admin.deleteConfirm": "将从公共社区库中删除“{{title}}”，此操作将开始持久硬删除流程。",

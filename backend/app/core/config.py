@@ -383,6 +383,11 @@ class Settings(BaseSettings):
         validation_alias="ENABLE_POST_COMPILE_TARGET_LANGUAGE_FALLBACK",
         description="Enable deterministic target-language fallback after an initial compile failure."
     )
+    enable_precompile_structure_guard: bool = Field(
+        default=True,
+        validation_alias="ENABLE_PRECOMPILE_STRUCTURE_GUARD",
+        description="Enable blocking precompile structure validation before LaTeX compilation."
+    )
     structural_fallback_ratio_cap: float = Field(
         default=0.38,
         validation_alias="STRUCTURAL_FALLBACK_RATIO_CAP",

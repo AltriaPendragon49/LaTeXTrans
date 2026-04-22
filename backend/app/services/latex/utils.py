@@ -18,6 +18,7 @@ import re
 import json
 import zipfile
 import tarfile
+from collections import Counter
 from hashlib import sha256
 import secrets
 from typing import Any, Dict, List, Optional, Tuple
@@ -3588,6 +3589,9 @@ _HARD_FREEZE_KIND_MAP = {
     "INLMATH": "INLMATH",
     "PROTECTED_CMD": "CMD",
 }
+_HARD_FREEZE_REFERENCE_OR_LABEL_RE = re.compile(
+    r'^\\(?:label|ref|eqref|pageref|autoref|cref|Cref|cite|citet|citep|citealt|citealp|citenum|citeauthor|citeyear)\*?(?![A-Za-z])'
+)
 
 
 def _hard_freeze_kind_for_placeholder(value: str) -> str:
@@ -3669,10 +3673,73 @@ def freeze_protected_tokens(
     }
 
 
-def verify_hard_freeze_token_stream(text: str, expected_tokens: List[str]) -> None:
+def _is_high_risk_hard_freeze_entry(entry: Dict[str, Any]) -> bool:
+    kind = str((entry or {}).get("kind") or "").strip().upper()
+    original = str((entry or {}).get("original") or "")
+    original_inner = original.strip("<>")
+
+    if kind in {"ENVPH", "CAPPH", "ENVBEGIN", "ENVEND", "ENV", "ITEM", "EQROW", "EQCOMMENT", "INLMATH"}:
+        return True
+    if kind == "PLACEHOLDER":
+        return True
+    if kind == "CMD":
+        if _HARD_FREEZE_REFERENCE_OR_LABEL_RE.match(original):
+            return True
+        if original.startswith(r"\begin{") or original.startswith(r"\end{") or original == "$":
+            return True
+        if "PLACEHOLDER_" in original_inner:
+            return True
+        return False
+    return True
+
+
+def _resolve_hard_freeze_original(entry: Dict[str, Any], mask_mapping: Optional[Dict[str, str]]) -> str:
+    original = str((entry or {}).get("original") or "")
+    if original.startswith("<PROTECTED_CMD_") and mask_mapping:
+        return str(mask_mapping.get(original) or original)
+    return original
+
+
+def verify_hard_freeze_token_stream(
+    text: str,
+    expected_tokens: List[str],
+    *,
+    audit_entries: Optional[List[Dict[str, Any]]] = None,
+    mask_mapping: Optional[Dict[str, str]] = None,
+    verification_mode: str = "strict",
+) -> None:
     actual_tokens = _HARD_FREEZE_TOKEN_RE.findall(text or "")
     expected = list(expected_tokens or [])
-    if actual_tokens != expected:
+    mode = str(verification_mode or "strict").strip().lower()
+    if mode == "strict":
+        if actual_tokens != expected:
+            raise ValueError(
+                f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
+            )
+        return
+
+    if mode != "section_relaxed":
+        raise ValueError(
+            f"hard_freeze_unknown_verification_mode: {verification_mode}"
+        )
+
+    if Counter(actual_tokens) != Counter(expected):
+        raise ValueError(
+            f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
+        )
+
+    risk_by_token = {
+        str((entry or {}).get("token") or ""): _is_high_risk_hard_freeze_entry(
+            {
+                **(entry or {}),
+                "original": _resolve_hard_freeze_original(entry or {}, mask_mapping),
+            }
+        )
+        for entry in (audit_entries or [])
+    }
+    high_risk_expected = [token for token in expected if risk_by_token.get(token, True)]
+    high_risk_actual = [token for token in actual_tokens if risk_by_token.get(token, True)]
+    if high_risk_actual != high_risk_expected:
         raise ValueError(
             f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
         )
