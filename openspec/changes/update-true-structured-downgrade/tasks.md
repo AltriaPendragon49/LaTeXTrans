@@ -15,5 +15,5 @@
 
 ## 4. Verification And Release
 - [x] 4.1 Run focused backend tests and OpenSpec validation
-- [ ] 4.2 Inspect and stage the complete workspace state for this fix branch
-- [ ] 4.3 Commit all workspace contents on the fix branch, push, pull on the server, restart backend services, and verify health
+- [x] 4.2 Inspect and stage the complete workspace state for this fix branch
+- [x] 4.3 Commit all workspace contents on the fix branch, push, pull on the server, restart backend services, and verify health
