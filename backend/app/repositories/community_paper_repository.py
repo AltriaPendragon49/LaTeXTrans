@@ -31,6 +31,7 @@ PAPER_COLUMNS = (
     "comment_count",
     "view_count",
     "download_count",
+    "arxiv_published_at",
     "official_published_at",
     "created_at",
     "updated_at",
@@ -523,19 +524,22 @@ class CommunityPaperRepository:
         where_sql, params = self._public_paper_query_parts(query=query)
         order_by = (
             " order by case when community_status = 'official' then 0 else 1 end asc, "
-            "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
+            "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
+            "coalesce(created_at, '') desc"
         )
         if normalized_sort == "views":
             order_by = (
                 " order by case when community_status = 'official' then 0 else 1 end asc, "
                 "coalesce(view_count, 0) desc, "
-                "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
+                "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
+                "coalesce(created_at, '') desc"
             )
         elif normalized_sort == "likes":
             order_by = (
                 " order by case when community_status = 'official' then 0 else 1 end asc, "
                 "coalesce(like_count, 0) desc, "
-                "coalesce(official_published_at, '') desc, coalesce(created_at, '') desc"
+                "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
+                "coalesce(created_at, '') desc"
             )
 
         params.extend([int(limit), int(offset)])

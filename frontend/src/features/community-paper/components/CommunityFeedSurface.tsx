@@ -1,4 +1,4 @@
-import { Clock3, Eye, Heart, Search, Trash2, X, type LucideIcon } from "lucide-react"
+import { Clock3, Eye, Heart, Search, X, type LucideIcon } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -89,13 +89,13 @@ export default function CommunityFeedSurface() {
       className="mx-auto flex w-full max-w-4xl flex-col gap-3 pt-2 text-[color:var(--px-shell-ink)]"
     >
       <div className="mb-4 mt-2 flex flex-col items-center px-4 text-center">
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-[color:var(--px-shell-ink)] sm:text-3xl">
+        <h1 className="mb-2 text-3xl font-black tracking-tight text-[color:var(--px-shell-ink)] sm:text-4xl">
           {t("community.feed.hero.titlePrefix")}
-          <span className="font-medium text-[color:var(--px-shell-accent)]">
+          <span className="text-[color:var(--px-shell-accent)]">
             {t("community.feed.hero.titleAccent")}
           </span>
         </h1>
-        <p className="max-w-lg text-xs font-light leading-relaxed text-[color:var(--px-shell-muted)]/80 sm:text-sm">
+        <p className="max-w-2xl text-xs leading-relaxed text-[color:var(--px-shell-muted)]/80 sm:text-sm">
           {t("community.feed.hero.description")}
         </p>
       </div>
@@ -107,13 +107,6 @@ export default function CommunityFeedSurface() {
         }}
         className="flex w-full items-center gap-2 rounded-full border border-[color:var(--px-shell-line-strong)] bg-[color:var(--px-shell-panel-strong)] px-4 py-1.5 shadow-[0_20px_40px_-34px_rgba(8,23,38,0.22)] transition-all focus-within:border-[color:var(--px-shell-accent)] focus-within:ring-1 focus-within:ring-[color:var(--px-shell-accent)]"
       >
-        {isAdmin ? (
-          <Pill className="shrink-0 px-3 py-1 text-[10px] font-semibold normal-case tracking-normal">
-            <Trash2 className="h-3 w-3" />
-            {t("community.feed.adminHint")}
-          </Pill>
-        ) : null}
-
         <input
           ref={inputRef}
           autoFocus

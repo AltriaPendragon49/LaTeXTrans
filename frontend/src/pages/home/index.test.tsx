@@ -10,7 +10,7 @@ vi.mock("@/features/community-paper/components/CommunityFeedSurface", () => ({
 }))
 
 describe("HomePage", () => {
-  it("removes the oversized hero and keeps the page focused on search/feed content", async () => {
+  it("renders the community feed surface on the homepage", async () => {
     await i18n.changeLanguage("en")
 
     render(
@@ -20,7 +20,5 @@ describe("HomePage", () => {
     )
 
     expect(screen.getByTestId("community-feed-surface")).toBeInTheDocument()
-    expect(screen.queryByRole("heading", { name: "Community Feed" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Translate" })).not.toBeInTheDocument()
   })
 })

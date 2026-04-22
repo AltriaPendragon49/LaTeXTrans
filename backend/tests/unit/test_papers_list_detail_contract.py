@@ -97,6 +97,78 @@ def test_list_papers_orders_official_before_fallback(monkeypatch):
     assert result["items"][1]["id"] == "paper-fallback"
 
 
+def test_list_papers_latest_sort_prefers_original_arxiv_publish_time(monkeypatch):
+    papers = [
+        {
+            "id": "paper-later-official",
+            "source": "arxiv",
+            "arxiv_id": "2501.11111",
+            "title": "Later official publish",
+            "authors": [],
+            "categories": [],
+            "visibility": "public",
+            "status": "published",
+            "trans_status": "completed",
+            "created_by": "admin-1",
+            "trans_latest_task_id": "task-later-official",
+            "trans_latest_asset_pdf_id": None,
+            "like_count": 0,
+            "favorite_count": 0,
+            "comment_count": 0,
+            "view_count": 0,
+            "download_count": 0,
+            "created_at": "2026-03-18T02:00:00+00:00",
+            "updated_at": "2026-03-18T02:00:00+00:00",
+            "community_status": "official",
+            "community_selected_task_id": "task-later-official",
+            "community_selected_asset_id": None,
+            "official_published_at": "2026-03-20T04:00:00+00:00",
+            "arxiv_published_at": "2026-03-10T04:00:00+00:00",
+        },
+        {
+            "id": "paper-newer-arxiv",
+            "source": "arxiv",
+            "arxiv_id": "2501.22222",
+            "title": "Newer arxiv publish",
+            "authors": [],
+            "categories": [],
+            "visibility": "public",
+            "status": "published",
+            "trans_status": "completed",
+            "created_by": "admin-1",
+            "trans_latest_task_id": "task-newer-arxiv",
+            "trans_latest_asset_pdf_id": None,
+            "like_count": 0,
+            "favorite_count": 0,
+            "comment_count": 0,
+            "view_count": 0,
+            "download_count": 0,
+            "created_at": "2026-03-18T02:00:00+00:00",
+            "updated_at": "2026-03-18T02:00:00+00:00",
+            "community_status": "official",
+            "community_selected_task_id": "task-newer-arxiv",
+            "community_selected_asset_id": None,
+            "official_published_at": "2026-03-19T04:00:00+00:00",
+            "arxiv_published_at": "2026-03-15T04:00:00+00:00",
+        },
+    ]
+
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return papers
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+
+    result = asyncio.run(paper_service.list_community_papers(sort="latest"))
+
+    assert [item["id"] for item in result["items"]] == ["paper-newer-arxiv", "paper-later-official"]
+
+
 def test_list_papers_returns_empty_when_local_repository_is_unavailable(monkeypatch):
     papers = [
         {

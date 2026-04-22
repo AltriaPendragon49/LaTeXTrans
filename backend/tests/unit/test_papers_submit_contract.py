@@ -144,6 +144,70 @@ def test_normal_user_submit_arxiv_without_existing_creates_fallback(monkeypatch)
     assert result["paper"]["abstract_raw"] == "Recovered abstract"
 
 
+def test_submit_arxiv_persists_original_arxiv_publish_time(monkeypatch):
+    captured_payload = {}
+
+    monkeypatch.setattr(
+        paper_service,
+        "resolve_submitter_context",
+        lambda _credentials: asyncio.sleep(0, result={"user_id": "user-1", "roles": [], "is_admin": False}),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "resolve_community_admission",
+        lambda **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "community_status": "user_fallback",
+                "admission_result": "created",
+                "existing_paper": None,
+                "should_create": True,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service.arxiv_route,
+        "download_arxiv",
+        lambda **_kwargs: asyncio.sleep(0, result=SimpleNamespace(task_id="task-fallback")),
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_arxiv_metadata",
+        lambda _arxiv_id: asyncio.sleep(
+            0,
+            result={
+                "title": "Recovered arXiv title",
+                "authors": ["Alice", "Bob"],
+                "categories": ["cs.CV", "cs.LG"],
+                "abstract_raw": "Recovered abstract",
+                "arxiv_published_at": "2025-01-15T12:34:56+00:00",
+            },
+        ),
+    )
+
+    async def _insert_paper(payload):
+        captured_payload.update(payload)
+        return {
+            "id": "paper-2",
+            "created_at": "2026-03-18T00:00:00+00:00",
+            **payload,
+        }
+
+    monkeypatch.setattr(paper_service, "_insert_paper", _insert_paper)
+    monkeypatch.setattr(paper_service.asyncio, "create_task", _close_task)
+
+    result = asyncio.run(
+        paper_service.submit_arxiv_paper(
+            arxiv_id="2501.00002",
+            credentials=SimpleNamespace(credentials=_jwt_for("user-1")),
+            current_user={"id": "user-1", "roles": ["user"]},
+        )
+    )
+
+    assert captured_payload["arxiv_published_at"] == "2025-01-15T12:34:56+00:00"
+    assert result["paper"]["arxiv_published_at"] == "2025-01-15T12:34:56+00:00"
+
+
 def test_normal_user_submit_arxiv_reuses_existing_official(monkeypatch):
     existing = {
         "id": "paper-3",

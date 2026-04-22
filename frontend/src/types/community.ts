@@ -85,6 +85,7 @@ export interface CommunityPaper {
   community_status: CommunityStatus
   trans_status: TranslationStatus
   created_at: string | null
+  arxiv_published_at?: string | null
   official_published_at: string | null
   community_selected_task_id: string | null
   community_selected_asset_id: string | null

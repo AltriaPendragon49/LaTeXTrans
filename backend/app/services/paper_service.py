@@ -553,6 +553,7 @@ def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
 
     title = _normalize_metadata_text(entry.findtext("atom:title", default="", namespaces=namespace))
     abstract_raw = _normalize_metadata_text(entry.findtext("atom:summary", default="", namespaces=namespace))
+    published = _normalize_metadata_text(entry.findtext("atom:published", default="", namespaces=namespace))
     authors = [
         _normalize_metadata_text(author.findtext("atom:name", default="", namespaces=namespace))
         for author in entry.findall("atom:author", namespace)
@@ -568,6 +569,7 @@ def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
         "authors": [author for author in authors if author],
         "categories": categories,
         "abstract_raw": abstract_raw,
+        "arxiv_published_at": _normalize_arxiv_published_at(published),
     }
 
 
@@ -1219,6 +1221,7 @@ def _needs_arxiv_metadata_hydration(paper: Dict[str, Any]) -> bool:
         or not (paper.get("authors") or [])
         or not (paper.get("categories") or [])
         or not (paper.get("abstract_raw") or "").strip()
+        or not paper.get("arxiv_published_at")
     )
 
 
@@ -1246,6 +1249,8 @@ def _best_available_metadata_payload(paper: Dict[str, Any], metadata: Dict[str, 
         payload["categories"] = metadata["categories"]
     if metadata.get("abstract_raw") and not _normalize_metadata_text(paper.get("abstract_raw")):
         payload["abstract_raw"] = metadata["abstract_raw"]
+    if metadata.get("arxiv_published_at") and not paper.get("arxiv_published_at"):
+        payload["arxiv_published_at"] = metadata["arxiv_published_at"]
     return payload
 
 
@@ -2522,6 +2527,7 @@ def _paper_select_clause() -> str:
         "trans_latest_task_id, trans_latest_asset_pdf_id, like_count, favorite_count, "
         "comment_count, view_count, download_count, created_at, updated_at, "
         "community_status, community_selected_task_id, community_selected_asset_id, "
+        "arxiv_published_at, "
         "official_published_at"
     )
 
@@ -3978,6 +3984,24 @@ def _serialize_timestamp_value(value: Any) -> Optional[str]:
     return str(value)
 
 
+def _normalize_arxiv_published_at(value: Any) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).isoformat()
+    except Exception:
+        normalized = _normalize_metadata_text(value)
+        return normalized or None
+
+
+def _primary_published_timestamp_value(paper: Dict[str, Any]) -> Any:
+    return (
+        paper.get("arxiv_published_at")
+        or paper.get("official_published_at")
+        or paper.get("created_at")
+    )
+
+
 def _timestamp_key(value: Any) -> float:
     if not value:
         return 0.0
@@ -3993,7 +4017,7 @@ def _views_tuple(paper: Dict[str, Any]) -> Any:
     return (
         _community_rank(paper),
         -(paper.get("view_count") or 0),
-        -_timestamp_key(paper.get("official_published_at")),
+        -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
     )
 
@@ -4001,7 +4025,7 @@ def _views_tuple(paper: Dict[str, Any]) -> Any:
 def _latest_tuple(paper: Dict[str, Any]) -> Any:
     return (
         _community_rank(paper),
-        -_timestamp_key(paper.get("official_published_at")),
+        -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
     )
 
@@ -4010,7 +4034,7 @@ def _likes_tuple(paper: Dict[str, Any]) -> Any:
     return (
         _community_rank(paper),
         -(paper.get("like_count") or 0),
-        -_timestamp_key(paper.get("official_published_at")),
+        -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
     )
 
@@ -4038,6 +4062,7 @@ def _paper_payload(
     arxiv_id: Optional[str] = None,
     task_id: Optional[str] = None,
     selected_asset_id: Optional[str] = None,
+    arxiv_published_at: Optional[str] = None,
     official_published_at: Optional[str] = None,
     trans_status: str = "queued",
 ) -> Dict[str, Any]:
@@ -4057,6 +4082,7 @@ def _paper_payload(
         "community_status": community_status,
         "community_selected_task_id": task_id,
         "community_selected_asset_id": selected_asset_id,
+        "arxiv_published_at": arxiv_published_at,
         "official_published_at": official_published_at,
     }
 
@@ -4320,6 +4346,7 @@ async def ensure_task_published_to_community_library(
                     COMMUNITY_STATUS_OFFICIAL if promote_to_official else COMMUNITY_STATUS_USER_FALLBACK
                 ),
                 task_id=task_id,
+                arxiv_published_at=None,
                 official_published_at=_utc_now_iso() if promote_to_official else None,
             )
         )
@@ -4442,6 +4469,7 @@ def _paper_summary(
         "community_status": paper.get("community_status"),
         "trans_status": paper.get("trans_status"),
         "created_at": _serialize_timestamp_value(paper.get("created_at")),
+        "arxiv_published_at": _serialize_timestamp_value(paper.get("arxiv_published_at")),
         "official_published_at": _serialize_timestamp_value(paper.get("official_published_at")),
         "community_selected_task_id": paper.get("community_selected_task_id"),
         "community_selected_asset_id": paper.get("community_selected_asset_id"),
@@ -4486,6 +4514,7 @@ async def submit_uploaded_paper(
             created_by=context["user_id"],
             community_status=community_status,
             task_id=upload_response.task_id,
+            arxiv_published_at=None,
             official_published_at=official_published_at,
             trans_status="not_started",
         )
@@ -4578,6 +4607,7 @@ async def submit_arxiv_paper(
                 categories=metadata.get("categories"),
                 abstract_raw=metadata.get("abstract_raw"),
                 task_id=None,
+                arxiv_published_at=metadata.get("arxiv_published_at"),
                 official_published_at=_utc_now_iso() if context["is_admin"] else None,
                 trans_status="not_started",
             )
@@ -5622,6 +5652,7 @@ async def _publish_admin_curation_job(
         "categories": metadata.get("categories") or paper.get("categories") or [],
         "abstract_raw": metadata.get("abstract_raw") or paper.get("abstract_raw"),
         "abstract_translated": abstract_translated,
+        "arxiv_published_at": metadata.get("arxiv_published_at") or paper.get("arxiv_published_at"),
         "trans_status": "completed",
         "community_status": COMMUNITY_STATUS_OFFICIAL,
     }
@@ -5642,6 +5673,7 @@ async def _publish_admin_curation_job(
             "categories": metadata.get("categories") or paper.get("categories") or [],
             "abstract_raw": metadata.get("abstract_raw") or paper.get("abstract_raw"),
             "abstract_translated": abstract_translated,
+            "arxiv_published_at": metadata.get("arxiv_published_at") or paper.get("arxiv_published_at"),
             "community_status": COMMUNITY_STATUS_OFFICIAL,
             "trans_status": "completed",
             "trans_latest_task_id": translated_task_id,
@@ -5679,6 +5711,7 @@ async def _ensure_admin_curation_placeholder_paper(
         abstract_raw=metadata.get("abstract_raw"),
         abstract_translated=None,
         task_id=None,
+        arxiv_published_at=metadata.get("arxiv_published_at"),
         official_published_at=None,
         trans_status="processing",
     )

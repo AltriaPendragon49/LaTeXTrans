@@ -18,7 +18,7 @@ function getBootstrappedFeed(sort: CommunityFeedSort, query: string) {
 }
 
 function resolvePrimaryTimestamp(paper: CommunityPaper): number {
-  const primary = paper.official_published_at ?? paper.created_at
+  const primary = paper.arxiv_published_at ?? paper.official_published_at ?? paper.created_at
   const resolved = primary ? Date.parse(primary) : Number.NaN
   return Number.isFinite(resolved) ? resolved : 0
 }

@@ -461,7 +461,7 @@ describe("PaperDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "English" }))
     expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
       "src",
-      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
 
     await user.click(screen.getByRole("button", { name: "Bilingual compare" }))
@@ -563,7 +563,7 @@ describe("PaperDetailPage", () => {
 
     expect(screen.getByTestId("paper-source-pdf-reader")).toHaveAttribute(
       "src",
-      "https://arxiv.org/pdf/2503.01010#page=1&view=Fit&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
+      "https://arxiv.org/pdf/2503.01010#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
   })
 

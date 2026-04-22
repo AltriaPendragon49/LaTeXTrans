@@ -152,6 +152,7 @@ class PaperSummary(BaseModel):
     community_status: str
     trans_status: str
     created_at: Optional[str] = None
+    arxiv_published_at: Optional[str] = None
     official_published_at: Optional[str] = None
     community_selected_task_id: Optional[str] = None
     community_selected_asset_id: Optional[str] = None

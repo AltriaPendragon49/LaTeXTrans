@@ -170,6 +170,7 @@
 - `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`
 - `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`
 - `backend/migrations_mysql/20260421_0008_community_paper_engagement.sql`
+- `backend/migrations_mysql/20260422_0009_add_arxiv_published_at.sql`
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
 - `backend/scripts/bootstrap_local_community_papers.py`

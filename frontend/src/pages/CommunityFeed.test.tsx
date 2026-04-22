@@ -74,16 +74,34 @@ describe("CommunityFeedSurface", () => {
     expect(screen.queryByRole("textbox", { name: "Ask the paper agent" })).not.toBeInTheDocument()
   })
 
-  it("does not render the translated sort tab", () => {
+  it("renders the available feed sort tabs without a translated option", () => {
     render(
       <MemoryRouter>
         <CommunityFeedSurface />
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("Hot")).toBeInTheDocument()
     expect(screen.getByText("Latest")).toBeInTheDocument()
+    expect(screen.getByText("Views")).toBeInTheDocument()
+    expect(screen.getByText("Likes")).toBeInTheDocument()
     expect(screen.queryByText("Translated")).not.toBeInTheDocument()
+  })
+
+  it("restores the legacy homepage hero copy above the search bar", () => {
+    render(
+      <MemoryRouter>
+        <CommunityFeedSurface />
+      </MemoryRouter>,
+    )
+
+    expect(
+      screen.getByRole("heading", { name: "Explore, Learn, and Innovate" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "We curate papers with translations and analysis, and provide translation tools to support research and study.",
+      ),
+    ).toBeInTheDocument()
   })
 
   it("updates the queried feed when the search is submitted", async () => {
@@ -144,7 +162,7 @@ describe("CommunityFeedSurface", () => {
     await user.type(screen.getByRole("textbox", { name: "Search community papers" }), "transformers")
     await user.click(screen.getByRole("button", { name: "Community search" }))
 
-    expect(screen.getByText('1 public papers matched "transformers"')).toBeInTheDocument()
+    expect(screen.getByText("1 results for transformers")).toBeInTheDocument()
   })
 
   it("shows admin-only delete affordances and calls the delete api", async () => {

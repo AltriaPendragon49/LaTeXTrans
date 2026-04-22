@@ -367,4 +367,53 @@ describe("useCommunityPapers", () => {
     expect(screen.getByTestId("first-liked")).toHaveTextContent("true")
     expect(screen.getByTestId("first-like-count")).toHaveTextContent("1")
   })
+
+  it("sorts the latest feed by original arxiv publish time before official publish time", async () => {
+    getCommunityPapersMock.mockResolvedValue({
+      items: [
+        {
+          id: "paper-later-official",
+          source: "arxiv",
+          arxiv_id: "2503.01010",
+          title: "Later official publish",
+          authors: [],
+          categories: [],
+          community_status: "official",
+          trans_status: "completed",
+          created_at: "2026-03-18T00:00:00Z",
+          official_published_at: "2026-03-20T00:00:00Z",
+          arxiv_published_at: "2026-03-10T00:00:00Z",
+          community_selected_task_id: "task-1",
+          community_selected_asset_id: "asset-1",
+        },
+        {
+          id: "paper-newer-arxiv",
+          source: "arxiv",
+          arxiv_id: "2503.02020",
+          title: "Newer arxiv publish",
+          authors: [],
+          categories: [],
+          community_status: "official",
+          trans_status: "completed",
+          created_at: "2026-03-18T00:00:00Z",
+          official_published_at: "2026-03-19T00:00:00Z",
+          arxiv_published_at: "2026-03-15T00:00:00Z",
+          community_selected_task_id: "task-2",
+          community_selected_asset_id: "asset-2",
+        },
+      ],
+      total: 2,
+      has_more: false,
+      next_offset: null,
+    })
+
+    render(<HookProbe sort="latest" query="" />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId("titles")).toHaveTextContent(
+      "[\"Newer arxiv publish\",\"Later official publish\"]",
+    )
+  })
 })
