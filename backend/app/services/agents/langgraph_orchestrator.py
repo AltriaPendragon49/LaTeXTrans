@@ -172,6 +172,7 @@ class PipelineState(TypedDict, total=False):
     last_fallback_signature: tuple[tuple[Any, ...], ...]
     remedial_budget_exhausted_reason: Optional[str]
     post_compile_fallback_attempted: bool
+    residual_english_requires_fallback: bool
 
     # 输出字段
     final_result: Dict[str, Any]
@@ -234,6 +235,151 @@ def _write_task_log(output_dir: str, event: str, data: dict = None) -> None:
         log_file.write_text(json.dumps(logs, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
         logger.error("Failed to write task log: %s", e)
+
+
+def _collect_validate_fallback_state(
+    *,
+    state: PipelineState,
+    translator_agent: Any,
+    transed_project_dir: str,
+    errors_report: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    collected_fallback_reports: List[Any] = []
+    compile_fallback_reports: List[Any] = []
+    repair_skip_scopes: set[str] = set()
+    try:
+        agent_reports = list(getattr(translator_agent, "fallback_reports", []) or [])
+        collected_fallback_reports.extend(agent_reports)
+
+        sections_path = Path(transed_project_dir) / "sections_map.json"
+        if sections_path.exists():
+            _secs = json.loads(sections_path.read_text(encoding="utf-8"))
+            for _s in _secs:
+                _section_scope = str(_s.get("section", ""))
+                if (
+                    _s.get("translation_status") in {"repair_skipped_non_translatable", "immutable_passthrough"}
+                    or _s.get("chunk_kind") == "placeholder_only"
+                ):
+                    repair_skip_scopes.add(_section_scope)
+                if _s.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES:
+                    try:
+                        _rpt = FallbackReport(
+                            fallback_kind="c2_structural_collapse",
+                            chunk_scope=_section_scope,
+                            root_cause="c2_global_structure_collapse",
+                            validation_evidence={
+                                "fallback_reason": _s.get("fallback_reason"),
+                                "translation_retry_count": _s.get("translation_retry_count"),
+                            },
+                            translated_text=_s.get("trans_content"),
+                        )
+                        collected_fallback_reports.append(_rpt)
+                        compile_fallback_reports.append(_rpt)
+                    except Exception as _rpt_exc:
+                        logger.warning(
+                            "Failed to build FallbackReport for section %s: %s",
+                            _s.get("section"),
+                            _rpt_exc,
+                        )
+
+        envs_path = Path(transed_project_dir) / "envs_map.json"
+        if envs_path.exists():
+            _envs = json.loads(envs_path.read_text(encoding="utf-8"))
+            for _e in _envs:
+                _env_scope = str(_e.get("placeholder", ""))
+                if _e.get("translation_status") == "repair_skipped_non_translatable":
+                    repair_skip_scopes.add(_env_scope)
+                if _e.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES:
+                    try:
+                        _subtype = _e.get("fallback_subtype", "")
+                        _rpt = FallbackReport(
+                            fallback_kind="c2_structural_collapse",
+                            chunk_scope=_env_scope,
+                            root_cause=_subtype or "c2_env_structural_collapse",
+                            validation_evidence={
+                                "env_name": _e.get("env_name"),
+                                "fallback_subtype": _subtype,
+                                "fallback_reason": _e.get("fallback_reason"),
+                            },
+                            translated_text=_e.get("trans_content"),
+                        )
+                        collected_fallback_reports.append(_rpt)
+                        compile_fallback_reports.append(_rpt)
+                    except Exception as _rpt_exc:
+                        logger.warning(
+                            "Failed to build FallbackReport for env %s: %s",
+                            _e.get("placeholder"),
+                            _rpt_exc,
+                        )
+
+        if repair_skip_scopes:
+            collected_fallback_reports = [
+                report
+                for report in collected_fallback_reports
+                if str(getattr(report, "chunk_scope", "")) not in repair_skip_scopes
+            ]
+
+        if collected_fallback_reports:
+            _write_task_log(
+                transed_project_dir,
+                "fallback_reports_collected",
+                {
+                    "count": len(collected_fallback_reports),
+                    "kinds": [r.fallback_kind for r in collected_fallback_reports],
+                },
+            )
+            logger.info(
+                "eliminate-silent-fallback: %d FallbackReport(s) collected",
+                len(collected_fallback_reports),
+            )
+    except Exception as _fr_collect_exc:
+        logger.warning("Failed to collect FallbackReports: %s", _fr_collect_exc)
+
+    current_validation_error_signature = _normalize_error_signature(errors_report)
+    current_fallback_signature = _normalize_fallback_signature(collected_fallback_reports)
+    updated_repair_retry_count = int(state.get("repair_retry_count") or 0)
+    remedial_budget_exhausted_reason = str(
+        getattr(translator_agent, "_remedial_budget_exhausted_reason", "") or ""
+    ) or None
+    previous_validation_error_signature = tuple(
+        state.get("last_validation_error_signature") or ()
+    )
+    previous_fallback_signature = tuple(state.get("last_fallback_signature") or ())
+    same_fallback_signature = bool(current_fallback_signature) and (
+        current_fallback_signature == previous_fallback_signature
+    )
+    same_validation_signature = (
+        not current_validation_error_signature
+        or current_validation_error_signature == previous_validation_error_signature
+    )
+    if (
+        updated_repair_retry_count > 0
+        and same_fallback_signature
+        and same_validation_signature
+    ):
+        logger.warning(
+            "Outer repair loop made no progress after repair cycle %d; exhausting remaining repair budget",
+            updated_repair_retry_count,
+        )
+        _write_task_log(
+            transed_project_dir,
+            "repair_loop_short_circuited_no_progress",
+            {
+                "repair_retry_count": updated_repair_retry_count,
+                "remaining_errors_count": len(errors_report or []),
+                "remaining_fallback_count": len(collected_fallback_reports),
+            },
+        )
+        updated_repair_retry_count = MAX_REPAIR_RETRIES
+
+    return {
+        "fallback_reports": collected_fallback_reports,
+        "compile_fallback_reports": compile_fallback_reports,
+        "repair_retry_count": updated_repair_retry_count,
+        "last_validation_error_signature": current_validation_error_signature,
+        "last_fallback_signature": current_fallback_signature,
+        "remedial_budget_exhausted_reason": remedial_budget_exhausted_reason,
+    }
 
 
 def _write_stage_failed_log(output_dir: str, stage: str, error: Exception) -> None:
@@ -534,6 +680,13 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
             )
         _update_progress(state, 85, "Validation completed")
 
+        fallback_state = _collect_validate_fallback_state(
+            state=state,
+            translator_agent=translator_agent,
+            transed_project_dir=transed_project_dir,
+            errors_report=errors_report,
+        )
+
         residual_completeness_errors = [
             error for error in (errors_report or [])
             if error.get("completeness_error")
@@ -551,6 +704,23 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                     "scopes": blocked_scopes,
                 },
             )
+            if (
+                bool(config.get("enable_post_compile_target_language_fallback", True))
+                and fallback_state.get("compile_fallback_reports")
+                and not bool(state.get("post_compile_fallback_attempted"))
+            ):
+                _write_audit_log(
+                    transed_project_dir,
+                    task_id,
+                    "node_exit:validate_and_retry",
+                    {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000},
+                )
+                return {
+                    **state,
+                    "validation_warning": validation_warning,
+                    **fallback_state,
+                    "residual_english_requires_fallback": True,
+                }
             raise RuntimeError(
                 "Residual English prose remains after validation retries: "
                 + ", ".join(scope for scope in blocked_scopes if scope)
@@ -564,137 +734,11 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
 
     _write_audit_log(transed_project_dir, task_id, "node_exit:validate_and_retry",
                      {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000})
-
-    # eliminate-silent-fallback: collect FallbackReport list from translator + sections_map
-    collected_fallback_reports: List[Any] = []
-    compile_fallback_reports: List[Any] = []
-    repair_skip_scopes: set[str] = set()
-    try:
-        # 1. From translator_agent (oversize downgrade reports)
-        agent_reports = list(getattr(translator_agent, "fallback_reports", []) or [])
-        collected_fallback_reports.extend(agent_reports)
-
-        # 2. From sections_map: structural fallback candidates
-        sections_path = Path(transed_project_dir) / "sections_map.json"
-        if sections_path.exists():
-            _secs = json.loads(sections_path.read_text(encoding="utf-8"))
-            for _s in _secs:
-                _section_scope = str(_s.get("section", ""))
-                if (
-                    _s.get("translation_status") in {"repair_skipped_non_translatable", "immutable_passthrough"}
-                    or _s.get("chunk_kind") == "placeholder_only"
-                ):
-                    repair_skip_scopes.add(_section_scope)
-                if _s.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES:
-                    try:
-                        _rpt = FallbackReport(
-                            fallback_kind="c2_structural_collapse",
-                            chunk_scope=_section_scope,
-                            root_cause="c2_global_structure_collapse",
-                            validation_evidence={
-                                "fallback_reason": _s.get("fallback_reason"),
-                                "translation_retry_count": _s.get("translation_retry_count"),
-                            },
-                            translated_text=_s.get("trans_content"),
-                        )
-                        collected_fallback_reports.append(_rpt)
-                        compile_fallback_reports.append(_rpt)
-                    except Exception as _rpt_exc:
-                        logger.warning("Failed to build FallbackReport for section %s: %s",
-                                       _s.get("section"), _rpt_exc)
-
-        # 3. From envs_map: structural fallback candidates
-        envs_path = Path(transed_project_dir) / "envs_map.json"
-        if envs_path.exists():
-            _envs = json.loads(envs_path.read_text(encoding="utf-8"))
-            for _e in _envs:
-                _env_scope = str(_e.get("placeholder", ""))
-                if _e.get("translation_status") == "repair_skipped_non_translatable":
-                    repair_skip_scopes.add(_env_scope)
-                if _e.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES:
-                    try:
-                        _subtype = _e.get("fallback_subtype", "")
-                        _rpt = FallbackReport(
-                            fallback_kind="c2_structural_collapse",
-                            chunk_scope=_env_scope,
-                            root_cause=_subtype or "c2_env_structural_collapse",
-                            validation_evidence={
-                                "env_name": _e.get("env_name"),
-                                "fallback_subtype": _subtype,
-                                "fallback_reason": _e.get("fallback_reason"),
-                            },
-                            translated_text=_e.get("trans_content"),
-                        )
-                        collected_fallback_reports.append(_rpt)
-                        compile_fallback_reports.append(_rpt)
-                    except Exception as _rpt_exc:
-                        logger.warning("Failed to build FallbackReport for env %s: %s",
-                                       _e.get("placeholder"), _rpt_exc)
-
-        if repair_skip_scopes:
-            collected_fallback_reports = [
-                report for report in collected_fallback_reports
-                if str(getattr(report, "chunk_scope", "")) not in repair_skip_scopes
-            ]
-
-        if collected_fallback_reports:
-            _write_task_log(
-                transed_project_dir,
-                "fallback_reports_collected",
-                {"count": len(collected_fallback_reports),
-                 "kinds": [r.fallback_kind for r in collected_fallback_reports]},
-            )
-            logger.info("eliminate-silent-fallback: %d FallbackReport(s) collected",
-                        len(collected_fallback_reports))
-    except Exception as _fr_collect_exc:
-        logger.warning("Failed to collect FallbackReports: %s", _fr_collect_exc)
-
-    current_validation_error_signature = _normalize_error_signature(errors_report)
-    current_fallback_signature = _normalize_fallback_signature(collected_fallback_reports)
-    updated_repair_retry_count = int(state.get("repair_retry_count") or 0)
-    remedial_budget_exhausted_reason = str(
-        getattr(translator_agent, "_remedial_budget_exhausted_reason", "") or ""
-    ) or None
-    previous_validation_error_signature = tuple(
-        state.get("last_validation_error_signature") or ()
-    )
-    previous_fallback_signature = tuple(state.get("last_fallback_signature") or ())
-    same_fallback_signature = bool(current_fallback_signature) and (
-        current_fallback_signature == previous_fallback_signature
-    )
-    same_validation_signature = (
-        not current_validation_error_signature
-        or current_validation_error_signature == previous_validation_error_signature
-    )
-    if (
-        updated_repair_retry_count > 0
-        and same_fallback_signature
-        and same_validation_signature
-    ):
-        logger.warning(
-            "Outer repair loop made no progress after repair cycle %d; exhausting remaining repair budget",
-            updated_repair_retry_count,
-        )
-        _write_task_log(
-            transed_project_dir,
-            "repair_loop_short_circuited_no_progress",
-            {
-                "repair_retry_count": updated_repair_retry_count,
-                "remaining_errors_count": len(errors_report or []),
-                "remaining_fallback_count": len(collected_fallback_reports),
-            },
-        )
-        updated_repair_retry_count = MAX_REPAIR_RETRIES
-
     return {
         **state,
         "validation_warning": validation_warning,
-        "fallback_reports": collected_fallback_reports,
-        "compile_fallback_reports": compile_fallback_reports,
-        "repair_retry_count": updated_repair_retry_count,
-        "last_validation_error_signature": current_validation_error_signature,
-        "last_fallback_signature": current_fallback_signature,
-        "remedial_budget_exhausted_reason": remedial_budget_exhausted_reason,
+        **fallback_state,
+        "residual_english_requires_fallback": False,
     }
 
 
@@ -1019,6 +1063,14 @@ def _route_after_validate(state: PipelineState) -> str:
     - 有 fallback 且已达上限  → "ultimate_downgrade"
     - 无 fallback              → "generate"
     """
+    if (
+        bool(state.get("residual_english_requires_fallback"))
+        and bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
+        and (state.get("compile_fallback_reports") or [])
+        and not bool(state.get("post_compile_fallback_attempted"))
+    ):
+        return "post_compile_target_language_fallback"
+
     fallback_reports = state.get("fallback_reports") or []
     repair_retry_count = int(state.get("repair_retry_count") or 0)
     remedial_budget_exhausted_reason = str(state.get("remedial_budget_exhausted_reason") or "").strip()
@@ -1165,6 +1217,7 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
         **state,
         "fallback_reports": [],
         "post_compile_fallback_attempted": True,
+        "residual_english_requires_fallback": False,
     }
 
 
@@ -1346,7 +1399,7 @@ async def node_ultimate_downgrade(state: PipelineState) -> PipelineState:
                          {"status": "error", "elapsed_ms": (time.monotonic() - _t0) * 1000, "error": str(e)})
 
     # Clear reports and proceed to generate
-    return {**state, "fallback_reports": []}
+    return {**state, "fallback_reports": [], "residual_english_requires_fallback": False}
 
 
 # ---------------------------------------------------------------------------
@@ -1431,6 +1484,7 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
             "generate": "generate",
             "repair_translation": "repair_translation",
             "ultimate_downgrade": "ultimate_downgrade",
+            "post_compile_target_language_fallback": "post_compile_target_language_fallback",
         },
     )
     # repair loops back to validate for re-evaluation
@@ -1533,6 +1587,7 @@ async def run_pipeline(
         "last_fallback_signature": (),
         "remedial_budget_exhausted_reason": None,
         "post_compile_fallback_attempted": False,
+        "residual_english_requires_fallback": False,
         "final_result": {
             "status": "failed",
             "pdf_path": None,
