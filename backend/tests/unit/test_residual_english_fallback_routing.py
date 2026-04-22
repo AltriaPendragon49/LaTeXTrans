@@ -119,3 +119,24 @@ def test_route_after_validate_prefers_post_compile_target_language_fallback_for_
     }
 
     assert orch._route_after_validate(state) == "post_compile_target_language_fallback"
+
+
+def test_route_after_generate_retries_post_compile_with_source_passthrough_after_structured_residual_english_failure():
+    from backend.app.services.agents import langgraph_orchestrator as orch
+    from backend.app.services.agents.pipeline_schema import FallbackReport
+
+    state = {
+        "config": {"enable_post_compile_target_language_fallback": True},
+        "generation_result": {"status": "structure_invalid"},
+        "compile_fallback_reports": [
+            FallbackReport(
+                fallback_kind="c2_structural_collapse",
+                chunk_scope="1",
+                root_cause="c2",
+            )
+        ],
+        "post_compile_fallback_attempted": True,
+        "residual_english_fallback_stage": 1,
+    }
+
+    assert orch._route_after_generate(state) == "post_compile_target_language_fallback"

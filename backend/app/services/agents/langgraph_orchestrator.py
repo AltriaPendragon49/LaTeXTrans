@@ -67,11 +67,77 @@ COMPILE_FALLBACK_PENDING_STATUSES = {
     TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
 }
 
+RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE = 0
+RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED = 1
+RESIDUAL_ENGLISH_FALLBACK_STAGE_SOURCE = 2
+
+RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_SECTION_STATUSES = {
+    TranslatorAgent.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+    TranslatorAgent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+}
+
+RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_ENV_STATUSES = {
+    TranslatorAgent.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+}
 
 def _should_skip_deterministic_section_downgrade(section: Dict[str, Any]) -> bool:
     return TranslatorAgent._is_document_root_section_chunk(section)
 
 
+def _get_residual_english_fallback_stage(state: "PipelineState") -> int:
+    try:
+        return int(state.get("residual_english_fallback_stage") or 0)
+    except (TypeError, ValueError):
+        return RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
+
+
+def _is_residual_english_structured_fallback_phase(state: "PipelineState") -> bool:
+    return (
+        bool(state.get("residual_english_requires_fallback"))
+        and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
+    )
+
+
+def _should_apply_residual_english_structured_downgrade(
+    *,
+    state: PipelineState,
+    scope_key: str,
+    translation_status: str,
+    tracked_statuses: set[str],
+    tracked_scopes: set[str],
+) -> bool:
+    if not _is_residual_english_structured_fallback_phase(state):
+        return False
+    if scope_key in tracked_scopes:
+        return True
+    return translation_status in tracked_statuses
+
+
+def _should_force_source_passthrough_for_residual_english(
+    *,
+    state: PipelineState,
+    scope_key: str,
+    translation_status: str,
+    passthrough_statuses: set[str],
+    tracked_scopes: set[str],
+) -> bool:
+    if _get_residual_english_fallback_stage(state) < RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED:
+        return False
+    if scope_key in tracked_scopes:
+        return True
+    return translation_status in passthrough_statuses
+
+
+def _should_retry_residual_english_with_source_passthrough(state: PipelineState) -> bool:
+    return (
+        bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
+        and bool(state.get("compile_fallback_reports") or [])
+        and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED
+    )
 def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) -> tuple[tuple[Any, ...], ...]:
     signature: list[tuple[Any, ...]] = []
     for item in errors_report or []:
@@ -173,6 +239,7 @@ class PipelineState(TypedDict, total=False):
     remedial_budget_exhausted_reason: Optional[str]
     post_compile_fallback_attempted: bool
     residual_english_requires_fallback: bool
+    residual_english_fallback_stage: int
 
     # 输出字段
     final_result: Dict[str, Any]
@@ -707,6 +774,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
             if (
                 bool(config.get("enable_post_compile_target_language_fallback", True))
                 and fallback_state.get("compile_fallback_reports")
+                and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
                 and not bool(state.get("post_compile_fallback_attempted"))
             ):
                 _write_audit_log(
@@ -720,6 +788,8 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                     "validation_warning": validation_warning,
                     **fallback_state,
                     "residual_english_requires_fallback": True,
+                    "residual_english_blocked_scopes": blocked_scopes,
+                    "residual_english_fallback_stage": RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE,
                 }
             raise RuntimeError(
                 "Residual English prose remains after validation retries: "
@@ -1041,6 +1111,8 @@ async def node_finalize(state: PipelineState) -> PipelineState:
 def _route_after_generate(state: PipelineState) -> str:
     result = state.get("generation_result") or {}
     if result.get("status") == "structure_invalid":
+        if _should_retry_residual_english_with_source_passthrough(state):
+            return "post_compile_target_language_fallback"
         return "abort_structure_invalid"
     if (
         bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
@@ -1067,6 +1139,7 @@ def _route_after_validate(state: PipelineState) -> str:
         bool(state.get("residual_english_requires_fallback"))
         and bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
         and (state.get("compile_fallback_reports") or [])
+        and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
         and not bool(state.get("post_compile_fallback_attempted"))
     ):
         return "post_compile_target_language_fallback"
@@ -1089,16 +1162,30 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
     transed_project_dir = state["transed_project_dir"]
     task_id = state.get("task_id", state.get("base_name", ""))
     compile_fallback_reports = list(state.get("compile_fallback_reports") or [])
+    residual_english_stage = _get_residual_english_fallback_stage(state)
+    residual_english_mode = (
+        "source_passthrough"
+        if residual_english_stage >= RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED
+        else "structured_downgrade"
+    )
     _write_audit_log(
         transed_project_dir,
         task_id,
         "node_enter:post_compile_target_language_fallback",
-        {"fallback_count": len(compile_fallback_reports)},
+        {
+            "fallback_count": len(compile_fallback_reports),
+            "residual_english_stage": residual_english_stage,
+            "residual_english_mode": residual_english_mode,
+        },
     )
     _write_task_log(
         transed_project_dir,
         "post_compile_target_language_fallback_started",
-        {"fallback_count": len(compile_fallback_reports)},
+        {
+            "fallback_count": len(compile_fallback_reports),
+            "residual_english_stage": residual_english_stage,
+            "residual_english_mode": residual_english_mode,
+        },
     )
     _t0 = time.monotonic()
     _update_progress(state, 83, "Applying post-compile target-language fallback")
@@ -1120,12 +1207,81 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
         envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
 
         report_by_scope = {str(r.chunk_scope): r for r in compile_fallback_reports}
+        residual_english_blocked_scopes = {
+            str(scope)
+            for scope in (state.get("residual_english_blocked_scopes") or [])
+            if str(scope)
+        }
+        payload_invariant_sections = {
+            str(scope)
+            for scope in (state.get("payload_invariant_sections") or [])
+            if str(scope)
+        }
+        residual_section_scopes = (
+            set(report_by_scope)
+            | residual_english_blocked_scopes
+            | payload_invariant_sections
+        )
+        residual_env_scopes = set(report_by_scope) | residual_english_blocked_scopes
 
         for sec in sections:
             scope_key = str(sec.get("section", ""))
+            translation_status = str(sec.get("translation_status") or "")
+            if _should_apply_residual_english_structured_downgrade(
+                state=state,
+                scope_key=scope_key,
+                translation_status=translation_status,
+                tracked_statuses=RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_SECTION_STATUSES,
+                tracked_scopes=residual_section_scopes,
+            ):
+                if _should_skip_deterministic_section_downgrade(sec):
+                    source_safe_content = sec.get("content") or ""
+                    if source_safe_content.strip():
+                        sec["trans_content"] = source_safe_content
+                    sec["document_root_fallback_preserved"] = True
+                    continue
+                current_target_text = sec.get("trans_content") or ""
+                if current_target_text.strip():
+                    sec["trans_content"] = ultimate_downgrade_section_segment(
+                        sec.get("content") or "",
+                        current_target_text,
+                        leading_structure_shell=sec.get("leading_structure_shell", "") or "",
+                        trailing_structure_shell=sec.get("trailing_structure_shell", "") or "",
+                        fallback_report=report_by_scope.get(scope_key),
+                    )
+                    sec["translation_status"] = "final_target_language_fallback_applied"
+                    applied_sections += 1
+                else:
+                    source_safe_content = sec.get("content") or ""
+                    if source_safe_content.strip():
+                        sec["trans_content"] = source_safe_content
+                        sec["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                        applied_sections += 1
+                    else:
+                        sec["translation_status"] = "final_target_language_fallback_failed"
+                        failed_sections += 1
+                continue
+            if _should_force_source_passthrough_for_residual_english(
+                state=state,
+                scope_key=scope_key,
+                translation_status=translation_status,
+                passthrough_statuses=RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_SECTION_STATUSES,
+                tracked_scopes=residual_section_scopes,
+            ):
+                source_safe_content = sec.get("content") or ""
+                if source_safe_content.strip():
+                    sec["trans_content"] = source_safe_content
+                    sec["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                    if _should_skip_deterministic_section_downgrade(sec):
+                        sec["document_root_fallback_preserved"] = True
+                    applied_sections += 1
+                else:
+                    sec["translation_status"] = "final_target_language_fallback_failed"
+                    failed_sections += 1
+                continue
             if (
                 scope_key in report_by_scope
-                and sec.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
+                and translation_status in COMPILE_FALLBACK_PENDING_STATUSES
             ):
                 if _should_skip_deterministic_section_downgrade(sec):
                     source_safe_content = sec.get("content") or ""
@@ -1150,9 +1306,51 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
 
         for env in envs:
             scope_key = str(env.get("placeholder", ""))
+            translation_status = str(env.get("translation_status") or "")
+            if _should_apply_residual_english_structured_downgrade(
+                state=state,
+                scope_key=scope_key,
+                translation_status=translation_status,
+                tracked_statuses=RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_ENV_STATUSES,
+                tracked_scopes=residual_env_scopes,
+            ):
+                current_target_text = env.get("trans_content") or ""
+                if current_target_text.strip():
+                    env["trans_content"] = ultimate_downgrade_segment(
+                        current_target_text,
+                        report_by_scope.get(scope_key),
+                    )
+                    env["translation_status"] = "final_target_language_fallback_applied"
+                    applied_envs += 1
+                else:
+                    source_safe_content = env.get("content") or ""
+                    if source_safe_content.strip():
+                        env["trans_content"] = source_safe_content
+                        env["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                        applied_envs += 1
+                    else:
+                        env["translation_status"] = "final_target_language_fallback_failed"
+                        failed_envs += 1
+                continue
+            if _should_force_source_passthrough_for_residual_english(
+                state=state,
+                scope_key=scope_key,
+                translation_status=translation_status,
+                passthrough_statuses=RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_ENV_STATUSES,
+                tracked_scopes=residual_env_scopes,
+            ):
+                source_safe_content = env.get("content") or ""
+                if source_safe_content.strip():
+                    env["trans_content"] = source_safe_content
+                    env["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                    applied_envs += 1
+                else:
+                    env["translation_status"] = "final_target_language_fallback_failed"
+                    failed_envs += 1
+                continue
             if (
                 scope_key in report_by_scope
-                and env.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
+                and translation_status in COMPILE_FALLBACK_PENDING_STATUSES
             ):
                 current_target_text = env.get("trans_content") or ""
                 if current_target_text.strip():
@@ -1218,6 +1416,15 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
         "fallback_reports": [],
         "post_compile_fallback_attempted": True,
         "residual_english_requires_fallback": False,
+        "residual_english_fallback_stage": (
+            RESIDUAL_ENGLISH_FALLBACK_STAGE_SOURCE
+            if residual_english_stage >= RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED
+            else (
+                RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED
+                if bool(state.get("residual_english_requires_fallback"))
+                else RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
+            )
+        ),
     }
 
 
@@ -1588,6 +1795,7 @@ async def run_pipeline(
         "remedial_budget_exhausted_reason": None,
         "post_compile_fallback_attempted": False,
         "residual_english_requires_fallback": False,
+        "residual_english_fallback_stage": RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE,
         "final_result": {
             "status": "failed",
             "pdf_path": None,
