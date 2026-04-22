@@ -67,9 +67,37 @@ COMPILE_FALLBACK_PENDING_STATUSES = {
     TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
 }
 
+RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_SECTION_STATUSES = {
+    TranslatorAgent.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+    TranslatorAgent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+}
+
+RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_ENV_STATUSES = {
+    TranslatorAgent.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+    TranslatorAgent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+}
+
 
 def _should_skip_deterministic_section_downgrade(section: Dict[str, Any]) -> bool:
     return TranslatorAgent._is_document_root_section_chunk(section)
+
+
+def _should_force_source_passthrough_for_residual_english(
+    *,
+    state: PipelineState,
+    scope_key: str,
+    translation_status: str,
+    passthrough_statuses: set[str],
+    tracked_scopes: set[str],
+) -> bool:
+    if not bool(state.get("residual_english_requires_fallback")):
+        return False
+    if scope_key in tracked_scopes:
+        return True
+    return translation_status in passthrough_statuses
 
 
 def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) -> tuple[tuple[Any, ...], ...]:
@@ -379,6 +407,9 @@ def _collect_validate_fallback_state(
         "last_validation_error_signature": current_validation_error_signature,
         "last_fallback_signature": current_fallback_signature,
         "remedial_budget_exhausted_reason": remedial_budget_exhausted_reason,
+        "payload_invariant_sections": list(
+            getattr(translator_agent, "payload_invariant_sections", []) or []
+        ),
     }
 
 
@@ -720,6 +751,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
                     "validation_warning": validation_warning,
                     **fallback_state,
                     "residual_english_requires_fallback": True,
+                    "residual_english_blocked_scopes": blocked_scopes,
                 }
             raise RuntimeError(
                 "Residual English prose remains after validation retries: "
@@ -1120,12 +1152,47 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
         envs = json.loads(envs_path.read_text(encoding="utf-8")) if envs_path.exists() else []
 
         report_by_scope = {str(r.chunk_scope): r for r in compile_fallback_reports}
+        residual_english_blocked_scopes = {
+            str(scope)
+            for scope in (state.get("residual_english_blocked_scopes") or [])
+            if str(scope)
+        }
+        payload_invariant_sections = {
+            str(scope)
+            for scope in (state.get("payload_invariant_sections") or [])
+            if str(scope)
+        }
+        residual_section_scopes = (
+            set(report_by_scope)
+            | residual_english_blocked_scopes
+            | payload_invariant_sections
+        )
+        residual_env_scopes = set(report_by_scope) | residual_english_blocked_scopes
 
         for sec in sections:
             scope_key = str(sec.get("section", ""))
+            translation_status = str(sec.get("translation_status") or "")
+            if _should_force_source_passthrough_for_residual_english(
+                state=state,
+                scope_key=scope_key,
+                translation_status=translation_status,
+                passthrough_statuses=RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_SECTION_STATUSES,
+                tracked_scopes=residual_section_scopes,
+            ):
+                source_safe_content = sec.get("content") or ""
+                if source_safe_content.strip():
+                    sec["trans_content"] = source_safe_content
+                    sec["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                    if _should_skip_deterministic_section_downgrade(sec):
+                        sec["document_root_fallback_preserved"] = True
+                    applied_sections += 1
+                else:
+                    sec["translation_status"] = "final_target_language_fallback_failed"
+                    failed_sections += 1
+                continue
             if (
                 scope_key in report_by_scope
-                and sec.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
+                and translation_status in COMPILE_FALLBACK_PENDING_STATUSES
             ):
                 if _should_skip_deterministic_section_downgrade(sec):
                     source_safe_content = sec.get("content") or ""
@@ -1150,9 +1217,26 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
 
         for env in envs:
             scope_key = str(env.get("placeholder", ""))
+            translation_status = str(env.get("translation_status") or "")
+            if _should_force_source_passthrough_for_residual_english(
+                state=state,
+                scope_key=scope_key,
+                translation_status=translation_status,
+                passthrough_statuses=RESIDUAL_ENGLISH_SOURCE_PASSTHROUGH_ENV_STATUSES,
+                tracked_scopes=residual_env_scopes,
+            ):
+                source_safe_content = env.get("content") or ""
+                if source_safe_content.strip():
+                    env["trans_content"] = source_safe_content
+                    env["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                    applied_envs += 1
+                else:
+                    env["translation_status"] = "final_target_language_fallback_failed"
+                    failed_envs += 1
+                continue
             if (
                 scope_key in report_by_scope
-                and env.get("translation_status") in COMPILE_FALLBACK_PENDING_STATUSES
+                and translation_status in COMPILE_FALLBACK_PENDING_STATUSES
             ):
                 current_target_text = env.get("trans_content") or ""
                 if current_target_text.strip():
