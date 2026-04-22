@@ -418,6 +418,12 @@
 
 ## Recent Responsibility Updates (2026-04-21 Community Engagement)
 
+## Recent Responsibility Updates (2026-04-22 Feed Rebuild Safety)
+
+- `backend/app/core/config.py`: 新增公开 feed 周期重建间隔配置，统一控制 Worker 侧 Redis 排名修复任务是否启用及其执行频率。
+- `backend/app/services/paper_service.py`: 公开 feed 索引全量重建现已改为写入临时 ZSET 后再通过 Redis `RENAME` 原子替换正式键，并在重建后统一清理匿名列表响应缓存。
+- `backend/app/main.py`: Worker 启动流程现已挂载公开 feed Redis 索引的周期修复协程，复用现有后台运行位而不额外引入 MQ 或独立 Cron 形态。
+
 - `backend/migrations_mysql/20260421_0008_community_paper_engagement.sql`: 新增社区论文收藏文件夹、文件夹论文关联、按天去重浏览记录三组持久化表，并补齐唯一约束与查询索引。
 - `backend/app/api/routes/papers.py`: 社区论文路由现已提供收藏文件夹管理、论文收藏夹同步、点赞切换与真实浏览计数接口，并支持匿名浏览标识请求头与 cookie 回写。
 - `backend/app/services/paper_service.py`: 社区论文服务现已负责收藏夹关系同步、派生收藏态聚合、点赞一人一票切换、UTC+8 自然日浏览去重以及最新/浏览量/点赞量排序编排。

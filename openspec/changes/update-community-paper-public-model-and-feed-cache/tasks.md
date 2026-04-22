@@ -12,6 +12,7 @@
 ## 3. Operational Safety
 - [ ] 3.1 Add or document the shared Redis deployment contract for public community feed state.
 - [ ] 3.2 Ensure any scheduled Redis index rebuild/repair path runs in a dedicated worker or under a distributed singleton lock.
+- [ ] 3.3 Add a periodic worker-side Redis index rebuild/repair loop that rebuilds into temporary keys and atomically swaps them into the live feed indexes.
 
 ## 4. Verification
 - [ ] 4.1 Add or update tests for public feed ordering, search bypass behavior, viewer-state hydration, and stale-state regression coverage.

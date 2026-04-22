@@ -19,3 +19,8 @@ Any scheduled rebuild, repair, or backfill path for Redis-backed public communit
 - **WHEN** the system rebuilds or repairs the Redis-backed `latest`, `views`, or `likes` indexes
 - **THEN** that work SHALL run in a dedicated worker role or under a distributed singleton lock
 - **AND** multiple web instances SHALL NOT race to rebuild the same public index set concurrently.
+
+#### Scenario: Scheduled rebuild swaps indexes atomically
+- **WHEN** the system performs a full scheduled rebuild of a Redis-backed public feed index
+- **THEN** it SHALL populate a temporary Redis key first
+- **AND** it SHALL atomically promote the completed temporary key into the live index key rather than exposing a delete-then-rebuild gap to readers.

@@ -380,10 +380,12 @@ class _PublicFeedRedisStore:
         if not self._client:
             return
         key = self.index_key(sort)
+        temp_key = self._key(f"index:{str(sort or 'latest').strip().lower() or 'latest'}:tmp:{uuid4().hex}")
         pipeline = self._client.pipeline()
-        pipeline.delete(key)
+        pipeline.delete(temp_key)
         if mapping:
-            pipeline.zadd(key, mapping)
+            pipeline.zadd(temp_key, mapping)
+        pipeline.rename(temp_key, key)
         pipeline.execute()
 
     def upsert_ranked_paper(self, *, sort: str, paper_id: str, score: float) -> None:
@@ -4223,7 +4225,15 @@ async def _rebuild_public_feed_indexes_from_db() -> bool:
                 if str(paper.get("id") or "").strip()
             },
         )
+    store.clear_cached_payloads()
     return True
+
+
+async def rebuild_public_feed_indexes_if_enabled() -> bool:
+    interval_seconds = float(getattr(settings, "community_feed_rebuild_interval_seconds", 300.0) or 0.0)
+    if interval_seconds <= 0:
+        return False
+    return await _rebuild_public_feed_indexes_from_db()
 
 
 async def _list_public_papers_from_shared_feed_store(

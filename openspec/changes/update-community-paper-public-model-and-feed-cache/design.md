@@ -77,6 +77,18 @@ If the system uses scheduled rebuilds, repairs, or backfills for Redis public in
 
 This avoids duplicate rebuild races and keeps public ordering deterministic across instances.
 
+### 9. Periodic rebuilds use atomic index swaps
+The steady-state hot path should continue using narrow single-paper Redis updates after likes and views change. In addition, the system should run a periodic repair/rebuild loop in the existing worker runtime so index drift caused by process crashes, partial Redis write failures, or transient network issues self-heals without operator action.
+
+That rebuild path should not delete a live public ZSET before repopulating it. Instead it should:
+
+- compute the full canonical score mapping from MySQL
+- write it into a temporary Redis key
+- atomically promote the temporary key into the live index key with `RENAME`
+- clear the shared feed response cache registry after the swap
+
+This keeps the public feed readable during rebuild and avoids transient empty-index windows.
+
 ## Read Path
 For `GET /api/papers` without `q`:
 
@@ -120,7 +132,7 @@ This keeps steady-state updates on the hot path at `O(log N)` while preserving r
 1. Remove public ranking and UI dependence on `community_status`.
 2. Align backend sort helpers and API contracts with the publication-first public model.
 3. Introduce Redis-backed shared public feed cache/indexes.
-4. Add singleton-safe refresh/backfill mechanics for Redis indexes if scheduled refresh is required.
+4. Add singleton-safe refresh/backfill mechanics for Redis indexes, including periodic worker-driven rebuilds that atomically replace live ZSET indexes.
 5. Validate that public `latest`, `views`, and `likes` ordering remains stable across refreshes, relogin, and multi-instance reads.
 
 ## Open Questions

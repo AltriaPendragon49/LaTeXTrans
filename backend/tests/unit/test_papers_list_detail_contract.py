@@ -18,6 +18,7 @@ class _FakeSharedFeedStore:
         self.indexes = {"latest": {}, "views": {}, "likes": {}}
         self.registry_cleared = 0
         self.rebuild_lock_acquired = True
+        self.replace_calls = []
 
     def response_key(self, *, sort: str, limit: int | None, offset: int) -> str:
         return f"{sort}:{limit}:{offset}"
@@ -43,6 +44,7 @@ class _FakeSharedFeedStore:
         return len(self.indexes.get(sort, {}))
 
     def replace_index(self, *, sort: str, mapping):
+        self.replace_calls.append((sort, dict(mapping)))
         self.indexes[sort] = dict(mapping)
 
     def upsert_ranked_paper(self, *, sort: str, paper_id: str, score: float):
@@ -57,6 +59,57 @@ class _FakeSharedFeedStore:
 
     def acquire_rebuild_lock(self) -> bool:
         return self.rebuild_lock_acquired
+
+
+def test_rebuild_public_feed_indexes_replaces_indexes_and_clears_response_cache(monkeypatch):
+    store = _FakeSharedFeedStore()
+    store.cached_payloads["likes:12:0"] = {"items": [{"id": "stale"}]}
+
+    papers = [
+        {
+            "id": "paper-a",
+            "visibility": "public",
+            "status": "published",
+            "community_status": "official",
+            "created_at": "2026-03-18T02:00:00+00:00",
+            "official_published_at": "2026-03-20T04:00:00+00:00",
+            "arxiv_published_at": "2026-03-21T04:00:00+00:00",
+            "like_count": 3,
+            "view_count": 10,
+        },
+        {
+            "id": "paper-b",
+            "visibility": "public",
+            "status": "published",
+            "community_status": "user_fallback",
+            "created_at": "2026-03-17T02:00:00+00:00",
+            "official_published_at": "2026-03-19T04:00:00+00:00",
+            "arxiv_published_at": "2026-03-19T04:00:00+00:00",
+            "like_count": 1,
+            "view_count": 5,
+        },
+    ]
+
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return papers
+
+    monkeypatch.setattr(paper_service, "_public_feed_store", store)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+
+    rebuilt = asyncio.run(paper_service._rebuild_public_feed_indexes_from_db())
+
+    assert rebuilt is True
+    assert [sort for sort, _mapping in store.replace_calls] == ["latest", "views", "likes"]
+    assert store.registry_cleared == 1
+    assert store.cached_payloads == {}
+    assert store.indexes["likes"]["paper-a"] > store.indexes["likes"]["paper-b"]
+
+
+def test_rebuild_public_feed_indexes_if_enabled_skips_when_interval_disabled(monkeypatch):
+    monkeypatch.setattr(paper_service.settings, "community_feed_rebuild_interval_seconds", 0.0, raising=False)
+    rebuilt = asyncio.run(paper_service.rebuild_public_feed_indexes_if_enabled())
+    assert rebuilt is False
 
 
 def test_list_papers_orders_by_publication_time_not_official_priority(monkeypatch):

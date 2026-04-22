@@ -313,6 +313,7 @@ async def startup_event():
     )
     app.state.cleanup_task = None
     app.state.admin_job_poll_task = None
+    app.state.public_feed_rebuild_task = None
 
     # Initialize TaskQueue
     import backend.app.services.task_manager as tm_module
@@ -345,6 +346,25 @@ async def startup_event():
 
         app.state.admin_job_poll_task = asyncio.create_task(_poll_admin_jobs())
         logger.info("[Startup] Admin job polling started")
+
+        public_feed_rebuild_interval_seconds = max(
+            0.0,
+            float(getattr(settings, "community_feed_rebuild_interval_seconds", 300.0) or 0.0),
+        )
+        if public_feed_rebuild_interval_seconds > 0:
+            async def _repair_public_feed_indexes():
+                while True:
+                    try:
+                        await paper_service.rebuild_public_feed_indexes_if_enabled()
+                    except Exception as exc:
+                        logger.warning("[Startup] Failed to rebuild shared public feed indexes: %s", exc)
+                    await asyncio.sleep(public_feed_rebuild_interval_seconds)
+
+            app.state.public_feed_rebuild_task = asyncio.create_task(_repair_public_feed_indexes())
+            logger.info(
+                "[Startup] Public feed index rebuild loop started (interval=%ss)",
+                public_feed_rebuild_interval_seconds,
+            )
 
     if runtime_role != "all":
         return
@@ -465,6 +485,13 @@ async def startup_event():
 async def shutdown_event():
     """Shutdown event handler"""
     set_runtime_shutting_down(True)
+    public_feed_rebuild_task = getattr(app.state, 'public_feed_rebuild_task', None)
+    if public_feed_rebuild_task:
+        public_feed_rebuild_task.cancel()
+        try:
+            await public_feed_rebuild_task
+        except asyncio.CancelledError:
+            pass
     admin_job_poll_task = getattr(app.state, 'admin_job_poll_task', None)
     if admin_job_poll_task:
         admin_job_poll_task.cancel()

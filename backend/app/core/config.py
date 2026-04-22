@@ -224,6 +224,11 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_FEED_REBUILD_LOCK_TTL_SECONDS",
         description="TTL in seconds for the shared Redis rebuild lock guarding public feed index refreshes.",
     )
+    community_feed_rebuild_interval_seconds: float = Field(
+        default=300.0,
+        validation_alias="COMMUNITY_FEED_REBUILD_INTERVAL_SECONDS",
+        description="Periodic worker-side interval for full Redis public feed index repair/rebuild runs; set to 0 to disable.",
+    )
     community_agent_product_enabled: bool = Field(
         default=False,
         validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",

@@ -55,3 +55,8 @@ The system SHALL keep Redis-backed public ranking state aligned with persistent 
 - **WHEN** a like write succeeds for a public community paper and no full rebuild is required
 - **THEN** the system SHALL prefer a single-entry Redis ranking mutation for the affected `paper_id`, such as `ZINCRBY` or a single-entry `ZADD` with the canonical latest score
 - **AND** it SHALL avoid whole-index or process-wide cache invalidation on the steady-state hot path unless correctness requires it.
+
+#### Scenario: Periodic rebuild repairs Redis drift without changing the API contract
+- **WHEN** the background worker performs a scheduled rebuild of the public `latest`, `views`, or `likes` indexes
+- **THEN** later non-search `GET /api/papers` requests SHALL continue returning the same response contract and hydration behavior
+- **AND** the rebuilt indexes SHALL reflect canonical MySQL counts and publication ordering after the repair completes.
