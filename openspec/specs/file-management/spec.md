@@ -166,14 +166,21 @@ arXiv 论文上传目录 SHALL 以 arxiv_id 为 key 存储，支持跨任务共�
 - **AND** 系统 SHALL NOT 删除该目录
 
 ### Requirement: Failed Output Quarantine
-The system SHALL quarantine failed task outputs into `data/failed_tasks`, and SHALL move only `outputs/{task_id}` artifacts.  
+The system SHALL quarantine failed task outputs into the configured failed-task namespace and SHALL move only `outputs/{task_id}` artifacts.  
+For local-disk task storage, the quarantine root SHALL remain `data/failed_tasks/{task_id}`.  
+For object-storage-backed retained admin curation failures, the quarantine root SHALL be `failed_tasks/{task_id}`.  
 The system SHALL NOT move `terms/{task_id}` and SHALL NOT move or delete upload cache artifacts as part of this quarantine behavior.  
 After quarantine, the system SHALL perform scoped replay-evidence reference rewrite so replay references remain reachable from the new quarantine root.
 
-#### Scenario: Quarantine Failed Task Output
-- **WHEN** task status is updated to `failed` or `failed_compilation`
+#### Scenario: Quarantine failed task output on local disk
+- **WHEN** task status is updated to `failed` or `failed_compilation` in local-disk mode
 - **THEN** the system moves `data/outputs/{task_id}` to `data/failed_tasks/{task_id}`
 - **AND** the quarantined files remain available for debugging.
+
+#### Scenario: Retain failed admin curation output in object storage
+- **WHEN** an admin curation task reaches a retained terminal failure while failed artifacts are persisted through object storage
+- **THEN** the system stores the failed output root under `failed_tasks/{task_id}`
+- **AND** the retained failed artifact reference remains available for later operator cleanup.
 
 #### Scenario: Scoped replay reference rewrite after quarantine
 - **WHEN** output quarantine succeeds

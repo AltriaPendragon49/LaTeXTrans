@@ -25,12 +25,6 @@ function resolvePrimaryTimestamp(paper: CommunityPaper): number {
 
 function sortFeedItems(items: CommunityPaper[], sort: CommunityFeedSort) {
   return [...items].sort((left, right) => {
-    const leftOfficialRank = left.community_status === "official" ? 0 : 1
-    const rightOfficialRank = right.community_status === "official" ? 0 : 1
-    if (leftOfficialRank !== rightOfficialRank) {
-      return leftOfficialRank - rightOfficialRank
-    }
-
     if (sort === "views") {
       const viewDelta = Number(right.view_count ?? 0) - Number(left.view_count ?? 0)
       if (viewDelta !== 0) {

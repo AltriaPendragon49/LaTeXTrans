@@ -10,6 +10,8 @@ import PaperDetailPage from "@/pages/paper-detail"
 const usePaperDetailMock = vi.fn()
 const translateCommunityPaperMock = vi.fn()
 const createCommunityPaperDownloadSessionMock = vi.fn()
+const likeCommunityPaperMock = vi.fn()
+const unlikeCommunityPaperMock = vi.fn()
 const getCommunityPaperSimilarMock = vi.fn()
 const navigateMock = vi.fn()
 const setTaskIdMock = vi.fn()
@@ -34,6 +36,8 @@ vi.mock("@/features/community-paper/services/community-paper-api", () => ({
   translateCommunityPaper: (...args: unknown[]) => translateCommunityPaperMock(...args),
   createCommunityPaperDownloadSession: (...args: unknown[]) =>
     createCommunityPaperDownloadSessionMock(...args),
+  likeCommunityPaper: (...args: unknown[]) => likeCommunityPaperMock(...args),
+  unlikeCommunityPaper: (...args: unknown[]) => unlikeCommunityPaperMock(...args),
   getCommunityPaperSimilar: (...args: unknown[]) => getCommunityPaperSimilarMock(...args),
   getCachedCommunityPaperDetail: vi.fn(() => null),
   getCommunityPaperDetail: vi.fn(),
@@ -58,6 +62,22 @@ vi.mock("react-router-dom", async () => {
     useNavigate: () => navigateMock,
   }
 })
+
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    isAuthenticated: true,
+    user: { id: "user-1" },
+    session: null,
+    loading: false,
+    error: null,
+    isAuthAvailable: true,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    verifyOtp: vi.fn(),
+    signOut: vi.fn(),
+    clearError: vi.fn(),
+  }),
+}))
 
 const basePaper = {
   id: "paper-1",
@@ -204,6 +224,16 @@ describe("PaperDetailPage", () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
     getCommunityPaperSimilarMock.mockResolvedValue({ items: [] })
+    likeCommunityPaperMock.mockResolvedValue({
+      paper_id: "paper-1",
+      liked: true,
+      like_count: 3,
+    })
+    unlikeCommunityPaperMock.mockResolvedValue({
+      paper_id: "paper-1",
+      liked: false,
+      like_count: 1,
+    })
     Object.defineProperty(window, "open", {
       configurable: true,
       value: openMock,
@@ -230,6 +260,8 @@ describe("PaperDetailPage", () => {
 
     expect(screen.queryByRole("heading", { level: 1, name: "Detail Page Title" })).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Back to feed" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Like paper" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Like paper" })).toHaveTextContent("2")
     expect(screen.getByRole("button", { name: "Favorite paper" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Download translated PDF" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Paper information" })).toBeInTheDocument()
@@ -765,6 +797,33 @@ describe("PaperDetailPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Link copied")).toBeInTheDocument()
+    })
+  })
+
+  it("places a subtle like button before favorite and updates the count when clicked", async () => {
+    const user = userEvent.setup()
+    usePaperDetailMock.mockReturnValue(buildDetailReturn())
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const actionButtons = screen.getAllByRole("button")
+    const likeButton = screen.getByRole("button", { name: "Like paper" })
+    const favoriteButton = screen.getByRole("button", { name: "Favorite paper" })
+
+    expect(actionButtons.indexOf(likeButton)).toBeLessThan(actionButtons.indexOf(favoriteButton))
+    expect(likeButton).toHaveTextContent("2")
+
+    await user.click(likeButton)
+
+    await waitFor(() => {
+      expect(likeCommunityPaperMock).toHaveBeenCalledWith("paper-1")
+      expect(screen.getByRole("button", { name: "Unlike paper" })).toHaveTextContent("3")
     })
   })
 

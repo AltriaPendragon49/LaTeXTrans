@@ -422,3 +422,6 @@
 - `backend/app/api/routes/papers.py`: 社区论文路由现已提供收藏文件夹管理、论文收藏夹同步、点赞切换与真实浏览计数接口，并支持匿名浏览标识请求头与 cookie 回写。
 - `backend/app/services/paper_service.py`: 社区论文服务现已负责收藏夹关系同步、派生收藏态聚合、点赞一人一票切换、UTC+8 自然日浏览去重以及最新/浏览量/点赞量排序编排。
 - `backend/app/repositories/community_paper_repository.py`: 社区论文仓储现已持久化收藏文件夹、文件夹论文关联、点赞切换、浏览去重记录与聚合计数维护，供首页列表、详情页与收藏页共享。
+- `backend/app/core/config.py`: 新增社区公开 feed 的 Redis 配置项，统一声明共享排序索引、响应缓存 TTL 与重建锁参数，供 Web/Worker 进程复用。
+- `backend/app/services/paper_service.py`: 社区论文服务现已接管公开 feed 的 Redis 共享排序索引、匿名响应缓存、按 paper 单点刷新与 MySQL 元数据回源组装，搜索请求仍直接走数据库路径。
+- `backend/app/repositories/community_paper_repository.py`: 社区论文公开列表查询已移除 `community_status` 的 official-first 排序假设，统一按发布时间/浏览量/点赞量与发布时间回退规则返回稳定顺序。

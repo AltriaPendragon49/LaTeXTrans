@@ -12,6 +12,11 @@ The system SHALL persist community-readable paper assets under one canonical com
 - **AND** production SHALL persist those assets in object storage while local development MAY persist them on local disk
 - **AND** the corresponding `paper_assets` rows SHALL record the active storage backend together with the canonical storage reference.
 
+#### Scenario: Canonical translated PDF delivery stays trimmed before publish
+- **WHEN** the system persists a translated PDF into the canonical community store
+- **THEN** it SHALL apply mandatory leading-blank-page trimming before the asset becomes the latest public translated PDF
+- **AND** the latest translated PDF asset SHALL represent the final public delivery file rather than a request-time derived artifact.
+
 ### Requirement: Community preview and download resolve library-relative paths
 The system SHALL resolve public preview and download reads from canonical asset references without assuming that published community assets live permanently on local disk.
 
@@ -57,4 +62,17 @@ The community paper library SHALL persist the final similar-paper recommendation
 #### Scenario: Paper deletion removes persisted recommendations
 - **WHEN** a community paper is hard-deleted
 - **THEN** the system SHALL delete its persisted similar recommendation rows together with the rest of the paper-owned local records.
+
+### Requirement: Existing community translated PDFs can be upgraded in place
+The system SHALL provide an operator backfill path that upgrades existing community translated PDF assets to the canonical trimmed delivery format without requiring full re-curation.
+
+#### Scenario: Backfill upgrades an existing translated PDF asset
+- **WHEN** an operator runs the translated PDF delivery backfill for a paper whose current translated PDF asset is still recoverable
+- **THEN** the system SHALL generate the canonical trimmed delivery PDF from the current asset
+- **AND** it SHALL upsert that result as the latest translated PDF asset for the same paper.
+
+#### Scenario: Backfill skips an unrecoverable translated PDF asset
+- **WHEN** an operator runs the translated PDF delivery backfill for a paper whose translated PDF cannot be recovered
+- **THEN** the system SHALL leave the current paper record unchanged
+- **AND** it SHALL report the paper as skipped instead of requiring an immediate full re-curation.
 

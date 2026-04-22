@@ -82,7 +82,7 @@ export interface CommunityPaper {
   categories: string[]
   abstract_raw?: string | null
   abstract_translated?: string | null
-  community_status: CommunityStatus
+  community_status?: CommunityStatus | null
   trans_status: TranslationStatus
   created_at: string | null
   arxiv_published_at?: string | null

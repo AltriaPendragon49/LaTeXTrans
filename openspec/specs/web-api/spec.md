@@ -667,3 +667,52 @@ Community preview and download APIs SHALL support canonical assets that live eit
 - **THEN** the API SHALL continue serving that file through the existing local file response path
 - **AND** local development SHALL remain functional without object storage.
 
+### Requirement: Admin curation history API lists retained curation jobs
+The backend SHALL expose an admin-only API for querying retained admin curation jobs independent of public paper visibility.
+
+#### Scenario: Admin lists retained curation jobs
+- **WHEN** an authenticated local admin requests the admin curation history API
+- **THEN** the API SHALL return retained curation jobs across queued, processing, completed, and failed states
+- **AND** each item SHALL include identifiers such as `job_id`, `batch_id`, `task_id`, `paper_id`, status fields, timestamps, and error context.
+
+#### Scenario: Admin filters retained curation jobs
+- **WHEN** an authenticated local admin requests the admin curation history API with a status filter or simple search value
+- **THEN** the API SHALL support filtering by curation status
+- **AND** it SHALL support simple search by `arXiv ID` or `batch_id`.
+
+#### Scenario: Non-admin requests retained curation history
+- **WHEN** an authenticated non-admin user requests the admin curation history API
+- **THEN** the API SHALL reject the request with a forbidden response
+- **AND** it SHALL not disclose retained curation job metadata.
+
+### Requirement: Admin curation job delete API hard-deletes retained records
+The backend SHALL expose an admin-only API that permanently deletes failed or completed admin curation records and their retained artifacts.
+
+#### Scenario: Admin deletes a failed retained curation record
+- **WHEN** an authenticated local admin calls the curation-job delete API for a failed retained job
+- **THEN** the backend SHALL permanently delete the curation-job row, retained translation-task row, and retained failed-task artifacts for that job
+- **AND** subsequent admin history reads for that job SHALL fail as missing.
+
+#### Scenario: Admin deletes a completed retained curation record
+- **WHEN** an authenticated local admin calls the curation-job delete API for a completed job that published a paper
+- **THEN** the backend SHALL reuse the existing admin community-paper hard-delete flow for the published paper and its assets
+- **AND** it SHALL also permanently delete the linked curation-job history row.
+
+#### Scenario: Non-admin requests curation-job hard delete
+- **WHEN** an authenticated non-admin user calls the curation-job delete API
+- **THEN** the API SHALL reject the request with a forbidden response
+- **AND** it SHALL not start any delete workflow.
+
+### Requirement: Admin curation history batch delete API reports per-job outcomes
+The web API SHALL provide an authenticated admin-only batch delete endpoint for curation history records that returns per-job hard-delete outcomes.
+
+#### Scenario: Admin batch delete succeeds for all selected jobs
+- **WHEN** an admin submits one or more valid curation job ids to the batch delete endpoint
+- **THEN** the API SHALL hard-delete each job using the same logic as the single-delete endpoint
+- **AND** the response SHALL include the deleted job ids with a zero failed-count result.
+
+#### Scenario: Admin batch delete partially fails
+- **WHEN** at least one submitted curation job id cannot be deleted
+- **THEN** the API SHALL continue attempting the remaining submitted job ids
+- **AND** the response SHALL include separate success and failure entries so the client can keep failed items selected for retry.
+

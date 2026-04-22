@@ -1,9 +1,15 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 import { API_BASE_URL } from "@/api-base"
+import { useAuth } from "@/contexts/AuthContext"
 import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
-import { createCommunityPaperDownloadSession } from "@/features/community-paper/services/community-paper-api"
+import {
+  createCommunityPaperDownloadSession,
+  likeCommunityPaper,
+  unlikeCommunityPaper,
+} from "@/features/community-paper/services/community-paper-api"
 import { publishCommunityPaperEngagement } from "@/lib/community-api"
 import type { CommunityPaper, CommunityPaperReaderMode, ViewerState } from "@/types/community"
 
@@ -66,14 +72,16 @@ interface PaperDetailScreenProps {
   paperId: string | null
 }
 
-interface PaperFavoriteStatePatch {
+interface PaperEngagementPatch {
   paperId: string
+  likeCount: number
   favoriteCount: number
   viewerState: ViewerState
 }
 
 export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const { t } = useTranslation()
+  const { isAuthenticated } = useAuth()
   const {
     paper,
     preview,
@@ -92,7 +100,8 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     mode: null,
   })
   const [actionError, setActionError] = useState<string | null>(null)
-  const [favoriteStatePatch, setFavoriteStatePatch] = useState<PaperFavoriteStatePatch | null>(null)
+  const [likePending, setLikePending] = useState(false)
+  const [engagementPatch, setEngagementPatch] = useState<PaperEngagementPatch | null>(null)
 
   const availableModes = useMemo<CommunityPaperReaderMode[]>(
     () => resolveAvailableModes(paper, preview, reader),
@@ -134,6 +143,91 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     }
   }
 
+  async function handleLikeToggle(activePaper: CommunityPaper) {
+    if (!paperId || likePending) {
+      return
+    }
+    if (!isAuthenticated) {
+      toast.error(t("auth.loginRequiredForThisFeature"))
+      return
+    }
+
+    const currentLiked =
+      engagementPatch?.paperId === activePaper.id
+        ? engagementPatch.viewerState.liked
+        : Boolean(activePaper.viewer_state?.liked)
+    const currentLikeCount =
+      engagementPatch?.paperId === activePaper.id
+        ? engagementPatch.likeCount
+        : Number(activePaper.like_count ?? 0)
+    const currentFavoriteCount =
+      engagementPatch?.paperId === activePaper.id
+        ? engagementPatch.favoriteCount
+        : Number(activePaper.favorite_count ?? 0)
+    const currentViewerState =
+      engagementPatch?.paperId === activePaper.id
+        ? engagementPatch.viewerState
+        : {
+            liked: Boolean(activePaper.viewer_state?.liked),
+            favorited: Boolean(activePaper.viewer_state?.favorited),
+            favorite_folder_count: Number(activePaper.viewer_state?.favorite_folder_count ?? 0),
+          }
+    const nextLiked = !currentLiked
+    const optimisticPatch: PaperEngagementPatch = {
+      paperId: activePaper.id,
+      likeCount: Math.max(0, currentLikeCount + (nextLiked ? 1 : -1)),
+      favoriteCount: currentFavoriteCount,
+      viewerState: {
+        ...currentViewerState,
+        liked: nextLiked,
+      },
+    }
+
+    try {
+      setLikePending(true)
+      setActionError(null)
+      setEngagementPatch(optimisticPatch)
+
+      const response = nextLiked
+        ? await likeCommunityPaper(activePaper.id)
+        : await unlikeCommunityPaper(activePaper.id)
+      const nextPatch: PaperEngagementPatch = {
+        paperId: activePaper.id,
+        likeCount: response.like_count,
+        favoriteCount: currentFavoriteCount,
+        viewerState: {
+          ...currentViewerState,
+          liked: response.liked,
+        },
+      }
+      setEngagementPatch(nextPatch)
+      publishCommunityPaperEngagement({
+        paperId: activePaper.id,
+        likeCount: response.like_count,
+        viewerState: {
+          liked: response.liked,
+        },
+      })
+      toast.success(
+        response.liked
+          ? t("community.likes.toast.liked")
+          : t("community.likes.toast.unliked"),
+      )
+    } catch (likeError) {
+      setEngagementPatch({
+        paperId: activePaper.id,
+        likeCount: currentLikeCount,
+        favoriteCount: currentFavoriteCount,
+        viewerState: currentViewerState,
+      })
+      const message = extractActionErrorMessage(likeError) ?? t("community.likes.toast.failed")
+      setActionError(message)
+      toast.error(message)
+    } finally {
+      setLikePending(false)
+    }
+  }
+
   return (
     <PaperDetailStateBoundary
       loading={loading}
@@ -153,13 +247,14 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
           activePaper.abstract_translated ||
           t("community.detail.abstractUnavailable")
         const effectivePaper: CommunityPaper =
-          favoriteStatePatch?.paperId === activePaper.id
+          engagementPatch?.paperId === activePaper.id
             ? {
                 ...activePaper,
-                favorite_count: favoriteStatePatch.favoriteCount,
+                like_count: engagementPatch.likeCount,
+                favorite_count: engagementPatch.favoriteCount,
                 viewer_state: {
                   ...activePaper.viewer_state,
-                  ...favoriteStatePatch.viewerState,
+                  ...engagementPatch.viewerState,
                 },
               }
             : activePaper
@@ -176,16 +271,27 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
                 availableModes={availableModes}
                 authorsLabel={authorsLabel}
                 canDownload={canDownload}
+                likePending={likePending}
+                liked={Boolean(effectivePaper.viewer_state?.liked)}
+                likeCount={Number(effectivePaper.like_count ?? 0)}
                 onSelectMode={handleSelectMode}
                 onDownload={() => void handleDownload()}
+                onLikeToggle={() => void handleLikeToggle(activePaper)}
                 onFavoriteStateChange={(payload) => {
                   const nextViewerState = {
-                    liked: Boolean(activePaper.viewer_state?.liked),
+                    liked:
+                      engagementPatch?.paperId === activePaper.id
+                        ? engagementPatch.viewerState.liked
+                        : Boolean(activePaper.viewer_state?.liked),
                     favorited: payload.favorited,
                     favorite_folder_count: payload.favorite_folder_count,
                   }
-                  setFavoriteStatePatch({
+                  setEngagementPatch({
                     paperId: activePaper.id,
+                    likeCount:
+                      engagementPatch?.paperId === activePaper.id
+                        ? engagementPatch.likeCount
+                        : Number(activePaper.like_count ?? 0),
                     favoriteCount: payload.favorite_count,
                     viewerState: nextViewerState,
                   })

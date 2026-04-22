@@ -204,6 +204,26 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_BASELINE_SEED_PATH",
         description="Optional JSON seed file used as a baseline public community feed when no public papers exist.",
     )
+    community_feed_redis_url: Optional[str] = Field(
+        default=None,
+        validation_alias="COMMUNITY_FEED_REDIS_URL",
+        description="Optional Redis URL used for shared public community feed indexes and cache.",
+    )
+    community_feed_redis_prefix: str = Field(
+        default="feed",
+        validation_alias="COMMUNITY_FEED_REDIS_PREFIX",
+        description="Key prefix for shared public community feed Redis state.",
+    )
+    community_feed_cache_ttl_seconds: int = Field(
+        default=60,
+        validation_alias="COMMUNITY_FEED_CACHE_TTL_SECONDS",
+        description="TTL in seconds for shared anonymous public feed response cache entries.",
+    )
+    community_feed_rebuild_lock_ttl_seconds: int = Field(
+        default=30,
+        validation_alias="COMMUNITY_FEED_REBUILD_LOCK_TTL_SECONDS",
+        description="TTL in seconds for the shared Redis rebuild lock guarding public feed index refreshes.",
+    )
     community_agent_product_enabled: bool = Field(
         default=False,
         validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",

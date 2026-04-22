@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, Download, Info, Share2 } from "lucide-react"
+import { ArrowLeft, Download, Heart, Info, Share2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router-dom"
 
@@ -16,8 +16,12 @@ interface PaperDetailHeaderProps {
   availableModes: CommunityPaperReaderMode[]
   authorsLabel: string
   canDownload: boolean
+  likePending?: boolean
+  liked?: boolean
+  likeCount?: number
   onSelectMode: (mode: CommunityPaperReaderMode) => void
   onDownload: () => void
+  onLikeToggle?: () => void
   onFavoriteStateChange?: (payload: PaperFavoriteFolderUpdateResponse) => void
 }
 
@@ -27,8 +31,12 @@ export function PaperDetailHeader({
   availableModes,
   authorsLabel,
   canDownload,
+  likePending = false,
+  liked = false,
+  likeCount = 0,
   onSelectMode,
   onDownload,
+  onLikeToggle,
   onFavoriteStateChange,
 }: PaperDetailHeaderProps) {
   const { t } = useTranslation()
@@ -44,15 +52,12 @@ export function PaperDetailHeader({
     }
   }, [])
 
-  const publishedLabel = paper.official_published_at
-    ? t("community.detail.officialPublishedAt", {
-        value: new Date(paper.official_published_at).toLocaleDateString(),
+  const publishedAt = paper.arxiv_published_at ?? paper.official_published_at ?? paper.created_at
+  const publishedLabel = publishedAt
+    ? t("community.detail.publishedAt", {
+        value: new Date(publishedAt).toLocaleDateString(),
       })
-    : paper.created_at
-      ? t("community.detail.createdAt", {
-          value: new Date(paper.created_at).toLocaleDateString(),
-        })
-      : t("community.card.dateUnknown")
+    : t("community.card.dateUnknown")
 
   const repositoryUrl = paper.github_url?.trim() || null
   const arxivUrl = paper.arxiv_id ? `https://arxiv.org/abs/${paper.arxiv_id}` : null
@@ -133,6 +138,24 @@ export function PaperDetailHeader({
           >
             {shareStatus === "copied" ? t("community.detail.shareCopied") : " "}
           </span>
+
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={likePending}
+            onClick={onLikeToggle}
+            aria-label={liked ? t("community.likes.action.active") : t("community.likes.action.idle")}
+            title={liked ? t("community.likes.action.active") : t("community.likes.action.idle")}
+            aria-pressed={liked}
+            className={`h-8 gap-1.5 rounded-[10px] border px-2.5 text-[11px] font-medium tracking-normal transition-colors ${
+              liked
+                ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)] text-[color:var(--px-shell-accent)]"
+                : "border-transparent text-[color:var(--px-shell-muted)] hover:border-[color:var(--px-shell-line)] hover:bg-[color:var(--px-shell-panel-strong)] hover:text-[color:var(--px-shell-ink)]"
+            }`}
+          >
+            <Heart className={`h-3.5 w-3.5 ${liked ? "fill-current" : ""}`} />
+            <span className="min-w-[1ch] text-center tabular-nums">{likeCount}</span>
+          </Button>
 
           <FavoritePicker
             paperId={paper.id}

@@ -523,21 +523,18 @@ class CommunityPaperRepository:
         normalized_sort = str(sort or "latest").strip().lower()
         where_sql, params = self._public_paper_query_parts(query=query)
         order_by = (
-            " order by case when community_status = 'official' then 0 else 1 end asc, "
-            "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
+            " order by coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
             "coalesce(created_at, '') desc"
         )
         if normalized_sort == "views":
             order_by = (
-                " order by case when community_status = 'official' then 0 else 1 end asc, "
-                "coalesce(view_count, 0) desc, "
+                " order by coalesce(view_count, 0) desc, "
                 "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
                 "coalesce(created_at, '') desc"
             )
         elif normalized_sort == "likes":
             order_by = (
-                " order by case when community_status = 'official' then 0 else 1 end asc, "
-                "coalesce(like_count, 0) desc, "
+                " order by coalesce(like_count, 0) desc, "
                 "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
                 "coalesce(created_at, '') desc"
             )

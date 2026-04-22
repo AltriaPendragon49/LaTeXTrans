@@ -25,18 +25,23 @@ The community homepage SHALL remain the primary application entry and SHALL evol
 - **AND** those actions SHALL reuse the shared `ui/` primitive layer instead of introducing card-local button patterns
 
 ### Requirement: Feed sort and browse shell
-The community homepage SHALL provide the MVP browse controls needed to inspect official-first community content.
+The community homepage SHALL provide the browse controls needed to inspect public community content using the requested production sort semantics.
 
 #### Scenario: Switch feed views
-- **WHEN** a user changes between `latest`, `translated`, and `hot`
-- **THEN** the system SHALL request the matching community paper list from the Day 2 API
-- **AND** the Feed SHALL render loading, empty, and error states without falling back to local mock data.
+- **WHEN** a user changes between `latest`, `views`, and `likes`
+- **THEN** the system SHALL request the matching community paper list from the backend API
+- **AND** the feed SHALL render loading, empty, and error states without falling back to local mock data
+
+#### Scenario: Sort values fall back to the latest rule
+- **WHEN** multiple community papers share the same `view_count` or `like_count`
+- **THEN** the system SHALL break ties using original arXiv publication time descending
+- **AND** it SHALL continue falling back to creation time descending when publication time is unavailable
 
 #### Scenario: Surface official-first guidance
-- **WHEN** the Feed homepage renders
+- **WHEN** the feed homepage renders
 - **THEN** the page SHALL communicate that official community content is prioritized
-- **AND** fallback user content SHALL appear as a lower-priority community state rather than a peer official source.
-- **AND** the page SHALL rely on spacing, grouping, and restrained status emphasis rather than broad accent-colored panels.
+- **AND** fallback user content SHALL appear as a lower-priority community state rather than a peer official source
+- **AND** the page SHALL rely on spacing, grouping, and restrained status emphasis rather than broad accent-colored panels
 
 ### Requirement: Paper card content contract
 Each Feed result SHALL render as a dense paper discovery card that helps the viewer decide whether to inspect the paper in detail.
@@ -68,15 +73,6 @@ The community paper detail page SHALL keep reading dominant while providing a pe
 - **WHEN** the paper detail page renders after this change
 - **THEN** the right-side pane SHALL expose only `Insights` and `Similar` tabs
 - **AND** it SHALL not expose `Notes` or `Comments` in this version.
-
-### Requirement: Disabled action-slot contract
-The Day 3 detail page SHALL visually reserve the future action positions needed by later changes without exposing active controls yet.
-
-#### Scenario: Show future action positions
-- **WHEN** the detail page renders
-- **THEN** the page SHALL display translation, preview, download, like, favorite, comment, and report action slots
-- **AND** all action slots SHALL be disabled in Day 3
-- **AND** the UI SHALL explain that those actions are coming in later changes.
 
 ### Requirement: Translation workspace relocation compatibility
 
@@ -122,4 +118,17 @@ The paper-detail side pane SHALL provide similar-paper recommendations inside th
 - **AND** each row SHALL let the user expand that item to reveal the stored abstract
 - **AND** the cards SHALL reflect the persisted backend recommendation order rather than triggering a new live search during display
 - **AND** the sidebar SHALL keep the existing overall theme and layout structure outside those local content substitutions.
+
+### Requirement: Paper-detail interaction slot contract
+The community paper detail page SHALL expose the active favorite interaction required for this rollout while allowing non-scoped future interactions to remain absent or inactive.
+
+#### Scenario: Detail page favorite action is active
+- **WHEN** an authenticated user activates the favorite control on a community paper detail page
+- **THEN** the UI SHALL open the same folder-based favorite picker used on the homepage cards
+- **AND** the control SHALL render in its active highlighted state whenever that paper belongs to at least one favorite folder for the current user
+
+#### Scenario: Out-of-scope future actions do not block this rollout
+- **WHEN** the paper detail page renders in this rollout
+- **THEN** non-scoped future interactions such as comments or reports MAY remain hidden, reserved, or inactive
+- **AND** the page SHALL not imply that those non-scoped interactions are already fully implemented by this change
 

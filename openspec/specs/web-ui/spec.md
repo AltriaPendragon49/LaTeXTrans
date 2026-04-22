@@ -534,6 +534,12 @@ The community document feed (homepage) SHALL render document cards emphasizing d
 - **THEN** the first page SHALL be scaled to fit inside the thumbnail frame while preserving aspect ratio
 - **AND** the preview SHALL avoid clipping key page content at top or bottom.
 
+#### Scenario: Hover enlarges the original card instead of opening a magnifier
+- **WHEN** the user hovers a homepage PDF preview card
+- **THEN** the same preview card SHALL visually enlarge in place with a static full-page preview
+- **AND** the UI SHALL NOT render a separate magnifier or inspector overlay
+- **AND** the preview SHALL NOT track mouse position for partial-page zooming.
+
 ### Requirement: Source preview prefers local cache before remote fetch
 Source preview requests used by community feed cards SHALL prefer existing local source PDF assets in the community paper library before falling back to remote arXiv proxy retrieval.
 
@@ -689,4 +695,18 @@ The shared shell SHALL allow unauthenticated users to explore community papers a
 - **WHEN** an unauthenticated user opens `/translate`, `/workspace/history`, `/workspace/settings`, or `/workspace/glossary`
 - **THEN** the frontend SHALL prompt or redirect the user into the local login flow
 - **AND** those routes SHALL not behave as anonymous-first product surfaces
+
+### Requirement: Admin curation history UI supports current-result bulk actions
+The web UI SHALL let admins select multiple currently listed curation history records and batch hard-delete the selected set from the history page.
+
+#### Scenario: Admin selects current filtered results
+- **WHEN** an admin checks one or more task records in the history list
+- **THEN** the page SHALL show the current selected count
+- **AND** the page SHALL offer a select-all action for the currently listed filtered results only.
+
+#### Scenario: Admin confirms batch delete
+- **WHEN** an admin confirms batch delete for the current selection
+- **THEN** the page SHALL call the batch delete API with the selected job ids
+- **AND** successful deletions SHALL be removed from the current selection and refreshed result list
+- **AND** failed deletions SHALL remain visible with an error message so the admin can retry or inspect them.
 

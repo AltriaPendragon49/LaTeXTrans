@@ -24,7 +24,7 @@ The system SHALL admit newly visible community papers only through the admin cur
 - **THEN** the corresponding paper SHALL remain absent from the public community feed
 - **AND** users SHALL not see a half-finished public community paper card for that run.
 
-### Requirement: Canonical community paper identity is stable outside duplicate admin arXiv resets
+### Requirement: Canonical community paper identity is stable across repeated curation
 The system SHALL keep a canonical community paper identity stable across later updates, except for the explicit duplicate admin `arXiv ID` reset path that deletes the old paper before recreating it.
 
 #### Scenario: Archive intake later resolves to an existing canonical paper

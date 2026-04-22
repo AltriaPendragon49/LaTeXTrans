@@ -59,6 +59,12 @@ The system SHALL admit newly visible community papers only through the admin cur
 - **THEN** the system SHALL create or reuse one canonical community paper record
 - **AND** it SHALL publish that paper as visible community content only after that full success state is reached.
 
+#### Scenario: Repeated admin arXiv curation resets old traces before a new run
+- **WHEN** an authenticated admin submits an `arXiv ID` that already has a canonical community paper or prior admin curation history
+- **THEN** the system SHALL hard-delete the prior paper record, related assets, structured insights, similar recommendations, curation jobs, translation tasks, retained failed artifacts, and run-scoped local artifacts for that `arXiv ID`
+- **AND** it SHALL create the replacement admin curation item only after that reset succeeds
+- **AND** the replacement run SHALL start with a fresh `paper_id`.
+
 #### Scenario: Ordinary tool translation succeeds
 - **WHEN** a non-admin user completes a translation through the direct tools workflow
 - **THEN** the system SHALL keep that result outside the visible community feed by default
@@ -70,20 +76,15 @@ The system SHALL admit newly visible community papers only through the admin cur
 - **AND** users SHALL not see a half-finished public community paper card for that run.
 
 ### Requirement: Canonical community paper identity is stable across repeated curation
-The system SHALL assign each canonical community paper one immutable internal `paper_id`, and repeated curation for the same canonical paper SHALL reuse that `paper_id` instead of creating a new public paper record.
-
-#### Scenario: Repeat arXiv curation targets an existing canonical paper
-- **WHEN** an admin re-curates a paper whose `arXiv ID` already maps to an existing canonical community paper
-- **THEN** the system SHALL reuse that existing `paper_id`
-- **AND** the latest successful curation output SHALL overwrite the prior published community-facing content for that same paper.
+The system SHALL keep a canonical community paper identity stable across later updates, except for the explicit duplicate admin `arXiv ID` reset path that deletes the old paper before recreating it.
 
 #### Scenario: Archive intake later resolves to an existing canonical paper
 - **WHEN** archive-based curation is determined to match an already-known canonical community paper
 - **THEN** the system SHALL reuse the existing `paper_id`
 - **AND** the latest successful curation output SHALL replace the prior published community-facing content for that same paper.
 
-#### Scenario: Canonical paper id has already been assigned
-- **WHEN** a canonical community paper already exists
+#### Scenario: Canonical paper id stays stable for non-reset updates
+- **WHEN** a canonical community paper already exists and the new intake does not enter the duplicate admin arXiv reset path
 - **THEN** its `paper_id` SHALL remain unchanged across later curation updates
 - **AND** repeated curation SHALL update the paper in place instead of generating a new public identity.
 
@@ -96,11 +97,12 @@ The admin curation intake path SHALL extract enough metadata from TeX-containing
 - **AND** the resulting community feed card SHALL be able to render those fields like an arXiv-curated paper.
 
 ### Requirement: Batch curation submission supports bounded concurrency
-The admin curation intake path SHALL accept both multiple `arXiv ID`s and multiple archive uploads and SHALL process them through a bounded-concurrency queue.
+The admin curation intake path SHALL accept both arbitrarily large `arXiv ID` batches and multiple archive uploads and SHALL process them through a bounded-concurrency queue.
 
-#### Scenario: Batch includes multiple arXiv ids
-- **WHEN** an admin submits multiple `arXiv ID`s in one curation batch
-- **THEN** the system SHALL create one tracked batch submission with per-item states
+#### Scenario: Batch includes many arXiv ids
+- **WHEN** an admin submits a large batch of `arXiv ID`s in one curation request
+- **THEN** the system SHALL create one tracked curation item per submitted ID with per-item states
+- **AND** it SHALL persist those items before execution starts
 - **AND** it SHALL process items with configured bounded parallelism instead of unlimited fan-out.
 
 #### Scenario: Batch includes multiple archive uploads
@@ -113,24 +115,38 @@ The admin curation intake path SHALL accept both multiple `arXiv ID`s and multip
 - **THEN** the other batch items SHALL continue independently
 - **AND** publication readiness SHALL still be decided per paper instead of treating the whole batch as failed.
 
-### Requirement: Failed admin curation jobs are terminal and self-cleaning
-The admin curation intake pipeline SHALL treat failed or timed-out curation items as terminal failures, SHALL not automatically requeue them, and SHALL clean up partial artifacts created by that failed run while preserving the failed job record for operators.
+### Requirement: Failed admin curation jobs are terminal and operator-retained
+The admin curation intake pipeline SHALL treat failed or timed-out curation items as terminal failures, SHALL not automatically requeue them, and SHALL retain failed task evidence for later operator analysis.
 
 #### Scenario: Translation task fails during admin curation
 - **WHEN** an admin curation item reaches a failed terminal translation state
 - **THEN** the curation job SHALL be marked `failed`
 - **AND** the system SHALL not automatically restart or requeue that curation job
-- **AND** the system SHALL delete task-specific translation records and local task artifacts created for that failed run
-- **AND** the failed curation job row SHALL remain available so an admin can inspect the error and decide whether to retry manually.
+- **AND** the system SHALL preserve the related `translation_tasks` row
+- **AND** the system SHALL retain failed task artifacts under the configured `failed_tasks/{task_id}` namespace
+- **AND** the failed curation job row SHALL remain available so an admin can inspect the error and decide whether to delete it manually.
 
 #### Scenario: Admin curation times out while waiting for translation
 - **WHEN** the admin curation worker waits 15 minutes for a translation task and the task is still not terminal
 - **THEN** the system SHALL mark the curation job `failed`
-- **AND** it SHALL cancel that curation task before cleanup when cancellation is still applicable
+- **AND** it SHALL cancel that curation task before marking the retained failure when cancellation is still applicable
 - **AND** it SHALL require a new operator action for any retry.
 
 #### Scenario: Failed curation created only a private placeholder paper
 - **WHEN** a failed curation run created a private `curating` paper and related rows during publication preparation
 - **THEN** the system SHALL delete that placeholder paper and its paper-scoped local rows
 - **AND** it SHALL not delete an already-published canonical paper that existed before the failed curation attempt.
+
+### Requirement: Admin curation job history is independent from public paper visibility
+The system SHALL keep admin curation job history queryable even when the corresponding paper is absent from public feed surfaces.
+
+#### Scenario: Failed curation job has no public paper
+- **WHEN** an admin curation item fails before public publication
+- **THEN** the curation job SHALL remain queryable in admin history
+- **AND** the failed item SHALL remain absent from the public community feed.
+
+#### Scenario: Completed curation job publishes successfully
+- **WHEN** an admin curation item completes publication successfully
+- **THEN** the curation job SHALL remain queryable in admin history
+- **AND** the public community feed SHALL still be driven by the published paper record rather than the history row itself.
 

@@ -11,4 +11,4 @@
 ## 3. Verification and deployment
 - [x] 3.1 Run focused backend and frontend test suites covering the history page and admin curation APIs.
 - [x] 3.2 Run `openspec validate update-admin-curation-history-filters-and-bulk-delete --strict --no-interactive`.
-- [ ] 3.3 Deploy the fix, verify history filters on the server, and exercise batch delete against real selected records.
+- [x] 3.3 Deploy the fix, verify history filters on the server, and exercise batch delete against real selected records.

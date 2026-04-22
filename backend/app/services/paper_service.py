@@ -27,6 +27,10 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from fastapi import HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
 try:
+    import redis
+except Exception:  # pragma: no cover - optional dependency guard
+    redis = None  # type: ignore[assignment]
+try:
     from PyPDF2 import PdfReader, PdfWriter
 except Exception:  # pragma: no cover - optional dependency guard
     PdfReader = None  # type: ignore[assignment]
@@ -85,9 +89,11 @@ _detail_repair_inflight: set[str] = set()
 _preview_payload_cache: Dict[str, Dict[str, Any]] = {}
 _preview_html_cache: Dict[str, str] = {}
 _source_html_cache: Dict[str, str] = {}
-_PUBLIC_FEED_CACHE: Dict[str, Dict[str, Any]] = {}
-_PUBLIC_FEED_CACHE_TTL_SECONDS = 60.0
 _PUBLIC_EXTERNAL_LINK_CACHE: Dict[str, Dict[str, Optional[str]]] = {}
+_PUBLIC_FEED_SCORE_FACTOR = 1_000_000_000
+_PUBLIC_FEED_RESPONSE_REGISTRY_SUFFIX = "responses"
+_PUBLIC_FEED_REBUILD_LOCK_SUFFIX = "index:rebuild:lock"
+_public_feed_store: Optional["_PublicFeedRedisStore"] = None
 _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
@@ -283,6 +289,139 @@ Rules:
 
 Return only the final Chinese passage.
 """.strip()
+
+
+class _PublicFeedRedisStore:
+    def __init__(self) -> None:
+        self._prefix = str(getattr(settings, "community_feed_redis_prefix", "feed") or "feed").strip() or "feed"
+        redis_url = str(getattr(settings, "community_feed_redis_url", "") or "").strip()
+        self._cache_ttl_seconds = max(1, int(getattr(settings, "community_feed_cache_ttl_seconds", 60) or 60))
+        self._rebuild_lock_ttl_seconds = max(
+            1,
+            int(getattr(settings, "community_feed_rebuild_lock_ttl_seconds", 30) or 30),
+        )
+        self._client = (
+            redis.Redis.from_url(redis_url, decode_responses=True)
+            if redis is not None and redis_url
+            else None
+        )
+
+    @property
+    def available(self) -> bool:
+        return self._client is not None
+
+    def _key(self, suffix: str) -> str:
+        return f"{self._prefix}:{suffix}"
+
+    def response_key(self, *, sort: str, limit: Optional[int], offset: int) -> str:
+        normalized_sort = str(sort or "latest").strip().lower() or "latest"
+        normalized_limit = int(limit) if limit is not None else 0
+        normalized_offset = max(0, int(offset or 0))
+        return self._key(f"response:{normalized_sort}:{normalized_limit}:{normalized_offset}")
+
+    def response_registry_key(self) -> str:
+        return self._key(_PUBLIC_FEED_RESPONSE_REGISTRY_SUFFIX)
+
+    def index_key(self, sort: str) -> str:
+        normalized_sort = str(sort or "latest").strip().lower() or "latest"
+        return self._key(f"index:{normalized_sort}")
+
+    def rebuild_lock_key(self) -> str:
+        return self._key(_PUBLIC_FEED_REBUILD_LOCK_SUFFIX)
+
+    def get_cached_payload(self, *, sort: str, limit: Optional[int], offset: int) -> Optional[Dict[str, Any]]:
+        if not self._client:
+            return None
+        payload = self._client.get(self.response_key(sort=sort, limit=limit, offset=offset))
+        if not payload:
+            return None
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+        return decoded if isinstance(decoded, dict) else None
+
+    def set_cached_payload(self, *, sort: str, limit: Optional[int], offset: int, payload: Dict[str, Any]) -> None:
+        if not self._client:
+            return
+        key = self.response_key(sort=sort, limit=limit, offset=offset)
+        serialized = json.dumps(payload, ensure_ascii=False)
+        pipeline = self._client.pipeline()
+        pipeline.setex(key, self._cache_ttl_seconds, serialized)
+        pipeline.sadd(self.response_registry_key(), key)
+        pipeline.execute()
+
+    def clear_cached_payloads(self) -> None:
+        if not self._client:
+            return
+        registry_key = self.response_registry_key()
+        keys = list(self._client.smembers(registry_key) or [])
+        if keys:
+            self._client.delete(*keys)
+        self._client.delete(registry_key)
+
+    def read_ranked_ids(self, *, sort: str, offset: int, limit: Optional[int]) -> List[str]:
+        if not self._client:
+            return []
+        normalized_offset = max(0, int(offset or 0))
+        normalized_limit = max(0, int(limit or 0))
+        if normalized_limit <= 0:
+            return []
+        end = normalized_offset + normalized_limit - 1
+        values = self._client.zrevrange(self.index_key(sort), normalized_offset, end)
+        return [str(value).strip() for value in values if str(value).strip()]
+
+    def count_ranked_ids(self, *, sort: str) -> int:
+        if not self._client:
+            return 0
+        return int(self._client.zcard(self.index_key(sort)) or 0)
+
+    def replace_index(self, *, sort: str, mapping: Dict[str, float]) -> None:
+        if not self._client:
+            return
+        key = self.index_key(sort)
+        pipeline = self._client.pipeline()
+        pipeline.delete(key)
+        if mapping:
+            pipeline.zadd(key, mapping)
+        pipeline.execute()
+
+    def upsert_ranked_paper(self, *, sort: str, paper_id: str, score: float) -> None:
+        if not self._client:
+            return
+        self._client.zadd(self.index_key(sort), {paper_id: float(score)})
+
+    def increment_ranked_paper(self, *, sort: str, paper_id: str, delta: float) -> None:
+        if not self._client:
+            return
+        self._client.zincrby(self.index_key(sort), float(delta), paper_id)
+
+    def remove_ranked_paper(self, *, paper_id: str) -> None:
+        if not self._client:
+            return
+        pipeline = self._client.pipeline()
+        for sort in ("latest", "views", "likes"):
+            pipeline.zrem(self.index_key(sort), paper_id)
+        pipeline.execute()
+
+    def acquire_rebuild_lock(self) -> bool:
+        if not self._client:
+            return False
+        return bool(
+            self._client.set(
+                self.rebuild_lock_key(),
+                "1",
+                nx=True,
+                ex=self._rebuild_lock_ttl_seconds,
+            )
+        )
+
+
+def _get_public_feed_store() -> _PublicFeedRedisStore:
+    global _public_feed_store
+    if _public_feed_store is None:
+        _public_feed_store = _PublicFeedRedisStore()
+    return _public_feed_store
 
 
 def _utc_now_iso() -> str:
@@ -1890,25 +2029,17 @@ def _matches_paper_query(paper: Dict[str, Any], query: Optional[str]) -> bool:
 
 
 def invalidate_public_feed_cache() -> None:
-    _PUBLIC_FEED_CACHE.clear()
+    _get_public_feed_store().clear_cached_payloads()
 
 
 def _public_feed_cache_key(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> str:
-    return "|".join(
-        [
-            str(sort or "latest").strip().lower(),
-            _normalize_search_text(query),
-            str(int(limit) if limit is not None else "none"),
-            str(max(0, int(offset))),
-        ]
-    )
+    return _get_public_feed_store().response_key(sort=sort, limit=limit, offset=offset)
 
 
 def _should_cache_public_feed(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> bool:
     return (
-        str(sort or "latest").strip().lower() == "latest"
+        str(sort or "latest").strip().lower() in {"latest", "views", "likes"}
         and not _normalize_search_text(query)
-        and max(0, int(offset)) == 0
         and limit is not None
         and int(limit) > 0
     )
@@ -1917,14 +2048,12 @@ def _should_cache_public_feed(*, sort: str, query: Optional[str], limit: Optiona
 def _get_cached_public_feed_payload(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> Optional[Dict[str, Any]]:
     if not _should_cache_public_feed(sort=sort, query=query, limit=limit, offset=offset):
         return None
-    cache_key = _public_feed_cache_key(sort=sort, query=query, limit=limit, offset=offset)
-    cached = _PUBLIC_FEED_CACHE.get(cache_key)
-    if not cached:
-        return None
-    if time.time() > float(cached.get("expires_at") or 0):
-        _PUBLIC_FEED_CACHE.pop(cache_key, None)
-        return None
-    return dict(cached.get("payload") or {})
+    cached = _get_public_feed_store().get_cached_payload(
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    return dict(cached or {}) if cached else None
 
 
 def _set_cached_public_feed_payload(
@@ -1937,11 +2066,12 @@ def _set_cached_public_feed_payload(
 ) -> None:
     if not _should_cache_public_feed(sort=sort, query=query, limit=limit, offset=offset):
         return
-    cache_key = _public_feed_cache_key(sort=sort, query=query, limit=limit, offset=offset)
-    _PUBLIC_FEED_CACHE[cache_key] = {
-        "payload": dict(payload),
-        "expires_at": time.time() + _PUBLIC_FEED_CACHE_TTL_SECONDS,
-    }
+    _get_public_feed_store().set_cached_payload(
+        sort=sort,
+        limit=limit,
+        offset=offset,
+        payload=dict(payload),
+    )
 
 
 def _load_baseline_seed_rows() -> List[Dict[str, Any]]:
@@ -3970,10 +4100,6 @@ async def _start_arxiv_paper_translation(
     return {"task_id": task_id, "status": "queued"}
 
 
-def _community_rank(paper: Dict[str, Any]) -> int:
-    return 0 if paper.get("community_status") == COMMUNITY_STATUS_OFFICIAL else 1
-
-
 def _translated_rank(paper: Dict[str, Any]) -> int:
     return 0 if paper.get("trans_status") == "completed" else 1
 
@@ -4015,7 +4141,6 @@ def _timestamp_key(value: Any) -> float:
 
 def _views_tuple(paper: Dict[str, Any]) -> Any:
     return (
-        _community_rank(paper),
         -(paper.get("view_count") or 0),
         -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
@@ -4024,7 +4149,6 @@ def _views_tuple(paper: Dict[str, Any]) -> Any:
 
 def _latest_tuple(paper: Dict[str, Any]) -> Any:
     return (
-        _community_rank(paper),
         -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
     )
@@ -4032,11 +4156,157 @@ def _latest_tuple(paper: Dict[str, Any]) -> Any:
 
 def _likes_tuple(paper: Dict[str, Any]) -> Any:
     return (
-        _community_rank(paper),
         -(paper.get("like_count") or 0),
         -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
     )
+
+
+def _latest_rank_score(paper: Dict[str, Any]) -> float:
+    return float(int(_timestamp_key(_primary_published_timestamp_value(paper)) or 0))
+
+
+def _count_rank_score(*, count: Any, paper: Dict[str, Any]) -> float:
+    normalized_count = int(count or 0)
+    return float((normalized_count * _PUBLIC_FEED_SCORE_FACTOR) + int(_latest_rank_score(paper)))
+
+
+def _paper_rank_score(paper: Dict[str, Any], sort: str) -> float:
+    normalized_sort = str(sort or "latest").strip().lower()
+    if normalized_sort == "views":
+        return _count_rank_score(count=paper.get("view_count"), paper=paper)
+    if normalized_sort == "likes":
+        return _count_rank_score(count=paper.get("like_count"), paper=paper)
+    return _latest_rank_score(paper)
+
+
+async def _hydrate_public_feed_papers_from_ids(paper_ids: List[str]) -> List[Dict[str, Any]]:
+    if not paper_ids:
+        return []
+    repository = get_community_paper_repository()
+    fetched = await asyncio.gather(
+        *[
+            _run_local_repo(lambda current_paper_id=paper_id: repository.get_paper_by_id(current_paper_id))
+            for paper_id in paper_ids
+        ]
+    )
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for paper in fetched:
+        if not paper:
+            continue
+        resolved = _apply_runtime_paper_override(paper) or paper
+        paper_id = str(resolved.get("id") or "").strip()
+        if paper_id and _is_public_community_paper(resolved):
+            normalized[paper_id] = resolved
+    return [normalized[paper_id] for paper_id in paper_ids if paper_id in normalized]
+
+
+async def _rebuild_public_feed_indexes_from_db() -> bool:
+    store = _get_public_feed_store()
+    if not store.available:
+        return False
+    if not store.acquire_rebuild_lock():
+        return False
+    repository = get_community_paper_repository()
+    try:
+        papers = await _run_local_repo(repository.list_public_papers)
+    except Exception as exc:
+        logger.warning("Failed to rebuild shared public feed indexes: %s", exc)
+        return False
+    public_papers = [_apply_runtime_paper_override(paper) or paper for paper in papers if _is_public_community_paper(paper)]
+    for sort in ("latest", "views", "likes"):
+        store.replace_index(
+            sort=sort,
+            mapping={
+                str(paper.get("id") or "").strip(): _paper_rank_score(paper, sort)
+                for paper in public_papers
+                if str(paper.get("id") or "").strip()
+            },
+        )
+    return True
+
+
+async def _list_public_papers_from_shared_feed_store(
+    *,
+    sort: str,
+    limit: Optional[int],
+    offset: int,
+) -> Optional[Dict[str, Any]]:
+    if not _should_cache_public_feed(sort=sort, query=None, limit=limit, offset=offset):
+        return None
+    store = _get_public_feed_store()
+    if not store.available:
+        return None
+    cached = store.get_cached_payload(sort=sort, limit=limit, offset=offset)
+    if cached:
+        return cached
+    total = store.count_ranked_ids(sort=sort)
+    if total <= 0:
+        rebuilt = await _rebuild_public_feed_indexes_from_db()
+        if not rebuilt:
+            return None
+        total = store.count_ranked_ids(sort=sort)
+    if total <= 0:
+        return None
+    paper_ids = store.read_ranked_ids(sort=sort, offset=offset, limit=limit)
+    if not paper_ids:
+        return {
+            "items": [],
+            "total": total,
+            "offset": max(0, int(offset or 0)),
+            "limit": limit,
+            "has_more": max(0, int(offset or 0)) < total,
+            "next_offset": None,
+            "source_mode": "redis",
+        }
+    papers = await _hydrate_public_feed_papers_from_ids(paper_ids)
+    paper_ids = [str(paper.get("id") or "").strip() for paper in papers if str(paper.get("id") or "").strip()]
+    asset_maps = await _fetch_asset_maps_for_papers(paper_ids) if paper_ids else {}
+    items = [
+        _paper_feed_summary(
+            paper,
+            asset_map=asset_maps.get(paper["id"]),
+        )
+        for paper in papers
+    ]
+    normalized_offset = max(0, int(offset or 0))
+    has_more = (normalized_offset + len(items)) < total
+    payload = {
+        "items": items,
+        "total": total,
+        "offset": normalized_offset,
+        "limit": limit,
+        "has_more": has_more,
+        "next_offset": (normalized_offset + len(items)) if has_more else None,
+        "source_mode": "redis",
+    }
+    store.set_cached_payload(sort=sort, limit=limit, offset=offset, payload=payload)
+    return payload
+
+
+async def _refresh_public_feed_rankings_for_paper(
+    *,
+    paper_id: str,
+    like_delta: Optional[int] = None,
+) -> None:
+    normalized_paper_id = str(paper_id or "").strip()
+    if not normalized_paper_id:
+        return
+    store = _get_public_feed_store()
+    if not store.available:
+        return
+    paper = await _fetch_paper_by_id(normalized_paper_id)
+    if not paper or not _is_public_community_paper(paper):
+        store.remove_ranked_paper(paper_id=normalized_paper_id)
+        store.clear_cached_payloads()
+        return
+    for sort in ("latest", "views", "likes"):
+        score = _paper_rank_score(paper, sort)
+        if sort == "likes" and like_delta is not None:
+            # Keep the hot path narrow while still correcting drift with the canonical score write.
+            store.increment_ranked_paper(sort=sort, paper_id=normalized_paper_id, delta=float(like_delta * _PUBLIC_FEED_SCORE_FACTOR))
+        store.upsert_ranked_paper(sort=sort, paper_id=normalized_paper_id, score=score)
+    store.clear_cached_payloads()
 
 
 def _sort_papers(papers: List[Dict[str, Any]], sort: str) -> List[Dict[str, Any]]:
@@ -7265,17 +7535,17 @@ async def list_community_papers(
     repository = get_community_paper_repository()
     normalized_limit = int(limit) if limit is not None and int(limit) > 0 else None
     normalized_offset = max(0, int(offset or 0))
-    cached_payload = _get_cached_public_feed_payload(
-        sort=sort,
-        query=q,
-        limit=normalized_limit,
-        offset=normalized_offset,
-    )
-    if cached_payload is not None:
-        return await _attach_viewer_state_to_feed_payload(
-            cached_payload,
-            viewer_user_id=viewer_user_id,
+    if not _normalize_search_text(q):
+        cached_payload = await _list_public_papers_from_shared_feed_store(
+            sort=sort,
+            limit=normalized_limit,
+            offset=normalized_offset,
         )
+        if cached_payload is not None:
+            return await _attach_viewer_state_to_feed_payload(
+                cached_payload,
+                viewer_user_id=viewer_user_id,
+            )
 
     papers: List[Dict[str, Any]] = []
     source_mode = "database"
@@ -7624,7 +7894,7 @@ async def like_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
     except Exception as exc:
         logger.warning("Failed to like paper %s for user %s: %s", paper_id, user_id, exc)
         raise HTTPException(status_code=500, detail="Failed to like paper") from exc
-    invalidate_public_feed_cache()
+    await _refresh_public_feed_rankings_for_paper(paper_id=paper_id, like_delta=1)
     return {"paper_id": paper_id, "liked": True, "like_count": like_count}
 
 
@@ -7638,7 +7908,7 @@ async def unlike_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
     except Exception as exc:
         logger.warning("Failed to unlike paper %s for user %s: %s", paper_id, user_id, exc)
         raise HTTPException(status_code=500, detail="Failed to unlike paper") from exc
-    invalidate_public_feed_cache()
+    await _refresh_public_feed_rankings_for_paper(paper_id=paper_id, like_delta=-1)
     return {"paper_id": paper_id, "liked": False, "like_count": like_count}
 
 
@@ -7699,7 +7969,7 @@ async def record_community_paper_view(
         logger.warning("Failed to increment view count for paper %s locally: %s", paper_id, exc)
         count = None
     if count is not None:
-        invalidate_public_feed_cache()
+        await _refresh_public_feed_rankings_for_paper(paper_id=paper_id)
         return {"paper_id": paper_id, "view_count": count}
     paper = await _fetch_paper_by_id(paper_id)
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":

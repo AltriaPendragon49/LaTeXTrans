@@ -416,4 +416,51 @@ describe("useCommunityPapers", () => {
       "[\"Newer arxiv publish\",\"Later official publish\"]",
     )
   })
+
+  it("does not re-prioritize official papers ahead of newer published community papers", async () => {
+    getCommunityPapersMock.mockResolvedValue({
+      items: [
+        {
+          id: "paper-official",
+          source: "arxiv",
+          arxiv_id: "2503.01010",
+          title: "Older official paper",
+          authors: [],
+          categories: [],
+          community_status: "official",
+          trans_status: "completed",
+          created_at: "2026-03-18T00:00:00Z",
+          official_published_at: "2026-03-18T00:00:00Z",
+          community_selected_task_id: "task-1",
+          community_selected_asset_id: "asset-1",
+        },
+        {
+          id: "paper-community",
+          source: "arxiv",
+          arxiv_id: "2503.02020",
+          title: "Newer community paper",
+          authors: [],
+          categories: [],
+          community_status: "user_fallback",
+          trans_status: "completed",
+          created_at: "2026-03-19T00:00:00Z",
+          official_published_at: null,
+          community_selected_task_id: "task-2",
+          community_selected_asset_id: "asset-2",
+        },
+      ],
+      total: 2,
+      has_more: false,
+      next_offset: null,
+    })
+
+    render(<HookProbe sort="latest" query="" />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId("titles")).toHaveTextContent(
+      "[\"Newer community paper\",\"Older official paper\"]",
+    )
+  })
 })

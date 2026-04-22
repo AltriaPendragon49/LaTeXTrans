@@ -17,6 +17,7 @@ typing_extensions
 # 数据库集成
 PyMySQL>=1.1.1
 pymysql
+redis>=5.0.0
 
 # 论文处理与翻译核心 (使用兼容范围以解决 ResolutionImpossible)
 arxiv>=2.1.0
