@@ -15,7 +15,7 @@ const upsertCommunityAgentConversationMock = vi.fn()
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    user: { id: "user-1", email: "tester@example.com" },
+    user: { id: "user-1", email: "tester@example.com", roles: ["admin"] },
     isAuthenticated: true,
     loading: false,
   }),

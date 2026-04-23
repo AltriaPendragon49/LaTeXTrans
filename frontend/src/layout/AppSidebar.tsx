@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react"
-import { Bookmark, Compass, PenTool } from "lucide-react"
+import { Bookmark, Compass, PenTool, Sparkles } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
 import { useAuth } from "@/contexts/AuthContext"
+import { hasAdminRole } from "@/features/admin-curation/utils/admin-access"
 import { WorkspaceAccountMenu } from "@/features/user-workspace/components/WorkspaceAccountMenu"
 import { SidebarBrandButton } from "@/ui/sidebar-shell/SidebarBrandButton"
 import { SidebarNavItem } from "@/ui/sidebar-shell/SidebarNavItem"
 import { SidebarShell } from "@/ui/sidebar-shell/SidebarShell"
 
 function isCommunityRoute(pathname: string) {
-  return pathname === "/" || pathname.startsWith("/paper/") || pathname.startsWith("/agent")
+  return pathname === "/" || pathname.startsWith("/paper/")
 }
 
 function isPaperToolRoute(pathname: string) {
@@ -24,9 +25,13 @@ function isPaperToolRoute(pathname: string) {
   )
 }
 
+function isPaperCopilotRoute(pathname: string) {
+  return pathname === "/agent" || pathname.startsWith("/agent/")
+}
+
 export function AppSidebar() {
   const { t } = useTranslation()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const routeDefaultCollapsed = location.pathname.startsWith("/paper/")
@@ -34,6 +39,7 @@ export function AppSidebar() {
   const [sidebarHovered, setSidebarHovered] = useState(false)
   const brandName = t("brand.name")
   const brandSubtitle = t("brand.subtitle")
+  const isAdmin = hasAdminRole(user?.roles)
 
   useEffect(() => {
     setCollapsed(routeDefaultCollapsed)
@@ -93,6 +99,15 @@ export function AppSidebar() {
             collapsed={collapsed}
             active={isPaperToolRoute(location.pathname)}
           />
+          {isAdmin ? (
+            <SidebarNavItem
+              to="/agent"
+              icon={<Sparkles className="h-5 w-5" />}
+              label={t("community.conversation.title", "Paper Copilot")}
+              collapsed={collapsed}
+              active={isPaperCopilotRoute(location.pathname)}
+            />
+          ) : null}
         </nav>
       }
       utility={<WorkspaceAccountMenu collapsed={collapsed} />}

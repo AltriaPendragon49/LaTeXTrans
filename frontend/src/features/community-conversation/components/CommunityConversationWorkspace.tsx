@@ -465,8 +465,8 @@ export function CommunityConversationWorkspace() {
   }
 
   return (
-    <div className="min-h-full bg-[color:var(--px-shell-bg)] px-3 py-4 text-[color:var(--px-shell-ink)] sm:px-4 lg:px-6">
-      <div className="mx-auto grid w-full max-w-[1920px] gap-4 xl:grid-cols-[248px_minmax(0,1fr)]">
+    <div className="min-h-full bg-[radial-gradient(circle_at_top,rgba(0,55,176,0.09),transparent_28%),var(--px-shell-bg)] px-3 py-4 text-[color:var(--px-shell-ink)] sm:px-4 lg:px-6">
+      <div className="mx-auto grid w-full max-w-[1920px] gap-4 xl:grid-cols-[272px_minmax(0,1fr)]">
         <ConversationRail
           userEmail={user?.email ?? undefined}
           conversations={conversations}
@@ -484,12 +484,15 @@ export function CommunityConversationWorkspace() {
           as="section"
           tone="panel"
           padding="none"
-          className="relative flex max-h-[calc(100vh-6.8rem)] flex-col overflow-hidden rounded-[32px] bg-[color:var(--px-shell-surface)]"
+          className="relative flex max-h-[calc(100vh-6.8rem)] flex-col overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-surface)_95%,white_5%),color-mix(in_srgb,var(--px-shell-panel)_98%,white_2%))] shadow-[0_34px_80px_-56px_rgba(15,23,42,0.54)]"
         >
-          <header className="z-20 flex flex-none items-center justify-between border-b border-[color:var(--px-shell-line)] bg-[color:color-mix(in_srgb,var(--px-shell-panel)_82%,transparent)] px-6 py-4 backdrop-blur-xl">
+          <header className="z-20 flex flex-none items-center justify-between border-b border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_86%,white_14%),color-mix(in_srgb,var(--px-shell-surface)_74%,transparent_26%))] px-6 py-4 backdrop-blur-xl">
             <div className="min-w-0 flex items-center gap-4">
               <div className="min-w-0 flex flex-col pr-4">
-                <h1 className="truncate text-lg font-bold leading-tight tracking-[-0.01em] text-[color:var(--px-shell-ink)]">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--px-shell-accent)]">
+                  {t("community.conversation.title")}
+                </p>
+                <h1 className="truncate text-xl font-bold leading-tight tracking-[-0.03em] text-[color:var(--px-shell-ink)]">
                   {currentConversation?.title || t("community.agent.newChat")}
                 </h1>
                 <p className="truncate text-sm font-medium text-[color:var(--px-shell-muted)]">

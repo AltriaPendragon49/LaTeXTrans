@@ -44,6 +44,7 @@ describe("AppSidebar community shell", () => {
 
     expect(screen.getByRole("link", { name: "Community" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Paper Tool" })).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Paper Copilot" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Favorites" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Translate" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "History" })).not.toBeInTheDocument()
@@ -181,6 +182,13 @@ describe("AppSidebar community shell", () => {
       </MemoryRouter>,
     )
 
+    expect(screen.getByRole("link", { name: "Paper Copilot" })).toBeInTheDocument()
+    const navLinks = screen.getAllByRole("link")
+    const paperToolIndex = navLinks.findIndex((link) => link.getAttribute("href") === "/tools")
+    const paperCopilotIndex = navLinks.findIndex((link) => link.getAttribute("href") === "/agent")
+
+    expect(paperToolIndex).toBeGreaterThanOrEqual(0)
+    expect(paperCopilotIndex).toBe(paperToolIndex + 1)
     expect(screen.queryByRole("link", { name: /Admin curation/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /admin/i }))
     expect(screen.getByRole("link", { name: /Admin curation/i })).toBeInTheDocument()

@@ -1,5 +1,6 @@
 name = "latextrans"
 compatibility_date = "2024-01-01"
+pages_build_output_dir = "./dist"
 
 # Build configuration for Cloudflare Pages
 [build]

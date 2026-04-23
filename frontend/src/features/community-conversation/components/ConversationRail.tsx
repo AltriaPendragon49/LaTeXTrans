@@ -5,6 +5,7 @@ import { Button } from "@/ui/button/Button"
 import { InteractiveCard } from "@/ui/interactive-card/InteractiveCard"
 import { NoticeBanner } from "@/ui/notice-banner/NoticeBanner"
 import { PanelShell } from "@/ui/panel-shell/PanelShell"
+import { Pill } from "@/ui/pill/Pill"
 import { cn } from "@/lib/utils"
 import type { CommunityConversationRecord } from "@/types/community"
 
@@ -36,32 +37,39 @@ export function ConversationRail({
       as="aside"
       tone="glass"
       padding="none"
-      className="flex min-h-[calc(100vh-6.8rem)] flex-col overflow-hidden"
+      className="flex min-h-[calc(100vh-6.8rem)] flex-col overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_92%,white_8%),color-mix(in_srgb,var(--px-shell-surface)_94%,white_6%))] shadow-[0_28px_60px_-48px_rgba(15,23,42,0.48)]"
     >
-      <div className="border-b border-[color:var(--px-shell-line)] px-4 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[color:var(--px-shell-accent-soft)]">
-            <Bot className="h-5 w-5 text-[color:var(--px-shell-muted)]" />
+      <div className="border-b border-[color:color-mix(in_srgb,var(--px-shell-line)_76%,white_24%)] px-4 py-4">
+        <div className="rounded-[24px] border border-[color:var(--px-shell-line)]/70 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel-strong)_90%,white_10%),color-mix(in_srgb,var(--px-shell-panel)_96%,white_4%))] px-4 py-4 shadow-[0_24px_40px_-36px_rgba(15,23,42,0.4)]">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)]/70 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-accent-soft)_78%,white_22%),white)] shadow-sm">
+              <Bot className="h-5 w-5 text-[color:var(--px-shell-accent)]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-[color:var(--px-shell-ink)]">
+                  {t("community.conversation.savedTitle")}
+                </p>
+                <Pill tone="accent" className="text-[10px] uppercase tracking-[0.18em]">
+                  {t("community.conversation.title")}
+                </Pill>
+              </div>
+              <p className="mt-1 truncate text-xs text-[color:var(--px-shell-muted)]">{userEmail ?? ""}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[color:var(--px-shell-ink)]">
-              {t("community.conversation.savedTitle")}
-            </p>
-            <p className="truncate text-xs text-[color:var(--px-shell-muted)]">{userEmail ?? ""}</p>
-          </div>
-        </div>
 
-        <Button
-          type="button"
-          onClick={onNewChat}
-          className="mt-4 h-11 w-full justify-start rounded-2xl bg-[color:var(--px-shell-accent)] px-4 text-white hover:bg-[color:var(--px-shell-accent-strong)]"
-        >
-          <MessageSquarePlus className="h-4 w-4" />
-          {t("community.agent.newChat")}
-        </Button>
+          <Button
+            type="button"
+            onClick={onNewChat}
+            className="mt-4 h-11 w-full justify-start rounded-[18px] bg-[linear-gradient(135deg,var(--px-shell-accent),var(--px-shell-accent-strong))] px-4 text-white shadow-[0_18px_38px_-26px_rgba(0,55,176,0.58)] hover:brightness-110"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            {t("community.agent.newChat")}
+          </Button>
+        </div>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {conversationsLoading ? (
           <NoticeBanner
             tone="info"
@@ -86,8 +94,10 @@ export function ConversationRail({
             tone={conversation.id === activeConversationId ? "selected" : "ghost"}
             size="sm"
             className={cn(
-              "flex items-start gap-2",
-              conversation.id === activeConversationId ? "" : "hover:shadow-none",
+              "flex items-start gap-2 rounded-[22px] border border-transparent bg-[color:color-mix(in_srgb,var(--px-shell-panel)_82%,transparent)] px-1 shadow-none transition-all duration-200",
+              conversation.id === activeConversationId
+                ? "border-[color:var(--px-shell-accent)]/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-accent-soft)_62%,white_38%),color-mix(in_srgb,var(--px-shell-panel)_94%,white_6%))] shadow-[0_18px_34px_-34px_rgba(0,55,176,0.48)]"
+                : "hover:border-[color:var(--px-shell-line)]/80 hover:bg-[color:color-mix(in_srgb,var(--px-shell-panel-strong)_74%,white_26%)] hover:shadow-none",
             )}
           >
             <div
@@ -102,10 +112,10 @@ export function ConversationRail({
               }}
               className="min-w-0 flex-1 text-left"
             >
-              <p className="line-clamp-2 text-sm font-semibold text-[color:var(--px-shell-ink)]">
+              <p className="line-clamp-2 text-sm font-semibold leading-6 text-[color:var(--px-shell-ink)]">
                 {conversation.title || t("community.agent.newChat")}
               </p>
-              <p className="mt-1 text-xs text-[color:var(--px-shell-muted)]">
+              <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--px-shell-muted)]">
                 {new Date(conversation.updated_at).toLocaleString()}
               </p>
             </div>
@@ -117,7 +127,7 @@ export function ConversationRail({
               aria-label={t("community.conversation.deleteConversationAria", { title: conversation.title })}
               disabled={deletingConversationId === conversation.id}
               onClick={() => onDeleteConversation(conversation.id)}
-              className="h-9 w-9 text-[color:var(--px-shell-muted)] hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)]"
+              className="h-9 w-9 rounded-full text-[color:var(--px-shell-muted)] hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)]"
             >
               <Trash2 className="h-4 w-4" />
             </Button>

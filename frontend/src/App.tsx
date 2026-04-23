@@ -37,7 +37,7 @@ function withSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>
 }
 
-function AdminRoute({ children }: { children: ReactNode }) {
+function AdminRoute({ children, redirectTo = "/" }: { children: ReactNode; redirectTo?: string }) {
   const { user, loading, isAuthenticated } = useAuth()
 
   if (loading) {
@@ -47,7 +47,7 @@ function AdminRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace />
   }
   if (!hasAdminRole(user?.roles)) {
-    return <Navigate to="/" replace />
+    return <Navigate to={redirectTo} replace />
   }
   return <>{children}</>
 }
@@ -73,8 +73,22 @@ function App() {
             <Route path="/login" element={withSuspense(<Login />)} />
             <Route path="/" element={withSuspense(<Layout />)}>
               <Route index element={withSuspense(<HomePage />)} />
-              <Route path="agent" element={withSuspense(<CommunityConversationPage />)} />
-              <Route path="agent/:conversationId" element={withSuspense(<CommunityConversationPage />)} />
+              <Route
+                path="agent"
+                element={(
+                  <AdminRoute redirectTo="/tools">
+                    {withSuspense(<CommunityConversationPage />)}
+                  </AdminRoute>
+                )}
+              />
+              <Route
+                path="agent/:conversationId"
+                element={(
+                  <AdminRoute redirectTo="/tools">
+                    {withSuspense(<CommunityConversationPage />)}
+                  </AdminRoute>
+                )}
+              />
               <Route
                 path="admin/curation"
                 element={

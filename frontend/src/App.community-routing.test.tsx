@@ -83,7 +83,7 @@ vi.mock("@/pages/tools-hub", () => ({
       return <Navigate to="/workspace/glossary" replace />
     }
 
-    return <Navigate to="/translate" replace />
+    return <div>Tools hub page</div>
   },
 }))
 
@@ -126,7 +126,37 @@ describe("App community routing", () => {
     expect(await screen.findByText("Community feed page")).toBeInTheDocument()
   })
 
-  it("routes /agent to the community conversation shell", async () => {
+  it("redirects unauthenticated users from /agent to login", async () => {
+    window.history.pushState({}, "", "/agent")
+
+    render(<App />)
+
+    expect(await screen.findByText("Login page")).toBeInTheDocument()
+    expect(screen.queryByText("Community conversation page")).not.toBeInTheDocument()
+  })
+
+  it("redirects authenticated non-admin users from /agent/:conversationId to tools", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["user"] },
+    }
+
+    window.history.pushState({}, "", "/agent/conversation-123")
+
+    render(<App />)
+
+    expect(await screen.findByText("Tools hub page")).toBeInTheDocument()
+    expect(screen.queryByText("Community conversation page")).not.toBeInTheDocument()
+  })
+
+  it("allows admin users to access /agent", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["admin"] },
+    }
+
     window.history.pushState({}, "", "/agent")
 
     render(<App />)
@@ -134,7 +164,13 @@ describe("App community routing", () => {
     expect(await screen.findByText("Community conversation page")).toBeInTheDocument()
   })
 
-  it("routes /agent/:conversationId to the community conversation shell", async () => {
+  it("allows admin users to access /agent/:conversationId", async () => {
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { roles: ["admin"] },
+    }
+
     window.history.pushState({}, "", "/agent/conversation-123")
 
     render(<App />)

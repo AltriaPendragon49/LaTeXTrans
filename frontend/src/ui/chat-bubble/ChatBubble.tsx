@@ -4,14 +4,14 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const chatBubbleVariants = cva(
-  "w-full whitespace-pre-wrap border px-5 py-4 text-[15px] leading-relaxed",
+  "w-full whitespace-pre-wrap border px-5 py-4 text-[15px] leading-relaxed backdrop-blur-sm transition-colors duration-200",
   {
     variants: {
       speaker: {
         assistant:
-          "rounded-[22px] rounded-bl-none border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] text-[color:var(--px-shell-ink)] shadow-[0_4px_20px_rgba(27,28,28,0.03)]",
+          "rounded-[24px] rounded-bl-[8px] border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_88%,white_12%),color-mix(in_srgb,var(--px-shell-panel-strong)_92%,white_8%))] text-[color:var(--px-shell-ink)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.45)]",
         user:
-          "rounded-[22px] rounded-br-none border-[color:var(--px-shell-accent)]/20 bg-[linear-gradient(135deg,var(--px-shell-accent),var(--px-shell-accent-strong))] text-white shadow-[0_8px_24px_rgba(182,23,34,0.15)]",
+          "rounded-[24px] rounded-br-[8px] border-[color:var(--px-shell-accent)]/30 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-accent)_92%,white_8%),var(--px-shell-accent-strong))] text-white shadow-[0_20px_44px_-30px_rgba(0,55,176,0.62)]",
       },
     },
     defaultVariants: {

@@ -66,7 +66,7 @@ function ConversationTurnCard({
       )}
     >
       {turn.role === "assistant" ? (
-        <div className="mt-6 hidden size-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-sm sm:flex">
+        <div className="mt-6 hidden size-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)]/70 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-accent-soft)_74%,white_26%),white)] shadow-[0_20px_34px_-30px_rgba(0,55,176,0.38)] sm:flex">
           <Bot className="h-5 w-5 text-[color:var(--px-shell-accent)]" />
         </div>
       ) : null}
@@ -74,17 +74,17 @@ function ConversationTurnCard({
       <div
         className={cn(
           "flex w-full flex-col gap-1.5",
-          turn.role === "user" ? "max-w-[85%] items-end md:max-w-[70%]" : "max-w-[85%] md:max-w-[70%]",
+          turn.role === "user" ? "max-w-[88%] items-end md:max-w-[72%]" : "max-w-[88%] md:max-w-[74%]",
         )}
       >
         <div className={cn("flex items-center gap-2", turn.role === "user" ? "pr-2" : "pl-2")}>
           {turn.role === "user" ? (
             <>
-              <span className="text-xs text-[color:var(--px-shell-muted)]">
-                {formatConversationTimestamp(turn.created_at)}
-              </span>
               <span className="text-sm font-semibold text-[color:var(--px-shell-ink)]">
                 {t("community.conversation.userLabel", "You")}
+              </span>
+              <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--px-shell-muted)]">
+                {formatConversationTimestamp(turn.created_at)}
               </span>
             </>
           ) : (
@@ -92,7 +92,7 @@ function ConversationTurnCard({
               <span className="text-sm font-semibold text-[color:var(--px-shell-ink)]">
                 {t("community.conversation.agentLabel", "Paper Agent")}
               </span>
-              <span className="text-xs text-[color:var(--px-shell-muted)]">
+              <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--px-shell-muted)]">
                 {formatConversationTimestamp(turn.created_at)}
               </span>
             </>
@@ -160,7 +160,7 @@ function ConversationTurnCard({
         {deepResearchReport ? (
           <Card
             data-testid="community-deep-research-report"
-            className="mt-4 rounded-[24px] bg-[color:var(--px-shell-surface)] px-5 py-4 shadow-none"
+            className="mt-4 rounded-[24px] border border-[color:var(--px-shell-line)]/70 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-surface)_92%,white_8%),color-mix(in_srgb,var(--px-shell-panel)_96%,white_4%))] px-5 py-4 shadow-none"
           >
             <p className="text-sm font-semibold text-[color:var(--px-shell-ink)]">
               {t("community.conversation.deepResearchReportTitle")}
@@ -176,7 +176,7 @@ function ConversationTurnCard({
         </ChatBubble>
 
         {assistantAction?.type === "navigate_paper" && assistantActionPaperId ? (
-          <Card className="mt-5 rounded-[24px] bg-[color:var(--px-shell-panel)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+          <Card className="mt-5 rounded-[24px] border border-[color:var(--px-shell-line)]/70 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_90%,white_10%),color-mix(in_srgb,var(--px-shell-panel-strong)_92%,white_8%))] p-4 shadow-[0_18px_34px_-32px_rgba(15,23,42,0.32)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-[color:var(--px-shell-ink)]">
@@ -203,7 +203,7 @@ function ConversationTurnCard({
       </div>
 
       {turn.role === "user" ? (
-        <div className="mt-6 hidden size-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-sm sm:flex">
+        <div className="mt-6 hidden size-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:var(--px-shell-accent)]/18 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-accent-soft)_38%,white_62%),white)] shadow-[0_20px_34px_-30px_rgba(15,23,42,0.25)] sm:flex">
           <User className="h-5 w-5 text-[color:var(--px-shell-muted)]" />
         </div>
       ) : null}
@@ -224,11 +224,14 @@ export function ConversationThread({
   const { t } = useTranslation()
 
   return (
-    <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-6 pb-48 md:px-8 lg:px-24">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+    <div
+      ref={messageListRef}
+      className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(0,55,176,0.08),transparent_34%)] px-4 py-6 pb-52 md:px-8 lg:px-24"
+    >
+      <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-9">
         {!currentConversation?.turns.length ? (
           <StatePanel
-            className="rounded-[28px] border-dashed bg-[color:var(--px-shell-panel)] py-10 shadow-none"
+            className="rounded-[30px] border-dashed border-[color:var(--px-shell-line)]/80 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_90%,white_10%),color-mix(in_srgb,var(--px-shell-panel-strong)_92%,white_8%))] py-10 shadow-none"
             title={t("community.conversation.emptyState")}
           />
         ) : null}
@@ -247,7 +250,7 @@ export function ConversationThread({
             icon={<Loader2 className="h-4 w-4 animate-spin" />}
             title={t("community.conversation.running")}
             description={runningProgressSteps[runningStageIndex]}
-            className="rounded-[24px]"
+            className="rounded-[24px] border border-[color:var(--px-shell-line)]/70 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_90%,white_10%),color-mix(in_srgb,var(--px-shell-panel-strong)_94%,white_6%))]"
           />
         ) : null}
 
@@ -256,7 +259,7 @@ export function ConversationThread({
             tone="danger"
             title={t("community.detail.errorTitle")}
             description={agentError}
-            className="rounded-[24px]"
+            className="rounded-[24px] border border-red-200/70"
           />
         ) : null}
       </div>
