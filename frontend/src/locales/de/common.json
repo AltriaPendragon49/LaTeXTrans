@@ -216,7 +216,6 @@
   "task.detail.translationApplyFallback": "Fallback-Übersetzung anwenden ({{value}})",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "Aufgrund eines Backend-Netzwerkproblems konnte das Ergebnis nicht in der Datenbank gespeichert werden. Bitte achten Sie darauf, Ihre Übersetzungsergebnisse zu speichern.",
   "dashboard.config.email_notifications": "E-Mail-Benachrichtigungen",
-  "auth.labels.emailAddress": "E-Mail-Adresse",
   "auth.labels.emailOrPhoneNumber": "E-Mail-Adresse oder Telefonnummer",
   "history.language": "Sprache:",
   "common.sections.languageSettings": "Spracheinstellungen",
@@ -343,9 +342,7 @@
   "community.detail.errorTitle": "Paper-Details konnten nicht geladen werden",
   "community.detail.errorDescription": "Die Detailansicht dieses Community-Papers ist derzeit nicht verfügbar. Kehren Sie zum Feed zurück und versuchen Sie es von einem stabilen Einstiegspunkt erneut.",
   "community.detail.abstractUnavailable": "Für dieses von der Community ausgewählte Paper ist noch keine Zusammenfassung verfügbar.",
-  "community.detail.officialPublishedAt": "Veröffentlicht {{value}}",
   "community.detail.publishedAt": "Veröffentlicht {{value}}",
-  "community.detail.createdAt": "Erstellt {{value}}",
   "community.detail.sourceTitle": "Quelle",
   "community.actions.sectionDescription": "Übersetzung, Vorschau, Download und Interaktionssteuerungen bleiben hier bewusst sichtbar, damit spätere Änderungen an stabile Positionen andocken können.",
   "community.actions.translate": "Übersetzen",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "Like paper",
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
-  "community.likes.toast.failed": "Unable to update the like right now."
+  "community.likes.toast.failed": "Unable to update the like right now.",
+  "profile.login_information": "Anmeldeinformationen",
+  "profile.no_login_information_available": "Keine Anmeldeinformationen verfügbar",
+  "profile.settings_and_account": "Einstellungen und Konto"
 }

@@ -6,8 +6,10 @@ export interface LocalAuthUser {
     external_provider: string
     external_user_id: string
     roles: string[]
+    login_identifier?: string | null
     display_name?: string | null
     email?: string | null
+    phone?: string | null
 }
 
 export interface LocalAuthSession {
@@ -44,8 +46,15 @@ function normalizeUser(input: Partial<LocalAuthUser>): LocalAuthUser | null {
         external_provider: String(input.external_provider ?? "niutrans"),
         external_user_id: String(input.external_user_id ?? ""),
         roles: Array.isArray(input.roles) ? input.roles.map((role) => String(role)) : ["user"],
+        login_identifier: typeof input.login_identifier === "string" ? input.login_identifier : null,
         display_name: typeof input.display_name === "string" ? input.display_name : null,
         email: typeof input.email === "string" ? input.email : null,
+        phone:
+            typeof input.phone === "string"
+                ? input.phone
+                : typeof (input as { phone_number?: unknown }).phone_number === "string"
+                  ? (input as { phone_number: string }).phone_number
+                  : null,
     }
 }
 

@@ -12,7 +12,12 @@ const authState = vi.hoisted(() => ({
   isAuthenticated: false,
   loading: false,
   isAuthAvailable: true,
-  user: null as null | { email?: string },
+  user: null as null | {
+    email?: string | null
+    phone?: string | null
+    login_identifier?: string | null
+    external_user_id?: string | null
+  },
   error: null as null | string,
   signOut: vi.fn(),
   signIn: vi.fn(),
@@ -86,6 +91,66 @@ describe("remaining page i18n", () => {
 
     expect(screen.getByText("Loading...")).toBeInTheDocument()
     expect(screen.getByTestId("loading-state-spinner")).toBeInTheDocument()
+  })
+
+  it("renders the persisted login identifier on the profile page without exposing the internal id", () => {
+    authState.isAuthenticated = true
+    authState.user = {
+      email: null,
+      login_identifier: "13800138000",
+      external_user_id: "usr_local_1",
+    }
+
+    render(
+      <MemoryRouter>
+        <ProfilePage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("Profile")).toBeInTheDocument()
+    expect(screen.getByText("Login information")).toBeInTheDocument()
+    expect(screen.getByText("13800138000")).toBeInTheDocument()
+    expect(screen.queryByText("usr_local_1")).not.toBeInTheDocument()
+    expect(screen.queryByText("Email address")).not.toBeInTheDocument()
+  })
+
+  it("renders the login email on the profile page when it is available", () => {
+    authState.isAuthenticated = true
+    authState.user = {
+      email: "reader@example.com",
+      external_user_id: "usr_local_2",
+    }
+
+    render(
+      <MemoryRouter>
+        <ProfilePage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("reader@example.com")).toBeInTheDocument()
+    expect(screen.queryByText("usr_local_2")).not.toBeInTheDocument()
+  })
+
+  it("renders the intended chinese login copy on the profile page without question marks", async () => {
+    await i18n.changeLanguage("zh")
+    authState.isAuthenticated = true
+    authState.user = {
+      email: null,
+      login_identifier: "13800138000",
+      external_user_id: "usr_local_3",
+    }
+
+    render(
+      <MemoryRouter>
+        <ProfilePage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("\u4e2a\u4eba\u8d44\u6599")).toBeInTheDocument()
+    expect(screen.getByText("\u767b\u5f55\u4fe1\u606f")).toBeInTheDocument()
+    expect(screen.getByText("13800138000")).toBeInTheDocument()
+    expect(screen.queryByText("????")).not.toBeInTheDocument()
+    expect(screen.queryByText("usr_local_3")).not.toBeInTheDocument()
   })
 
   it("renders translated login form copy", () => {

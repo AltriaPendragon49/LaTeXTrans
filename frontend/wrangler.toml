@@ -2,11 +2,6 @@ name = "latextrans"
 compatibility_date = "2024-01-01"
 pages_build_output_dir = "./dist"
 
-# Build configuration for Cloudflare Pages
-[build]
-command = "npm run build"
-directory = "dist"
-
 # Note: Environment variables should be set in Cloudflare Dashboard
 # Settings > Environment Variables > Add variable
 # - VITE_API_BASE_URL: Your backend API base URL (e.g., https://api.example.com)

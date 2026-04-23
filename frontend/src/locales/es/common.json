@@ -216,7 +216,6 @@
   "task.detail.translationApplyFallback": "Aplicar traducción alternativa ({{value}})",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "Debido a un problema de red backend, el resultado no se pudo guardar en la base de datos. Asegúrese de guardar los resultados de su traducción.",
   "dashboard.config.email_notifications": "Notificaciones por correo electrónico",
-  "auth.labels.emailAddress": "Dirección de correo electrónico",
   "auth.labels.emailOrPhoneNumber": "Correo electrónico o número de teléfono",
   "history.language": "Idioma:",
   "common.sections.languageSettings": "Configuración de idioma",
@@ -343,9 +342,7 @@
   "community.detail.errorTitle": "No se pudieron cargar los detalles del artículo",
   "community.detail.errorDescription": "El detalle de este artículo de la comunidad no está disponible ahora mismo. Vuelve al feed e inténtalo de nuevo desde un punto estable.",
   "community.detail.abstractUnavailable": "Aún no hay un resumen disponible para este artículo seleccionado por la comunidad.",
-  "community.detail.officialPublishedAt": "Publicado {{value}}",
   "community.detail.publishedAt": "Publicado {{value}}",
-  "community.detail.createdAt": "Creado {{value}}",
   "community.detail.sourceTitle": "Fuente",
   "community.actions.sectionDescription": "Los controles de traducción, vista previa, descarga e interacción permanecen visibles aquí a propósito para que los cambios posteriores puedan conectarse a posiciones estables.",
   "community.actions.translate": "Traducir",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "Like paper",
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
-  "community.likes.toast.failed": "Unable to update the like right now."
+  "community.likes.toast.failed": "Unable to update the like right now.",
+  "profile.login_information": "Información de inicio de sesión",
+  "profile.no_login_information_available": "No hay información de inicio de sesión disponible",
+  "profile.settings_and_account": "Configuración y cuenta"
 }

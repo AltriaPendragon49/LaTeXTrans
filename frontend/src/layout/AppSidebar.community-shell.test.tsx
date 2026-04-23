@@ -12,6 +12,7 @@ type MockAuthState = {
     roles?: string[]
     display_name?: string | null
     email?: string | null
+    login_identifier?: string | null
     external_user_id?: string | null
   } | null
 }
@@ -152,15 +153,54 @@ describe("AppSidebar community shell", () => {
       </MemoryRouter>,
     )
 
-    await user.click(screen.getByRole("button", { name: /researcher/i }))
+    expect(screen.getByAltText("Settings & account")).toBeInTheDocument()
 
-    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument()
+    const accountButton = screen.getByRole("button", { name: "researcher@example.com" })
+    expect(accountButton).toHaveTextContent("Settings & account")
+    expect(accountButton).not.toHaveTextContent("researcher@example.com")
+
+    await user.click(accountButton)
+
+    expect(screen.getAllByText("Settings & account").length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByRole("link", { name: "Settings & account" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "History" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Glossary" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Admin curation/i })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Admin tasks/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument()
+  })
+
+  it("does not expose the internal external user id in the account menu when login contact is unavailable", async () => {
+    const user = userEvent.setup()
+    await i18n.changeLanguage("en")
+    mockAuthState = {
+      isAuthenticated: true,
+      user: {
+        roles: ["user"],
+        display_name: null,
+        email: null,
+        login_identifier: "13800138000",
+        external_user_id: "internal-user-42",
+      },
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppSidebar />
+      </MemoryRouter>,
+    )
+
+    const accountButton = screen.getByRole("button", { name: "13800138000" })
+    expect(accountButton).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /internal-user-42/i })).not.toBeInTheDocument()
+    expect(accountButton).toHaveTextContent("Settings & account")
+    expect(accountButton).not.toHaveTextContent("13800138000")
+
+    await user.click(accountButton)
+
+    expect(screen.getByText("13800138000")).toBeInTheDocument()
+    expect(screen.queryByText("internal-user-42")).not.toBeInTheDocument()
   })
 
   it("surfaces admin links inside the account menu instead of the main navigation", async () => {
@@ -190,7 +230,7 @@ describe("AppSidebar community shell", () => {
     expect(paperToolIndex).toBeGreaterThanOrEqual(0)
     expect(paperCopilotIndex).toBe(paperToolIndex + 1)
     expect(screen.queryByRole("link", { name: /Admin curation/i })).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /admin/i }))
+    await user.click(screen.getByRole("button", { name: "admin@example.com" }))
     expect(screen.getByRole("link", { name: /Admin curation/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Admin tasks/i })).toBeInTheDocument()
   })

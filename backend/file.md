@@ -171,6 +171,7 @@
 - `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`
 - `backend/migrations_mysql/20260421_0008_community_paper_engagement.sql`
 - `backend/migrations_mysql/20260422_0009_add_arxiv_published_at.sql`
+- `backend/migrations_mysql/20260423_0010_add_login_identifier_to_users.sql`
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
 - `backend/scripts/bootstrap_local_community_papers.py`
@@ -370,6 +371,8 @@
 - `backend/migrations_mysql/20260412_0005_add_community_similar_recommendations.sql`: MySQL 杩佺Щ鑴氭湰锛歛dd community similar recommendations銆?| SQL 鐗囨: create table if not exists community_similar_recommendations ( paper_id varchar(64) not null, position int not null, arx
 - `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`: MySQL 杩佺Щ鑴氭湰锛氫负绠＄悊鍛樼瓥灞曚换鍔¤ˉ鍏呭け璐ョ暀鐥曞瓧娈典笌宸插彂甯冭鏂囧叧鑱斿瓧娈点€?| SQL 鐗囨: alter table community_curation_jobs add column terminal_task_status varchar(32) null after status
 
+ - `backend/migrations_mysql/20260423_0010_add_login_identifier_to_users.sql`: MySQL 迁移脚本，为 `users` 表补充 `login_identifier` 字段并兼容重复执行。| SQL 片段: alter table users add column login_identifier varchar(255) null after external_user_id
+
 ### backend/scripts
 - `backend/scripts/apply_mysql_migrations.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _load_sql_files, apply_migrations, main
 - `backend/scripts/audit_pipeline_regression.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _load_json, _find_main_tex, _placeholder_only_chunks, _count_status, _invariant_fallback_sections, _status_sections
@@ -419,6 +422,12 @@
 ## Recent Responsibility Updates (2026-04-21 Community Engagement)
 
 ## Recent Responsibility Updates (2026-04-22 Feed Rebuild Safety)
+## Recent Responsibility Updates (2026-04-23 Local Auth Identifier)
+
+- `backend/app/api/routes/auth.py`: 登录与会话自举响应现在显式返回 `login_identifier`，供前端展示真实登录方式而不是内部用户 ID。
+- `backend/app/services/auth_service.py`: 本地鉴权服务现在会持久化用户本次输入的登录标识，并在登录与验会话时统一回传。
+- `backend/app/repositories/auth_repository.py`: 鉴权仓储现在负责读写 `users.login_identifier`，确保邮箱缺失时仍可恢复手机号或其他登录标识。
+- `backend/migrations_mysql/20260423_0010_add_login_identifier_to_users.sql`: 为 `users` 表新增 `login_identifier` 列，并兼容重复执行场景。
 
 - `backend/app/core/config.py`: 新增公开 feed 周期重建间隔配置，统一控制 Worker 侧 Redis 排名修复任务是否启用及其执行频率。
 - `backend/app/services/paper_service.py`: 公开 feed 索引全量重建现已改为写入临时 ZSET 后再通过 Redis `RENAME` 原子替换正式键，并在重建后统一清理匿名列表响应缓存。

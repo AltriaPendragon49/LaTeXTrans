@@ -19,6 +19,7 @@ def _create_sqlite_schema(database_path: Path) -> None:
               id text primary key,
               external_provider text not null,
               external_user_id text not null,
+              login_identifier text null,
               email text null,
               display_name text null,
               token_version integer not null default 1,
@@ -68,11 +69,11 @@ def test_local_auth_service_roundtrip_with_sqlite(monkeypatch: pytest.MonkeyPatc
     service = LocalAuthService()
 
     async def fake_verify_credentials(*, identifier: str, password: str):
-        assert identifier == "alice@example.com"
+        assert identifier == "13800138000"
         assert password == "secret"
         return {
             "external_user_id": "179017",
-            "email": "alice@example.com",
+            "email": None,
             "display_name": "Alice",
         }
 
@@ -80,7 +81,7 @@ def test_local_auth_service_roundtrip_with_sqlite(monkeypatch: pytest.MonkeyPatc
 
     login_result = asyncio.run(
         service.login(
-            identifier="alice@example.com",
+            identifier=" 13800138000 ",
             password="secret",
             client_ip="127.0.0.1",
             user_agent="pytest",
@@ -88,12 +89,23 @@ def test_local_auth_service_roundtrip_with_sqlite(monkeypatch: pytest.MonkeyPatc
     )
 
     assert login_result["user"]["external_user_id"] == "179017"
+    assert login_result["user"]["login_identifier"] == "13800138000"
     assert "admin" in login_result["user"]["roles"]
 
     current_user = asyncio.run(
         service.get_current_user_from_token(login_result["access_token"])
     )
     assert current_user["id"] == login_result["user"]["id"]
+    assert current_user["login_identifier"] == "13800138000"
+
+    connection = sqlite3.connect(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        row = connection.execute("select login_identifier from users where id = ?", (current_user["id"],)).fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    assert row["login_identifier"] == "13800138000"
 
     asyncio.run(service.logout_current_session(login_result["access_token"]))
 

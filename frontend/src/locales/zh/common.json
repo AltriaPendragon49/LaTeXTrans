@@ -216,7 +216,6 @@
   "task.detail.translationApplyFallback": "应用兜底翻译（{{value}}）",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "由于后端服务器网络问题，未能存入数据库，请注意保存翻译结果！",
   "dashboard.config.email_notifications": "邮件通知",
-  "auth.labels.emailAddress": "邮箱地址",
   "auth.labels.emailOrPhoneNumber": "邮箱或手机号",
   "history.language": "语言：",
   "common.sections.languageSettings": "语言设置",
@@ -351,9 +350,7 @@
   "community.detail.errorDescription": "当前无法读取这篇社区论文详情，请先返回动态页，再从稳定入口重试。",
   "community.detail.backToFeed": "返回社区动态",
   "community.detail.abstractUnavailable": "这篇社区论文暂时还没有可展示的摘要。",
-  "community.detail.officialPublishedAt": "发布时间 {{value}}",
   "community.detail.publishedAt": "发布时间 {{value}}",
-  "community.detail.createdAt": "创建于 {{value}}",
   "community.detail.sourceTitle": "来源",
   "community.detail.originalSource": "原文",
   "community.actions.sectionDescription": "可在这里发起翻译、查看在线阅读、进入处理进度页或下载译文 PDF。",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "点赞论文",
   "community.likes.toast.liked": "已点赞",
   "community.likes.toast.unliked": "已取消点赞",
-  "community.likes.toast.failed": "暂时无法更新点赞状态。"
+  "community.likes.toast.failed": "暂时无法更新点赞状态。",
+  "profile.login_information": "登录信息",
+  "profile.no_login_information_available": "暂无登录信息",
+  "profile.settings_and_account": "设置与账户"
 }

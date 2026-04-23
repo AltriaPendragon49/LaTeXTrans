@@ -216,7 +216,6 @@
   "task.detail.translationApplyFallback": "Application d'une traduction de secours ({{value}})",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "En raison d'un problème de réseau back-end, le résultat n'a pas pu être enregistré dans la base de données. Veuillez vous assurer de sauvegarder vos résultats de traduction.",
   "dashboard.config.email_notifications": "Notifications par courrier électronique",
-  "auth.labels.emailAddress": "Adresse email",
   "auth.labels.emailOrPhoneNumber": "Adresse e-mail ou numéro de téléphone",
   "history.language": "Langue:",
   "common.sections.languageSettings": "Paramètres de langue",
@@ -343,9 +342,7 @@
   "community.detail.errorTitle": "Impossible de charger les détails du papier",
   "community.detail.errorDescription": "La page de détail de ce papier communautaire est indisponible pour le moment. Revenez au flux et réessayez depuis un point d’entrée stable.",
   "community.detail.abstractUnavailable": "Aucun résumé n’est encore disponible pour ce papier sélectionné par la communauté.",
-  "community.detail.officialPublishedAt": "Publié {{value}}",
   "community.detail.publishedAt": "Publié {{value}}",
-  "community.detail.createdAt": "Créé {{value}}",
   "community.detail.sourceTitle": "Source",
   "community.actions.sectionDescription": "Les commandes de traduction, d’aperçu, de téléchargement et d’interaction restent volontairement visibles ici afin que les prochaines évolutions puissent se brancher sur des positions stables.",
   "community.actions.translate": "Traduire",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "Like paper",
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
-  "community.likes.toast.failed": "Unable to update the like right now."
+  "community.likes.toast.failed": "Unable to update the like right now.",
+  "profile.login_information": "Informations de connexion",
+  "profile.no_login_information_available": "Aucune information de connexion disponible",
+  "profile.settings_and_account": "Paramètres et compte"
 }

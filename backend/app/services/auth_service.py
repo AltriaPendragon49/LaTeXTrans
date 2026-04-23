@@ -196,6 +196,7 @@ class LocalAuthService:
             "id": user["id"],
             "external_provider": user["external_provider"],
             "external_user_id": user["external_user_id"],
+            "login_identifier": user.get("login_identifier"),
             "roles": list(user.get("roles") or ["user"]),
             "display_name": user.get("display_name"),
             "email": user.get("email"),
@@ -253,11 +254,12 @@ class LocalAuthService:
         client_ip: Optional[str],
         user_agent: Optional[str],
     ) -> dict[str, Any]:
-        if not identifier.strip() or not password:
+        normalized_identifier = identifier.strip()
+        if not normalized_identifier or not password:
             raise AuthServiceError(400, "AUTH_INVALID_REQUEST", "Identifier and password are required.")
 
         upstream_user = await self._upstream_client.verify_credentials(
-            identifier=identifier.strip(),
+            identifier=normalized_identifier,
             password=password,
         )
         try:
@@ -265,6 +267,7 @@ class LocalAuthService:
                 lambda: self._repository.get_or_create_user(
                     external_provider="niutrans",
                     external_user_id=upstream_user["external_user_id"],
+                    login_identifier=normalized_identifier,
                     email=upstream_user.get("email"),
                     display_name=upstream_user.get("display_name"),
                 )

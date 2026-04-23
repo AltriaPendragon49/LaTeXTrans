@@ -229,7 +229,6 @@
   "task.detail.translationApplyFallback": "Applying fallback translation ({{value}})",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "Due to a backend network issue, the result could not be saved to the database. Please make sure to save your translation results.",
   "dashboard.config.email_notifications": "Email notifications",
-  "auth.labels.emailAddress": "Email address",
   "auth.labels.emailOrPhoneNumber": "Email or phone number",
   "history.language": "Language:",
   "common.sections.languageSettings": "Language settings",
@@ -365,9 +364,7 @@
   "community.detail.errorDescription": "The community paper detail is unavailable right now. Return to the feed and retry from a stable entry point.",
   "community.detail.backToFeed": "Back to feed",
   "community.detail.abstractUnavailable": "No abstract is available yet for this community-selected paper.",
-  "community.detail.officialPublishedAt": "Published {{value}}",
   "community.detail.publishedAt": "Published {{value}}",
-  "community.detail.createdAt": "Created {{value}}",
   "community.detail.sourceTitle": "Source",
   "community.detail.originalSource": "Original source",
   "community.detail.stage.sourceReady": "English reading is ready",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "Like paper",
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
-  "community.likes.toast.failed": "Unable to update the like right now."
+  "community.likes.toast.failed": "Unable to update the like right now.",
+  "profile.login_information": "Login information",
+  "profile.no_login_information_available": "No login information available",
+  "profile.settings_and_account": "Settings & account"
 }

@@ -216,7 +216,6 @@
   "task.detail.translationApplyFallback": "Применение резервного перевода ({{value}})",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "Из-за проблемы с внутренней сетью результат не удалось сохранить в базе данных. Обязательно сохраните результаты перевода.",
   "dashboard.config.email_notifications": "Уведомления по электронной почте",
-  "auth.labels.emailAddress": "Адрес электронной почты",
   "auth.labels.emailOrPhoneNumber": "Электронная почта или номер телефона",
   "history.language": "Язык:",
   "common.sections.languageSettings": "Языковые настройки",
@@ -343,9 +342,7 @@
   "community.detail.errorTitle": "Не удалось загрузить сведения о статье",
   "community.detail.errorDescription": "Подробности этой статьи сообщества сейчас недоступны. Вернитесь в ленту и попробуйте снова из стабильной точки входа.",
   "community.detail.abstractUnavailable": "Для этой версии статьи, выбранной сообществом, аннотация пока недоступна.",
-  "community.detail.officialPublishedAt": "Опубликовано {{value}}",
   "community.detail.publishedAt": "Опубликовано {{value}}",
-  "community.detail.createdAt": "Создано {{value}}",
   "community.detail.sourceTitle": "Источник",
   "community.actions.sectionDescription": "Элементы управления переводом, предпросмотром, скачиванием и взаимодействием специально остаются видимыми здесь, чтобы последующие изменения могли подключаться к стабильным позициям.",
   "community.actions.translate": "Перевести",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "Like paper",
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
-  "community.likes.toast.failed": "Unable to update the like right now."
+  "community.likes.toast.failed": "Unable to update the like right now.",
+  "profile.login_information": "Данные для входа",
+  "profile.no_login_information_available": "Данные для входа недоступны",
+  "profile.settings_and_account": "Настройки и аккаунт"
 }

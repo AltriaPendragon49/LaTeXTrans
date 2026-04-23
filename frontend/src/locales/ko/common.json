@@ -216,7 +216,6 @@
   "task.detail.translationApplyFallback": "대체 변환 적용({{value}})",
   "batch.due_to_a_backend_network_issue_the_result_could_not_be_saved_to_the_database_please_make_sure_to_save_your_translation_results": "백엔드 네트워크 문제로 인해 결과를 데이터베이스에 저장할 수 없습니다. 번역 결과를 꼭 저장해 주세요.",
   "dashboard.config.email_notifications": "이메일 알림",
-  "auth.labels.emailAddress": "이메일 주소",
   "auth.labels.emailOrPhoneNumber": "이메일 또는 전화번호",
   "history.language": "언어:",
   "common.sections.languageSettings": "언어 설정",
@@ -343,9 +342,7 @@
   "community.detail.errorTitle": "논문 상세 정보를 불러올 수 없습니다",
   "community.detail.errorDescription": "이 커뮤니티 논문의 상세 정보는 현재 사용할 수 없습니다. 피드로 돌아가 안정적인 진입점에서 다시 시도하세요.",
   "community.detail.abstractUnavailable": "이 커뮤니티 선택 논문에는 아직 초록이 없습니다.",
-  "community.detail.officialPublishedAt": "게시일 {{value}}",
   "community.detail.publishedAt": "게시일 {{value}}",
-  "community.detail.createdAt": "생성일 {{value}}",
   "community.detail.sourceTitle": "소스",
   "community.actions.sectionDescription": "번역, 미리보기, 다운로드, 상호작용 제어는 이후 변경 사항도 안정된 위치에 연결할 수 있도록 의도적으로 여기 표시됩니다.",
   "community.actions.translate": "번역",
@@ -585,5 +582,8 @@
   "community.likes.action.idle": "Like paper",
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
-  "community.likes.toast.failed": "Unable to update the like right now."
+  "community.likes.toast.failed": "Unable to update the like right now.",
+  "profile.login_information": "로그인 정보",
+  "profile.no_login_information_available": "로그인 정보가 없습니다",
+  "profile.settings_and_account": "설정과 계정"
 }

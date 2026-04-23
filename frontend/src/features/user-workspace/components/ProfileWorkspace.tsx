@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
+import { getUserLoginInfo } from "@/features/user-workspace/accountIdentity"
 import { Button } from "@/ui/button/Button"
 import { Card, CardContent } from "@/ui/card/Card"
 import { LoadingState } from "@/ui/loading-state/LoadingState"
@@ -17,7 +18,8 @@ export function ProfileWorkspace() {
   const { user, isAuthenticated, loading, signOut } = useAuth()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { t } = useTranslation()
-  const profileValue = user?.email || user?.display_name || user?.external_user_id || ""
+  const loginInfo = getUserLoginInfo(user)
+  const profileValue = loginInfo || t("profile.no_login_information_available")
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -56,8 +58,8 @@ export function ProfileWorkspace() {
 
       <SectionCard
         icon={<Mail className="h-5 w-5" />}
-        title={t("common.labels.user")}
-        description={t("auth.labels.emailAddress")}
+        title={t("profile.login_information")}
+        description={t("auth.labels.emailOrPhoneNumber")}
       >
         <Card variant="strong" className="rounded-2xl shadow-none">
           <CardContent className="px-4 py-4">

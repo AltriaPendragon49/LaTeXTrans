@@ -68,7 +68,7 @@ class AuthRepository:
             cursor = connection.cursor()
             cursor.execute(
                 (
-                    "select id, external_provider, external_user_id, email, display_name, token_version, status "
+                    "select id, external_provider, external_user_id, login_identifier, email, display_name, token_version, status "
                     f"from users where id = {_placeholder(0)} limit 1"
                 ),
                 (user_id,),
@@ -89,6 +89,7 @@ class AuthRepository:
         *,
         external_provider: str,
         external_user_id: str,
+        login_identifier: Optional[str],
         email: Optional[str],
         display_name: Optional[str],
     ) -> dict[str, Any]:
@@ -97,7 +98,7 @@ class AuthRepository:
             cursor = connection.cursor()
             cursor.execute(
                 (
-                    "select id, external_provider, external_user_id, email, display_name, token_version, status "
+                    "select id, external_provider, external_user_id, login_identifier, email, display_name, token_version, status "
                     f"from users where external_provider = {_placeholder(0)} and external_user_id = {_placeholder(1)} limit 1"
                 ),
                 (external_provider, external_user_id),
@@ -107,13 +108,14 @@ class AuthRepository:
                 user_id = f"usr_{uuid4().hex}"
                 cursor.execute(
                     (
-                        "insert into users (id, external_provider, external_user_id, email, display_name, token_version, status, created_at, updated_at) "
-                        f"values ({_placeholders(9)})"
+                        "insert into users (id, external_provider, external_user_id, login_identifier, email, display_name, token_version, status, created_at, updated_at) "
+                        f"values ({_placeholders(10)})"
                     ),
                     (
                         user_id,
                         external_provider,
                         external_user_id,
+                        login_identifier,
                         email,
                         display_name,
                         1,
@@ -141,6 +143,7 @@ class AuthRepository:
                     "id": user_id,
                     "external_provider": external_provider,
                     "external_user_id": external_user_id,
+                    "login_identifier": login_identifier,
                     "email": email,
                     "display_name": display_name,
                     "token_version": 1,
@@ -150,11 +153,11 @@ class AuthRepository:
 
             cursor.execute(
                 (
-                    "update users set email = "
-                    f"{_placeholder(0)}, display_name = {_placeholder(1)}, updated_at = {_placeholder(2)} "
-                    f"where id = {_placeholder(3)}"
+                    "update users set login_identifier = "
+                    f"{_placeholder(0)}, email = {_placeholder(1)}, display_name = {_placeholder(2)}, updated_at = {_placeholder(3)} "
+                    f"where id = {_placeholder(4)}"
                 ),
-                (email, display_name, now, existing["id"]),
+                (login_identifier, email, display_name, now, existing["id"]),
             )
             self._ensure_admin_role_if_seeded(
                 cursor,
@@ -166,6 +169,7 @@ class AuthRepository:
                 (existing["id"],),
             )
             existing["roles"] = [row["role"] for row in _fetchall(cursor)]
+            existing["login_identifier"] = login_identifier
             existing["email"] = email
             existing["display_name"] = display_name
             return existing

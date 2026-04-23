@@ -19,6 +19,7 @@ class LocalUserPayload(BaseModel):
     id: str
     external_provider: str
     external_user_id: str
+    login_identifier: str | None = None
     roles: list[str]
     display_name: str | None = None
     email: str | None = None
