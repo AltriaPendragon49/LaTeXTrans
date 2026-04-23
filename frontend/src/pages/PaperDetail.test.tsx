@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { API_BASE_URL } from "@/api-base"
 import i18n from "@/i18n"
 import PaperDetailPage from "@/pages/paper-detail"
+import { setDesktopViewport, setMobileViewport } from "@/test/viewport"
 
 const usePaperDetailMock = vi.fn()
 const translateCommunityPaperMock = vi.fn()
@@ -13,6 +14,8 @@ const createCommunityPaperDownloadSessionMock = vi.fn()
 const likeCommunityPaperMock = vi.fn()
 const unlikeCommunityPaperMock = vi.fn()
 const getCommunityPaperSimilarMock = vi.fn()
+const toastSuccessMock = vi.hoisted(() => vi.fn())
+const toastErrorMock = vi.hoisted(() => vi.fn())
 const navigateMock = vi.fn()
 const setTaskIdMock = vi.fn()
 const setArxivIdMock = vi.fn()
@@ -52,6 +55,13 @@ vi.mock("@/features/translation-workflow/store/useTranslationStore", () => ({
 vi.mock("dompurify", () => ({
   default: {
     sanitize: (value: string) => value,
+  },
+}))
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: toastSuccessMock,
+    error: toastErrorMock,
   },
 }))
 
@@ -223,6 +233,7 @@ describe("PaperDetailPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("en")
+    setDesktopViewport()
     getCommunityPaperSimilarMock.mockResolvedValue({ items: [] })
     likeCommunityPaperMock.mockResolvedValue({
       paper_id: "paper-1",
@@ -622,6 +633,57 @@ describe("PaperDetailPage", () => {
     expect(screen.getAllByText("2503.01010").length).toBeGreaterThan(0)
   })
 
+  it("keeps the mobile paper information popover scrollable inside the viewport", async () => {
+    const user = userEvent.setup()
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue(
+      buildDetailReturn({
+        paper: {
+          ...basePaper,
+          title: "mHC: Manifold-Constrained Hyper-Connections",
+          authors: [
+            "Zhenda Xie",
+            "Yixuan Wei",
+            "Huanqi Cao",
+            "Chenggang Zhao",
+            "Chengqi Deng",
+            "Jiashi Li",
+            "Damai Dai",
+            "Huazuo Gao",
+            "Jiang Chang",
+            "Kuai Yu",
+            "Liang Zhao",
+            "Shangyan Zhou",
+            "Zhean Xu",
+            "Zhengyan Zhang",
+            "Wangding Zeng",
+            "Shengding Hu",
+            "Yuqing Wang",
+            "Jingyang Yuan",
+            "Lean Wang",
+            "Wenfeng Liang",
+          ],
+          github_url: "https://github.com/deepseek-ai/example-repository-with-a-long-name",
+        },
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Paper information" }))
+
+    const popover = screen.getByTestId("paper-detail-info-popover")
+    expect(popover).toHaveClass("max-h-[calc(100svh-5.75rem)]")
+    expect(popover).toHaveClass("overflow-y-auto")
+    expect(popover).toHaveClass("overscroll-contain")
+  })
+
   it("keeps only insights and similar tabs, collapses insights by default, and loads similar cards lazily", async () => {
     const user = userEvent.setup()
     getCommunityPaperSimilarMock.mockResolvedValue({
@@ -800,6 +862,28 @@ describe("PaperDetailPage", () => {
     })
   })
 
+  it("shows a visible mobile confirmation after copying the paper link", async () => {
+    const user = userEvent.setup()
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue(buildDetailReturn())
+    window.history.pushState({}, "", "/paper/paper-1")
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Copy paper link" }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-detail-share-status")).toHaveTextContent("Link copied")
+      expect(screen.getByTestId("paper-detail-share-status")).not.toHaveClass("sr-only")
+    })
+  })
+
   it("places a subtle like button before favorite and updates the count when clicked", async () => {
     const user = userEvent.setup()
     usePaperDetailMock.mockReturnValue(buildDetailReturn())
@@ -825,6 +909,52 @@ describe("PaperDetailPage", () => {
       expect(likeCommunityPaperMock).toHaveBeenCalledWith("paper-1")
       expect(screen.getByRole("button", { name: "Unlike paper" })).toHaveTextContent("3")
     })
+  })
+
+  it("reflows the mobile detail header into a compact collapsed action row", () => {
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue(buildDetailReturn())
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("paper-detail-header")).toHaveAttribute("data-mobile-layout", "stacked")
+    expect(screen.getByTestId("paper-detail-header")).toHaveAttribute("data-mobile-toolbar", "collapsed")
+    expect(screen.getByTestId("paper-detail-header-mobile-actions")).toBeInTheDocument()
+    expect(screen.queryByTestId("paper-detail-header-mobile-modes")).not.toBeInTheDocument()
+
+    const actionButtons = screen.getAllByRole("button")
+    const analysisButton = screen.getByRole("button", { name: "Open analysis" })
+    const likeButton = screen.getByRole("button", { name: "Like paper" })
+    expect(analysisButton).toHaveAttribute("data-testid", "mobile-analysis-jump-button")
+    expect(actionButtons.indexOf(analysisButton)).toBeLessThan(actionButtons.indexOf(likeButton))
+  })
+
+  it("allows expanding the default-collapsed mobile detail toolbar", async () => {
+    const user = userEvent.setup()
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue(buildDetailReturn())
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("paper-detail-header")).toHaveAttribute("data-mobile-toolbar", "collapsed")
+    expect(screen.queryByTestId("paper-detail-header-mobile-modes")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Show toolbar" }))
+
+    expect(screen.getByTestId("paper-detail-header")).toHaveAttribute("data-mobile-toolbar", "expanded")
+    expect(screen.getByTestId("paper-detail-header-mobile-modes")).toBeInTheDocument()
   })
 
   it("renders a not-found state", () => {

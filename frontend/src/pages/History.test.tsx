@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom"
 import i18n from "@/i18n"
 import HistoryPage from "@/pages/workspace-history"
 import { getAccessToken } from "@/lib/local-auth"
+import { setDesktopViewport, setMobileViewport } from "@/test/viewport"
 
 const authState = vi.hoisted(() => ({
   isAuthenticated: true,
@@ -37,6 +38,7 @@ describe("HistoryPage", () => {
     historyStoreState.setTaskId.mockReset()
     historyStoreState.setArxivId.mockReset()
     await i18n.changeLanguage("en")
+    setDesktopViewport()
     authState.isAuthenticated = true
     authState.loading = false
     authState.session = { access_token: "token-1" }
@@ -107,5 +109,46 @@ describe("HistoryPage", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(screen.getByText("2508.18791")).toBeInTheDocument()
+  })
+
+  it("renders the workspace history as stacked cards on mobile viewports", async () => {
+    setMobileViewport()
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        tasks: [
+          {
+            task_id: "task-1",
+            source_type: "arxiv",
+            arxiv_id: "2508.18791",
+            translation_mode: "full",
+            status: "completed",
+            progress: 100,
+            created_at: "2026-03-18T00:00:00Z",
+            completed_at: "2026-03-18T00:10:00Z",
+            source_language: "en",
+            target_language: "zh",
+            compile_strategy: "auto",
+            translation_model: "deepseek-ai/deepseek-v3.2",
+            generate_glossary: true,
+            use_author_api: true,
+            formatting: null,
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 10,
+        has_more: false,
+      }),
+    }))
+
+    render(
+      <MemoryRouter>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("history-records")).toHaveAttribute("data-layout", "cards")
   })
 })

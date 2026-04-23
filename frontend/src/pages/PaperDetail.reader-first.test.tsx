@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import i18n from "@/i18n"
 import PaperDetailPage from "@/pages/paper-detail"
+import { setDesktopViewport, setMobileViewport } from "@/test/viewport"
 
 const usePaperDetailMock = vi.fn()
 const paperDetailReaderStoreState = vi.hoisted(() => ({
@@ -125,7 +126,9 @@ const detailPayload = {
 describe("PaperDetailPage reader-first", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.useRealTimers()
     await i18n.changeLanguage("en")
+    setDesktopViewport()
   })
 
   it("keeps the five-module chinese guide stable when the reader mode changes", async () => {
@@ -203,5 +206,107 @@ describe("PaperDetailPage reader-first", () => {
     expect(
       screen.getByText("The reader is available, but this paper does not have a persisted Chinese insight package yet."),
     ).toBeInTheDocument()
+  })
+
+  it("defaults mobile reading to the translated single-document view instead of bilingual compare", () => {
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue({
+      ...detailPayload,
+      structuredInsights: null,
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("paper-translated-pdf-reader")).toBeInTheDocument()
+    expect(screen.queryByTestId("paper-bilingual-source-pdf-reader")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("paper-bilingual-translated-pdf-reader")).not.toBeInTheDocument()
+  })
+
+  it("immerses mobile readers into a full-bleed translated PDF viewport and auto-focuses it", async () => {
+    vi.useFakeTimers()
+    const scrollIntoViewMock = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue({
+      ...detailPayload,
+      structuredInsights: null,
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    vi.runAllTimers()
+
+    expect(scrollIntoViewMock).toHaveBeenCalled()
+    expect(screen.getByTestId("paper-detail-page-shell")).toHaveAttribute("data-mobile-shell", "immersive")
+    expect(screen.getByTestId("paper-detail-reader-panel")).toHaveAttribute("data-mobile-reader-viewport", "immersive")
+    expect(screen.getByTestId("paper-translated-pdf-reader")).toHaveClass("w-full")
+    expect(screen.getByTestId("paper-translated-pdf-reader")).not.toHaveClass("w-[60%]")
+  })
+
+  it("lets mobile readers jump from the pdf viewport into the analysis panel", async () => {
+    const user = userEvent.setup()
+    const scrollIntoViewMock = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue({
+      ...detailPayload,
+      structuredInsights: null,
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByTestId("mobile-reader-collapse-button")).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId("mobile-analysis-jump-button"))
+
+    expect(screen.getByTestId("paper-detail-reader-panel")).toHaveAttribute("data-mobile-reader-viewport", "collapsed")
+    expect(scrollIntoViewMock).toHaveBeenCalled()
+  })
+
+  it("lets mobile readers return from the analysis panel to the immersive reader", async () => {
+    const user = userEvent.setup()
+    const scrollIntoViewMock = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
+    setMobileViewport()
+    usePaperDetailMock.mockReturnValue({
+      ...detailPayload,
+      structuredInsights: null,
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/paper/paper-1"]}>
+        <Routes>
+          <Route path="/paper/:paperId" element={<PaperDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByTestId("mobile-analysis-jump-button"))
+    expect(screen.getByTestId("paper-detail-reader-panel")).toHaveAttribute("data-mobile-reader-viewport", "collapsed")
+
+    expect(screen.getByTestId("mobile-analysis-collapse-button")).toHaveClass("bg-[color:var(--px-shell-accent)]")
+
+    await user.click(screen.getByRole("button", { name: "Back to reader" }))
+
+    expect(screen.getByTestId("paper-detail-reader-panel")).toHaveAttribute("data-mobile-reader-viewport", "immersive")
+    expect(scrollIntoViewMock).toHaveBeenCalled()
   })
 })

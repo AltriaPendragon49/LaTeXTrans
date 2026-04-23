@@ -392,6 +392,7 @@
   "community.detail.infoAction": "Papierinformationen",
   "community.detail.shareAction": "Papierlink kopieren",
   "community.detail.shareCopied": "Link kopiert",
+  "community.detail.shareFailed": "Link konnte nicht kopiert werden",
   "community.detail.infoTitle": "Papierinformationen",
   "community.detail.infoAuthors": "Autoren",
   "community.detail.infoPublished": "Veröffentlichungsdatum",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
   "community.likes.toast.failed": "Unable to update the like right now.",
+  "community.detail.mobile.hideToolbar": "Werkzeugleiste ausblenden",
+  "community.detail.mobile.showToolbar": "Werkzeugleiste anzeigen",
+  "community.detail.mobile.jumpToAnalysis": "Analyse offnen",
+  "community.detail.mobile.backToReader": "Zuruck zum Leser",
   "profile.login_information": "Anmeldeinformationen",
   "profile.no_login_information_available": "Keine Anmeldeinformationen verfügbar",
   "profile.settings_and_account": "Einstellungen und Konto"

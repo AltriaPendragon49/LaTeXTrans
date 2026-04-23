@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { API_BASE_URL } from "@/api-base"
 import { useAuth } from "@/contexts/AuthContext"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { usePaperDetail } from "@/features/community-paper/hooks/use-paper-detail"
 import {
   createCommunityPaperDownloadSession,
@@ -82,6 +83,7 @@ interface PaperEngagementPatch {
 export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const { t } = useTranslation()
   const { isAuthenticated } = useAuth()
+  const isMobile = useIsMobile()
   const {
     paper,
     preview,
@@ -102,6 +104,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [likePending, setLikePending] = useState(false)
   const [engagementPatch, setEngagementPatch] = useState<PaperEngagementPatch | null>(null)
+  const [mobileAnalysisJumpRequest, setMobileAnalysisJumpRequest] = useState(0)
 
   const availableModes = useMemo<CommunityPaperReaderMode[]>(
     () => resolveAvailableModes(paper, preview, reader),
@@ -109,8 +112,8 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   )
 
   const derivedPreferredMode = useMemo(
-    () => resolvePreferredMode(reader?.preferred_mode, availableModes),
-    [availableModes, reader?.preferred_mode],
+    () => resolvePreferredMode(reader?.preferred_mode, availableModes, { isMobile }),
+    [availableModes, isMobile, reader?.preferred_mode],
   )
   const selectedMode =
     selectedModeState.paperId === paperId &&
@@ -260,10 +263,19 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
             : activePaper
 
         return (
-          <div className="flex flex-col min-h-0 min-w-0 flex-1 bg-[color:var(--px-shell-bg)] px-2 py-2 md:px-3 md:py-3">
+          <div
+            className={`flex flex-col min-h-0 min-w-0 flex-1 bg-[color:var(--px-shell-bg)] ${
+              isMobile ? "px-0 py-0" : "px-2 py-2 md:px-3 md:py-3"
+            }`}
+          >
             <div
               data-testid="paper-detail-page-shell"
-              className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[8px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] shadow-[var(--px-shell-shadow)]"
+              data-mobile-shell={isMobile ? "immersive" : "default"}
+              className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[color:var(--px-shell-panel)] ${
+                isMobile
+                  ? "rounded-none border-0 shadow-none"
+                  : "rounded-[8px] border border-[color:var(--px-shell-line)] shadow-[var(--px-shell-shadow)]"
+              }`}
             >
               <PaperDetailHeader
                 paper={effectivePaper}
@@ -277,6 +289,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
                 onSelectMode={handleSelectMode}
                 onDownload={() => void handleDownload()}
                 onLikeToggle={() => void handleLikeToggle(activePaper)}
+                onMobileOpenAnalysis={() => setMobileAnalysisJumpRequest((current) => current + 1)}
                 onFavoriteStateChange={(payload) => {
                   const nextViewerState = {
                     liked:
@@ -303,7 +316,11 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
                 }}
               />
 
-              <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[color:var(--px-shell-panel-strong)]">
+              <div
+                className={`relative flex min-h-0 min-w-0 flex-1 overflow-hidden ${
+                  isMobile ? "bg-white" : "bg-[color:var(--px-shell-panel-strong)]"
+                }`}
+              >
                 <PaperDetailWorkspace
                   key={effectivePaper.id}
                   paper={effectivePaper}
@@ -316,6 +333,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
                   abstractText={abstractText}
                   canDownload={canDownload}
                   actionError={actionError}
+                  mobileAnalysisJumpRequest={mobileAnalysisJumpRequest}
                 />
               </div>
             </div>

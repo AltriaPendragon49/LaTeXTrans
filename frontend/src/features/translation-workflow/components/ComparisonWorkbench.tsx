@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Columns, Download, FileText, Plus, Smartphone } from "lucide-react"
+import { Columns, Download, FileText, Languages, Plus, Smartphone } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -12,11 +12,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/ui/primitives/toggle-group"
 import { API_BASE_URL } from "@/api-base"
 import { TerminologyTable } from "@/features/translation-workflow/components/TerminologyTable"
 import { useTranslationTask } from "@/features/translation-workflow/hooks/useTranslationTask"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { Button } from "@/ui/button/Button"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
 type ViewMode = "split" | "single"
 type PdfViewerMode = "split" | "single"
+type MobileDocumentMode = "translated" | "source"
 
 interface PdfViewerProps {
   emptyMessage: string
@@ -60,7 +62,11 @@ function PdfViewer({ emptyMessage, mode, title, url }: PdfViewerProps) {
 }
 
 export function ComparisonWorkbench() {
-  const [viewMode, setViewMode] = useState<ViewMode>("split")
+  const isMobile = useIsMobile()
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    typeof window !== "undefined" && window.innerWidth < 768 ? "single" : "split",
+  )
+  const [mobileDocumentMode, setMobileDocumentMode] = useState<MobileDocumentMode>("translated")
   const { taskId, arxivId, resetTranslationState } = useTranslationTask()
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -88,9 +94,23 @@ export function ComparisonWorkbench() {
     }
   }
 
+  const handleMobileDocumentChange = (value: string) => {
+    if (value === "translated" || value === "source") {
+      setMobileDocumentMode(value)
+    }
+  }
+
   const emptyMessage = t("comparison.no_documents_available")
   const sourceTitle = t("comparison.original_pdf_source_document")
   const translatedTitle = t("comparison.translated_pdf_translation_result")
+  const mobileViewerTitle = mobileDocumentMode === "source" ? sourceTitle : translatedTitle
+  const mobileViewerUrl = mobileDocumentMode === "source" ? sourceUrl : previewUrl
+
+  useEffect(() => {
+    if (isMobile && viewMode !== "single") {
+      setViewMode("single")
+    }
+  }, [isMobile, viewMode])
 
   return (
     <div
@@ -108,21 +128,39 @@ export function ComparisonWorkbench() {
         </div>
 
         <div data-testid="comparison-view-toggle" className="justify-self-center">
-          <ToggleGroup
-            type="single"
-            value={viewMode}
-            onValueChange={handleViewModeChange}
-            className="justify-start rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel)_78%,white)] p-0.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.55)]"
-          >
-            <ToggleGroupItem value="split" aria-label={t("comparison.split_view")} className="h-8 gap-1.5 px-3 text-[11px]">
-              <Columns className="h-4 w-4" />
-              <span>{t("comparison.split_view")}</span>
-            </ToggleGroupItem>
-            <ToggleGroupItem value="single" aria-label={t("comparison.single_view")} className="h-8 gap-1.5 px-3 text-[11px]">
-              <Smartphone className="h-4 w-4" />
-              <span>{t("comparison.single_view")}</span>
-            </ToggleGroupItem>
-          </ToggleGroup>
+          {isMobile ? (
+            <ToggleGroup
+              type="single"
+              value={mobileDocumentMode}
+              onValueChange={handleMobileDocumentChange}
+              className="justify-start rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel)_78%,white)] p-0.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.55)]"
+            >
+              <ToggleGroupItem value="translated" aria-label={translatedTitle} className="h-8 gap-1.5 px-3 text-[11px]">
+                <Smartphone className="h-4 w-4" />
+                <span>{t("community.detail.mode.translatedPdf")}</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="source" aria-label={sourceTitle} className="h-8 gap-1.5 px-3 text-[11px]">
+                <Languages className="h-4 w-4" />
+                <span>{t("community.detail.mode.source")}</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+          ) : (
+            <ToggleGroup
+              type="single"
+              value={viewMode}
+              onValueChange={handleViewModeChange}
+              className="justify-start rounded-full bg-[color:color-mix(in_srgb,var(--px-shell-panel)_78%,white)] p-0.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.55)]"
+            >
+              <ToggleGroupItem value="split" aria-label={t("comparison.split_view")} className="h-8 gap-1.5 px-3 text-[11px]">
+                <Columns className="h-4 w-4" />
+                <span>{t("comparison.split_view")}</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="single" aria-label={t("comparison.single_view")} className="h-8 gap-1.5 px-3 text-[11px]">
+                <Smartphone className="h-4 w-4" />
+                <span>{t("comparison.single_view")}</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
@@ -142,7 +180,7 @@ export function ComparisonWorkbench() {
         data-testid="comparison-preview-region"
         className="min-h-[560px] min-w-0 flex-1 overflow-hidden rounded-[22px] bg-transparent"
       >
-        {viewMode === "split" ? (
+        {!isMobile && viewMode === "split" ? (
           <ResizablePanelGroup orientation="horizontal">
             <ResizablePanel defaultSize={50} minSize={30}>
               <div className="h-full min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--px-shell-panel-strong)]">
@@ -158,7 +196,12 @@ export function ComparisonWorkbench() {
           </ResizablePanelGroup>
         ) : (
           <div className="h-full min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--px-shell-panel-strong)]">
-            <PdfViewer emptyMessage={emptyMessage} mode="single" title={translatedTitle} url={previewUrl} />
+            <PdfViewer
+              emptyMessage={emptyMessage}
+              mode="single"
+              title={isMobile ? mobileViewerTitle : translatedTitle}
+              url={isMobile ? mobileViewerUrl : previewUrl}
+            />
           </div>
         )}
       </div>

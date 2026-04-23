@@ -7,6 +7,7 @@ import { MemoryRouter } from "react-router-dom"
 import { API_BASE_URL } from "@/api-base"
 import i18n from "@/i18n"
 import { ComparisonWorkbench } from "@/features/translation-workflow/components/ComparisonWorkbench"
+import { setDesktopViewport, setMobileViewport } from "@/test/viewport"
 
 const mockNavigate = vi.fn()
 const mockResetTranslationState = vi.fn()
@@ -50,6 +51,7 @@ describe("ComparisonWorkbench layout", () => {
     mockTranslationTaskState.taskId = "task-123"
     mockTranslationTaskState.arxivId = "2401.00001"
     await i18n.changeLanguage("en")
+    setDesktopViewport()
   })
 
   it("uses a compact borderless header and opens both pdf readers through the shared viewer surface", () => {
@@ -123,5 +125,18 @@ describe("ComparisonWorkbench layout", () => {
       "https://arxiv.org/pdf/2401.00001.pdf#page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0",
     )
     expect(sourceReader.tagName).toBe("IFRAME")
+  })
+
+  it("defaults narrow screens to the translated single-document preview mode", () => {
+    setMobileViewport()
+
+    render(
+      <MemoryRouter>
+        <ComparisonWorkbench />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTitle("Translated PDF (translation result)")).toBeInTheDocument()
+    expect(screen.queryByTitle("Original PDF (source document)")).not.toBeInTheDocument()
   })
 })

@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
 import { useAuth } from "@/contexts/AuthContext"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   batchDeleteAdminCurationJobs,
   deleteAdminCurationJob,
@@ -75,6 +76,7 @@ function getJobStatusTone(status: string): "accent" | "success" | "danger" | "wa
 export function AdminCurationTasksWorkspace() {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useAuth()
+  const isMobile = useIsMobile()
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchValue, setSearchValue] = useState("")
   const [jobs, setJobs] = useState<AdminCurationJobHistoryItem[]>([])
@@ -330,7 +332,11 @@ export function AdminCurationTasksWorkspace() {
               )}
             />
           ) : (
-            <DataTable className="shadow-none">
+            <DataTable
+              data-testid="admin-curation-task-records"
+              data-layout={isMobile ? "cards" : "table"}
+              className="shadow-none"
+            >
               <DataTableHeader className="hidden lg:block">
                 <DataTableHeaderRow className="grid-cols-[40px_minmax(0,2.3fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto]">
                   <DataTableHeaderCell />
@@ -344,7 +350,7 @@ export function AdminCurationTasksWorkspace() {
                 {jobs.map((job) => (
                   <DataTableRow
                     key={job.job_id}
-                    className="grid-cols-1 gap-4 lg:grid-cols-[40px_minmax(0,2.3fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto] lg:items-start"
+                    className={`grid-cols-1 gap-4 lg:grid-cols-[40px_minmax(0,2.3fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto] lg:items-start ${isMobile ? "rounded-[24px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_38px_-34px_rgba(15,23,42,0.18)]" : ""}`}
                   >
                     <DataTableCell className="pt-1 lg:pt-2">
                       <Checkbox

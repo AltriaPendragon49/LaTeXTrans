@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify"
+import { ChevronUp } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
@@ -7,6 +8,7 @@ import { API_BASE_URL } from "@/api-base"
 import { getCommunityPaperSimilar } from "@/features/community-paper/services/community-paper-api"
 import { stripLeadingDuplicatePaperHeaderHtml } from "@/lib/paper-reader-html"
 import { cn } from "@/lib/utils"
+import { Button } from "@/ui/button/Button"
 import { DisclosureCard } from "@/ui/disclosure-card/DisclosureCard"
 import { NoticeBanner } from "@/ui/notice-banner/NoticeBanner"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
@@ -46,6 +48,7 @@ interface PaperDetailWorkspaceProps {
   abstractText: string
   canDownload: boolean
   actionError: string | null
+  mobileAnalysisJumpRequest?: number
 }
 
 function isTranslatedPdfMode(mode: CommunityPaperReaderMode) {
@@ -392,11 +395,14 @@ export function PaperDetailWorkspace({
   abstractText,
   canDownload,
   actionError,
+  mobileAnalysisJumpRequest = 0,
 }: PaperDetailWorkspaceProps) {
   void _preview
   void readerState
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const readerPanelRef = useRef<HTMLElement | null>(null)
+  const autoFocusedPaperIdRef = useRef<string | null>(null)
   const [splitRatio, setSplitRatio] = useState(() => {
     if (typeof window === "undefined") {
       return DEFAULT_SPLIT_RATIO
@@ -413,6 +419,8 @@ export function PaperDetailWorkspace({
   const [similarState, setSimilarState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [similarItems, setSimilarItems] = useState<CommunityPaperSimilarItem[]>([])
   const [expandedSimilarKey, setExpandedSimilarKey] = useState<string>("")
+  const [mobileReaderCollapsed, setMobileReaderCollapsed] = useState(false)
+  const analysisPanelRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -486,6 +494,50 @@ export function PaperDetailWorkspace({
     }
   }, [activeTab, paper.id, similarState])
 
+  useEffect(() => {
+    if (isDesktop || autoFocusedPaperIdRef.current === paper.id) {
+      return
+    }
+
+    autoFocusedPaperIdRef.current = paper.id
+    const scrollTarget = readerPanelRef.current
+    if (!scrollTarget) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      scrollTarget.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }, 260)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [isDesktop, paper.id])
+
+  useEffect(() => {
+    if (isDesktop) {
+      setMobileReaderCollapsed(false)
+    }
+  }, [isDesktop])
+
+  useEffect(() => {
+    if (isDesktop || mobileAnalysisJumpRequest === 0) {
+      return
+    }
+
+    setMobileReaderCollapsed(true)
+    const analysisPanel = analysisPanelRef.current
+    if (analysisPanel) {
+      analysisPanel.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }
+  }, [isDesktop, mobileAnalysisJumpRequest])
+
   const sourceHtmlContent =
     preferredMode === "source" && reader?.source?.kind === "source_html"
       ? (reader.source.html_content ?? null)
@@ -536,40 +588,73 @@ export function PaperDetailWorkspace({
     }
   }
 
+  function handleExpandReaderFromAnalysis() {
+    setMobileReaderCollapsed(false)
+    const readerPanel = readerPanelRef.current
+    if (readerPanel) {
+      readerPanel.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }
+  }
+
   return (
     <div
       ref={containerRef}
       data-testid="paper-detail-top-panels"
       className={cn(
         "flex-1 min-h-0 min-w-0 w-full h-full relative",
-        isDesktop ? "grid" : "flex flex-col overflow-y-auto",
+        isDesktop ? "grid" : "flex flex-col overflow-y-auto scroll-smooth",
       )}
       style={isDesktop ? { gridTemplateColumns: desktopGridColumns } : undefined}
     >
       <section
+        ref={readerPanelRef}
         data-testid="paper-detail-reader-panel"
+        data-mobile-reader-viewport={isDesktop ? "default" : mobileReaderCollapsed ? "collapsed" : "immersive"}
         className={cn(
           "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[color:var(--px-shell-panel-strong)]",
-          isDesktop ? "" : "border-b border-[color:var(--px-shell-line)] min-h-[50vh]",
+          isDesktop
+            ? ""
+            : mobileReaderCollapsed
+              ? "h-[38vh] min-h-[18rem] shrink-0 border-b border-[color:var(--px-shell-line)] bg-white"
+              : "min-h-full shrink-0 border-b border-[color:var(--px-shell-line)] bg-white",
         )}
       >
-        <div data-testid="paper-reader-scroll-root" className="relative flex-1 overflow-auto bg-[color:var(--px-shell-panel-strong)]">
+        <div
+          data-testid="paper-reader-scroll-root"
+          className={cn(
+            "relative flex-1 overflow-auto bg-[color:var(--px-shell-panel-strong)]",
+            isDesktop ? "" : "overflow-hidden bg-white",
+          )}
+        >
           {preferredMode === "source" ? (
             sourceDocumentUrl ? (
               <iframe
                 data-testid="paper-source-pdf-reader"
                 title={`${paper.title} PDF`}
                 src={sourcePdfViewerUrl}
-                className="h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]"
+                className={cn(
+                  "h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]",
+                  !isDesktop && "mx-0 w-full bg-white",
+                )}
               />
             ) : sanitizedSourceHtml ? (
               <article
                 data-testid="paper-source-reader"
-                className="h-full bg-[color:var(--px-shell-panel-strong)] px-6 py-6 text-[color:var(--px-shell-ink)] sm:px-8 lg:px-10 lg:py-8 [&_article]:mx-auto [&_article]:max-w-[1040px] [&_article]:space-y-6 [&_figcaption]:text-sm [&_figcaption]:leading-6 [&_figcaption]:text-[color:var(--px-shell-muted)] [&_figure]:my-8 [&_figure]:overflow-x-auto [&_h1]:mt-8 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-[-0.04em] [&_h2]:mt-10 [&_h2]:text-[1.85rem] [&_h2]:font-semibold [&_h2]:tracking-[-0.03em] [&_h3]:mt-8 [&_h3]:text-[1.35rem] [&_h3]:font-semibold [&_li]:leading-8 [&_ol]:space-y-3 [&_p]:text-[17px] [&_p]:leading-8"
+                className={cn(
+                  "h-full bg-[color:var(--px-shell-panel-strong)] px-6 py-6 text-[color:var(--px-shell-ink)] sm:px-8 lg:px-10 lg:py-8 [&_article]:mx-auto [&_article]:max-w-[1040px] [&_article]:space-y-6 [&_figcaption]:text-sm [&_figcaption]:leading-6 [&_figcaption]:text-[color:var(--px-shell-muted)] [&_figure]:my-8 [&_figure]:overflow-x-auto [&_h1]:mt-8 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-[-0.04em] [&_h2]:mt-10 [&_h2]:text-[1.85rem] [&_h2]:font-semibold [&_h2]:tracking-[-0.03em] [&_h3]:mt-8 [&_h3]:text-[1.35rem] [&_h3]:font-semibold [&_li]:leading-8 [&_ol]:space-y-3 [&_p]:text-[17px] [&_p]:leading-8",
+                  !isDesktop &&
+                    "bg-white px-4 py-5 [&_article]:max-w-none [&_h1]:mt-4 [&_h1]:text-2xl [&_h2]:mt-7 [&_h2]:text-xl [&_h3]:mt-6 [&_h3]:text-lg [&_p]:text-[15px] [&_p]:leading-7",
+                )}
                 dangerouslySetInnerHTML={{ __html: sanitizedSourceHtml }}
               />
             ) : (
-              <article data-testid="paper-source-reader" className="flex h-full flex-col gap-4 px-10 py-8">
+              <article
+                data-testid="paper-source-reader"
+                className={cn("flex h-full flex-col gap-4 px-10 py-8", !isDesktop && "bg-white px-4 py-5")}
+              >
                 {originalSourceUrl ? (
                   <a
                     href={originalSourceUrl}
@@ -587,28 +672,37 @@ export function PaperDetailWorkspace({
               data-testid="paper-translated-pdf-reader"
               title={`${paper.title} Translated PDF`}
               src={translatedPdfViewerUrl}
-              className="h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]"
+              className={cn(
+                "h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]",
+                !isDesktop && "mx-0 w-full bg-white",
+              )}
             />
           ) : isBilingualCompareMode(preferredMode) && canDownload ? (
-            <div className="grid h-full min-h-0 grid-cols-2 gap-1 bg-[color:var(--px-shell-panel-strong)] p-1">
+            <div
+              className={cn(
+                "grid h-full min-h-0 grid-cols-2 gap-1 bg-[color:var(--px-shell-panel-strong)] p-1",
+                !isDesktop && "gap-0 bg-white p-0",
+              )}
+            >
               <iframe
                 data-testid="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}
                 src={bilingualSourcePdfViewerUrl}
-                className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+                className={cn("h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]", !isDesktop && "bg-white")}
               />
               <iframe
                 data-testid="paper-bilingual-translated-pdf-reader"
                 title={`${paper.title} Translated PDF Compare`}
                 src={bilingualTranslatedPdfViewerUrl}
-                className="h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]"
+                className={cn("h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]", !isDesktop && "bg-white")}
               />
             </div>
           ) : (
-            <article className="flex h-full flex-col gap-4 px-10 py-8">
+            <article className={cn("flex h-full flex-col gap-4 px-10 py-8", !isDesktop && "bg-white px-4 py-5")}>
               <p className="max-w-4xl text-base leading-8 text-[color:var(--px-shell-muted)]">{abstractText}</p>
             </article>
           )}
+
         </div>
       </section>
 
@@ -627,14 +721,29 @@ export function PaperDetailWorkspace({
       ) : null}
 
       <aside
+        ref={analysisPanelRef}
         data-testid="paper-detail-agent-panel"
         className={cn(
           "relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-[color:var(--px-shell-panel-strong)]",
-          isDesktop ? "h-full px-3 py-3 pl-0" : "min-h-[500px] p-3",
+          isDesktop ? "h-full px-3 py-3 pl-0" : "min-h-[75vh] p-3",
         )}
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border border-[color:color-mix(in_srgb,var(--px-shell-line)_82%,white)] bg-[color:var(--px-shell-panel)] shadow-[0_24px_60px_-42px_rgba(15,23,42,0.28)]">
           <div data-testid="paper-detail-insights-panel" className="contents" />
+          {!isDesktop ? (
+            <div className="sticky top-0 z-10 flex items-center justify-center bg-[color:var(--px-shell-panel)] px-3 pb-2 pt-3">
+              <Button
+                type="button"
+                size="sm"
+                data-testid="mobile-analysis-collapse-button"
+                onClick={handleExpandReaderFromAnalysis}
+                className="h-11 min-h-0 w-full rounded-full bg-[color:var(--px-shell-accent)] px-5 text-sm font-extrabold tracking-[0.08em] text-white shadow-[0_18px_32px_-18px_rgba(15,118,210,0.82)] hover:bg-[color:var(--px-shell-accent-strong)]"
+              >
+                <ChevronUp className="mr-1.5 h-4 w-4" />
+                <span>{t("community.detail.mobile.backToReader", { defaultValue: "Back to reader" })}</span>
+              </Button>
+            </div>
+          ) : null}
           <EditorialTabs
             value={activeTab}
             onValueChange={(nextValue) => handleSelectTab(nextValue as "insights" | "similar")}

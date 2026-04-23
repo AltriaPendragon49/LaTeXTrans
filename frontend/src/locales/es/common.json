@@ -392,6 +392,7 @@
   "community.detail.infoAction": "Información del artículo",
   "community.detail.shareAction": "Copiar enlace del artículo",
   "community.detail.shareCopied": "Enlace copiado",
+  "community.detail.shareFailed": "No se pudo copiar el enlace",
   "community.detail.infoTitle": "Información del artículo",
   "community.detail.infoAuthors": "Autores",
   "community.detail.infoPublished": "Fecha de publicación",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
   "community.likes.toast.failed": "Unable to update the like right now.",
+  "community.detail.mobile.hideToolbar": "Ocultar barra de herramientas",
+  "community.detail.mobile.showToolbar": "Mostrar barra de herramientas",
+  "community.detail.mobile.jumpToAnalysis": "Abrir analisis",
+  "community.detail.mobile.backToReader": "Volver al lector",
   "profile.login_information": "Información de inicio de sesión",
   "profile.no_login_information_available": "No hay información de inicio de sesión disponible",
   "profile.settings_and_account": "Configuración y cuenta"

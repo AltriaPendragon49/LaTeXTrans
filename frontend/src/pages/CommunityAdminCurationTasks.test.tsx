@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import i18n from "@/i18n"
 import CommunityAdminCurationTasksPage from "@/pages/community-admin-curation-tasks"
+import { setDesktopViewport, setMobileViewport } from "@/test/viewport"
 
 const { listAdminCurationJobs, deleteAdminCurationJob, batchDeleteAdminCurationJobs } = vi.hoisted(() => ({
   listAdminCurationJobs: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("sonner", () => ({
 describe("CommunityAdminCurationTasksPage", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en")
+    setDesktopViewport()
     listAdminCurationJobs.mockReset()
     deleteAdminCurationJob.mockReset()
     batchDeleteAdminCurationJobs.mockReset()
@@ -222,5 +224,38 @@ describe("CommunityAdminCurationTasksPage", () => {
     await waitFor(() => {
       expect(listAdminCurationJobs).toHaveBeenLastCalledWith({ status: "all", q: "" })
     })
+  })
+
+  it("degrades the admin task history to a mobile card layout on narrow screens", async () => {
+    setMobileViewport()
+    listAdminCurationJobs.mockResolvedValue({
+      items: [
+        {
+          job_id: "job-1",
+          batch_id: "batch-1",
+          paper_id: null,
+          published_paper_id: null,
+          task_id: "task-1",
+          source_type: "arxiv",
+          arxiv_id: "2312.00752",
+          original_filename: null,
+          status: "failed",
+          terminal_task_status: "failed_compilation",
+          error: "compile failed",
+          failed_artifact_path: "failed_tasks/task-1",
+          created_at: "2026-04-19T00:00:00Z",
+          updated_at: "2026-04-19T00:05:00Z",
+        },
+      ],
+      total: 1,
+    })
+
+    render(
+      <MemoryRouter>
+        <CommunityAdminCurationTasksPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId("admin-curation-task-records")).toHaveAttribute("data-layout", "cards")
   })
 })

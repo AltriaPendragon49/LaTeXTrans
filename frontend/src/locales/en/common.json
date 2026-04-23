@@ -376,6 +376,7 @@
   "community.detail.infoAction": "Paper information",
   "community.detail.shareAction": "Copy paper link",
   "community.detail.shareCopied": "Link copied",
+  "community.detail.shareFailed": "Unable to copy link",
   "community.detail.infoTitle": "Paper information",
   "community.detail.infoAuthors": "Authors",
   "community.detail.infoPublished": "Published",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
   "community.likes.toast.failed": "Unable to update the like right now.",
+  "community.detail.mobile.hideToolbar": "Hide toolbar",
+  "community.detail.mobile.showToolbar": "Show toolbar",
+  "community.detail.mobile.jumpToAnalysis": "Open analysis",
+  "community.detail.mobile.backToReader": "Back to reader",
   "profile.login_information": "Login information",
   "profile.no_login_information_available": "No login information available",
   "profile.settings_and_account": "Settings & account"

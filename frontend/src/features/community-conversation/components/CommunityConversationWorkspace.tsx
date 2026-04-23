@@ -1,12 +1,15 @@
-import { Loader2 } from "lucide-react"
+import { Loader2, PanelLeftOpen } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 
 import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
 import { useAuth } from "@/contexts/AuthContext"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { Button } from "@/ui/button/Button"
 import { PanelShell } from "@/ui/panel-shell/PanelShell"
 import { Pill } from "@/ui/pill/Pill"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/ui/primitives/sheet"
 import type {
   CommunityAgentCitation,
   CommunityAgentMode,
@@ -53,6 +56,7 @@ export function CommunityConversationWorkspace() {
   const location = useLocation()
   const { conversationId = "" } = useParams()
   const { user, isAuthenticated, loading: authLoading } = useAuth()
+  const isMobile = useIsMobile()
   const locationState = (location.state ?? null) as LocationState | null
 
   const [conversations, setConversations] = useState<CommunityConversationRecord[]>([])
@@ -67,6 +71,7 @@ export function CommunityConversationWorkspace() {
   const [agentBusy, setAgentBusy] = useState(false)
   const [agentError, setAgentError] = useState<string | null>(null)
   const [runningStageIndex, setRunningStageIndex] = useState(0)
+  const [mobileRailOpen, setMobileRailOpen] = useState(false)
   const messageListRef = useRef<HTMLDivElement | null>(null)
   const seededConversationIdRef = useRef<string | null>(null)
   const suppressedBootstrapConversationIdRef = useRef<string | null>(null)
@@ -406,6 +411,7 @@ export function CommunityConversationWorkspace() {
     }
     seededConversationIdRef.current = null
     suppressedBootstrapConversationIdRef.current = null
+    setMobileRailOpen(false)
     navigate(`/agent/${createConversationId()}`)
   }
 
@@ -419,6 +425,7 @@ export function CommunityConversationWorkspace() {
       await deleteCommunityAgentConversation(targetConversationId)
       const remaining = conversations.filter((entry) => entry.id !== targetConversationId)
       setConversations(remaining)
+      setMobileRailOpen(false)
       if (targetConversationId === conversationId) {
         seededConversationIdRef.current = null
         suppressedBootstrapConversationIdRef.current = targetConversationId
@@ -467,27 +474,41 @@ export function CommunityConversationWorkspace() {
   return (
     <div className="min-h-full bg-[radial-gradient(circle_at_top,rgba(0,55,176,0.09),transparent_28%),var(--px-shell-bg)] px-3 py-4 text-[color:var(--px-shell-ink)] sm:px-4 lg:px-6">
       <div className="mx-auto grid w-full max-w-[1920px] gap-4 xl:grid-cols-[272px_minmax(0,1fr)]">
-        <ConversationRail
-          userEmail={user?.email ?? undefined}
-          conversations={conversations}
-          activeConversationId={conversationId}
-          conversationsLoading={conversationsLoading}
-          deletingConversationId={deletingConversationId}
-          onNewChat={handleNewChat}
-          onOpenConversation={(targetConversationId) => navigate(`/agent/${targetConversationId}`)}
-          onDeleteConversation={(targetConversationId) => {
-            void handleDeleteConversation(targetConversationId)
-          }}
-        />
+        {isMobile ? null : (
+          <ConversationRail
+            userEmail={user?.email ?? undefined}
+            conversations={conversations}
+            activeConversationId={conversationId}
+            conversationsLoading={conversationsLoading}
+            deletingConversationId={deletingConversationId}
+            onNewChat={handleNewChat}
+            onOpenConversation={(targetConversationId) => navigate(`/agent/${targetConversationId}`)}
+            onDeleteConversation={(targetConversationId) => {
+              void handleDeleteConversation(targetConversationId)
+            }}
+          />
+        )}
 
         <PanelShell
           as="section"
           tone="panel"
           padding="none"
-          className="relative flex max-h-[calc(100vh-6.8rem)] flex-col overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-surface)_95%,white_5%),color-mix(in_srgb,var(--px-shell-panel)_98%,white_2%))] shadow-[0_34px_80px_-56px_rgba(15,23,42,0.54)]"
+          className={`relative flex flex-col overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-surface)_95%,white_5%),color-mix(in_srgb,var(--px-shell-panel)_98%,white_2%))] shadow-[0_34px_80px_-56px_rgba(15,23,42,0.54)] ${isMobile ? "min-h-[calc(100dvh-12rem)]" : "max-h-[calc(100vh-6.8rem)]"}`}
         >
           <header className="z-20 flex flex-none items-center justify-between border-b border-[color:color-mix(in_srgb,var(--px-shell-line)_78%,white_22%)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--px-shell-panel)_86%,white_14%),color-mix(in_srgb,var(--px-shell-surface)_74%,transparent_26%))] px-6 py-4 backdrop-blur-xl">
             <div className="min-w-0 flex items-center gap-4">
+              {isMobile ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setMobileRailOpen(true)}
+                  aria-label={t("community.conversation.savedTitle")}
+                  className="h-11 w-11 shrink-0 rounded-[18px]"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
+              ) : null}
               <div className="min-w-0 flex flex-col pr-4">
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--px-shell-accent)]">
                   {t("community.conversation.title")}
@@ -535,6 +556,31 @@ export function CommunityConversationWorkspace() {
           />
         </PanelShell>
       </div>
+
+      {isMobile ? (
+        <Sheet open={mobileRailOpen} onOpenChange={setMobileRailOpen}>
+          <SheetContent side="left" className="w-[min(90vw,24rem)] p-0 sm:max-w-none">
+            <SheetHeader className="sr-only">
+              <SheetTitle>{t("community.conversation.savedTitle")}</SheetTitle>
+            </SheetHeader>
+            <ConversationRail
+              userEmail={user?.email ?? undefined}
+              conversations={conversations}
+              activeConversationId={conversationId}
+              conversationsLoading={conversationsLoading}
+              deletingConversationId={deletingConversationId}
+              onNewChat={handleNewChat}
+              onOpenConversation={(targetConversationId) => {
+                setMobileRailOpen(false)
+                navigate(`/agent/${targetConversationId}`)
+              }}
+              onDeleteConversation={(targetConversationId) => {
+                void handleDeleteConversation(targetConversationId)
+              }}
+            />
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </div>
   )
 }

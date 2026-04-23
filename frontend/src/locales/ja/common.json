@@ -392,6 +392,7 @@
   "community.detail.infoAction": "論文情報",
   "community.detail.shareAction": "論文リンクをコピー",
   "community.detail.shareCopied": "リンクをコピーしました",
+  "community.detail.shareFailed": "リンクをコピーできません",
   "community.detail.infoTitle": "論文情報",
   "community.detail.infoAuthors": "著者",
   "community.detail.infoPublished": "公開日",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
   "community.likes.toast.failed": "Unable to update the like right now.",
+  "community.detail.mobile.hideToolbar": "ツールバーを隠す",
+  "community.detail.mobile.showToolbar": "ツールバーを表示",
+  "community.detail.mobile.jumpToAnalysis": "解析を開く",
+  "community.detail.mobile.backToReader": "閲覧に戻る",
   "profile.login_information": "ログイン情報",
   "profile.no_login_information_available": "ログイン情報はありません",
   "profile.settings_and_account": "設定とアカウント"

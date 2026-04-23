@@ -392,6 +392,7 @@
   "community.detail.infoAction": "Сведения о статье",
   "community.detail.shareAction": "Скопировать ссылку на статью",
   "community.detail.shareCopied": "Ссылка скопирована",
+  "community.detail.shareFailed": "Не удалось скопировать ссылку",
   "community.detail.infoTitle": "Сведения о статье",
   "community.detail.infoAuthors": "Авторы",
   "community.detail.infoPublished": "Дата публикации",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
   "community.likes.toast.failed": "Unable to update the like right now.",
+  "community.detail.mobile.hideToolbar": "Скрыть панель инструментов",
+  "community.detail.mobile.showToolbar": "Показать панель инструментов",
+  "community.detail.mobile.jumpToAnalysis": "Открыть анализ",
+  "community.detail.mobile.backToReader": "Вернуться к чтению",
   "profile.login_information": "Данные для входа",
   "profile.no_login_information_available": "Данные для входа недоступны",
   "profile.settings_and_account": "Настройки и аккаунт"

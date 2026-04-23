@@ -1,33 +1,14 @@
 import { useEffect, useState } from "react"
-import { Bookmark, Compass, PenTool, Sparkles } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { hasAdminRole } from "@/features/admin-curation/utils/admin-access"
 import { WorkspaceAccountMenu } from "@/features/user-workspace/components/WorkspaceAccountMenu"
+import { getDesktopShellNavItems, renderShellNavItemIcon } from "@/layout/shell-navigation"
 import { SidebarBrandButton } from "@/ui/sidebar-shell/SidebarBrandButton"
 import { SidebarNavItem } from "@/ui/sidebar-shell/SidebarNavItem"
 import { SidebarShell } from "@/ui/sidebar-shell/SidebarShell"
-
-function isCommunityRoute(pathname: string) {
-  return pathname === "/" || pathname.startsWith("/paper/")
-}
-
-function isPaperToolRoute(pathname: string) {
-  return (
-    pathname === "/tools" ||
-    pathname.startsWith("/translate") ||
-    pathname.startsWith("/processing") ||
-    pathname.startsWith("/preview") ||
-    pathname.startsWith("/workspace/history") ||
-    pathname.startsWith("/workspace/glossary")
-  )
-}
-
-function isPaperCopilotRoute(pathname: string) {
-  return pathname === "/agent" || pathname.startsWith("/agent/")
-}
 
 export function AppSidebar() {
   const { t } = useTranslation()
@@ -40,6 +21,12 @@ export function AppSidebar() {
   const brandName = t("brand.name")
   const brandSubtitle = t("brand.subtitle")
   const isAdmin = hasAdminRole(user?.roles)
+  const navItems = getDesktopShellNavItems({
+    pathname: location.pathname,
+    isAuthenticated,
+    isAdmin,
+    t,
+  })
 
   useEffect(() => {
     setCollapsed(routeDefaultCollapsed)
@@ -76,38 +63,16 @@ export function AppSidebar() {
       collapseLabel="Collapse sidebar"
       nav={
         <nav aria-label={t("community.nav.explore")} className="space-y-2">
-          <SidebarNavItem
-            to="/"
-            icon={<Compass className="h-5 w-5" />}
-            label={t("community.nav.community", "Community")}
-            collapsed={collapsed}
-            active={isCommunityRoute(location.pathname)}
-          />
-          {isAuthenticated ? (
+          {navItems.map((item) => (
             <SidebarNavItem
-              to="/favorites"
-              icon={<Bookmark className="h-5 w-5" />}
-              label={t("community.nav.favorites")}
+              key={item.key}
+              to={item.to}
+              icon={renderShellNavItemIcon(item, "h-5 w-5")}
+              label={item.label}
               collapsed={collapsed}
-              active={location.pathname === "/favorites" || location.pathname.startsWith("/favorites/")}
+              active={item.active}
             />
-          ) : null}
-          <SidebarNavItem
-            to="/tools"
-            icon={<PenTool className="h-5 w-5" />}
-            label={t("community.nav.paperTool", "Paper Tool")}
-            collapsed={collapsed}
-            active={isPaperToolRoute(location.pathname)}
-          />
-          {isAdmin ? (
-            <SidebarNavItem
-              to="/agent"
-              icon={<Sparkles className="h-5 w-5" />}
-              label={t("community.conversation.title", "Paper Copilot")}
-              collapsed={collapsed}
-              active={isPaperCopilotRoute(location.pathname)}
-            />
-          ) : null}
+          ))}
         </nav>
       }
       utility={<WorkspaceAccountMenu collapsed={collapsed} />}

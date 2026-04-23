@@ -20,6 +20,7 @@ import { deleteTask, deleteTasksBatch } from '@/lib/api'
 import { API_BASE_URL } from '@/api-base'
 import { useTranslation } from 'react-i18next'
 import { useTranslationTask } from '@/features/translation-workflow/hooks/useTranslationTask'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { getCompileStrategyLabel, getFormattingValueLabel, getTaskStatusLabel, getTranslationModeLabel } from '@/i18n/ui-text'
 import { getAccessToken } from '@/lib/local-auth'
 import { LoginPrompt } from '@/features/auth-shell/components/LoginPrompt'
@@ -83,6 +84,7 @@ export function HistoryWorkspace() {
   const { isAuthenticated, loading: authLoading, session } = useAuth()
   const { setTaskId, setArxivId } = useTranslationTask()
   const { t, i18n } = useTranslation()
+  const isMobile = useIsMobile()
 
   const [tasks, setTasks] = useState<TaskHistoryItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -393,7 +395,11 @@ export function HistoryWorkspace() {
         />
       ) : null}
 
-      <DataTable className="!bg-transparent !border-none !shadow-none p-0">
+      <DataTable
+        data-testid="history-records"
+        data-layout={isMobile ? 'cards' : 'table'}
+        className="!bg-transparent !border-none !shadow-none p-0"
+      >
         <DataTableHeader className="hidden md:block !bg-transparent !border-b !border-[color:var(--px-shell-line)]">
           <DataTableHeaderRow className="grid-cols-12">
             <DataTableHeaderCell className="col-span-1" />
@@ -423,7 +429,7 @@ export function HistoryWorkspace() {
                 onOpenChange={() => { }}
                 className="group transition-colors hover:bg-[color:var(--px-shell-panel-strong)]/70"
               >
-                <DataTableRow className="flex flex-col items-start gap-4 p-4 md:grid md:grid-cols-12 md:items-center sm:px-6 sm:py-5 border-b border-[color:var(--px-shell-line)]/50 transition-colors hover:bg-[color:var(--px-shell-panel-strong)] group-data-[state=open]:bg-[color:var(--px-shell-panel-strong)] rounded-2xl md:rounded-none">
+                <DataTableRow className={`flex flex-col items-start gap-4 p-4 md:grid md:grid-cols-12 md:items-center sm:px-6 sm:py-5 border-b border-[color:var(--px-shell-line)]/50 transition-colors hover:bg-[color:var(--px-shell-panel-strong)] group-data-[state=open]:bg-[color:var(--px-shell-panel-strong)] ${isMobile ? 'rounded-[24px] border bg-[color:var(--px-shell-panel)] shadow-[0_18px_38px_-34px_rgba(15,23,42,0.22)]' : 'rounded-2xl md:rounded-none'}`}>
                   <DataTableCell className="pt-1 md:col-span-1 md:pt-0">
                     {selectionMode ? (
                       <Checkbox

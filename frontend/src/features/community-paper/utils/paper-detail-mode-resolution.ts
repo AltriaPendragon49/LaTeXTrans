@@ -64,7 +64,17 @@ export function resolveAvailableModes(
 export function resolvePreferredMode(
   preferredMode: CommunityPaperReaderMode | undefined,
   availableModes: CommunityPaperReaderMode[],
+  options?: { isMobile?: boolean },
 ): CommunityPaperReaderMode {
+  if (options?.isMobile) {
+    if (availableModes.includes("translated_pdf")) {
+      return "translated_pdf"
+    }
+    if (availableModes.includes("source")) {
+      return "source"
+    }
+  }
+
   if (preferredMode === "translated") {
     if (availableModes.includes("bilingual_compare")) {
       return "bilingual_compare"

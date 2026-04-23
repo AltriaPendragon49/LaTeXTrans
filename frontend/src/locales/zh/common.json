@@ -400,6 +400,7 @@
   "community.detail.infoAction": "论文信息",
   "community.detail.shareAction": "复制论文链接",
   "community.detail.shareCopied": "链接已复制",
+  "community.detail.shareFailed": "无法复制链接",
   "community.detail.infoTitle": "论文信息",
   "community.detail.infoAuthors": "作者",
   "community.detail.infoPublished": "发布时间",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "已点赞",
   "community.likes.toast.unliked": "已取消点赞",
   "community.likes.toast.failed": "暂时无法更新点赞状态。",
+  "community.detail.mobile.hideToolbar": "收起工具栏",
+  "community.detail.mobile.showToolbar": "展开工具栏",
+  "community.detail.mobile.jumpToAnalysis": "查看解析",
+  "community.detail.mobile.backToReader": "返回阅读",
   "profile.login_information": "登录信息",
   "profile.no_login_information_available": "暂无登录信息",
   "profile.settings_and_account": "设置与账户"

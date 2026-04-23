@@ -392,6 +392,7 @@
   "community.detail.infoAction": "논문 정보",
   "community.detail.shareAction": "논문 링크 복사",
   "community.detail.shareCopied": "링크가 복사되었습니다",
+  "community.detail.shareFailed": "링크를 복사할 수 없습니다",
   "community.detail.infoTitle": "논문 정보",
   "community.detail.infoAuthors": "저자",
   "community.detail.infoPublished": "게시일",
@@ -583,6 +584,10 @@
   "community.likes.toast.liked": "Liked",
   "community.likes.toast.unliked": "Like removed",
   "community.likes.toast.failed": "Unable to update the like right now.",
+  "community.detail.mobile.hideToolbar": "도구 모음 숨기기",
+  "community.detail.mobile.showToolbar": "도구 모음 표시",
+  "community.detail.mobile.jumpToAnalysis": "분석 열기",
+  "community.detail.mobile.backToReader": "리더로 돌아가기",
   "profile.login_information": "로그인 정보",
   "profile.no_login_information_available": "로그인 정보가 없습니다",
   "profile.settings_and_account": "설정과 계정"
