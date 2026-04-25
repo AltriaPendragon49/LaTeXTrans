@@ -499,6 +499,7 @@
   "community.admin.tasks.totalLabel": "Total tasks",
   "community.admin.tasks.empty": "No admin curation tasks match the current filters.",
   "community.admin.tasks.updatedAt": "Updated",
+  "community.admin.tasks.readAction": "Read",
   "community.admin.tasks.deleteAction": "Delete",
   "community.admin.tasks.deleteDialogTitle": "Permanently delete this task.",
   "community.admin.tasks.deleteDialogDescription": "This permanently deletes the task record and all retained artifacts. This action cannot be undone.",

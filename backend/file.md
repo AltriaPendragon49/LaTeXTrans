@@ -179,6 +179,7 @@
 - `backend/scripts/grant_local_admin.py`
 - `backend/scripts/import_source_to_mysql.py`
 - `backend/scripts/mysql_script_connection.py`
+- `backend/scripts/sync_core_pool_complete_from_cos.py`
 
 ## Annotated Index
 
@@ -381,6 +382,7 @@
 - `backend/scripts/grant_local_admin.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _utc_now_naive, _fetch_target_user, grant_local_admin, main
 - `backend/scripts/import_source_to_mysql.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _utc_now, _first, _as_str, _as_bool, _as_int, _as_timestamp
 - `backend/scripts/mysql_script_connection.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: resolve_mysql_script_config, describe_mysql_script_target, mysql_script_connection
+- `backend/scripts/sync_core_pool_complete_from_cos.py`: 浠?`core_pool/complete.md` 璇诲彇宸插畬鎴愮殑 arXiv ID锛屼粠 COS 鎷夊彇鍖归厤璧勪骇骞舵寜 `data/community_papers/<arxiv_id>/...` 鍚屾鍒版湰鍦般€?| 椤跺眰绗﹀彿: ARXIV_ID_PATTERN, DEFAULT_COMPLETE_PATH, DEFAULT_DESTINATION_ROOT, parse_complete_arxiv_ids, read_complete_arxiv_ids, sync_core_pool_complete_assets, build_argument_parser, main
 ## Recent Responsibility Updates (2026-04-19)
 
 - `backend/app/services/task_manager.py`: 浠诲姟绠＄悊鍣ㄧ幇宸茶礋璐ｆ墽琛屽皾璇曠紪鍙枫€佸悓灏濊瘯缁堟€佸崟璋冧繚鎶ゃ€佹寔涔呭眰寮傚父鐘舵€佸璐︼紝浠ュ強闃熷垪绾ф湭鎹曡幏寮傚父鐨勭粓鎬佸皝鍙ｏ紝閬垮厤鐘舵€佹紓绉婚暱鏈熷崰鐢ㄥ苟鍙戞Ы浣嶃€?

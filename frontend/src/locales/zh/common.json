@@ -494,6 +494,7 @@
   "community.admin.tasks.totalLabel": "任务总数",
   "community.admin.tasks.empty": "未检测到符合条件的任务记录。",
   "community.admin.tasks.updatedAt": "最近更新",
+  "community.admin.tasks.readAction": "阅读",
   "community.admin.tasks.deleteAction": "删除",
   "community.admin.tasks.deleteDialogTitle": "确认删除任务",
   "community.admin.tasks.deleteDialogDescription": "此操作将永久抹除任务记录及其关联产物，操作无法撤回。",

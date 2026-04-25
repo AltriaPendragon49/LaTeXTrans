@@ -226,6 +226,56 @@ describe("CommunityAdminCurationTasksPage", () => {
     })
   })
 
+  it("shows a direct read link for completed curation records only", async () => {
+    listAdminCurationJobs.mockResolvedValue({
+      items: [
+        {
+          job_id: "job-1",
+          batch_id: "batch-1",
+          paper_id: "paper-draft",
+          published_paper_id: "paper-live",
+          task_id: "task-1",
+          source_type: "arxiv",
+          arxiv_id: "2510.04871",
+          original_filename: null,
+          status: "completed",
+          terminal_task_status: "completed",
+          error: null,
+          failed_artifact_path: null,
+          created_at: "2026-04-19T00:00:00Z",
+          updated_at: "2026-04-19T00:15:00Z",
+        },
+        {
+          job_id: "job-2",
+          batch_id: "batch-1",
+          paper_id: "paper-processing",
+          published_paper_id: null,
+          task_id: "task-2",
+          source_type: "arxiv",
+          arxiv_id: "2503.23674",
+          original_filename: null,
+          status: "processing",
+          terminal_task_status: null,
+          error: null,
+          failed_artifact_path: null,
+          created_at: "2026-04-19T00:00:00Z",
+          updated_at: "2026-04-19T00:15:00Z",
+        },
+      ],
+      total: 2,
+    })
+
+    render(
+      <MemoryRouter>
+        <CommunityAdminCurationTasksPage />
+      </MemoryRouter>,
+    )
+
+    const readLink = await screen.findByRole("link", { name: "Read" })
+    expect(readLink).toHaveAttribute("href", "/paper/paper-live")
+    expect(screen.queryByRole("link", { name: "Read paper-processing" })).not.toBeInTheDocument()
+  })
+
   it("degrades the admin task history to a mobile card layout on narrow screens", async () => {
     setMobileViewport()
     listAdminCurationJobs.mockResolvedValue({

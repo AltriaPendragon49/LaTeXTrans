@@ -1,5 +1,6 @@
-import { History, Loader2, RefreshCw, Search, ShieldAlert, Trash2 } from "lucide-react"
+import { BookOpen, History, Loader2, RefreshCw, Search, ShieldAlert, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -71,6 +72,20 @@ function getJobStatusTone(status: string): "accent" | "success" | "danger" | "wa
     default:
       return "muted"
   }
+}
+
+function resolveReadPaperId(job: AdminCurationJobHistoryItem): string | null {
+  if (String(job.status || "").trim().toLowerCase() !== "completed") {
+    return null
+  }
+
+  const publishedPaperId = String(job.published_paper_id || "").trim()
+  if (publishedPaperId) {
+    return publishedPaperId
+  }
+
+  const fallbackPaperId = String(job.paper_id || "").trim()
+  return fallbackPaperId || null
 }
 
 export function AdminCurationTasksWorkspace() {
@@ -347,7 +362,10 @@ export function AdminCurationTasksWorkspace() {
                 </DataTableHeaderRow>
               </DataTableHeader>
               <DataTableBody>
-                {jobs.map((job) => (
+                {jobs.map((job) => {
+                  const readPaperId = resolveReadPaperId(job)
+
+                  return (
                   <DataTableRow
                     key={job.job_id}
                     className={`grid-cols-1 gap-4 lg:grid-cols-[40px_minmax(0,2.3fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto] lg:items-start ${isMobile ? "rounded-[24px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_38px_-34px_rgba(15,23,42,0.18)]" : ""}`}
@@ -398,7 +416,15 @@ export function AdminCurationTasksWorkspace() {
                       <p>{job.created_at}</p>
                     </DataTableCell>
 
-                    <DataTableCell className="flex items-center justify-start lg:justify-end">
+                    <DataTableCell className="flex items-center justify-start gap-2 lg:justify-end">
+                      {readPaperId ? (
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/paper/${readPaperId}`}>
+                            <BookOpen className="mr-2 h-4 w-4" />
+                            {t("community.admin.tasks.readAction", "Read")}
+                          </Link>
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="destructive"
@@ -411,7 +437,8 @@ export function AdminCurationTasksWorkspace() {
                       </Button>
                     </DataTableCell>
                   </DataTableRow>
-                ))}
+                  )
+                })}
               </DataTableBody>
             </DataTable>
           )}
