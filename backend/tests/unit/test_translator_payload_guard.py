@@ -75,6 +75,80 @@ def _mock_echo_user_payload_session() -> MagicMock:
 
 
 class TestTranslatorPayloadGuard(unittest.TestCase):
+    def test_legacy_translation_core_uses_origin_order_and_skips_front_matter(self):
+        agent = _build_agent(extra_config={"enable_legacy_translation_core": True})
+        calls = []
+
+        async def fake_section(section, session, error_message=None):
+            calls.append(("sec", section["section"]))
+            section = section.copy()
+            section["trans_content"] = f"SEC:{section['section']}"
+            return section
+
+        async def fake_env(env, session, error_message=None):
+            calls.append(("env", env["placeholder"]))
+            env = env.copy()
+            env["trans_content"] = f"ENV:{env['placeholder']}"
+            return env
+
+        async def fake_caption(caption, session, error_message=None):
+            calls.append(("cap", caption["placeholder"]))
+            caption = caption.copy()
+            caption["trans_content"] = f"CAP:{caption['placeholder']}"
+            return caption
+
+        agent._translate_section = fake_section
+        agent._translate_env = fake_env
+        agent._translate_caption = fake_caption
+
+        sections = [
+            {"section": "0", "content": r"\begin{document}<PLACEHOLDER_ENV_1>"},
+            {"section": "1", "content": r"\section{Intro}<PLACEHOLDER_ENV_1><PLACEHOLDER_CAP_2>"},
+        ]
+        envs = [
+            {
+                "placeholder": "<PLACEHOLDER_ENV_1>",
+                "content": r"\begin{abstract}<PLACEHOLDER_CAP_1>\end{abstract}",
+                "need_trans": True,
+            }
+        ]
+        captions = [
+            {"placeholder": "<PLACEHOLDER_CAP_1>", "content": "A figure."},
+            {"placeholder": "<PLACEHOLDER_CAP_2>", "content": "A table."},
+        ]
+
+        skipped = asyncio.run(agent.translate(sections[0], envs, captions, MagicMock()))
+        translated = asyncio.run(agent.translate(sections[1], envs, captions, MagicMock()))
+
+        self.assertNotIn("trans_content", skipped)
+        self.assertEqual(translated["trans_content"], "SEC:1")
+        self.assertEqual(
+            calls,
+            [
+                ("env", "<PLACEHOLDER_ENV_1>"),
+                ("cap", "<PLACEHOLDER_CAP_1>"),
+                ("sec", "1"),
+                ("env", "<PLACEHOLDER_ENV_1>"),
+                ("cap", "<PLACEHOLDER_CAP_2>"),
+                ("cap", "<PLACEHOLDER_CAP_1>"),
+            ],
+        )
+
+    def test_legacy_translate_section_bypasses_hard_freeze_transport(self):
+        agent = _build_agent(extra_config={"enable_legacy_translation_core": True})
+        agent._call_llm_with_freeze = AsyncMock(side_effect=AssertionError("hard-freeze should be bypassed"))
+        agent._legacy_request_llm_for_trans = AsyncMock(return_value=r"\section{引言} 正文")
+
+        result = asyncio.run(
+            agent._translate_section(
+                {"section": "1", "content": r"\section{Intro} Body"},
+                MagicMock(),
+            )
+        )
+
+        self.assertEqual(result["trans_content"], r"\section{引言} 正文")
+        agent._call_llm_with_freeze.assert_not_awaited()
+
     def test_prepare_llm_payload_text_replaces_all_protected_placeholder_families_with_hard_freeze_tokens(self):
         agent = _build_agent()
         text = (

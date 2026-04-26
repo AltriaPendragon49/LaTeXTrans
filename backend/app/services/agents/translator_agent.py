@@ -212,6 +212,10 @@ class TranslatorAgent(BaseToolAgent):
             config.get("enable_hard_freeze_tokens", True),
             default=True,
         )
+        self.enable_legacy_translation_core = self._coerce_bool(
+            config.get("enable_legacy_translation_core", False),
+            default=False,
+        )
         self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
         self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
         if self.structural_fallback_cap_mode not in {"soft", "hard"}:
@@ -283,6 +287,146 @@ class TranslatorAgent(BaseToolAgent):
         if str(llm_config.get("pool_mode") or "").strip() == "system_managed" and llm_config.get("pool_members"):
             return True
         return bool(str(llm_config.get("base_url") or "").strip() and str(llm_config.get("api_key") or "").strip())
+
+    def _mark_legacy_llm_failure(self, part_type: str, fail_part: str) -> None:
+        self.have_fail_parts = True
+        if part_type == "sec":
+            if fail_part not in self.fail_section_nums:
+                self.fail_section_nums.append(fail_part)
+        elif part_type == "cap":
+            if fail_part not in self.fail_caption_phs:
+                self.fail_caption_phs.append(fail_part)
+        else:
+            if fail_part not in self.fail_env_phs:
+                self.fail_env_phs.append(fail_part)
+
+    async def _legacy_post_chat_completion(
+        self,
+        *,
+        payload: Dict[str, Any],
+        headers: Dict[str, str],
+        session: aiohttp.ClientSession,
+        timeout: aiohttp.ClientTimeout,
+    ) -> Dict[str, Any]:
+        if self._uses_system_pool():
+            return await post_chat_completion_with_pool(
+                session=session,
+                llm_config=self.config.get("llm_config", {}),
+                payload=payload,
+                timeout=timeout,
+            )
+        async with session.post(self.base_url, json=payload, headers=headers, timeout=timeout) as response:
+            response.raise_for_status()
+            return await response.json()
+
+    async def _legacy_request_llm_for_trans(
+        self,
+        system_prompt: str,
+        text: str,
+        fail_part: str,
+        type: str,
+        session: aiohttp.ClientSession,
+        *,
+        include_terms: bool = False,
+    ) -> str:
+        if include_terms:
+            system_content = (
+                f"{system_prompt}\nWhen translating, you must strictly use the following glossary "
+                "for substitution. This is the highest priority rule to ensure the consistency "
+                f"of terms throughout the text.\n<Glossary>:\n{self.term_dict}\nNow, please "
+                "translate the following new paragraph. Maintain the terminology from the glossary provided."
+            )
+            user_content = f"[Current LaTeX Paragraph]:\n{text}"
+        else:
+            system_content = f"{system_prompt}"
+            user_content = f"{text}"
+        payload = {
+            "model": f"{self.model}",
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": 0.7,
+            "max_new_tokens": 8192,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.API_KEY}",
+            "Content-Type": "application/json",
+        }
+        timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
+        for attempt in range(1, 4):
+            try:
+                async with global_llm_semaphore:
+                    result = await self._legacy_post_chat_completion(
+                        payload=payload,
+                        headers=headers,
+                        session=session,
+                        timeout=timeout,
+                    )
+                return result["choices"][0]["message"]["content"].strip()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if attempt < 3:
+                    await asyncio.sleep(5)
+                    continue
+                self._mark_legacy_llm_failure(type, str(fail_part))
+                logger.warning("Legacy core failed to translate %s %s: %s", type, fail_part, exc)
+                return text
+        return text
+
+    async def _legacy_request_llm_for_retrans_error_parts(
+        self,
+        system_prompt: str,
+        part: Dict[str, Any],
+        error_message: str,
+        fail_part: str,
+        type: str,
+        session: aiohttp.ClientSession,
+    ) -> str:
+        user_prompt = (
+            f"[Original]:\n{part.get('content', '')}\n"
+            f"[Translation]:\n{part.get('trans_content', '')}\n"
+            f"[Error]:\n{error_message or ''}"
+        )
+        payload = {
+            "model": f"{self.model}",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"{system_prompt}\nWhen translating, you must strictly use the following glossary "
+                        "for substitution. This is the highest priority rule to ensure the consistency "
+                        f"of terms throughout the text.\n<Glossary>:\n{self.term_dict}\nNow, please "
+                        "translate the following new paragraph. Maintain the terminology from the glossary provided."
+                    ),
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.7,
+            "max_new_tokens": 8192,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.API_KEY}",
+            "Content-Type": "application/json",
+        }
+        timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
+        for attempt in range(1, 4):
+            try:
+                async with global_llm_semaphore:
+                    result = await self._legacy_post_chat_completion(
+                        payload=payload,
+                        headers=headers,
+                        session=session,
+                        timeout=timeout,
+                    )
+                return result["choices"][0]["message"]["content"].strip()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if attempt < 3:
+                    await asyncio.sleep(5)
+                    continue
+                self._mark_legacy_llm_failure(type, str(fail_part))
+                logger.warning("Legacy core failed to retranslate %s %s: %s", type, fail_part, exc)
+                return part.get("trans_content") or part.get("content", "")
+        return part.get("trans_content") or part.get("content", "")
 
     @staticmethod
     def _extract_chunk_index(section_id: str) -> Optional[int]:
@@ -2779,6 +2923,24 @@ class TranslatorAgent(BaseToolAgent):
         placeholders_cap = re.findall(placeholder_pattern_cap, section["content"])
         placeholders_env = re.findall(placeholder_pattern_env, section["content"])
 
+        if self.enable_legacy_translation_core:
+            if section["section"] not in {"-1", "0"}:
+                section = await self._translate_section(section, session)
+            for placeholder in placeholders_env:
+                for i, env in enumerate(envs):
+                    if placeholder == env["placeholder"]:
+                        placeholders_cap_in_env = re.findall(placeholder_pattern_cap, env["content"])
+                        placeholders_cap.extend(placeholders_cap_in_env)
+                        envs[i] = await self._translate_env(env, session)
+                        break
+            placeholders_cap = list(dict.fromkeys(placeholders_cap))
+            for placeholder in placeholders_cap:
+                for i, caption in enumerate(captions):
+                    if placeholder == caption["placeholder"]:
+                        captions[i] = await self._translate_caption(caption, session)
+                        break
+            return section
+
         # 鈹€鈹€ Phase 1: Translate section body 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         if self._is_immutable_section(section):
             section = section.copy()
@@ -3373,6 +3535,35 @@ class TranslatorAgent(BaseToolAgent):
 
         transed_section = section.copy()
         section_num = str(section.get("section", ""))
+        if self.enable_legacy_translation_core:
+            if self.trans_mode == 0:
+                transed_section["trans_content"] = await self._legacy_request_llm_for_trans(
+                    self.prompts["section_system_prompt"],
+                    section["content"],
+                    fail_part=section_num,
+                    type="sec",
+                    session=session,
+                )
+            elif self.trans_mode == 1:
+                transed_section["trans_content"] = await self._legacy_request_llm_for_retrans_error_parts(
+                    self.prompts["retrans_error_parts_system_prompt"],
+                    part=transed_section,
+                    error_message=error_message or "",
+                    fail_part=section_num,
+                    type="sec",
+                    session=session,
+                )
+            elif self.trans_mode == 2:
+                transed_section["trans_content"] = await self._legacy_request_llm_for_trans(
+                    self.prompts["section_system_prompt_with_dict" if self.term_dict else "section_system_prompt"],
+                    section["content"],
+                    fail_part=section_num,
+                    type="sec",
+                    session=session,
+                    include_terms=bool(self.term_dict),
+                )
+            return transed_section
+
         previous_context = section.get("previous_context")
         source_content = section.get("content", "") or ""
         translatable_content = self._get_section_translation_core(section)
@@ -3863,6 +4054,35 @@ class TranslatorAgent(BaseToolAgent):
         """
         transed_caption = caption.copy()
         placeholder = caption["placeholder"]
+        if self.enable_legacy_translation_core:
+            if self.trans_mode == 0:
+                transed_caption["trans_content"] = await self._legacy_request_llm_for_trans(
+                    self.prompts["caption_system_prompt"],
+                    caption["content"],
+                    fail_part=placeholder,
+                    type="cap",
+                    session=session,
+                )
+            elif self.trans_mode == 1:
+                transed_caption["trans_content"] = await self._legacy_request_llm_for_retrans_error_parts(
+                    self.prompts["retrans_error_parts_system_prompt"],
+                    part=transed_caption,
+                    error_message=error_message or "",
+                    fail_part=placeholder,
+                    type="cap",
+                    session=session,
+                )
+            elif self.trans_mode == 2:
+                transed_caption["trans_content"] = await self._legacy_request_llm_for_trans(
+                    self.prompts["caption_system_prompt_with_dict" if self.term_dict else "caption_system_prompt"],
+                    caption["content"],
+                    fail_part=placeholder,
+                    type="cap",
+                    session=session,
+                    include_terms=bool(self.term_dict),
+                )
+            return transed_caption
+
         if self.trans_mode == 0:
             transed_caption["trans_content"] = await self._request_llm_for_trans(self.prompts["caption_system_prompt"],
                                                         caption["content"],
@@ -4313,6 +4533,41 @@ class TranslatorAgent(BaseToolAgent):
         placeholder = env["placeholder"]
         env_name = self._normalize_env_name(str(env.get("env_name", "")))
         need_trans = bool(env.get("need_trans", True))
+
+        if self.enable_legacy_translation_core:
+            if self.trans_mode == 0:
+                if need_trans:
+                    transed_env["trans_content"] = await self._legacy_request_llm_for_trans(
+                        self.prompts["env_system_prompt"],
+                        env["content"],
+                        fail_part=placeholder,
+                        type="env",
+                        session=session,
+                    )
+                else:
+                    transed_env["trans_content"] = env["content"]
+            elif self.trans_mode == 1:
+                transed_env["trans_content"] = await self._legacy_request_llm_for_retrans_error_parts(
+                    self.prompts["retrans_error_parts_system_prompt"],
+                    part=transed_env,
+                    error_message=error_message or "",
+                    fail_part=placeholder,
+                    type="env",
+                    session=session,
+                )
+            elif self.trans_mode == 2:
+                if need_trans:
+                    transed_env["trans_content"] = await self._legacy_request_llm_for_trans(
+                        self.prompts["env_system_prompt_with_dict" if self.term_dict else "env_system_prompt"],
+                        env["content"],
+                        fail_part=placeholder,
+                        type="env",
+                        session=session,
+                        include_terms=bool(self.term_dict),
+                    )
+                else:
+                    transed_env["trans_content"] = env["content"]
+            return transed_env
 
         self._update_env_metadata(
             transed_env,

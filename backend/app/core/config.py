@@ -372,7 +372,7 @@ class Settings(BaseSettings):
         description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
     )
     community_translation_llm_max_concurrent_requests: int = Field(
-        default=3,
+        default=10,
         validation_alias="COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS",
         description="Per-task outbound LLM request cap for production community/admin curation translations.",
     )

@@ -104,11 +104,10 @@ def test_quality_gate_rejects_large_english_prose_retention() -> None:
     assert "high_source_language_retention" in _reason_codes(result)
 
 
-def test_sync_task_assets_blocks_canonical_publish_when_quality_gate_fails(
+def test_sync_task_assets_publishes_without_quality_gate_block(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    diagnostics_path = tmp_path / "community_publish_quality_gate.json"
     updated_payloads: list[dict] = []
 
     monkeypatch.setattr(
@@ -121,16 +120,14 @@ def test_sync_task_assets_blocks_canonical_publish_when_quality_gate_fails(
             "failure_reason_code": "provider_quota_exhausted",
         },
     )
-    monkeypatch.setattr(
-        paper_service,
-        "_resolve_translated_pdf_asset",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("canonical PDF sync must be gated")),
-    )
-    monkeypatch.setattr(
-        paper_service,
-        "_resolve_preview_html_asset",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("canonical preview sync must be gated")),
-    )
+    async def _resolve_translated_pdf_asset(**_kwargs):
+        return {"id": "asset-pdf", "storage_backend": "local"}
+
+    async def _resolve_preview_html_asset(**_kwargs):
+        return None
+
+    monkeypatch.setattr(paper_service, "_resolve_translated_pdf_asset", _resolve_translated_pdf_asset)
+    monkeypatch.setattr(paper_service, "_resolve_preview_html_asset", _resolve_preview_html_asset)
 
     async def _update_paper(paper_id: str, payload: dict):
         updated_payloads.append(payload)
@@ -147,13 +144,10 @@ def test_sync_task_assets_blocks_canonical_publish_when_quality_gate_fails(
         )
     )
 
-    assert result["status"] == "quality_gate_failed"
-    assert result["quality_gate"]["passed"] is False
-    assert "fatal_provider_failure" in {reason["code"] for reason in result["quality_gate"]["reasons"]}
-    assert diagnostics_path.exists()
-    assert json.loads(diagnostics_path.read_text(encoding="utf-8"))["passed"] is False
-    assert updated_payloads[-1]["trans_status"] == "failed"
-    assert "community_status" not in updated_payloads[-1]
+    assert result["status"] == "completed"
+    assert result["translated_asset"]["id"] == "asset-pdf"
+    assert updated_payloads[-1]["trans_status"] == "completed"
+    assert updated_payloads[-1]["community_status"] == paper_service.COMMUNITY_STATUS_OFFICIAL
 
 
 def test_scan_community_papers_flags_known_bad_patterns(tmp_path: Path) -> None:

@@ -4555,34 +4555,6 @@ async def _sync_task_assets_for_paper(
             paper = await _fetch_paper_by_id(paper_id)
         if not paper:
             return {"done": True, "status": "paper_missing"}
-        quality_result = _run_community_publish_quality_gate(task_id=task_id, task=task)
-        diagnostics_path = _write_community_publish_quality_diagnostics(
-            task_id=task_id,
-            task=task,
-            result=quality_result,
-        )
-        if not quality_result.passed:
-            update_payload = {
-                "trans_status": "failed",
-                "community_selected_task_id": task_id,
-                "updated_at": _utc_now_iso(),
-            }
-            paper = await _update_paper(paper_id, update_payload)
-            diagnostics = quality_result.diagnostics()
-            if diagnostics_path:
-                diagnostics["diagnostics_path"] = str(diagnostics_path)
-            logger.warning(
-                "Blocked community publish for paper %s task %s by quality gate: %s",
-                paper_id,
-                task_id,
-                [reason.get("code") for reason in diagnostics.get("reasons", [])],
-            )
-            return {
-                "done": True,
-                "status": "quality_gate_failed",
-                "paper": paper,
-                "quality_gate": diagnostics,
-            }
         translated_asset = await _resolve_translated_pdf_asset(
             paper_id=paper_id,
             task_id=task_id,

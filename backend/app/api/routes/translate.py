@@ -686,7 +686,7 @@ async def run_translation(
         task_llm_cap = CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS
         community_production_translation = bool(getattr(advanced_config, "community_production_translation", False))
         if community_production_translation:
-            task_llm_cap = max(1, int(settings.community_translation_llm_max_concurrent_requests or 3))
+            task_llm_cap = max(1, int(settings.community_translation_llm_max_concurrent_requests or 10))
 
         task_llm_max_concurrent_requests = resolve_task_llm_max_concurrent_requests(
             default=settings.llm_max_concurrent_requests,
@@ -729,6 +729,8 @@ async def run_translation(
                 False if community_production_translation else settings.enable_precompile_structure_guard
             ),
             "enable_hard_freeze_tokens": False if community_production_translation else True,
+            "enable_parser_env_llm_judgment": False if community_production_translation else True,
+            "enable_legacy_translation_core": True if community_production_translation else False,
             "structural_fallback_ratio_cap": settings.structural_fallback_ratio_cap,
             "structural_fallback_cap_mode": settings.structural_fallback_cap_mode,
             "model_context_tokens": settings.model_context_tokens or CLI_PARITY_MODEL_CONTEXT_TOKENS,

@@ -95,6 +95,22 @@ class ParserAgent(BaseToolAgent):
             config,
             default=settings.llm_max_concurrent_requests,
         )
+        self.enable_env_llm_judgment = self._coerce_bool(
+            config.get("enable_parser_env_llm_judgment", True),
+            default=True,
+        )
+
+    @staticmethod
+    def _coerce_bool(value: Any, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return default
 
     def _uses_system_pool(self) -> bool:
         llm_config = self.config.get("llm_config", {})
@@ -167,7 +183,7 @@ class ParserAgent(BaseToolAgent):
                  f"skipped_by_type={skipped_by_type}, "
                  f"skipped_by_length={skipped_by_length}")
 
-        if env_need_trans:
+        if env_need_trans and self.enable_env_llm_judgment:
             self.log(f"Setting need_trans for {len(env_need_trans)} environments (parallel)")
             self.update_progress(70, f"Determining translation for {len(env_need_trans)} environments")
 
@@ -177,6 +193,11 @@ class ParserAgent(BaseToolAgent):
             
             # Use parallel LLM calls for environment judgment
             await self._judge_envs_parallel(env_need_trans, latex_parser, placeholder_to_index)
+        elif env_need_trans:
+            self.log(
+                f"Skipping LLM environment judgment for {len(env_need_trans)} environments; "
+                "keeping parser defaults"
+            )
 
         self.update_progress(90, "Saving parsed data to JSON files")
         

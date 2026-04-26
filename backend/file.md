@@ -2,6 +2,12 @@
 
 ## Recent Responsibility Updates (2026-04-26 Community Quality Gate)
 
+- `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译的单任务 LLM 并发恢复为原系统同级默认值 10；API 击穿保护交给每 key 任务级 token bucket，而不是压低论文内部 section 并发。
+- `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译强制启用 `enable_legacy_translation_core`，让基本 section/env/caption 翻译路径回到原系统语义。
+- `backend/app/services/agents/translator_agent.py`: 新增 legacy translation core 分支；启用时绕开 hard-freeze、paragraph rescue、no-op retry、target-language rescue 和结构 fallback，按原系统的 section -> env -> caption 顺序及失败原文回退逻辑执行。
+- `backend/app/services/paper_service.py`: 社区发布路径不再执行翻译质量门禁阻断；翻译完成后按原系统产物直接同步 canonical PDF/preview 并发布，质量扫描逻辑仅保留为离线审计工具。
+- `backend/app/core/config.py`: `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 默认值调整为 10，与原系统 section 并发一致。
+
 - `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译现在走简化内核：关闭 hard-freeze transport、编译前结构门禁、编译后结构/目标语降级和诊断 LLM，减少占位符过度保护导致的慢、回退和坏译文。
 - `backend/app/services/agents/translator_agent.py`: 新增 `enable_hard_freeze_tokens` 配置；关闭时保留数学、环境、命令 mask/restore，但不再把占位符二次包装为 hard-freeze token。
 - `backend/app/services/latex/utils.py`: hard-freeze 风险分层将普通 inline math 视为低风险 token，section relaxed 模式不再因相邻数学占位符重排而整段回退。

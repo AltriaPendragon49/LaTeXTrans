@@ -58,4 +58,4 @@ def test_backend_settings_match_cli_safe_limit_defaults():
     assert settings.model_context_tokens == 32000
     assert settings.prompt_reserve_tokens == 4096
     assert settings.llm_max_concurrent_requests == 10
-    assert settings.community_translation_llm_max_concurrent_requests == 3
+    assert settings.community_translation_llm_max_concurrent_requests == 10
