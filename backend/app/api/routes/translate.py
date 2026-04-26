@@ -683,9 +683,13 @@ async def run_translation(
         llm_config = await build_llm_config_async(advanced_config, user_id)
         
         # Build config dict for CoordinatorAgent with all advanced settings
+        task_llm_cap = CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS
+        if bool(getattr(advanced_config, "community_production_translation", False)):
+            task_llm_cap = max(1, int(settings.community_translation_llm_max_concurrent_requests or 3))
+
         task_llm_max_concurrent_requests = resolve_task_llm_max_concurrent_requests(
             default=settings.llm_max_concurrent_requests,
-            cap=CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS,
+            cap=task_llm_cap,
         )
         category_map: dict[str, list[str]] = {}
         if arxiv_id:

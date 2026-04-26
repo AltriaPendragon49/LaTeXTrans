@@ -2,6 +2,10 @@
 
 ## Recent Responsibility Updates (2026-04-26 Community Quality Gate)
 
+- `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译现在按 `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 收紧单任务 LLM 并发，默认 3，避免单篇论文内部打穿同一 API 池。
+- `backend/app/models/config_models.py`: `AdvancedConfig` 增加不持久化的内部标记 `community_production_translation`，用于区分生产社区入库任务与普通交互任务。
+- `backend/app/core/config.py`: 新增 `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 配置项，控制社区生产翻译的单任务 LLM 请求上限。
+
 - `backend/app/services/community_translation_quality.py`: 社区译文发布质量门禁，检查固定伪中文降级短语、多段或过长 source fallback、大段英文保留和致命 provider 状态，并输出机器可读诊断。
 - `backend/app/services/paper_service.py`: canonical 社区译文资产同步前先运行质量门禁；失败时保留任务产物、写入诊断 JSON，不发布为健康社区资产。
 - `backend/scripts/audit_community_translation_quality.py`: 本地扫描 `backend/data/community_papers` 的社区资产质量脚本，用于标记既有坏产物并导出 JSON 报告。

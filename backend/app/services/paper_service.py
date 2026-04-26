@@ -6651,6 +6651,8 @@ async def _run_curation_job(job_id: str) -> None:
                 target_language=str(job.get("target_language") or "zh"),
             )
             request.advanced_config.generate_terminology_table = False
+            request.advanced_config.use_author_api = True
+            request.advanced_config.community_production_translation = True
             translated_task_id = str(job.get("task_id") or "").strip()
             if str(job.get("source_type") or "") == "arxiv":
                 metadata = await _fetch_arxiv_metadata(str(job.get("arxiv_id") or ""))

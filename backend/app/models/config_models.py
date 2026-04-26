@@ -128,6 +128,11 @@ class AdvancedConfig(BaseModel):
         default=False,
         description="Send email notification when task completes or fails."
     )
+    community_production_translation: bool = Field(
+        default=False,
+        exclude=True,
+        description="Internal flag for production community/admin curation translation limits.",
+    )
 
 
 class LatexValidation(BaseModel):

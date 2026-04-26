@@ -366,6 +366,7 @@ def test_run_curation_job_disables_terminology_table_for_admin_intake(monkeypatc
     async def _start_arxiv_translation(**kwargs):
         request = kwargs["request"]
         captured["generate_terminology_table"] = request.advanced_config.generate_terminology_table
+        captured["community_production_translation"] = request.advanced_config.community_production_translation
         return {"task_id": "task-new"}
 
     async def _wait_for_terminal(_task_id: str):
@@ -385,6 +386,7 @@ def test_run_curation_job_disables_terminology_table_for_admin_intake(monkeypatc
     asyncio.run(paper_service._run_curation_job("job-1"))
 
     assert captured["generate_terminology_table"] is False
+    assert captured["community_production_translation"] is True
 
 
 def test_run_curation_job_reuses_existing_arxiv_translation_task(monkeypatch):
@@ -600,6 +602,60 @@ def test_start_arxiv_paper_translation_routes_admin_curation_into_backfill_lane(
     assert result == {"task_id": "task-admin-backfill", "status": "queued"}
     assert created["persist_task"] == "task-admin-backfill"
     assert created["download_and_enqueue"]["lane"] == "backfill"
+
+
+def test_start_arxiv_paper_translation_preserves_community_production_flag(monkeypatch):
+    created: dict[str, object] = {}
+
+    class _TaskManager:
+        def create_task(self, **kwargs):
+            return "task-admin-backfill"
+
+        def update_task(self, task_id, **kwargs):
+            return True
+
+        def persist_task_if_needed(self, task_id):
+            return True
+
+    def _fake_create_task(coro):
+        coro.close()
+        return None
+
+    def _fake_download_and_enqueue(**kwargs):
+        created["advanced_config"] = kwargs["advanced_config"]
+
+        async def _noop():
+            return None
+
+        return _noop()
+
+    async def _fake_build_llm_config_async(*_args, **_kwargs):
+        return {"api_key": "system-key", "pool_routing_key": "system-pool:test"}
+
+    request = paper_service.translate_route.TranslateRequest(
+        source_language="en",
+        target_language="zh",
+    )
+    request.advanced_config.community_production_translation = True
+
+    monkeypatch.setattr(paper_service, "task_manager", _TaskManager())
+    monkeypatch.setattr(paper_service.asyncio, "create_task", _fake_create_task)
+    monkeypatch.setattr(paper_service.translate_route, "_download_and_enqueue", _fake_download_and_enqueue)
+    monkeypatch.setattr(
+        paper_service.translate_route,
+        "build_llm_config_async",
+        _fake_build_llm_config_async,
+    )
+
+    asyncio.run(
+        paper_service._start_arxiv_paper_translation(
+            paper={"source": "arxiv", "arxiv_id": "2312.00752"},
+            request=request,
+            context={"user_id": "admin-1", "is_admin": True, "roles": ["admin"]},
+        )
+    )
+
+    assert created["advanced_config"].community_production_translation is True
 
 
 def test_run_curation_job_marks_timeout_as_failed_and_cancels_running_translation(monkeypatch):
