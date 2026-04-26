@@ -127,14 +127,16 @@ class BaseToolAgent(ABC):
             file_format: Format to save in (json, yaml, toml)
             data: Data to save
         """
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         if file_format == "json":
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)   
         elif file_format == "yaml":
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(path, 'w', encoding='utf-8') as f:
                 yaml.dump(data, f)
         elif file_format == "toml":
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(path, 'w', encoding='utf-8') as f:
                 toml.dump(data, f)
         else:
             raise ValueError(f"Unsupported file format: {file_format}")
