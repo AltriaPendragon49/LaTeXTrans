@@ -284,9 +284,10 @@ class TranslatorAgent(BaseToolAgent):
 
     def _uses_system_pool(self) -> bool:
         llm_config = self.config.get("llm_config", {})
+        pool_members = list(llm_config.get("pool_members") or [])
         return bool(
             str(llm_config.get("pool_mode") or "").strip() == "system_managed"
-            and llm_config.get("pool_members")
+            and len(pool_members) > 1
         )
 
     def _mark_legacy_llm_failure(self, part_type: str, fail_part: str) -> None:

@@ -173,6 +173,45 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         self.assertNotIn("X-LLM-Pool-Member", session.post.call_args.kwargs["headers"])
         self.assertEqual(session.post.call_args.kwargs["timeout"].total, 100)
 
+    def test_legacy_one_member_system_pool_uses_direct_origin_style_post(self):
+        agent = _build_agent(
+            extra_config={
+                "enable_legacy_translation_core": True,
+                "llm_config": {
+                    "model": "gpt-4o",
+                    "base_url": "http://dummy-llm",
+                    "api_key": "dummy-key",
+                    "pool_mode": "system_managed",
+                    "pool_members": [
+                        {
+                            "member_id": "only",
+                            "base_url": "http://dummy-llm",
+                            "api_key": "dummy-key",
+                        }
+                    ],
+                },
+            }
+        )
+        session = _mock_success_session("译文")
+
+        with patch(
+            "backend.app.services.agents.translator_agent.post_chat_completion_with_pool",
+            new=AsyncMock(side_effect=AssertionError("one-member legacy pool must not wrap API transport")),
+        ):
+            result = asyncio.run(
+                agent._legacy_request_llm_for_trans(
+                    "Translate.",
+                    "Source text",
+                    fail_part="1",
+                    type="sec",
+                    session=session,
+                )
+            )
+
+        self.assertEqual(result, "译文")
+        self.assertEqual(session.post.call_count, 1)
+        self.assertNotIn("X-LLM-Pool-Member", session.post.call_args.kwargs["headers"])
+
     def test_legacy_retranslate_error_parts_uses_origin_direct_retry(self):
         agent = _build_agent(
             trans_mode=1,
