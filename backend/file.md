@@ -1,5 +1,10 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-04-27 Legacy Core Full Rollback)
+
+- `backend/app/services/agents/langgraph_orchestrator.py`: legacy/community 翻译核心路径现在完全跳过新系统 repair、ultimate downgrade、post-compile target-language fallback 和 residual English 硬阻断；校验重翻译恢复旧系统 3 轮；校验后的 fallback report 也不再进入 legacy 状态，避免伪中文降级链路写回产物。
+- `backend/app/services/agents/translator_agent.py`: legacy 翻译核心恢复旧 CLI 风格 API 调用；单 key 配置走直接 `session.post(..., timeout=100)`，不再被 token pool 单成员调度串行化；legacy 校验重翻译和失败部件重试恢复为直接重试 sec/env/cap，不再使用 compile-first fallback、payload skip guard 等新内核逻辑。
+
 ## Recent Responsibility Updates (2026-04-26 Community Quality Gate)
 
 - `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译的单任务 LLM 并发恢复为原系统同级默认值 10；API 击穿保护交给每 key 任务级 token bucket，而不是压低论文内部 section 并发。

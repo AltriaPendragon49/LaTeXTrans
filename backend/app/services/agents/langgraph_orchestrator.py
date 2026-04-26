@@ -330,6 +330,16 @@ def _collect_validate_fallback_state(
     transed_project_dir: str,
     errors_report: Optional[List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
+    if bool(state.get("config", {}).get("enable_legacy_translation_core")):
+        return {
+            "fallback_reports": [],
+            "compile_fallback_reports": [],
+            "repair_retry_count": int(state.get("repair_retry_count") or 0),
+            "last_validation_error_signature": _normalize_error_signature(errors_report),
+            "last_fallback_signature": (),
+            "remedial_budget_exhausted_reason": None,
+        }
+
     collected_fallback_reports: List[Any] = []
     compile_fallback_reports: List[Any] = []
     repair_skip_scopes: set[str] = set()
@@ -590,7 +600,8 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
         errors_report = await run_blocking(lambda: validator_agent.execute())
         initial_errors_count = len(errors_report) if errors_report else 0
 
-        MAX_RETRIES = MAX_VALIDATE_RETRIES
+        legacy_core = bool(config.get("enable_legacy_translation_core"))
+        MAX_RETRIES = 3 if legacy_core else MAX_VALIDATE_RETRIES
         retry_count = 0
         previous_error_signature = _normalize_error_signature(errors_report)
         no_progress_retry_count = 0
@@ -777,7 +788,11 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
             error for error in (errors_report or [])
             if error.get("completeness_error")
         ]
-        if residual_completeness_errors and int(state.get("mode") or 0) != 3:
+        if (
+            residual_completeness_errors
+            and int(state.get("mode") or 0) != 3
+            and not bool(config.get("enable_legacy_translation_core"))
+        ):
             blocked_scopes = [
                 str(error.get("num_or_ph") or "")
                 for error in residual_completeness_errors
@@ -1128,12 +1143,16 @@ async def node_finalize(state: PipelineState) -> PipelineState:
 
 def _route_after_generate(state: PipelineState) -> str:
     result = state.get("generation_result") or {}
+    legacy_core = bool(state.get("config", {}).get("enable_legacy_translation_core"))
     if result.get("status") == "structure_invalid":
+        if legacy_core:
+            return "abort_structure_invalid"
         if _should_retry_residual_english_with_source_passthrough(state):
             return "post_compile_target_language_fallback"
         return "abort_structure_invalid"
     if (
-        bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
+        not legacy_core
+        and bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
         and (state.get("compile_fallback_reports") or [])
         and not bool(state.get("post_compile_fallback_attempted"))
     ):
@@ -1153,6 +1172,9 @@ def _route_after_validate(state: PipelineState) -> str:
     - 有 fallback 且已达上限  → "ultimate_downgrade"
     - 无 fallback              → "generate"
     """
+    if bool(state.get("config", {}).get("enable_legacy_translation_core")):
+        return "generate"
+
     if (
         bool(state.get("residual_english_requires_fallback"))
         and bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))

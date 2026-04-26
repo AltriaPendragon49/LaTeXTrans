@@ -284,9 +284,10 @@ class TranslatorAgent(BaseToolAgent):
 
     def _uses_system_pool(self) -> bool:
         llm_config = self.config.get("llm_config", {})
-        if str(llm_config.get("pool_mode") or "").strip() == "system_managed" and llm_config.get("pool_members"):
-            return True
-        return bool(str(llm_config.get("base_url") or "").strip() and str(llm_config.get("api_key") or "").strip())
+        return bool(
+            str(llm_config.get("pool_mode") or "").strip() == "system_managed"
+            and llm_config.get("pool_members")
+        )
 
     def _mark_legacy_llm_failure(self, part_type: str, fail_part: str) -> None:
         self.have_fail_parts = True
@@ -353,7 +354,7 @@ class TranslatorAgent(BaseToolAgent):
             "Authorization": f"Bearer {self.API_KEY}",
             "Content-Type": "application/json",
         }
-        timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
+        timeout = aiohttp.ClientTimeout(total=100)
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
@@ -408,7 +409,7 @@ class TranslatorAgent(BaseToolAgent):
             "Authorization": f"Bearer {self.API_KEY}",
             "Content-Type": "application/json",
         }
-        timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
+        timeout = aiohttp.ClientTimeout(total=100)
         for attempt in range(1, 4):
             try:
                 async with global_llm_semaphore:
@@ -3048,6 +3049,41 @@ class TranslatorAgent(BaseToolAgent):
                                 caps: List[Dict[str, Any]], 
                                 envs: List[Dict[str, Any]],
                                 session: aiohttp.ClientSession) -> Any:
+        if self.enable_legacy_translation_core:
+            sec_nums = self.fail_section_nums[:]
+            cap_phs = self.fail_caption_phs[:]
+            env_phs = self.fail_env_phs[:]
+            self.fail_section_nums.clear()
+            self.fail_caption_phs.clear()
+            self.fail_env_phs.clear()
+            self.have_fail_parts = False
+
+            sec_dict = {s["section"]: i for i, s in enumerate(secs)}
+            cap_dict = {c["placeholder"]: i for i, c in enumerate(caps)}
+            env_dict = {e["placeholder"]: i for i, e in enumerate(envs)}
+
+            if sec_nums:
+                self.log(f"Retranslating for {sec_nums}")
+                for sec_num in sec_nums:
+                    if sec_num == "-1" or sec_num == "0":
+                        continue
+                    if sec_num in sec_dict:
+                        i = sec_dict[sec_num]
+                        secs[i] = await self._translate_section(secs[i], session)
+            if cap_phs:
+                self.log(f"Retranslating for {cap_phs}")
+                for cap_ph in cap_phs:
+                    if cap_ph in cap_dict:
+                        i = cap_dict[cap_ph]
+                        caps[i] = await self._translate_caption(caps[i], session)
+            if env_phs:
+                self.log(f"Retranslating for {env_phs}")
+                for env_ph in env_phs:
+                    if env_ph in env_dict:
+                        i = env_dict[env_ph]
+                        envs[i] = await self._translate_env(envs[i], session)
+            return
+
         # Local import to avoid circular deps at module load.
         from backend.app.services.translation.downgrade_handler import DOWNGRADE_STATUS
         sec_nums = self.fail_section_nums[:]
@@ -3253,6 +3289,58 @@ class TranslatorAgent(BaseToolAgent):
         - Type B (recoverable): Allow one translation retry
         - Type C (structural): Apply algorithmic fix without LLM retry
         """
+        if self.enable_legacy_translation_core:
+            async def process_error_part(error_report):
+                error_message = []
+                if "command_error" in error_report:
+                    error_message.append(error_report["command_error"])
+                if "ph_error" in error_report:
+                    error_message.append(error_report["ph_error"])
+                if "bracket_error" in error_report:
+                    error_message.append(error_report["bracket_error"])
+                error_message_text = "\n".join(error_message)
+
+                part_type = error_report.get("part")
+                identifier = error_report.get("num_or_ph")
+                if part_type == "sec":
+                    for i, sec in enumerate(secs):
+                        if identifier == sec["section"]:
+                            secs[i] = await self._translate_section(
+                                section=sec,
+                                error_message=error_message_text,
+                                session=session,
+                            )
+                            return
+                if part_type == "env":
+                    for i, env in enumerate(envs):
+                        if identifier == env["placeholder"]:
+                            envs[i] = await self._translate_env(
+                                env=env,
+                                error_message=error_message_text,
+                                session=session,
+                            )
+                            return
+                if part_type == "cap":
+                    for i, cap in enumerate(caps):
+                        if identifier == cap["placeholder"]:
+                            caps[i] = await self._translate_caption(
+                                caption=cap,
+                                error_message=error_message_text,
+                                session=session,
+                            )
+                            return
+
+            sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
+
+            async def guarded_process(error_report):
+                async with sem:
+                    await process_error_part(error_report)
+
+            tasks = [guarded_process(error_report) for error_report in self.errors_report]
+            for future in asyncio.as_completed(tasks):
+                await future
+            return
+
         sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
         completed = 0
         total = len(self.errors_report)

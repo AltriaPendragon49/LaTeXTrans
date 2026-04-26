@@ -149,6 +149,80 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         self.assertEqual(result["trans_content"], r"\section{引言} 正文")
         agent._call_llm_with_freeze.assert_not_awaited()
 
+    def test_legacy_single_key_api_call_uses_direct_origin_style_post(self):
+        agent = _build_agent(extra_config={"enable_legacy_translation_core": True})
+        session = _mock_success_session("译文")
+
+        with patch(
+            "backend.app.services.agents.translator_agent.post_chat_completion_with_pool",
+            new=AsyncMock(side_effect=AssertionError("single-key legacy mode must not use token pool transport")),
+        ):
+            result = asyncio.run(
+                agent._legacy_request_llm_for_trans(
+                    "Translate.",
+                    "Source text",
+                    fail_part="1",
+                    type="sec",
+                    session=session,
+                )
+            )
+
+        self.assertEqual(result, "译文")
+        self.assertEqual(session.post.call_count, 1)
+        self.assertEqual(session.post.call_args.kwargs["json"]["messages"][1]["content"], "Source text")
+        self.assertNotIn("X-LLM-Pool-Member", session.post.call_args.kwargs["headers"])
+        self.assertEqual(session.post.call_args.kwargs["timeout"].total, 100)
+
+    def test_legacy_retranslate_error_parts_uses_origin_direct_retry(self):
+        agent = _build_agent(
+            trans_mode=1,
+            extra_config={"enable_legacy_translation_core": True},
+        )
+        agent.errors_report = [
+            {
+                "part": "sec",
+                "num_or_ph": "1",
+                "error_type": "C2",
+                "ph_error": "placeholder mismatch",
+            }
+        ]
+        sections = [{"section": "1", "content": "Source", "trans_content": "Broken"}]
+        captions = []
+        envs = []
+        retried_section = {"section": "1", "content": "Source", "trans_content": "Fixed"}
+        agent._translate_section = AsyncMock(return_value=retried_section)
+        agent._apply_compile_first_fallback = MagicMock(
+            side_effect=AssertionError("legacy mode must not use compile-first fallback")
+        )
+
+        asyncio.run(agent._retranslate_error_parts(sections, captions, envs, MagicMock()))
+
+        self.assertEqual(sections[0]["trans_content"], "Fixed")
+        agent._translate_section.assert_awaited_once()
+        agent._apply_compile_first_fallback.assert_not_called()
+
+    def test_legacy_retranslate_fail_parts_ignores_new_payload_skip_guards(self):
+        agent = _build_agent(extra_config={"enable_legacy_translation_core": True})
+        agent.fail_section_nums = ["1"]
+        agent.have_fail_parts = True
+        sections = [
+            {
+                "section": "1",
+                "content": "Source",
+                "trans_content": "Source",
+                "translation_status": agent.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+            }
+        ]
+        captions = []
+        envs = []
+        retried_section = {**sections[0], "trans_content": "Retried"}
+        agent._translate_section = AsyncMock(return_value=retried_section)
+
+        asyncio.run(agent._retranslate_fail_parts(sections, captions, envs, MagicMock()))
+
+        self.assertEqual(sections[0]["trans_content"], "Retried")
+        agent._translate_section.assert_awaited_once()
+
     def test_prepare_llm_payload_text_replaces_all_protected_placeholder_families_with_hard_freeze_tokens(self):
         agent = _build_agent()
         text = (

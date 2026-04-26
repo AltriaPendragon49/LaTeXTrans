@@ -14,6 +14,51 @@ def test_route_after_validate_uses_ultimate_downgrade_after_repair_budget_exhaus
     assert orch._route_after_validate(state) == "ultimate_downgrade"
 
 
+def test_legacy_route_after_validate_ignores_repair_and_ultimate_downgrade():
+    state = {
+        "config": {"enable_legacy_translation_core": True},
+        "fallback_reports": [{"chunk_scope": "sec-1"}],
+        "repair_retry_count": orch.MAX_REPAIR_RETRIES,
+        "remedial_budget_exhausted_reason": "budget_exhausted",
+        "residual_english_requires_fallback": True,
+        "post_compile_fallback_attempted": False,
+    }
+
+    assert orch._route_after_validate(state) == "generate"
+
+
+def test_legacy_validate_fallback_state_does_not_collect_compile_fallbacks(tmp_path):
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "sections_map.json").write_text(
+        json.dumps(
+            [
+                {
+                    "section": "1",
+                    "content": "Original",
+                    "trans_content": "Original",
+                    "translation_status": "structural_fallback_pending_compile",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (out_dir / "envs_map.json").write_text("[]", encoding="utf-8")
+
+    state = {"config": {"enable_legacy_translation_core": True}}
+    translator = type("Translator", (), {"fallback_reports": []})()
+
+    result = orch._collect_validate_fallback_state(
+        state=state,
+        translator_agent=translator,
+        transed_project_dir=str(out_dir),
+        errors_report=[],
+    )
+
+    assert result["fallback_reports"] == []
+    assert result["compile_fallback_reports"] == []
+
+
 def test_build_pipeline_graph_registers_ultimate_downgrade_node():
     graph = orch.build_pipeline_graph(enable_diagnostics=False)
     compiled = graph.get_graph()
