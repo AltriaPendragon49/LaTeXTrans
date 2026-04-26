@@ -4217,6 +4217,7 @@ async def _start_arxiv_paper_translation(
             advanced_config=request.advanced_config,
             tq=get_task_queue(),
             token_hash=token_hash,
+            llm_capacity=translate_route.resolve_llm_task_capacity(llm_config),
             lane="backfill",
         )
     )

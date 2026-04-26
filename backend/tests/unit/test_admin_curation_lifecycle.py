@@ -582,7 +582,36 @@ def test_start_arxiv_paper_translation_routes_admin_curation_into_backfill_lane(
         return _noop()
 
     async def _fake_build_llm_config_async(*_args, **_kwargs):
-        return {"api_key": "system-key", "pool_routing_key": "system-pool:test"}
+        return {
+            "api_key": "system-key",
+            "pool_routing_key": "system-pool:test",
+            "pool_members": [
+                {
+                    "member_id": "account-1",
+                    "base_url": "https://example.test/v1/chat/completions",
+                    "api_key": "key-1",
+                    "account_id": "account-1",
+                    "quota_scope": "account",
+                },
+                {
+                    "member_id": "account-2",
+                    "base_url": "https://example.test/v1/chat/completions",
+                    "api_key": "key-2",
+                    "account_id": "account-2",
+                    "quota_scope": "account",
+                },
+                {
+                    "member_id": "account-3",
+                    "base_url": "https://example.test/v1/chat/completions",
+                    "api_key": "key-3",
+                    "account_id": "account-3",
+                    "quota_scope": "account",
+                    "reserve": True,
+                },
+            ],
+            "reserve_count": 1,
+            "default_member_concurrency": 1,
+        }
 
     monkeypatch.setattr(paper_service, "task_manager", _TaskManager())
     monkeypatch.setattr(paper_service.asyncio, "create_task", _fake_create_task)
@@ -607,6 +636,7 @@ def test_start_arxiv_paper_translation_routes_admin_curation_into_backfill_lane(
     assert result == {"task_id": "task-admin-backfill", "status": "queued"}
     assert created["persist_task"] == "task-admin-backfill"
     assert created["download_and_enqueue"]["lane"] == "backfill"
+    assert created["download_and_enqueue"]["llm_capacity"] == 2
 
 
 def test_start_arxiv_paper_translation_preserves_community_production_flag(monkeypatch):
