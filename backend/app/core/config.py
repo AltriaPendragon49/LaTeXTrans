@@ -58,6 +58,26 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_SYSTEM_POOL_GROUPS_JSON", "llm_system_pool_groups_json"),
         description="Optional JSON array describing system-managed LLM pool groups: [{base_url, api_keys: []}, ...]",
     )
+    llm_members_json: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_MEMBERS_JSON", "llm_members_json"),
+        description="Optional JSON array describing LLM members: [{member_id, base_url, api_key, account_id, quota_scope, concurrency, reserve}, ...]",
+    )
+    llm_pool_reserve_count: int = Field(
+        default=1,
+        validation_alias=AliasChoices("LLM_POOL_RESERVE_COUNT", "llm_pool_reserve_count"),
+        description="Healthy LLM members to reserve for failover/spikes when computing community task capacity.",
+    )
+    llm_member_default_concurrency: int = Field(
+        default=1,
+        validation_alias=AliasChoices("LLM_MEMBER_DEFAULT_CONCURRENCY", "llm_member_default_concurrency"),
+        description="Default per-member outbound LLM request concurrency.",
+    )
+    llm_shared_pool_concurrency: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_SHARED_POOL_CONCURRENCY", "llm_shared_pool_concurrency"),
+        description="Optional shared pool concurrency limit across configured LLM members.",
+    )
     llm_timeout: int = Field(
         default=120,
         validation_alias="LLM_TIMEOUT"
@@ -486,14 +506,32 @@ class Settings(BaseSettings):
     
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM API configuration as a dictionary"""
-        return {
+        config: Dict[str, Any] = {
             "api_key": self.llm_api_key,
             "base_url": self.llm_base_url,
             "model": self.llm_model,
             "timeout": self.llm_timeout,
             "model_context_tokens": self.model_context_tokens,
             "prompt_reserve_tokens": self.prompt_reserve_tokens,
+            "reserve_count": self.llm_pool_reserve_count,
+            "default_member_concurrency": self.llm_member_default_concurrency,
         }
+        if self.llm_shared_pool_concurrency:
+            config["shared_pool_concurrency"] = self.llm_shared_pool_concurrency
+
+        members = self.get_llm_system_pool_members()
+        if members:
+            primary = members[0]
+            config.update(
+                {
+                    "api_key": primary["api_key"],
+                    "base_url": primary["base_url"],
+                    "pool_mode": "system_managed",
+                    "pool_members": members,
+                    "pool_routing_key": self._compute_llm_pool_routing_key(members),
+                }
+            )
+        return config
 
     @staticmethod
     def _normalize_chat_completions_url(value: Optional[str]) -> str:
@@ -536,9 +574,75 @@ class Settings(BaseSettings):
                     "group_id": str(item.get("group_id") or f"group-{index}"),
                     "base_url": base_url,
                     "api_keys": api_keys,
+                    "account_id": str(item.get("account_id") or ""),
+                    "quota_scope": str(item.get("quota_scope") or "shared"),
+                    "concurrency": int(item.get("concurrency") or self.llm_member_default_concurrency),
                 }
             )
         return groups
+
+    def get_llm_system_pool_members(self) -> list[dict[str, Any]]:
+        raw_members = str(self.llm_members_json or "").strip()
+        if raw_members:
+            try:
+                parsed_members = json.loads(raw_members)
+            except json.JSONDecodeError:
+                parsed_members = None
+            if isinstance(parsed_members, list):
+                members: list[dict[str, Any]] = []
+                for index, item in enumerate(parsed_members):
+                    if not isinstance(item, dict):
+                        continue
+                    base_url = self._normalize_chat_completions_url(item.get("base_url"))
+                    api_key = str(item.get("api_key") or "").strip()
+                    if not base_url or not api_key:
+                        continue
+                    members.append(
+                        {
+                            "member_id": str(item.get("member_id") or f"member-{index}"),
+                            "base_url": base_url,
+                            "api_key": api_key,
+                            "account_id": str(item.get("account_id") or ""),
+                            "quota_scope": str(item.get("quota_scope") or "shared"),
+                            "concurrency": int(item.get("concurrency") or self.llm_member_default_concurrency),
+                            "reserve": bool(item.get("reserve") or False),
+                        }
+                    )
+                if members:
+                    return members
+
+        members: list[dict[str, Any]] = []
+        for group_index, group in enumerate(self.get_llm_system_pool_groups()):
+            group_id = str(group.get("group_id") or f"group-{group_index}")
+            for key_index, api_key in enumerate(group.get("api_keys") or []):
+                members.append(
+                    {
+                        "member_id": f"{group_id}-member-{key_index}",
+                        "base_url": group["base_url"],
+                        "api_key": api_key,
+                        "account_id": str(group.get("account_id") or ""),
+                        "quota_scope": str(group.get("quota_scope") or "shared"),
+                        "concurrency": int(group.get("concurrency") or self.llm_member_default_concurrency),
+                    }
+                )
+        return members
+
+    @staticmethod
+    def _compute_llm_pool_routing_key(members: list[dict[str, Any]]) -> str:
+        normalized = [
+            (
+                str(member.get("member_id") or "").strip(),
+                str(member.get("base_url") or "").strip(),
+                str(member.get("api_key") or "").strip(),
+                str(member.get("account_id") or "").strip(),
+                str(member.get("quota_scope") or "").strip(),
+            )
+            for member in members
+        ]
+        import hashlib
+
+        digest = hashlib.md5(repr(sorted(normalized)).encode("utf-8")).hexdigest()
+        return f"system-pool:{digest}"
     
     def load_toml_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """

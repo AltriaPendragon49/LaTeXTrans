@@ -97,7 +97,10 @@ class ParserAgent(BaseToolAgent):
         )
 
     def _uses_system_pool(self) -> bool:
-        return str(self.config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
+        llm_config = self.config.get("llm_config", {})
+        if str(llm_config.get("pool_mode") or "").strip() == "system_managed" and llm_config.get("pool_members"):
+            return True
+        return bool(str(llm_config.get("base_url") or "").strip() and str(llm_config.get("api_key") or "").strip())
 
     @staticmethod
     def _prepare_llm_payload_text(text: str) -> str:

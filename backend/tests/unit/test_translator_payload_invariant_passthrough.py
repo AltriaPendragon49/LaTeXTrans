@@ -29,6 +29,118 @@ def _build_agent() -> TranslatorAgent:
 
 
 class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
+    def test_translate_processes_envs_and_captions_sequentially_by_default(self):
+        agent = _build_agent()
+        section = {
+            "section": "31",
+            "content": (
+                "Translated section body. "
+                "<PLACEHOLDER_ENV_1> <PLACEHOLDER_ENV_2> "
+                "<PLACEHOLDER_CAP_1> <PLACEHOLDER_CAP_2>"
+            ),
+            "previous_context": "",
+        }
+        envs = [
+            {
+                "placeholder": "<PLACEHOLDER_ENV_1>",
+                "content": "Env one with <PLACEHOLDER_CAP_3>.",
+                "need_trans": True,
+            },
+            {
+                "placeholder": "<PLACEHOLDER_ENV_2>",
+                "content": "Env two.",
+                "need_trans": True,
+            },
+        ]
+        captions = [
+            {"placeholder": "<PLACEHOLDER_CAP_1>", "content": "Caption one."},
+            {"placeholder": "<PLACEHOLDER_CAP_2>", "content": "Caption two."},
+            {"placeholder": "<PLACEHOLDER_CAP_3>", "content": "Nested caption."},
+        ]
+        active = {"env": 0, "cap": 0}
+        max_active = {"env": 0, "cap": 0}
+        order = []
+
+        async def fake_translate_section(sec, session):
+            translated = dict(sec)
+            translated["trans_content"] = "Translated section body."
+            translated["translation_status"] = agent.STATUS_TRANSLATED
+            return translated
+
+        async def fake_translate_env(env, session):
+            active["env"] += 1
+            max_active["env"] = max(max_active["env"], active["env"])
+            order.append(("env-start", env["placeholder"]))
+            await asyncio.sleep(0)
+            order.append(("env-end", env["placeholder"]))
+            active["env"] -= 1
+            translated = dict(env)
+            translated["trans_content"] = f"translated {env['placeholder']}"
+            translated["translation_status"] = agent.STATUS_TRANSLATED
+            return translated
+
+        async def fake_translate_caption(caption, session):
+            active["cap"] += 1
+            max_active["cap"] = max(max_active["cap"], active["cap"])
+            order.append(("cap-start", caption["placeholder"]))
+            await asyncio.sleep(0)
+            order.append(("cap-end", caption["placeholder"]))
+            active["cap"] -= 1
+            translated = dict(caption)
+            translated["trans_content"] = f"translated {caption['placeholder']}"
+            translated["translation_status"] = agent.STATUS_TRANSLATED
+            return translated
+
+        agent._translate_section = fake_translate_section
+        agent._translate_env = fake_translate_env
+        agent._translate_caption = fake_translate_caption
+
+        asyncio.run(agent.translate(section, envs, captions, MagicMock()))
+
+        self.assertEqual(max_active["env"], 1)
+        self.assertEqual(max_active["cap"], 1)
+        self.assertEqual(
+            order,
+            [
+                ("env-start", "<PLACEHOLDER_ENV_1>"),
+                ("env-end", "<PLACEHOLDER_ENV_1>"),
+                ("env-start", "<PLACEHOLDER_ENV_2>"),
+                ("env-end", "<PLACEHOLDER_ENV_2>"),
+                ("cap-start", "<PLACEHOLDER_CAP_1>"),
+                ("cap-end", "<PLACEHOLDER_CAP_1>"),
+                ("cap-start", "<PLACEHOLDER_CAP_2>"),
+                ("cap-end", "<PLACEHOLDER_CAP_2>"),
+                ("cap-start", "<PLACEHOLDER_CAP_3>"),
+                ("cap-end", "<PLACEHOLDER_CAP_3>"),
+            ],
+        )
+
+    def test_translate_section_api_failure_source_fallback_is_not_translated_success(self):
+        agent = _build_agent()
+        section = {
+            "section": "12-api",
+            "content": "Provider failure should not be reported as a successful translation.",
+            "previous_context": "",
+        }
+
+        async def fake_request(*args, **kwargs):
+            agent._mark_api_fallback("sec", section["section"], "api_request_failed_after_3_attempts")
+            return section["content"]
+
+        agent._request_llm_for_trans = fake_request
+
+        translated = asyncio.run(agent._translate_section(section, MagicMock()))
+
+        self.assertEqual(
+            translated["translation_status"],
+            agent.STATUS_FALLBACK_SOURCE_API_FAILURE,
+        )
+        self.assertEqual(
+            translated["fallback_reason"],
+            "api_request_failed_after_3_attempts",
+        )
+        self.assertIs(translated.get("translated"), False)
+
     def test_register_llm_part_failure_normalizes_nested_identifiers(self):
         agent = _build_agent()
 
@@ -967,7 +1079,7 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
         self.assertIn("我们讨论 \\cref{eq:test} 并优化采样器以获得更好的样本。", translated)
         agent._translate_masked_plain_text_rescue_piece.assert_awaited()
 
-    def test_force_translate_residual_english_spans_brutally_downgrades_when_all_rescues_fail(self):
+    def test_force_translate_residual_english_spans_does_not_invent_filler_when_all_rescues_fail(self):
         agent = _build_agent()
         mixed_text = (
             "Lead. "
@@ -994,14 +1106,9 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
             )
         )
 
-        self.assertIsNotNone(translated)
-        self.assertIn("相关内容已转为简要中文表述", translated)
-        self.assertNotIn("此处内容已做保守中文降级处理", translated)
-        self.assertIn("\\citeauthor{foo2024}", translated)
-        self.assertIn("\\citep{bar2024}", translated)
-        self.assertFalse(agent._has_residual_english_prose(translated, min_words=6))
+        self.assertIsNone(translated)
 
-    def test_force_translate_residual_english_spans_brutally_downgrades_fragmented_short_sentences(self):
+    def test_force_translate_residual_english_spans_does_not_invent_filler_for_fragmented_short_sentences(self):
         agent = _build_agent()
         mixed_text = (
             "前文保持不变。"
@@ -1028,14 +1135,7 @@ class TestTranslatorPayloadInvariantPassthrough(unittest.TestCase):
             )
         )
 
-        self.assertIsNotNone(translated)
-        self.assertIn("相关内容已转为简要中文表述", translated)
-        self.assertNotIn("This short English sentence leaks through", translated)
-        self.assertNotIn("Another brief English sentence still remains", translated)
-        self.assertNotIn("A final compact English sentence survives", translated)
-        self.assertIn("前文保持不变。", translated)
-        self.assertIn("后文保持不变。", translated)
-        self.assertFalse(agent._has_residual_english_prose(translated, min_words=6))
+        self.assertIsNone(translated)
 
     def test_translate_caption_marks_payload_invariant_passthrough(self):
         agent = _build_agent()

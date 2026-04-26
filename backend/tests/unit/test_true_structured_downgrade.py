@@ -19,6 +19,14 @@ def test_target_language_candidate_rejects_source_english():
     )
 
 
+def test_target_language_candidate_rejects_current_fixed_fallback_boilerplate():
+    assert not is_target_language_downgrade_candidate(
+        "\u76f8\u5173\u5185\u5bb9\u5df2\u8f6c\u4e3a\u7b80\u8981\u4e2d\u6587\u8868\u8ff0",
+        source_text="A long English paragraph remained untranslated.",
+        target_language="zh",
+    )
+
+
 def test_target_language_candidate_rejects_fixed_fallback_boilerplate():
     assert not is_target_language_downgrade_candidate(
         "相关内容已转为简要中文表述。相关内容已转为简要中文表述。",

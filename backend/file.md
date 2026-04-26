@@ -1,5 +1,11 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-04-26 Community Quality Gate)
+
+- `backend/app/services/community_translation_quality.py`: 社区译文发布质量门禁，检查固定伪中文降级短语、多段或过长 source fallback、大段英文保留和致命 provider 状态，并输出机器可读诊断。
+- `backend/app/services/paper_service.py`: canonical 社区译文资产同步前先运行质量门禁；失败时保留任务产物、写入诊断 JSON，不发布为健康社区资产。
+- `backend/scripts/audit_community_translation_quality.py`: 本地扫描 `backend/data/community_papers` 的社区资产质量脚本，用于标记既有坏产物并导出 JSON 报告。
+
 鎸?`backend/` 涓嬬湡瀹炵墿鐞嗚矾寰勬暣鐞嗙殑鍚庣鐢熶骇渚х储寮曪紝鏂逛究 AI 鎴栦汉宸ュ厛鎸夎矾寰勬绱紝鍐嶆寜璇存槑瀹氫綅妯″潡銆?
 
 鏀跺綍鑼冨洿锛歅ython 婧愮爜銆丼QL 杩佺Щ鑴氭湰銆佽繍缁磋剼鏈€?
@@ -126,6 +132,7 @@
 - `backend/app/services/community_agent/validator.py`
 - `backend/app/services/community_agent_service.py`
 - `backend/app/services/community_content_pool_service.py`
+- `backend/app/services/community_translation_quality.py`
 - `backend/app/services/config_capture.py`
 - `backend/app/services/email_service.py`
 - `backend/app/services/latex/__init__.py`
@@ -174,6 +181,7 @@
 - `backend/migrations_mysql/20260423_0010_add_login_identifier_to_users.sql`
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
+- `backend/scripts/audit_community_translation_quality.py`
 - `backend/scripts/bootstrap_local_community_papers.py`
 - `backend/scripts/extract_core_pool_ids.py`
 - `backend/scripts/grant_local_admin.py`

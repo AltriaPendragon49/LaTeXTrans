@@ -201,6 +201,13 @@ class TranslatorAgent(BaseToolAgent):
             config.get("enable_post_compile_target_language_fallback", True),
             default=True,
         )
+        self.enable_section_internal_parallelism = self._coerce_bool(
+            config.get(
+                "enable_section_internal_parallelism",
+                os.getenv("LATEXTRANS_ENABLE_SECTION_INTERNAL_PARALLELISM"),
+            ),
+            default=False,
+        )
         self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
         self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
         if self.structural_fallback_cap_mode not in {"soft", "hard"}:
@@ -268,7 +275,10 @@ class TranslatorAgent(BaseToolAgent):
         return model_context_tokens, prompt_reserve_tokens, safe_input_limit
 
     def _uses_system_pool(self) -> bool:
-        return str(self.config.get("llm_config", {}).get("pool_mode") or "").strip() == "system_managed"
+        llm_config = self.config.get("llm_config", {})
+        if str(llm_config.get("pool_mode") or "").strip() == "system_managed" and llm_config.get("pool_members"):
+            return True
+        return bool(str(llm_config.get("base_url") or "").strip() and str(llm_config.get("api_key") or "").strip())
 
     @staticmethod
     def _extract_chunk_index(section_id: str) -> Optional[int]:
@@ -665,6 +675,14 @@ class TranslatorAgent(BaseToolAgent):
         section["translation_retry_count"] = int(self._section_retry_counts.get(section_id, 0) or 0)
         if status:
             section["translation_status"] = status
+            if status in {
+                self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+                self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
+                self.STATUS_SOURCE_PASS_THROUGH,
+                self.STATUS_IMMUTABLE_PASSTHROUGH,
+                self.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
+            }:
+                section["translated"] = False
         if no_op_detected is not None:
             section["no_op_detected"] = bool(no_op_detected)
         if fallback_reason:
@@ -2171,71 +2189,10 @@ class TranslatorAgent(BaseToolAgent):
         return target
 
     def _build_brutal_target_language_fragment_fallback(self, fragment: str) -> Optional[str]:
-        if not fragment or not re.search(r"[A-Za-z]", fragment):
-            return None
-
-        masked_text, rescue_context = self._prepare_plain_text_rescue_text(fragment)
-        if not masked_text:
-            return None
-
-        replaced_any = False
-        rebuilt_chunks: List[str] = []
-        for chunk in self._RESCUE_TOKEN_RE.split(masked_text):
-            if not chunk:
-                rebuilt_chunks.append(chunk)
-                continue
-            if self._RESCUE_TOKEN_RE.fullmatch(chunk):
-                rebuilt_chunks.append(chunk)
-                continue
-            if not re.search(r"[A-Za-z]", chunk):
-                rebuilt_chunks.append(chunk)
-                continue
-
-            rewritten_chunk = chunk
-            chunk_changed = False
-            for span in find_long_english_prose_spans(chunk, min_words=4):
-                expanded_span = self._expand_residual_english_span(rewritten_chunk, span)
-                leading_ws_match = re.match(r"^\s*", expanded_span)
-                trailing_ws_match = re.search(r"\s*$", expanded_span)
-                leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
-                trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
-                stripped = expanded_span.strip()
-                suffix_match = re.search(r"([。！？!?；;：:.,]+)$", stripped)
-                suffix = suffix_match.group(1) if suffix_match else ""
-                rewritten_chunk, replaced = self._replace_first_exact(
-                    rewritten_chunk,
-                    expanded_span,
-                    f"{leading_ws}{self._BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT}{suffix}{trailing_ws}",
-                )
-                chunk_changed = chunk_changed or replaced
-
-            if not chunk_changed:
-                leading_ws_match = re.match(r"^\s*", chunk)
-                trailing_ws_match = re.search(r"\s*$", chunk)
-                leading_ws = leading_ws_match.group(0) if leading_ws_match else ""
-                trailing_ws = trailing_ws_match.group(0) if trailing_ws_match else ""
-                stripped = chunk.strip()
-                suffix_match = re.search(r"([。！？!?；;：:.,]+)$", stripped)
-                suffix = suffix_match.group(1) if suffix_match else ""
-                rewritten_chunk = (
-                    f"{leading_ws}{self._BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT}{suffix}{trailing_ws}"
-                )
-                chunk_changed = True
-
-            rebuilt_chunks.append(rewritten_chunk)
-            replaced_any = replaced_any or chunk_changed
-
-        if not replaced_any:
-            return None
-
-        restored = self._restore_plain_text_rescue_text(
-            "".join(rebuilt_chunks),
-            rescue_context,
-        )
-        restored = self._normalize_cjk_punctuation_spacing(restored)
-        if self._has_unrestored_env_artifacts(restored):
-            return None
-        return restored
+        # Fixed pseudo-Chinese filler is forbidden in final outputs. Without a
+        # real translated rescue response, callers must surface explicit
+        # fallback/failure metadata instead of inventing target-language text.
+        return None
 
     def _apply_brutal_target_language_fragment_sweep(
         self,
@@ -2797,11 +2754,12 @@ class TranslatorAgent(BaseToolAgent):
         """
         Translates the input data.
 
-        Uses a 3-phase concurrent approach:
+        Uses a 3-phase approach:
           Phase 1: Translate section body (single await, sequential).
-          Phase 2: Translate all referenced environments concurrently via asyncio.gather.
+          Phase 2: Translate referenced environments sequentially by default.
                    Caption placeholders inside envs are also discovered here.
-          Phase 3: Translate all referenced captions concurrently via asyncio.gather.
+          Phase 3: Translate referenced captions sequentially by default.
+          Section-internal parallelism is available only via explicit config.
         """
         placeholder_pattern_cap = r"<PLACEHOLDER_CAP_\d+>"
         placeholder_pattern_env = r"<PLACEHOLDER_ENV_\d+>"
@@ -2851,7 +2809,7 @@ class TranslatorAgent(BaseToolAgent):
             assert section.get("trans_content", "") == section.get("content", "")
             return section
 
-        # 鈹€鈹€ Phase 2: Translate all environments concurrently 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Phase 2: translate referenced environments sequentially by default.
         # Build a lookup: placeholder 鈫?index in envs list.
         env_ph_to_idx = {env["placeholder"]: i for i, env in enumerate(envs)}
 
@@ -2865,10 +2823,13 @@ class TranslatorAgent(BaseToolAgent):
             placeholders_cap.extend(cap_phs_in_env)
             envs[idx] = await self._translate_env(env, session)
 
-        if placeholders_env:
+        if placeholders_env and self.enable_section_internal_parallelism:
             await asyncio.gather(*[_translate_env_by_ph(ph) for ph in placeholders_env])
+        else:
+            for ph in placeholders_env:
+                await _translate_env_by_ph(ph)
 
-        # 鈹€鈹€ Phase 3: Translate all captions concurrently 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Phase 3: translate referenced captions sequentially by default.
         # Remove duplicates while preserving order (captions from section + from envs).
         placeholders_cap = list(dict.fromkeys(placeholders_cap))
 
@@ -2880,8 +2841,11 @@ class TranslatorAgent(BaseToolAgent):
                 return
             captions[idx] = await self._translate_caption(captions[idx], session)
 
-        if placeholders_cap:
+        if placeholders_cap and self.enable_section_internal_parallelism:
             await asyncio.gather(*[_translate_caption_by_ph(ph) for ph in placeholders_cap])
+        else:
+            for ph in placeholders_cap:
+                await _translate_caption_by_ph(ph)
 
         return section
     

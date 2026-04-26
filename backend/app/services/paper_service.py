@@ -53,6 +53,12 @@ from backend.app.services.latex_validator import find_main_tex_file
 from backend.app.services import paper_thumbnail_service
 from backend.app.services import paper_preview_service
 from backend.app.services import task_artifact_storage
+from backend.app.services.community_translation_quality import (
+    QualityGateResult,
+    collect_quality_inputs_from_directory,
+    evaluate_community_translation_quality,
+    write_quality_diagnostics,
+)
 from backend.app.services.runtime_pressure import admin_job_execution_enabled
 from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
 from backend.app.services.storage_backend import (
@@ -3583,6 +3589,61 @@ async def _resolve_translated_pdf_asset(
     return None
 
 
+def _collect_quality_inputs_for_task(task_id: str) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {
+        "preview_html": None,
+        "pdf_text": None,
+        "output_text": None,
+        "sections": [],
+    }
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        inputs = collect_quality_inputs_from_directory(output_dir)
+        for key in ("preview_html", "pdf_text", "output_text"):
+            if not merged.get(key) and inputs.get(key):
+                merged[key] = inputs[key]
+        if not merged["sections"] and inputs.get("sections"):
+            merged["sections"] = inputs["sections"]
+    return merged
+
+
+def _quality_diagnostics_dir_for_task(task: Dict[str, Any], task_id: str) -> Optional[Path]:
+    output_path = str((task or {}).get("output_path") or "").strip()
+    if output_path:
+        resolved = _resolve_storage_path(output_path)
+        if resolved.exists() and resolved.is_dir():
+            return resolved
+    for output_dir in _candidate_output_directories_for_task(task_id):
+        return output_dir
+    return None
+
+
+def _run_community_publish_quality_gate(*, task_id: str, task: Dict[str, Any]) -> QualityGateResult:
+    inputs = _collect_quality_inputs_for_task(task_id)
+    return evaluate_community_translation_quality(
+        preview_html=inputs.get("preview_html"),
+        pdf_text=inputs.get("pdf_text"),
+        output_text=inputs.get("output_text"),
+        sections=inputs.get("sections") or [],
+        task=task,
+    )
+
+
+def _write_community_publish_quality_diagnostics(
+    *,
+    task_id: str,
+    task: Dict[str, Any],
+    result: QualityGateResult,
+) -> Optional[Path]:
+    diagnostics_dir = _quality_diagnostics_dir_for_task(task, task_id)
+    if diagnostics_dir is None:
+        return None
+    try:
+        return write_quality_diagnostics(diagnostics_dir, result)
+    except Exception as exc:
+        logger.warning("Failed to write community quality diagnostics for task %s: %s", task_id, exc)
+        return None
+
+
 async def backfill_translated_pdf_delivery_asset(*, paper_id: str) -> Dict[str, Any]:
     paper = await _fetch_paper_by_id(paper_id)
     if not _is_public_community_paper(paper):
@@ -4487,6 +4548,34 @@ async def _sync_task_assets_for_paper(
             paper = await _fetch_paper_by_id(paper_id)
         if not paper:
             return {"done": True, "status": "paper_missing"}
+        quality_result = _run_community_publish_quality_gate(task_id=task_id, task=task)
+        diagnostics_path = _write_community_publish_quality_diagnostics(
+            task_id=task_id,
+            task=task,
+            result=quality_result,
+        )
+        if not quality_result.passed:
+            update_payload = {
+                "trans_status": "failed",
+                "community_selected_task_id": task_id,
+                "updated_at": _utc_now_iso(),
+            }
+            paper = await _update_paper(paper_id, update_payload)
+            diagnostics = quality_result.diagnostics()
+            if diagnostics_path:
+                diagnostics["diagnostics_path"] = str(diagnostics_path)
+            logger.warning(
+                "Blocked community publish for paper %s task %s by quality gate: %s",
+                paper_id,
+                task_id,
+                [reason.get("code") for reason in diagnostics.get("reasons", [])],
+            )
+            return {
+                "done": True,
+                "status": "quality_gate_failed",
+                "paper": paper,
+                "quality_gate": diagnostics,
+            }
         translated_asset = await _resolve_translated_pdf_asset(
             paper_id=paper_id,
             task_id=task_id,
@@ -4637,6 +4726,12 @@ async def ensure_task_published_to_community_library(
         promote_to_official=promote_to_official,
         paper=paper,
     )
+    if sync_result.get("status") == "quality_gate_failed":
+        return {
+            "paper": sync_result.get("paper") or paper,
+            "published": False,
+            "quality_gate": sync_result.get("quality_gate"),
+        }
     return {"paper": sync_result.get("paper") or paper, "published": True}
 
 
@@ -5537,6 +5632,12 @@ async def _call_structured_insight_llm(
     provider_model = str(llm_config.get("model") or settings.llm_model or "").strip()
     if not provider_url or not provider_key or not provider_model:
         raise RuntimeError("Structured insight LLM configuration is unavailable")
+    scheduler_llm_config = {
+        **llm_config,
+        "base_url": provider_url,
+        "api_key": provider_key,
+        "model": provider_model,
+    }
 
     payload = {
         "model": provider_model,
@@ -5551,31 +5652,18 @@ async def _call_structured_insight_llm(
     timeout = aiohttp.ClientTimeout(total=max(float(llm_config.get("timeout") or settings.llm_timeout), 10.0))
 
     async with aiohttp.ClientSession() as session:
-        if llm_config.get("pool_mode") == "system_managed" and list(llm_config.get("pool_members") or []):
-            payload = await post_chat_completion_with_pool(
-                session=session,
-                llm_config=llm_config,
-                payload=payload,
-                timeout=timeout,
-                on_retry_message=lambda message: logger.warning(
-                    "Structured insight LLM pool retry: %s",
-                    message,
-                ),
-                preferred_base_urls_getter=preferred_base_urls_getter,
-                on_retryable_status=on_retryable_status,
-            )
-        else:
-            async with session.post(
-                provider_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {provider_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=timeout,
-            ) as response:
-                response.raise_for_status()
-                payload = await response.json()
+        payload = await post_chat_completion_with_pool(
+            session=session,
+            llm_config=scheduler_llm_config,
+            payload=payload,
+            timeout=timeout,
+            on_retry_message=lambda message: logger.warning(
+                "Structured insight LLM pool retry: %s",
+                message,
+            ),
+            preferred_base_urls_getter=preferred_base_urls_getter,
+            on_retryable_status=on_retryable_status,
+        )
 
     choices = payload.get("choices") if isinstance(payload, dict) else None
     if not isinstance(choices, list) or not choices:
@@ -5905,6 +5993,14 @@ async def _publish_admin_curation_job(
             paper=paper,
             defer_runtime_cleanup=True,
         )
+    if sync_result.get("status") == "quality_gate_failed":
+        diagnostics = sync_result.get("quality_gate") or {}
+        reason_codes = [
+            str(reason.get("code"))
+            for reason in diagnostics.get("reasons", [])
+            if isinstance(reason, dict)
+        ]
+        raise ValueError(f"Community publish quality gate failed: {', '.join(reason_codes) or 'unknown'}")
     paper = sync_result.get("paper") or paper
     abstract_translated = _extract_translated_abstract_from_task(translated_task_id) or paper.get("abstract_translated")
     structured_insight_sections = await _generate_structured_insight_sections_from_task(

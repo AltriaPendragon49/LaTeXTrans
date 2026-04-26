@@ -36,8 +36,7 @@ from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MA
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
 from backend.app.services.agents.llm_token_pool import (
-    build_pool_members_from_groups,
-    compute_pool_routing_key,
+    LlmMemberScheduler,
 )
 from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids, get_arxiv_category
 from backend.app.utils.async_blocking import run_db_blocking
@@ -49,6 +48,19 @@ task_manager = get_task_manager()
 CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS = 10
 CLI_PARITY_MODEL_CONTEXT_TOKENS = 32000
 CLI_PARITY_PROMPT_RESERVE_TOKENS = 4096
+
+
+def resolve_llm_task_capacity(llm_config: Dict[str, Any]) -> int:
+    members = list(llm_config.get("pool_members") or [])
+    if not members:
+        return 1
+    scheduler = LlmMemberScheduler(
+        members=members,
+        reserve_count=int(llm_config.get("reserve_count") or 0),
+        default_member_concurrency=int(llm_config.get("default_member_concurrency") or 1),
+        pool_concurrency=llm_config.get("shared_pool_concurrency") or llm_config.get("pool_concurrency"),
+    )
+    return max(int(scheduler.community_task_capacity() or 1), 1)
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
@@ -196,22 +208,11 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
         LLM configuration dictionary for agent
     """
     def _system_pool_config() -> Dict[str, Any]:
-        members = build_pool_members_from_groups(settings.get_llm_system_pool_groups())
-        if not members:
+        config = settings.get_llm_config()
+        if config.get("pool_mode") != "system_managed":
             return {}
-        routing_key = compute_pool_routing_key(members)
-        primary = members[0]
-        return {
-            "base_url": primary["base_url"],
-            "api_key": primary["api_key"],
-            "model": advanced_config.translation_model,
-            "timeout": settings.llm_timeout,
-            "model_context_tokens": settings.model_context_tokens,
-            "prompt_reserve_tokens": settings.prompt_reserve_tokens,
-            "pool_mode": "system_managed",
-            "pool_members": members,
-            "pool_routing_key": routing_key,
-        }
+        config["model"] = advanced_config.translation_model
+        return config
 
     # Priority 0: Default: use author's API if explicitly requested
     if advanced_config.use_author_api:
@@ -272,22 +273,11 @@ async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str =
     Async-safe variant of build_llm_config for async request paths.
     """
     def _system_pool_config() -> Dict[str, Any]:
-        members = build_pool_members_from_groups(settings.get_llm_system_pool_groups())
-        if not members:
+        config = settings.get_llm_config()
+        if config.get("pool_mode") != "system_managed":
             return {}
-        routing_key = compute_pool_routing_key(members)
-        primary = members[0]
-        return {
-            "base_url": primary["base_url"],
-            "api_key": primary["api_key"],
-            "model": advanced_config.translation_model,
-            "timeout": settings.llm_timeout,
-            "model_context_tokens": settings.model_context_tokens,
-            "prompt_reserve_tokens": settings.prompt_reserve_tokens,
-            "pool_mode": "system_managed",
-            "pool_members": members,
-            "pool_routing_key": routing_key,
-        }
+        config["model"] = advanced_config.translation_model
+        return config
 
     if advanced_config.use_author_api:
         logger.info("Using author's API configuration (use_author_api=True)")
@@ -1054,8 +1044,18 @@ async def start_translation(
                 user_id=user_id
             )
 
-        await tq.enqueue(task_id, translation_factory, user_id, token_hash)
-        logger.info(f"Task {task_id} enqueued via TaskQueue (token_hash={token_hash[:8]}...)")
+        llm_capacity = resolve_llm_task_capacity(_llm_cfg)
+        await tq.enqueue(
+            task_id,
+            translation_factory,
+            user_id,
+            token_hash,
+            llm_capacity=llm_capacity,
+        )
+        logger.info(
+            f"Task {task_id} enqueued via TaskQueue "
+            f"(token_hash={token_hash[:8]}..., llm_capacity={llm_capacity})"
+        )
     else:
         # Fallback: direct asyncio.create_task (TaskQueue not initialized)
         logger.warning("TaskQueue not initialized, falling back to direct asyncio.create_task")
@@ -1233,6 +1233,7 @@ async def batch_translate(
                 _batch_token_hash = hashlib.md5(
                     (_batch_llm_cfg.get("api_key") or "").encode()
                 ).hexdigest()
+            _batch_llm_capacity = resolve_llm_task_capacity(_batch_llm_cfg)
             asyncio.create_task(
                 _download_and_enqueue(
                     task_id=task_id,
@@ -1243,6 +1244,7 @@ async def batch_translate(
                     advanced_config=request.advanced_config,
                     tq=tq,
                     token_hash=_batch_token_hash,
+                    llm_capacity=_batch_llm_capacity,
                 )
             )
             logger.info(f"[BatchTranslate] Created task {task_id} for arxiv_id={arxiv_id}, download started in background")
@@ -1276,6 +1278,7 @@ async def _download_and_enqueue(
     advanced_config,
     tq,
     token_hash: str = "default",
+    llm_capacity: int = 1,
     lane: str = "interactive",
 ):
     """
@@ -1350,7 +1353,7 @@ async def _download_and_enqueue(
                 return factory
 
             factory = await make_factory(task_id, user_id, source_language, target_language, advanced_config)
-            await tq.enqueue(task_id, factory, user_id, token_hash, lane=lane)
+            await tq.enqueue(task_id, factory, user_id, token_hash, lane=lane, llm_capacity=llm_capacity)
         else:
             asyncio.create_task(
                 run_translation(

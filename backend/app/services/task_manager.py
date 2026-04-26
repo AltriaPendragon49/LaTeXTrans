@@ -1984,6 +1984,7 @@ class TaskQueue:
         # Per-token-hash buckets (lazily populated)
         self._queues: Dict[str, Dict[str, asyncio.Queue]] = {}
         self._semaphores: Dict[str, asyncio.Semaphore] = {}
+        self._bucket_capacity: Dict[str, int] = {}
         self._bucket_events: Dict[str, asyncio.Event] = {}
         self._workers: Dict[str, asyncio.Task] = {}
         # Cross-bucket shared state
@@ -2003,12 +2004,33 @@ class TaskQueue:
     # Internal: lazy bucket creation
     # ------------------------------------------------------------------
 
-    async def _ensure_bucket(self, token_hash: str) -> None:
+    def _normalize_bucket_capacity(self, llm_capacity: Optional[int] = None) -> int:
+        if llm_capacity is None:
+            return max(int(self._max_concurrent or 1), 1)
+        return max(min(int(llm_capacity or 1), int(self._max_concurrent or 1)), 1)
+
+    def _set_bucket_capacity(self, token_hash: str, capacity: int) -> None:
+        current = self._bucket_capacity.get(token_hash)
+        if current == capacity:
+            return
+        if current is not None:
+            logger.info(
+                "[TaskQueue] Keeping existing bucket capacity for token=%s at %s; requested %s",
+                token_hash[:8],
+                current,
+                capacity,
+            )
+            return
+        self._bucket_capacity[token_hash] = capacity
+
+    async def _ensure_bucket(self, token_hash: str, llm_capacity: Optional[int] = None) -> None:
         """
         Lazily create the queue, semaphore, and worker for *token_hash*.
         No-op if the bucket already exists.  Protected by _init_lock.
         """
+        normalized_capacity = self._normalize_bucket_capacity(llm_capacity)
         if token_hash in self._queues:
+            self._set_bucket_capacity(token_hash, normalized_capacity)
             worker = self._workers.get(token_hash)
             if worker is None or worker.done():
                 self._workers[token_hash] = asyncio.create_task(self._worker(token_hash))
@@ -2019,6 +2041,7 @@ class TaskQueue:
         async with self._init_lock:
             # Double-check after acquiring lock
             if token_hash in self._queues:
+                self._set_bucket_capacity(token_hash, normalized_capacity)
                 worker = self._workers.get(token_hash)
                 if worker is None or worker.done():
                     self._workers[token_hash] = asyncio.create_task(self._worker(token_hash))
@@ -2030,13 +2053,14 @@ class TaskQueue:
                 "interactive": asyncio.Queue(),
                 "backfill": asyncio.Queue(),
             }
-            self._semaphores[token_hash] = asyncio.Semaphore(self._max_concurrent)
+            self._bucket_capacity[token_hash] = normalized_capacity
+            self._semaphores[token_hash] = asyncio.Semaphore(normalized_capacity)
             self._bucket_events[token_hash] = asyncio.Event()
             worker = asyncio.create_task(self._worker(token_hash))
             self._workers[token_hash] = worker
             logger.info(
                 f"[TaskQueue] Created bucket for token_hash={token_hash[:8]}... "
-                f"(max_concurrent={self._max_concurrent})"
+                f"(max_concurrent={normalized_capacity})"
             )
 
     # ------------------------------------------------------------------
@@ -2051,7 +2075,8 @@ class TaskQueue:
         token_hash: str = "default",
 
         lane: str = "interactive",
-    ):
+        llm_capacity: Optional[int] = None,
+    ):
         """
         Enqueue a translation task into the bucket for *token_hash*.
 
@@ -2081,7 +2106,7 @@ class TaskQueue:
                 )
 
         # Ensure bucket exists (lazy creation)
-        await self._ensure_bucket(token_hash)
+        await self._ensure_bucket(token_hash, llm_capacity=llm_capacity)
 
         await self._queues[token_hash][normalized_lane].put((task_id, coro_factory, user_id, normalized_lane))
         self._bucket_events[token_hash].set()
@@ -2090,8 +2115,8 @@ class TaskQueue:
         logger.info(
             f"[TaskQueue] Enqueued task {task_id} "
             f"(token={token_hash[:8]}..., lane={normalized_lane}, user={user_id}, "
-            f"bucket_size={bucket_size})"
-        )
+            f"bucket_size={bucket_size}, llm_capacity={self._bucket_capacity.get(token_hash)})"
+        )
 
     def cancel_execution(self, task_id: str) -> bool:
         """
