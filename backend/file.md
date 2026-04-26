@@ -382,7 +382,7 @@
 - `backend/scripts/grant_local_admin.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _utc_now_naive, _fetch_target_user, grant_local_admin, main
 - `backend/scripts/import_source_to_mysql.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _utc_now, _first, _as_str, _as_bool, _as_int, _as_timestamp
 - `backend/scripts/mysql_script_connection.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: resolve_mysql_script_config, describe_mysql_script_target, mysql_script_connection
-- `backend/scripts/sync_core_pool_complete_from_cos.py`: 浠?`core_pool/complete.md` 璇诲彇宸插畬鎴愮殑 arXiv ID锛屼粠 COS 鎷夊彇鍖归厤璧勪骇骞舵寜 `data/community_papers/<arxiv_id>/...` 鍚屾鍒版湰鍦般€?| 椤跺眰绗﹀彿: ARXIV_ID_PATTERN, DEFAULT_COMPLETE_PATH, DEFAULT_DESTINATION_ROOT, parse_complete_arxiv_ids, read_complete_arxiv_ids, sync_core_pool_complete_assets, build_argument_parser, main
+- `backend/scripts/sync_core_pool_complete_from_cos.py`: 从后端 `papers` 与 `paper_assets` 记录发现完整的 local-disk 或 object-storage 论文资产集合，按已记录路径同步到 `data/community_papers/<arxiv_id>/...`，并支持本地发起服务器同步、打包拉回、清理服务器 arXiv ID 输出目录。| 顶层符号: ARXIV_ID_PATTERN, DEFAULT_COMPLETE_PATH, DEFAULT_DESTINATION_ROOT, parse_complete_arxiv_ids, read_complete_arxiv_ids, load_latest_backend_asset_records, discover_complete_asset_candidates, write_complete_arxiv_ids, parse_remote_server_credentials, build_remote_sync_command, safe_extract_tar, remote_pull_core_pool_complete_assets, sync_core_pool_complete_assets, build_argument_parser, main
 ## Recent Responsibility Updates (2026-04-19)
 
 - `backend/app/services/task_manager.py`: 浠诲姟绠＄悊鍣ㄧ幇宸茶礋璐ｆ墽琛屽皾璇曠紪鍙枫€佸悓灏濊瘯缁堟€佸崟璋冧繚鎶ゃ€佹寔涔呭眰寮傚父鐘舵€佸璐︼紝浠ュ強闃熷垪绾ф湭鎹曡幏寮傚父鐨勭粓鎬佸皝鍙ｏ紝閬垮厤鐘舵€佹紓绉婚暱鏈熷崰鐢ㄥ苟鍙戞Ы浣嶃€?
@@ -425,6 +425,8 @@
 
 ## Recent Responsibility Updates (2026-04-22 Feed Rebuild Safety)
 ## Recent Responsibility Updates (2026-04-23 Local Auth Identifier)
+
+- `backend/scripts/sync_core_pool_complete_from_cos.py`：从后端 `papers` 与 `paper_assets` 记录发现完整 local-disk 或 object-storage 资产集合，按已记录路径下载或复制，避免依赖 COS 列桶权限；新增 `--remote-pull-and-clean`，可在本地触发服务器容器同步、下载 arXiv ID 目录归档并清理服务器输出目录。顶层符号新增 `load_latest_backend_asset_records`、`discover_complete_asset_candidates`、`write_complete_arxiv_ids`、`remote_pull_core_pool_complete_assets`。
 
 - `backend/app/api/routes/auth.py`: 登录与会话自举响应现在显式返回 `login_identifier`，供前端展示真实登录方式而不是内部用户 ID。
 - `backend/app/services/auth_service.py`: 本地鉴权服务现在会持久化用户本次输入的登录标识，并在登录与验会话时统一回传。
