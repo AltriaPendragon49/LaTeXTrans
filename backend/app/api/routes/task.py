@@ -1,6 +1,6 @@
 """Task status routes with guest-safe access and authenticated ownership checks."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -13,7 +13,13 @@ from datetime import datetime
 from backend.app.core.auth import optional_current_user
 from backend.app.policies import authorize
 from backend.app.repositories import TranslationTaskRepository
-from backend.app.services.task_manager import get_task_manager
+from backend.app.services.task_manager import get_task_manager, get_task_queue
+from backend.app.services.task_runtime_client import (
+    INTERNAL_TASK_CANCEL_ACTION,
+    request_worker_task_cancel,
+    verify_internal_task_runtime_request,
+    worker_cancel_signal_failed,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -186,6 +192,7 @@ async def list_all_tasks():
 @router.delete("/task/{task_id}")
 async def delete_task(
     task_id: str,
+    request: Request,
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
     repository: TranslationTaskRepository = Depends(_resolve_translation_task_repository),
 ):
@@ -205,6 +212,16 @@ async def delete_task(
     
     task = _load_authorized_task(task_id=task_id, current_user=current_user, action="delete")
     owner_user_id = str(task.get("user_id") or "").strip() or None
+    worker_cancel_result = await request_worker_task_cancel(
+        task_id,
+        terminal_reason="task_deleted",
+    )
+    if worker_cancel_signal_failed(worker_cancel_result):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Worker runtime cancellation signal failed; task was not deleted.",
+        )
+    local_cancelled = task_manager.cancel_task(task_id, terminal_reason="task_deleted")
 
     if owner_user_id:
         requester_id = str((current_user or {}).get("id") or "").strip()
@@ -221,6 +238,35 @@ async def delete_task(
         "message": "Task deleted successfully",
         "deleted_dirs": deletion_result.get("deleted_dirs", []),
         "errors": deletion_result.get("errors", []),
+        "cancelled": bool(local_cancelled or worker_cancel_result.get("cancelled")),
+    }
+
+
+@router.post("/internal/task/{task_id}/cancel", include_in_schema=False)
+async def cancel_task_from_internal_runtime(
+    task_id: str,
+    request: Request,
+    terminal_reason: str = "task_deleted",
+):
+    verify_internal_task_runtime_request(
+        request=request,
+        task_id=task_id,
+        action=INTERNAL_TASK_CANCEL_ACTION,
+        terminal_reason=terminal_reason,
+    )
+
+    cancelled = task_manager.cancel_task(task_id, terminal_reason=terminal_reason)
+    if not cancelled:
+        task_queue = get_task_queue()
+        if task_queue is not None:
+            cancelled = bool(task_queue.cancel_execution(task_id))
+
+    if not cancelled and task_manager.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+
+    return {
+        "task_id": task_id,
+        "cancelled": bool(cancelled),
     }
 
 

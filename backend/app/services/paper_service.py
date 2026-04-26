@@ -74,6 +74,7 @@ from backend.app.services.task_manager import (
     get_task_manager,
     get_task_queue,
 )
+from backend.app.services.task_runtime_client import request_worker_task_cancel, worker_cancel_signal_failed
 from backend.app.utils.async_blocking import run_db_blocking
 
 logger = logging.getLogger(__name__)
@@ -6590,7 +6591,7 @@ async def _cancel_curation_job_task_if_running(job_id: str) -> bool:
     return True
 
 
-def _cancel_admin_curation_translation_task_before_delete(
+async def _cancel_admin_curation_translation_task_before_delete(
     task_id: str,
     *,
     terminal_reason: str = "admin_curation_deleted",
@@ -6599,14 +6600,22 @@ def _cancel_admin_curation_translation_task_before_delete(
     if not normalized_task_id:
         return False
 
-    cancelled = False
-    try:
-        cancelled = bool(
-            task_manager.cancel_task(
-                normalized_task_id,
-                terminal_reason=terminal_reason,
-            )
+    worker_cancel_result = await request_worker_task_cancel(
+        normalized_task_id,
+        terminal_reason=terminal_reason,
+    )
+    if worker_cancel_signal_failed(worker_cancel_result):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Worker runtime cancellation signal failed; curation task was not deleted.",
         )
+    cancelled = bool(worker_cancel_result.get("cancelled"))
+    try:
+        local_cancelled = task_manager.cancel_task(
+            normalized_task_id,
+            terminal_reason=terminal_reason,
+        )
+        cancelled = bool(cancelled or local_cancelled)
     except Exception as exc:
         logger.warning(
             "Failed to cancel admin curation translation task %s before delete: %s",
@@ -6680,7 +6689,7 @@ async def _reset_existing_admin_arxiv_curation(
 
             task_id = str(job.get("task_id") or "").strip()
             if task_id and task_id not in deleted_task_ids:
-                _cancel_admin_curation_translation_task_before_delete(task_id)
+                await _cancel_admin_curation_translation_task_before_delete(task_id)
                 task_manager.delete_task_full(task_id)
                 await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
                 deleted_task_ids.add(task_id)
@@ -7189,7 +7198,7 @@ async def delete_admin_curation_job(
                 _delete_local_artifact_path(source_path)
 
         for task_id in task_ids:
-            _cancel_admin_curation_translation_task_before_delete(task_id)
+            await _cancel_admin_curation_translation_task_before_delete(task_id)
             task_manager.delete_task_full(task_id)
             await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
 

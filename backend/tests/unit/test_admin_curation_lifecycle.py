@@ -802,6 +802,10 @@ def test_delete_admin_curation_job_cancels_queued_translation_before_deleting_ta
         events.append(("delete_placeholder", paper_id))
         return ["papers"]
 
+    async def _request_worker_task_cancel(task_id: str, **kwargs):
+        events.append(("worker_cancel", task_id, kwargs))
+        return {"sent": True, "cancelled": True}
+
     monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
     monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
     monkeypatch.setattr(
@@ -813,6 +817,11 @@ def test_delete_admin_curation_job_cancels_queued_translation_before_deleting_ta
         paper_service,
         "_delete_placeholder_curation_paper_if_present",
         _delete_placeholder,
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "request_worker_task_cancel",
+        _request_worker_task_cancel,
     )
     monkeypatch.setattr(
         paper_service.task_manager,
@@ -834,8 +843,9 @@ def test_delete_admin_curation_job_cancels_queued_translation_before_deleting_ta
     )
 
     assert result["job_id"] == "job-queued"
-    assert events[:3] == [
+    assert events[:4] == [
         ("cancel_curation_job", "job-queued"),
+        ("worker_cancel", "task-queued", {"terminal_reason": "admin_curation_deleted"}),
         ("cancel_task", "task-queued", {"terminal_reason": "admin_curation_deleted"}),
         ("delete_task_full", "task-queued"),
     ]

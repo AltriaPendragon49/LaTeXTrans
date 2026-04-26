@@ -274,6 +274,19 @@ class Settings(BaseSettings):
         validation_alias="BACKEND_RUNTIME_ROLE",
         description="Runtime role for the current backend process: all|web|worker.",
     )
+    worker_runtime_api_base_url: str = Field(
+        default="http://127.0.0.1:9002/api",
+        validation_alias=AliasChoices("WORKER_RUNTIME_API_BASE_URL", "worker_runtime_api_base_url"),
+        description="Loopback API base URL used by the web runtime to signal worker runtime task cancellation.",
+    )
+    internal_runtime_request_max_age_seconds: int = Field(
+        default=60,
+        validation_alias=AliasChoices(
+            "INTERNAL_RUNTIME_REQUEST_MAX_AGE_SECONDS",
+            "internal_runtime_request_max_age_seconds",
+        ),
+        description="Maximum clock skew accepted for signed internal runtime control requests.",
+    )
     admin_job_poll_interval_seconds: float = Field(
         default=5.0,
         validation_alias="ADMIN_JOB_POLL_INTERVAL_SECONDS",

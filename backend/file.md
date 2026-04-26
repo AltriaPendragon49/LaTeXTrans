@@ -1,5 +1,12 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-04-27 worker 运行时任务取消)
+
+- `backend/app/services/task_runtime_client.py`: 新增 web 进程到 worker 进程的内部签名取消通道，用于前端删除任务或管理员删除策展任务时，同步终止 worker 内存队列中正在运行/等待运行的翻译任务。
+- `backend/app/api/routes/task.py`: 删除任务前先通知 worker runtime 取消对应 task，并提供仅内部签名可调用的 `/api/internal/task/{task_id}/cancel` 入口，避免 9001 删除后 9002 继续烧 API。
+- `backend/app/services/paper_service.py`: 管理员策展任务删除链路现在同样会先通知 worker runtime 取消翻译任务，再删除任务与占位论文记录。
+- `backend/app/core/config.py`: 新增 worker runtime 内部取消调用地址与签名时间窗配置，默认指向 `http://127.0.0.1:9002/api`。
+
 ## Recent Responsibility Updates (2026-04-27 tiktoken 离线降级)
 
 - `backend/app/services/latex/parser.py`: LaTeX 解析/分块阶段获取 `tiktoken` 编码失败时不再让任务失败；会退到仓库内确定性的 `estimate_tokens_v1` 估算，避免生产容器因无法访问 `openaipublic.blob.core.windows.net` 下载编码表而中断翻译。
