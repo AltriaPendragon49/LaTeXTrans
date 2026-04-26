@@ -3678,8 +3678,10 @@ def _is_high_risk_hard_freeze_entry(entry: Dict[str, Any]) -> bool:
     original = str((entry or {}).get("original") or "")
     original_inner = original.strip("<>")
 
-    if kind in {"ENVPH", "CAPPH", "ENVBEGIN", "ENVEND", "ENV", "ITEM", "EQROW", "EQCOMMENT", "INLMATH"}:
+    if kind in {"ENVPH", "CAPPH", "ENVBEGIN", "ENVEND", "ENV", "ITEM", "EQROW", "EQCOMMENT"}:
         return True
+    if kind == "INLMATH":
+        return False
     if kind == "PLACEHOLDER":
         return True
     if kind == "CMD":

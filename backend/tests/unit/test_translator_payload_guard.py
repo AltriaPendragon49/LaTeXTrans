@@ -10,15 +10,18 @@ from backend.app.services.agents.pipeline_invariants import (
 from backend.app.services.agents.translator_agent import TranslatorAgent
 
 
-def _build_agent(trans_mode: int = 0) -> TranslatorAgent:
+def _build_agent(trans_mode: int = 0, extra_config: dict | None = None) -> TranslatorAgent:
+    config = {
+        "llm_config": {
+            "model": "gpt-4o",
+            "base_url": "http://dummy-llm",
+            "api_key": "dummy-key",
+        }
+    }
+    if extra_config:
+        config.update(extra_config)
     agent = TranslatorAgent(
-        config={
-            "llm_config": {
-                "model": "gpt-4o",
-                "base_url": "http://dummy-llm",
-                "api_key": "dummy-key",
-            }
-        },
+        config=config,
         project_dir="dummy",
         output_dir="dummy",
         trans_mode=trans_mode,
@@ -449,6 +452,18 @@ class TestTranslatorPayloadGuard(unittest.TestCase):
         )
         self.assertNotIn("@@HF:", translated["trans_content"])
         self.assertIn("13", agent.payload_invariant_sections)
+
+    def test_hard_freeze_can_be_disabled_for_legacy_core_path(self):
+        agent = _build_agent(extra_config={"enable_hard_freeze_tokens": False})
+        prepared, context = agent._prepare_llm_payload_text("We compare $x$ with \\cite{a}.")
+
+        self.assertNotIn("@@HF:", prepared)
+        self.assertEqual(context["hard_freeze_token_sequence"], [])
+        assert_no_raw_structure(prepared, context="translator-legacy-core")
+
+        math_token = re.search(r"<INLMATH_[^>]+>", prepared).group(0)
+        restored = agent._restore_llm_output_text(f"我们比较 {math_token} 与 \\cite{{a}}。", context)
+        self.assertEqual(restored, "我们比较 $x$ 与 \\cite{a}。")
 
     def test_translate_caption_round_trips_hard_freeze_tokens(self):
         agent = _build_agent(trans_mode=0)

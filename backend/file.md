@@ -2,6 +2,10 @@
 
 ## Recent Responsibility Updates (2026-04-26 Community Quality Gate)
 
+- `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译现在走简化内核：关闭 hard-freeze transport、编译前结构门禁、编译后结构/目标语降级和诊断 LLM，减少占位符过度保护导致的慢、回退和坏译文。
+- `backend/app/services/agents/translator_agent.py`: 新增 `enable_hard_freeze_tokens` 配置；关闭时保留数学、环境、命令 mask/restore，但不再把占位符二次包装为 hard-freeze token。
+- `backend/app/services/latex/utils.py`: hard-freeze 风险分层将普通 inline math 视为低风险 token，section relaxed 模式不再因相邻数学占位符重排而整段回退。
+
 - `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译现在按 `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 收紧单任务 LLM 并发，默认 3，避免单篇论文内部打穿同一 API 池。
 - `backend/app/models/config_models.py`: `AdvancedConfig` 增加不持久化的内部标记 `community_production_translation`，用于区分生产社区入库任务与普通交互任务。
 - `backend/app/core/config.py`: 新增 `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 配置项，控制社区生产翻译的单任务 LLM 请求上限。

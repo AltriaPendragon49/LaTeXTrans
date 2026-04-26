@@ -684,7 +684,8 @@ async def run_translation(
         
         # Build config dict for CoordinatorAgent with all advanced settings
         task_llm_cap = CLI_PARITY_TASK_LLM_MAX_CONCURRENT_REQUESTS
-        if bool(getattr(advanced_config, "community_production_translation", False)):
+        community_production_translation = bool(getattr(advanced_config, "community_production_translation", False))
+        if community_production_translation:
             task_llm_cap = max(1, int(settings.community_translation_llm_max_concurrent_requests or 3))
 
         task_llm_max_concurrent_requests = resolve_task_llm_max_concurrent_requests(
@@ -717,10 +718,17 @@ async def run_translation(
             "user_term": "",
             "category": category_map,
             "formatting": formatting,
-            "use_compilation_diagnostics": True,
-            "enable_compile_first_structural_fallback": settings.enable_compile_first_structural_fallback,
-            "enable_post_compile_target_language_fallback": settings.enable_post_compile_target_language_fallback,
-            "enable_precompile_structure_guard": settings.enable_precompile_structure_guard,
+            "use_compilation_diagnostics": False if community_production_translation else True,
+            "enable_compile_first_structural_fallback": (
+                False if community_production_translation else settings.enable_compile_first_structural_fallback
+            ),
+            "enable_post_compile_target_language_fallback": (
+                False if community_production_translation else settings.enable_post_compile_target_language_fallback
+            ),
+            "enable_precompile_structure_guard": (
+                False if community_production_translation else settings.enable_precompile_structure_guard
+            ),
+            "enable_hard_freeze_tokens": False if community_production_translation else True,
             "structural_fallback_ratio_cap": settings.structural_fallback_ratio_cap,
             "structural_fallback_cap_mode": settings.structural_fallback_cap_mode,
             "model_context_tokens": settings.model_context_tokens or CLI_PARITY_MODEL_CONTEXT_TOKENS,

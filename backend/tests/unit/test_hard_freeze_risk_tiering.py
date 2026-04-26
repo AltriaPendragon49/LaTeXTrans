@@ -66,6 +66,20 @@ def test_relaxed_section_mode_still_rejects_reordered_high_risk_reference_tokens
         raise AssertionError("reordered high-risk reference tokens must still fail")
 
 
+def test_relaxed_section_mode_accepts_reordered_inline_math_tokens():
+    text = "We compare $x$ with $y$ before reporting $z$."
+    expected_tokens, audit_entries, mask_mapping = _token_sequence_for(text)
+    actual = f"我们比较 {expected_tokens[1]} 和 {expected_tokens[0]}，然后报告 {expected_tokens[2]}。"
+
+    verify_hard_freeze_token_stream(
+        actual,
+        expected_tokens,
+        audit_entries=audit_entries,
+        mask_mapping=mask_mapping,
+        verification_mode="section_relaxed",
+    )
+
+
 def test_relaxed_section_mode_still_rejects_missing_tokens():
     text = "Alpha \\keywords{diffusion} Beta \\received{March 2026}"
     expected_tokens, audit_entries, mask_mapping = _token_sequence_for(text)

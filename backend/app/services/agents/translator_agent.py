@@ -208,6 +208,10 @@ class TranslatorAgent(BaseToolAgent):
             ),
             default=False,
         )
+        self.enable_hard_freeze_tokens = self._coerce_bool(
+            config.get("enable_hard_freeze_tokens", True),
+            default=True,
+        )
         self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
         self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
         if self.structural_fallback_cap_mode not in {"soft", "hard"}:
@@ -2040,7 +2044,16 @@ class TranslatorAgent(BaseToolAgent):
         )
         preprocessed_text = preprocess_risky_tokens(masked_text, math_map)
         masked_text = preprocessed_text
-        frozen_text, hard_freeze_context = freeze_protected_tokens(masked_text)
+        if self.enable_hard_freeze_tokens:
+            frozen_text, hard_freeze_context = freeze_protected_tokens(masked_text)
+        else:
+            frozen_text = masked_text
+            hard_freeze_context = {
+                "request_nonce": "",
+                "token_map": {},
+                "token_sequence": [],
+                "audit_entries": [],
+            }
         return frozen_text, {
             "math_map": math_map,
             "env_map": env_map,
