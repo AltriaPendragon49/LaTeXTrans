@@ -121,6 +121,21 @@ def test_route_after_validate_prefers_post_compile_target_language_fallback_for_
     assert orch._route_after_validate(state) == "post_compile_target_language_fallback"
 
 
+def test_route_after_validate_uses_post_compile_fallback_for_pure_residual_english():
+    from backend.app.services.agents import langgraph_orchestrator as orch
+
+    state = {
+        "config": {"enable_post_compile_target_language_fallback": True},
+        "residual_english_requires_fallback": True,
+        "compile_fallback_reports": [],
+        "post_compile_fallback_attempted": False,
+        "fallback_reports": [],
+        "repair_retry_count": 0,
+    }
+
+    assert orch._route_after_validate(state) == "post_compile_target_language_fallback"
+
+
 def test_route_after_generate_retries_post_compile_with_source_passthrough_after_structured_residual_english_failure():
     from backend.app.services.agents import langgraph_orchestrator as orch
     from backend.app.services.agents.pipeline_schema import FallbackReport
@@ -135,6 +150,20 @@ def test_route_after_generate_retries_post_compile_with_source_passthrough_after
                 root_cause="c2",
             )
         ],
+        "post_compile_fallback_attempted": True,
+        "residual_english_fallback_stage": 1,
+    }
+
+    assert orch._route_after_generate(state) == "post_compile_target_language_fallback"
+
+
+def test_route_after_generate_retries_source_passthrough_without_compile_reports():
+    from backend.app.services.agents import langgraph_orchestrator as orch
+
+    state = {
+        "config": {"enable_post_compile_target_language_fallback": True},
+        "generation_result": {"status": "structure_invalid"},
+        "compile_fallback_reports": [],
         "post_compile_fallback_attempted": True,
         "residual_english_fallback_stage": 1,
     }

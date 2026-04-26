@@ -237,7 +237,10 @@ def test_validate_node_raises_when_residual_english_prose_survives_retries(monke
 
     translator = _CountingTranslator()
     state = {
-        "config": {"target_language": "zh"},
+        "config": {
+            "target_language": "zh",
+            "enable_post_compile_target_language_fallback": False,
+        },
         "project_dir": str(tmp_path / "proj"),
         "transed_project_dir": str(transed_project_dir),
         "mode": 0,

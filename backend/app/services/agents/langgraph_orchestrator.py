@@ -135,8 +135,27 @@ def _should_force_source_passthrough_for_residual_english(
 def _should_retry_residual_english_with_source_passthrough(state: PipelineState) -> bool:
     return (
         bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
-        and bool(state.get("compile_fallback_reports") or [])
         and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_STRUCTURED
+    )
+
+
+def _is_target_language_residual_fallback_candidate(
+    *,
+    text: str,
+    source_text: str,
+    target_language: str,
+) -> bool:
+    from backend.app.services.translation.ultimate_downgrade import (
+        is_target_language_downgrade_candidate,
+    )
+
+    return bool(
+        text.strip()
+        and is_target_language_downgrade_candidate(
+            text,
+            source_text=source_text,
+            target_language=target_language,
+        )
     )
 def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) -> tuple[tuple[Any, ...], ...]:
     signature: list[tuple[Any, ...]] = []
@@ -773,7 +792,6 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
             )
             if (
                 bool(config.get("enable_post_compile_target_language_fallback", True))
-                and fallback_state.get("compile_fallback_reports")
                 and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
                 and not bool(state.get("post_compile_fallback_attempted"))
             ):
@@ -1138,7 +1156,6 @@ def _route_after_validate(state: PipelineState) -> str:
     if (
         bool(state.get("residual_english_requires_fallback"))
         and bool(state.get("config", {}).get("enable_post_compile_target_language_fallback", True))
-        and (state.get("compile_fallback_reports") or [])
         and _get_residual_english_fallback_stage(state) == RESIDUAL_ENGLISH_FALLBACK_STAGE_NONE
         and not bool(state.get("post_compile_fallback_attempted"))
     ):
@@ -1243,9 +1260,14 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                     sec["document_root_fallback_preserved"] = True
                     continue
                 current_target_text = sec.get("trans_content") or ""
-                if current_target_text.strip():
+                source_safe_content = sec.get("content") or ""
+                if _is_target_language_residual_fallback_candidate(
+                    text=current_target_text,
+                    source_text=source_safe_content,
+                    target_language=target_language,
+                ):
                     sec["trans_content"] = ultimate_downgrade_section_segment(
-                        sec.get("content") or "",
+                        source_safe_content,
                         current_target_text,
                         leading_structure_shell=sec.get("leading_structure_shell", "") or "",
                         trailing_structure_shell=sec.get("trailing_structure_shell", "") or "",
@@ -1254,11 +1276,17 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                     sec["translation_status"] = "final_target_language_fallback_applied"
                     applied_sections += 1
                 else:
-                    source_safe_content = sec.get("content") or ""
                     if source_safe_content.strip():
                         sec["trans_content"] = source_safe_content
                         sec["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                        sec["fallback_reason"] = "residual_english_target_fallback_blocked"
+                        if _should_skip_deterministic_section_downgrade(sec):
+                            sec["document_root_fallback_preserved"] = True
                         applied_sections += 1
+                    elif current_target_text.strip():
+                        sec["trans_content"] = current_target_text
+                        sec["translation_status"] = "final_target_language_fallback_failed"
+                        failed_sections += 1
                     else:
                         sec["translation_status"] = "final_target_language_fallback_failed"
                         failed_sections += 1
@@ -1322,7 +1350,12 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                 tracked_scopes=residual_env_scopes,
             ):
                 current_target_text = env.get("trans_content") or ""
-                if current_target_text.strip():
+                source_safe_content = env.get("content") or ""
+                if _is_target_language_residual_fallback_candidate(
+                    text=current_target_text,
+                    source_text=source_safe_content,
+                    target_language=target_language,
+                ):
                     env["trans_content"] = ultimate_downgrade_segment(
                         current_target_text,
                         report_by_scope.get(scope_key),
@@ -1330,11 +1363,15 @@ async def node_post_compile_target_language_fallback(state: PipelineState) -> Pi
                     env["translation_status"] = "final_target_language_fallback_applied"
                     applied_envs += 1
                 else:
-                    source_safe_content = env.get("content") or ""
                     if source_safe_content.strip():
                         env["trans_content"] = source_safe_content
                         env["translation_status"] = TranslatorAgent.STATUS_SOURCE_PASS_THROUGH
+                        env["fallback_reason"] = "residual_english_target_fallback_blocked"
                         applied_envs += 1
+                    elif current_target_text.strip():
+                        env["trans_content"] = current_target_text
+                        env["translation_status"] = "final_target_language_fallback_failed"
+                        failed_envs += 1
                     else:
                         env["translation_status"] = "final_target_language_fallback_failed"
                         failed_envs += 1

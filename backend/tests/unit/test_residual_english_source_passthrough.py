@@ -21,7 +21,7 @@ def _write_maps(base_dir: Path, sections: list[dict], envs: list[dict]) -> None:
     )
 
 
-def test_post_compile_fallback_uses_structured_downgrade_before_source_passthrough_for_residual_english(
+def test_post_compile_fallback_uses_source_passthrough_when_residual_candidate_is_not_chinese(
     tmp_path: Path,
 ):
     out_dir = tmp_path / "out"
@@ -68,10 +68,56 @@ def test_post_compile_fallback_uses_structured_downgrade_before_source_passthrou
 
     sections = json.loads((out_dir / "sections_map.json").read_text(encoding="utf-8"))
     section = sections[0]
-    assert section["translation_status"] == "final_target_language_fallback_applied"
-    assert section["trans_content"] != original
+    assert section["translation_status"] == "source_pass_through"
+    assert section["fallback_reason"] == "residual_english_target_fallback_blocked"
+    assert section["trans_content"] == original
     assert r"\subsection{Participants}" in section["trans_content"]
     assert r"\textbackslash\{\}$13.75" not in section["trans_content"]
+
+
+def test_post_compile_fallback_uses_structured_downgrade_for_real_chinese_residual_candidate(
+    tmp_path: Path,
+):
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    original = r"\subsection{Participants}" + "\n\n" + "Participants joined the study."
+    _write_maps(
+        out_dir,
+        sections=[
+            {
+                "section": "4_3",
+                "content": original,
+                "trans_content": r"\subsection{参与者}" + "\n\n" + "参与者参加了研究。",
+                "translation_status": "structural_fallback_pending_compile",
+            }
+        ],
+        envs=[],
+    )
+
+    state = {
+        "config": {"enable_post_compile_target_language_fallback": True, "target_language": "zh"},
+        "transed_project_dir": str(out_dir),
+        "task_id": "task-residual-english",
+        "base_name": "task-residual-english",
+        "compile_fallback_reports": [
+            FallbackReport(
+                fallback_kind="c2_structural_collapse",
+                chunk_scope="4_3",
+                root_cause="c2",
+            )
+        ],
+        "residual_english_requires_fallback": True,
+        "residual_english_fallback_stage": 0,
+        "post_compile_fallback_attempted": False,
+        "on_progress": None,
+    }
+
+    asyncio.run(node_post_compile_target_language_fallback(state))
+
+    sections = json.loads((out_dir / "sections_map.json").read_text(encoding="utf-8"))
+    section = sections[0]
+    assert section["translation_status"] == "final_target_language_fallback_applied"
+    assert "参与者" in section["trans_content"]
 
 
 def test_post_compile_fallback_uses_source_passthrough_after_structured_residual_english_fallback_fails(
