@@ -40,6 +40,7 @@ class _FakeRepository:
         self.updates: list[dict] = []
         self.deleted_translation_tasks: list[list[str]] = []
         self.deleted_paper_rows: list[tuple[str, list[str]]] = []
+        self.deleted_job_ids: list[str] = []
 
     def get_curation_job(self, _job_id: str):
         return dict(self.job)
@@ -56,6 +57,10 @@ class _FakeRepository:
     def delete_rows_for_papers(self, table_name: str, paper_ids: list[str]):
         self.deleted_paper_rows.append((table_name, list(paper_ids)))
         return len(paper_ids)
+
+    def delete_curation_job(self, job_id: str):
+        self.deleted_job_ids.append(job_id)
+        return 1
 
 
 def test_list_pending_curation_jobs_only_includes_resumable_in_progress_statuses(monkeypatch):
@@ -742,6 +747,72 @@ def test_batch_delete_admin_curation_jobs_reports_successes_and_failures(monkeyp
     ]
 
 
+def test_delete_admin_curation_job_cancels_queued_translation_before_deleting_task(monkeypatch):
+    repository = _FakeRepository(
+        {
+            "job_id": "job-queued",
+            "paper_id": "paper-placeholder",
+            "published_paper_id": None,
+            "task_id": "task-queued",
+            "source_type": "arxiv",
+            "source_path": None,
+            "status": "translating",
+        }
+    )
+    events: list[tuple] = []
+
+    async def _run_local(operation):
+        return operation()
+
+    async def _cancel_curation_job_task_if_running(job_id: str):
+        events.append(("cancel_curation_job", job_id))
+        return True
+
+    async def _delete_placeholder(*, repository, paper_id: str):
+        events.append(("delete_placeholder", paper_id))
+        return ["papers"]
+
+    monkeypatch.setattr(paper_service, "_run_local_repo", _run_local)
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: repository)
+    monkeypatch.setattr(
+        paper_service,
+        "_cancel_curation_job_task_if_running",
+        _cancel_curation_job_task_if_running,
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_delete_placeholder_curation_paper_if_present",
+        _delete_placeholder,
+    )
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "cancel_task",
+        lambda task_id, **kwargs: events.append(("cancel_task", task_id, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "delete_task_full",
+        lambda task_id: events.append(("delete_task_full", task_id))
+        or {"success": True, "deleted_dirs": [], "errors": []},
+    )
+
+    result = asyncio.run(
+        paper_service.delete_admin_curation_job(
+            job_id="job-queued",
+            current_user={"id": "admin-1", "roles": ["admin"]},
+        )
+    )
+
+    assert result["job_id"] == "job-queued"
+    assert events[:3] == [
+        ("cancel_curation_job", "job-queued"),
+        ("cancel_task", "task-queued", {"terminal_reason": "admin_curation_deleted"}),
+        ("delete_task_full", "task-queued"),
+    ]
+    assert repository.deleted_translation_tasks == [["task-queued"]]
+    assert repository.deleted_job_ids == ["job-queued"]
+
+
 def test_list_curation_jobs_for_arxiv_id_orders_created_jobs(monkeypatch):
     cursor = _FakeCursor()
 
@@ -860,6 +931,7 @@ def test_submit_admin_arxiv_curation_batch_resets_existing_failed_arxiv_history(
 
     repository = _BatchRepository()
     deleted_task_ids: list[str] = []
+    task_events: list[tuple[str, str]] = []
     deleted_failed_artifacts: list[tuple[str, str | None]] = []
     deleted_placeholder_papers: list[str] = []
 
@@ -888,7 +960,14 @@ def test_submit_admin_arxiv_curation_batch_resets_existing_failed_arxiv_history(
     monkeypatch.setattr(
         paper_service.task_manager,
         "delete_task_full",
-        lambda task_id: deleted_task_ids.append(task_id) or {"success": True, "deleted_dirs": [], "errors": []},
+        lambda task_id: deleted_task_ids.append(task_id)
+        or task_events.append(("delete", task_id))
+        or {"success": True, "deleted_dirs": [], "errors": []},
+    )
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "cancel_task",
+        lambda task_id, **_kwargs: task_events.append(("cancel", task_id)) or True,
     )
     monkeypatch.setattr(paper_service, "_delete_placeholder_curation_paper_if_present", _delete_placeholder)
     monkeypatch.setattr(paper_service, "_schedule_curation_job", lambda _job_id: None)
@@ -901,6 +980,7 @@ def test_submit_admin_arxiv_curation_batch_resets_existing_failed_arxiv_history(
     )
 
     assert deleted_failed_artifacts == [("failed_tasks/task-failed", "object_storage")]
+    assert task_events == [("cancel", "task-failed"), ("delete", "task-failed")]
     assert deleted_task_ids == ["task-failed"]
     assert repository.deleted_translation_tasks == [["task-failed"]]
     assert deleted_placeholder_papers == ["paper-failed"]

@@ -6548,6 +6548,48 @@ async def _cancel_curation_job_task_if_running(job_id: str) -> bool:
     return True
 
 
+def _cancel_admin_curation_translation_task_before_delete(
+    task_id: str,
+    *,
+    terminal_reason: str = "admin_curation_deleted",
+) -> bool:
+    normalized_task_id = str(task_id or "").strip()
+    if not normalized_task_id:
+        return False
+
+    cancelled = False
+    try:
+        cancelled = bool(
+            task_manager.cancel_task(
+                normalized_task_id,
+                terminal_reason=terminal_reason,
+            )
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to cancel admin curation translation task %s before delete: %s",
+            normalized_task_id,
+            exc,
+            exc_info=True,
+        )
+
+    if cancelled:
+        return True
+
+    try:
+        task_queue = get_task_queue()
+        if task_queue is not None:
+            return bool(task_queue.cancel_execution(normalized_task_id))
+    except Exception as exc:
+        logger.warning(
+            "Failed to request queue skip for admin curation translation task %s before delete: %s",
+            normalized_task_id,
+            exc,
+            exc_info=True,
+        )
+    return False
+
+
 async def _reset_existing_admin_arxiv_curation(
     *,
     repository: Any,
@@ -6596,6 +6638,7 @@ async def _reset_existing_admin_arxiv_curation(
 
             task_id = str(job.get("task_id") or "").strip()
             if task_id and task_id not in deleted_task_ids:
+                _cancel_admin_curation_translation_task_before_delete(task_id)
                 task_manager.delete_task_full(task_id)
                 await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
                 deleted_task_ids.add(task_id)
@@ -7076,6 +7119,7 @@ async def delete_admin_curation_job(
         raise HTTPException(status_code=404, detail="Curation job not found")
 
     job_status = str(job.get("status") or "").strip().lower()
+    await _cancel_curation_job_task_if_running(job_id)
     task_ids = [
         str(task_id or "").strip()
         for task_id in dict.fromkeys([job.get("task_id")])
@@ -7103,6 +7147,7 @@ async def delete_admin_curation_job(
                 _delete_local_artifact_path(source_path)
 
         for task_id in task_ids:
+            _cancel_admin_curation_translation_task_before_delete(task_id)
             task_manager.delete_task_full(task_id)
             await _run_local_repo(lambda task_id=task_id: repository.delete_translation_tasks([task_id]))
 
