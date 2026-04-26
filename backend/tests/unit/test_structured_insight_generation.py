@@ -909,13 +909,13 @@ def test_publish_admin_curation_job_preserves_job_arxiv_id_when_metadata_omits_i
     assert result["arxiv_id"] == "2508.18791"
 
 
-def test_publish_admin_curation_job_rejects_incomplete_arxiv_metadata(monkeypatch):
+def test_publish_admin_curation_job_uses_fallback_arxiv_metadata_when_fetch_fails(monkeypatch):
     paper = {
         "id": "paper-1",
-        "title": "Recovered arXiv title",
+        "title": "arXiv:2501.00001",
         "arxiv_id": "2501.00001",
-        "authors": ["Alice"],
-        "categories": ["cs.CL"],
+        "authors": [],
+        "categories": [],
         "abstract_raw": None,
         "abstract_translated": None,
         "community_status": "official",
@@ -923,7 +923,7 @@ def test_publish_admin_curation_job_rejects_incomplete_arxiv_metadata(monkeypatc
         "visibility": "private",
         "status": "curating",
     }
-    update_calls = {"count": 0}
+    update_calls: list[dict] = []
 
     monkeypatch.setattr(
         paper_service,
@@ -968,29 +968,36 @@ def test_publish_admin_curation_job_rejects_incomplete_arxiv_metadata(monkeypatc
     monkeypatch.setattr(
         paper_service,
         "_update_paper",
-        lambda *_args, **_kwargs: update_calls.__setitem__("count", update_calls["count"] + 1),
+        lambda _paper_id, payload: asyncio.sleep(
+            0,
+            result={**paper, **payload},
+        )
+        if not update_calls.append(dict(payload))
+        else asyncio.sleep(0, result={**paper, **payload}),
     )
 
-    with pytest.raises(ValueError, match="complete arXiv metadata"):
-        asyncio.run(
-            paper_service._publish_admin_curation_job(
-                job={
-                    "paper_id": "paper-1",
-                    "created_by": "admin-1",
-                    "source_type": "arxiv",
-                    "arxiv_id": "2501.00001",
-                },
-                metadata={
-                    "title": "Curated paper",
-                    "authors": [],
-                    "categories": [],
-                    "abstract_raw": None,
-                },
-                translated_task_id="task-1",
-            )
+    result = asyncio.run(
+        paper_service._publish_admin_curation_job(
+            job={
+                "paper_id": "paper-1",
+                "created_by": "admin-1",
+                "source_type": "arxiv",
+                "arxiv_id": "2501.00001",
+            },
+            metadata={
+                "title": "Curated paper",
+                "authors": [],
+                "categories": [],
+                "abstract_raw": None,
+            },
+            translated_task_id="task-1",
         )
+    )
 
-    assert update_calls["count"] == 0
+    assert result["status"] == "published"
+    assert result["title"] == "arXiv:2501.00001"
+    assert result["authors"] == []
+    assert update_calls[-1]["status"] == "published"
 
 
 def test_publish_admin_curation_job_persists_similar_recommendations_before_publication(monkeypatch):

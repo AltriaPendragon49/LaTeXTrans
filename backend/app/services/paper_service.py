@@ -1562,8 +1562,10 @@ async def _ensure_publishable_admin_curation_metadata(
         fetched_metadata = await _fetch_arxiv_metadata(resolved_arxiv_id)
         resolved = _merge_arxiv_metadata(resolved, fetched_metadata, source="arxiv")
 
-    if _is_placeholder_paper_title(resolved.get("title"), source="arxiv") or not (resolved.get("authors") or []):
-        raise ValueError("Admin arXiv curation publish requires complete arXiv metadata with title and authors")
+    if _is_placeholder_paper_title(resolved.get("title"), source="arxiv"):
+        resolved["title"] = f"arXiv:{resolved_arxiv_id}"
+    resolved["authors"] = resolved.get("authors") or []
+    resolved["categories"] = resolved.get("categories") or []
     return resolved
 
 
@@ -6320,18 +6322,6 @@ async def _cleanup_failed_admin_curation_artifacts(
                 artifact_storage_backend = retained_artifact.get("artifact_storage_backend")
             except Exception as exc:
                 errors.append(f"Failed to retain failed task output for {task_id}: {exc}")
-
-        try:
-            cleanup_result = task_manager.delete_task_full(task_id)
-        except Exception as exc:
-            errors.append(f"Failed to delete task artifacts for {task_id}: {exc}")
-        else:
-            deleted_paths.extend(
-                [str(path) for path in cleanup_result.get("deleted_dirs", []) if str(path or "").strip()]
-            )
-            errors.extend(
-                [str(error) for error in cleanup_result.get("errors", []) if str(error or "").strip()]
-            )
 
     paper_id = str(job.get("paper_id") or "").strip()
     if paper_id:

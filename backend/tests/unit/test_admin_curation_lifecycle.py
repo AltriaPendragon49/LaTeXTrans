@@ -173,7 +173,7 @@ def test_wait_for_task_terminal_state_reports_execution_timeout_after_processing
     assert len(sleep_calls) >= 2
 
 
-def test_cleanup_failed_admin_curation_artifacts_removes_placeholder_paper_and_task_artifacts(monkeypatch, tmp_path):
+def test_cleanup_failed_admin_curation_artifacts_preserves_task_artifacts(monkeypatch, tmp_path):
     repository = _FakeRepository({"job_id": "job-1"})
     task_id = "task-new"
     paper_id = "paper-new"
@@ -217,7 +217,7 @@ def test_cleanup_failed_admin_curation_artifacts_removes_placeholder_paper_and_t
     )
 
     assert result["errors"] == []
-    assert deleted_task_ids == [task_id]
+    assert deleted_task_ids == []
     assert repository.deleted_translation_tasks == []
     assert ("papers", [paper_id]) in repository.deleted_paper_rows
     assert ("paper_assets", [paper_id]) in repository.deleted_paper_rows
