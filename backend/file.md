@@ -1,5 +1,9 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-04-27 tiktoken 离线降级)
+
+- `backend/app/services/latex/parser.py`: LaTeX 解析/分块阶段获取 `tiktoken` 编码失败时不再让任务失败；会退到仓库内确定性的 `estimate_tokens_v1` 估算，避免生产容器因无法访问 `openaipublic.blob.core.windows.net` 下载编码表而中断翻译。
+
 ## Recent Responsibility Updates (2026-04-27 arXiv 元数据自动修复)
 
 - `backend/app/services/paper_service.py`: arXiv 元数据拉取现在会对临时网络请求失败执行 3 次短重试；已发布 arXiv 论文若因临时失败留下 `arXiv:<id>`、空作者、空分类、空摘要或空发布时间，可通过后台修复入口重新补齐元数据。

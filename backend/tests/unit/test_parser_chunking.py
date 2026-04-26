@@ -1,4 +1,5 @@
 import unittest
+from backend.app.services.latex import parser as parser_module
 from backend.app.services.latex.parser import LatexParser
 import tiktoken
 
@@ -147,6 +148,29 @@ class TestLatexParserChunking(unittest.TestCase):
         self.assertEqual(isolated_placeholder_chunks, [])
         self.assertTrue(all(chunk.get("chunk_kind") != "placeholder_only" for chunk in self.parser.sections_json))
         self.assertTrue(all("immutable_only" in chunk for chunk in self.parser.sections_json))
+
+    def test_chunking_falls_back_when_tiktoken_encoding_download_fails(self):
+        def _raise_encoding_error(_name):
+            raise RuntimeError("offline tiktoken cache")
+
+        original_get_encoding = parser_module.tiktoken.get_encoding
+        parser_module.tiktoken.get_encoding = _raise_encoding_error
+        try:
+            self.parser.sections_json = [
+                {
+                    "section": "1",
+                    "content": ("Offline tokenizer fallback paragraph. " * 200),
+                    "trans_content": "",
+                }
+            ]
+
+            self.parser._merge_short_sections(min_tokens=50)
+            self.parser._chunk_long_sections(max_tokens=100)
+
+            self.assertTrue(len(self.parser.sections_json) >= 1)
+            self.assertTrue(all("chunk_token_count" in chunk for chunk in self.parser.sections_json))
+        finally:
+            parser_module.tiktoken.get_encoding = original_get_encoding
 
 if __name__ == '__main__':
     unittest.main()

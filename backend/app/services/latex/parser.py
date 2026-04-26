@@ -10,6 +10,7 @@ Adapted from prototype system with:
 
 from typing import Any, Dict, Optional, Callable, List
 from .utils import *
+from .token_estimator import estimate_tokens_v1
 import tiktoken
 import logging
 import re
@@ -129,10 +130,22 @@ class LatexParser:
 
     @staticmethod
     def _get_token_encoder():
+        class _FallbackTokenEncoder:
+            def encode(self, text: str):
+                return range(estimate_tokens_v1(text or ""))
+
         try:
             return tiktoken.get_encoding("o200k_base")
-        except ValueError:
-            return tiktoken.get_encoding("cl100k_base")
+        except Exception as first_exc:
+            try:
+                return tiktoken.get_encoding("cl100k_base")
+            except Exception as second_exc:
+                logger.warning(
+                    "Falling back to deterministic token estimator because tiktoken encoding is unavailable: %s; %s",
+                    first_exc,
+                    second_exc,
+                )
+                return _FallbackTokenEncoder()
 
     def _merge_inputs(self, tex: str) -> str:
         """
@@ -399,10 +412,7 @@ class LatexParser:
         """
         Merge sections that are too short to save the number of API requests
         """
-        try:
-            enc = tiktoken.get_encoding("o200k_base")
-        except ValueError:
-            enc = tiktoken.get_encoding("cl100k_base")
+        enc = self._get_token_encoder()
         merged_sections = []
         i = 0
         sections = self.sections_json
@@ -449,10 +459,7 @@ class LatexParser:
         environment. If the boundary is unsafe, we defer the split and accumulate
         more text, ultimately flagging the overall chunk as oversize_no_safe_boundary.
         """
-        try:
-            enc = tiktoken.get_encoding("o200k_base")
-        except ValueError:
-            enc = tiktoken.get_encoding("cl100k_base")
+        enc = self._get_token_encoder()
         chunked_sections = []
         
         for section in self.sections_json:
