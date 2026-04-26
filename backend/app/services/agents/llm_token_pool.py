@@ -366,6 +366,7 @@ class _MemberState:
     member_id: str
     base_url: str
     api_key: str
+    reserve: bool = False
     cooldown_until: float = 0.0
     consecutive_429: int = 0
     consecutive_503: int = 0
@@ -396,11 +397,13 @@ class _PoolRegistry:
                         member_id=member_id,
                         base_url=base_url,
                         api_key=api_key,
+                        reserve=bool(member.get("reserve") or False),
                         last_used_at=now,
                     )
                 else:
                     existing.base_url = base_url
                     existing.api_key = api_key
+                    existing.reserve = bool(member.get("reserve") or False)
             stale = [member_id for member_id in state if member_id not in seen]
             for member_id in stale:
                 state.pop(member_id, None)
@@ -423,6 +426,8 @@ class _PoolRegistry:
             ]
             if not healthy:
                 return None
+            primary = [member for member in healthy if not member.reserve]
+            candidates = primary or healthy
             normalized_preferences = [
                 str(base_url or "").strip()
                 for base_url in (preferred_base_urls or [])
@@ -432,7 +437,7 @@ class _PoolRegistry:
                 preferred_rank = {base_url: index for index, base_url in enumerate(normalized_preferences)}
                 preferred_members = [
                     member
-                    for member in healthy
+                    for member in candidates
                     if member.base_url in preferred_rank
                 ]
                 if preferred_members:
@@ -440,7 +445,7 @@ class _PoolRegistry:
                         preferred_members,
                         key=lambda item: (preferred_rank[item.base_url], item.last_used_at, item.member_id),
                     )
-            return min(healthy, key=lambda item: (item.last_used_at, item.member_id))
+            return min(candidates, key=lambda item: (item.last_used_at, item.member_id))
 
     def mark_attempt(self, pool_id: str, member_id: str) -> None:
         with self._lock:

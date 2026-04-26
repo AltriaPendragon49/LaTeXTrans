@@ -175,6 +175,44 @@ async def test_pool_fails_over_to_another_member_after_429():
 
 
 @pytest.mark.asyncio
+async def test_pool_does_not_use_reserve_members_while_primary_members_are_healthy():
+    from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
+
+    llm_config = {
+        "model": "test-model",
+        "pool_mode": "system_managed",
+        "pool_members": [
+            {"member_id": "a1", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k1"},
+            {"member_id": "a2", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k2"},
+            {
+                "member_id": "r1",
+                "base_url": "https://relay-b.example/v1/chat/completions",
+                "api_key": "kr",
+                "reserve": True,
+            },
+        ],
+    }
+    session = _FakeSession(
+        [
+            _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok1"}}]}),
+            _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok2"}}]}),
+            _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok3"}}]}),
+        ]
+    )
+
+    for _ in range(3):
+        await post_chat_completion_with_pool(
+            session=session,
+            llm_config=llm_config,
+            payload={"model": "test-model", "messages": []},
+            timeout=aiohttp.ClientTimeout(total=5),
+            preferred_base_urls_getter=lambda: ["https://relay-b.example/v1/chat/completions"],
+        )
+
+    assert {call["api_key"] for call in session.calls} <= {"k1", "k2"}
+
+
+@pytest.mark.asyncio
 async def test_pool_switches_after_consecutive_503():
     from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
 

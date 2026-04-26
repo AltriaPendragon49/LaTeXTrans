@@ -2,6 +2,7 @@
 
 ## Recent Responsibility Updates (2026-04-27 Legacy Core Full Rollback)
 
+- `backend/app/services/agents/llm_token_pool.py`: 系统 LLM pool 的请求级成员选择现在尊重 `reserve` 成员标记；健康主成员存在时不使用备用 key，只有主成员不可用/冷却后才进入备用成员。
 - `backend/app/services/agents/langgraph_orchestrator.py`: legacy/community 翻译核心路径现在完全跳过新系统 repair、ultimate downgrade、post-compile target-language fallback 和 residual English 硬阻断；校验重翻译恢复旧系统 3 轮；校验后的 fallback report 也不再进入 legacy 状态，避免伪中文降级链路写回产物。
 - `backend/app/services/agents/translator_agent.py`: legacy 翻译核心恢复旧 CLI 风格 API 调用；单 key 配置或只有一个成员的系统池走直接 `session.post(..., timeout=100)`，不再被 token pool 单成员调度串行化；legacy 校验重翻译和失败部件重试恢复为直接重试 sec/env/cap，不再使用 compile-first fallback、payload skip guard 等新内核逻辑。
 
