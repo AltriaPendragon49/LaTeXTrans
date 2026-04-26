@@ -314,6 +314,7 @@ async def startup_event():
     app.state.cleanup_task = None
     app.state.admin_job_poll_task = None
     app.state.public_feed_rebuild_task = None
+    app.state.arxiv_metadata_repair_task = None
 
     # Initialize TaskQueue
     import backend.app.services.task_manager as tm_module
@@ -364,6 +365,32 @@ async def startup_event():
             logger.info(
                 "[Startup] Public feed index rebuild loop started (interval=%ss)",
                 public_feed_rebuild_interval_seconds,
+            )
+
+        arxiv_metadata_repair_interval_seconds = max(
+            0.0,
+            float(getattr(settings, "community_arxiv_metadata_repair_interval_seconds", 1800.0) or 0.0),
+        )
+        arxiv_metadata_repair_limit = max(
+            1,
+            int(getattr(settings, "community_arxiv_metadata_repair_limit", 20) or 20),
+        )
+        if arxiv_metadata_repair_interval_seconds > 0:
+            async def _repair_arxiv_metadata_loop():
+                while True:
+                    try:
+                        await paper_service.repair_published_arxiv_metadata(
+                            limit=arxiv_metadata_repair_limit,
+                        )
+                    except Exception as exc:
+                        logger.warning("[Startup] Failed to repair published arXiv metadata: %s", exc)
+                    await asyncio.sleep(arxiv_metadata_repair_interval_seconds)
+
+            app.state.arxiv_metadata_repair_task = asyncio.create_task(_repair_arxiv_metadata_loop())
+            logger.info(
+                "[Startup] arXiv metadata repair loop started (interval=%ss, limit=%s)",
+                arxiv_metadata_repair_interval_seconds,
+                arxiv_metadata_repair_limit,
             )
 
     if runtime_role != "all":
@@ -490,6 +517,13 @@ async def shutdown_event():
         public_feed_rebuild_task.cancel()
         try:
             await public_feed_rebuild_task
+        except asyncio.CancelledError:
+            pass
+    arxiv_metadata_repair_task = getattr(app.state, 'arxiv_metadata_repair_task', None)
+    if arxiv_metadata_repair_task:
+        arxiv_metadata_repair_task.cancel()
+        try:
+            await arxiv_metadata_repair_task
         except asyncio.CancelledError:
             pass
     admin_job_poll_task = getattr(app.state, 'admin_job_poll_task', None)

@@ -1,5 +1,12 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-04-27 arXiv 元数据自动修复)
+
+- `backend/app/services/paper_service.py`: arXiv 元数据拉取现在会对临时网络请求失败执行 3 次短重试；已发布 arXiv 论文若因临时失败留下 `arXiv:<id>`、空作者、空分类、空摘要或空发布时间，可通过后台修复入口重新补齐元数据。
+- `backend/app/repositories/community_paper_repository.py`: 新增已发布 arXiv 论文元数据修复候选扫描，按公开发布状态与缺失/兜底字段筛选，供 worker 周期任务小批量处理。
+- `backend/app/main.py`: worker/all 运行模式新增 arXiv 元数据周期修复协程，启动后立即扫描并按配置间隔继续修复，不阻塞翻译或发布链路。
+- `backend/app/core/config.py`: 新增 `COMMUNITY_ARXIV_METADATA_REPAIR_INTERVAL_SECONDS` 与 `COMMUNITY_ARXIV_METADATA_REPAIR_LIMIT`，用于控制 worker 侧元数据修复频率和批量上限。
+
 ## Recent Responsibility Updates (2026-04-27 Legacy Core Full Rollback)
 
 - `backend/app/services/agents/llm_token_pool.py`: 系统 LLM pool 的请求级成员选择现在尊重 `reserve` 成员标记；健康主成员存在时不使用备用 key，只有主成员不可用/冷却后才进入备用成员。

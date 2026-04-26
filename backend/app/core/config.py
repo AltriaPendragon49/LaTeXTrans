@@ -249,6 +249,16 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_FEED_REBUILD_INTERVAL_SECONDS",
         description="Periodic worker-side interval for full Redis public feed index repair/rebuild runs; set to 0 to disable.",
     )
+    community_arxiv_metadata_repair_interval_seconds: float = Field(
+        default=1800.0,
+        validation_alias="COMMUNITY_ARXIV_METADATA_REPAIR_INTERVAL_SECONDS",
+        description="Periodic worker-side interval for repairing published arXiv papers whose metadata fell back after a transient fetch failure; set to 0 to disable.",
+    )
+    community_arxiv_metadata_repair_limit: int = Field(
+        default=20,
+        validation_alias="COMMUNITY_ARXIV_METADATA_REPAIR_LIMIT",
+        description="Maximum published arXiv papers to scan per metadata repair pass.",
+    )
     community_agent_product_enabled: bool = Field(
         default=False,
         validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",

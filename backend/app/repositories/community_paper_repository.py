@@ -478,6 +478,62 @@ class CommunityPaperRepository:
                 if normalized is not None
             ]
 
+    def list_published_arxiv_papers_needing_metadata_repair(self, *, limit: int) -> list[dict[str, Any]]:
+        normalized_limit = max(1, min(100, int(limit or 20)))
+        if get_database_dialect() == "mysql":
+            authors_empty_sql = "(authors is null or json_length(authors) = 0)"
+            categories_empty_sql = "(categories is null or json_length(categories) = 0)"
+        else:
+            authors_empty_sql = "trim(coalesce(authors, '')) in ('', '[]', 'null')"
+            categories_empty_sql = "trim(coalesce(categories, '')) in ('', '[]', 'null')"
+        params: list[Any] = [
+            "arxiv",
+            "public",
+            "published",
+            "arXiv:%",
+            "curated paper",
+            "uploaded paper",
+            normalized_limit,
+        ]
+        sql = (
+            "select "
+            + ", ".join(PAPER_COLUMNS)
+            + " from papers where source = "
+            + _placeholder(0)
+            + " and visibility = "
+            + _placeholder(1)
+            + " and status = "
+            + _placeholder(2)
+            + " and trim(coalesce(arxiv_id, '')) <> ''"
+            + " and ("
+            + "trim(coalesce(title, '')) = ''"
+            + " or title like "
+            + _placeholder(3)
+            + " or lower(trim(coalesce(title, ''))) in ("
+            + _placeholder(4)
+            + ", "
+            + _placeholder(5)
+            + ")"
+            + " or "
+            + authors_empty_sql
+            + " or "
+            + categories_empty_sql
+            + " or trim(coalesce(abstract_raw, '')) = ''"
+            + " or arxiv_published_at is null"
+            + ")"
+            + " order by coalesce(updated_at, created_at, '') asc"
+            + " limit "
+            + _placeholder(6)
+        )
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(sql, tuple(params))
+            return [
+                normalized
+                for normalized in (self._normalize_paper_row(row) for row in _fetchall(cursor))
+                if normalized is not None
+            ]
+
     def _public_paper_query_parts(self, *, query: Optional[str] = None) -> tuple[str, list[Any]]:
         filters = [
             "visibility = " + _placeholder(0),

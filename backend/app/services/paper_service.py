@@ -685,15 +685,28 @@ def _should_replace_translated_abstract(
 
 
 def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
-    response = requests.get(
-        "https://export.arxiv.org/api/query",
-        params={"id_list": arxiv_id},
-        headers={"User-Agent": "LaTexTrans/CommunityWeek1Fix"},
-        timeout=15,
-    )
-    response.raise_for_status()
+    response_text = ""
+    last_error: Optional[BaseException] = None
+    for attempt in range(3):
+        try:
+            response = requests.get(
+                "https://export.arxiv.org/api/query",
+                params={"id_list": arxiv_id},
+                headers={"User-Agent": "LaTexTrans/CommunityWeek1Fix"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            response_text = response.text
+            break
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt >= 2:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+    if not response_text and last_error:
+        raise last_error
 
-    root = ET.fromstring(response.text)
+    root = ET.fromstring(response_text)
     namespace = {"atom": "http://www.w3.org/2005/Atom"}
     entry = root.find("atom:entry", namespace)
     if entry is None:
@@ -1514,6 +1527,44 @@ async def _hydrate_arxiv_metadata_if_needed(paper: Dict[str, Any]) -> Dict[str, 
 
     payload["updated_at"] = _utc_now_iso()
     return await _update_paper(str(paper["id"]), payload)
+
+
+async def repair_published_arxiv_metadata(*, limit: int = 20) -> Dict[str, int]:
+    normalized_limit = max(1, min(100, int(limit or 20)))
+    repository = get_community_paper_repository()
+    try:
+        papers = await _run_local_repo(
+            lambda: repository.list_published_arxiv_papers_needing_metadata_repair(
+                limit=normalized_limit,
+            )
+        )
+    except DatabaseUnavailableError:
+        logger.warning("Local database unavailable while scanning arXiv metadata repair candidates")
+        return {"scanned": 0, "repaired": 0, "unrepaired": 0, "failed": 0}
+    except Exception as exc:
+        logger.warning("Failed to scan arXiv metadata repair candidates: %s", exc)
+        return {"scanned": 0, "repaired": 0, "unrepaired": 0, "failed": 0}
+
+    result = {"scanned": 0, "repaired": 0, "unrepaired": 0, "failed": 0}
+    for paper in papers:
+        result["scanned"] += 1
+        try:
+            repaired = await _hydrate_arxiv_metadata_if_needed(paper)
+            if _needs_arxiv_metadata_hydration(repaired):
+                result["unrepaired"] += 1
+            else:
+                result["repaired"] += 1
+        except Exception as exc:
+            result["failed"] += 1
+            logger.warning(
+                "Failed to repair arXiv metadata for paper %s (%s): %s",
+                paper.get("id"),
+                paper.get("arxiv_id"),
+                exc,
+            )
+    if result["scanned"]:
+        logger.info("arXiv metadata repair scan finished: %s", result)
+    return result
 
 
 def _merge_arxiv_metadata(
