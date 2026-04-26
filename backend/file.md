@@ -7,6 +7,8 @@
 - `backend/app/core/config.py`: 新增 `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 配置项，控制社区生产翻译的单任务 LLM 请求上限。
 - `backend/app/services/agents/langgraph_orchestrator.py`: 残留英文验证失败现在也进入最终兜底；只有真实中文候选才做结构化降级，否则标记 source passthrough 交给发布质量门禁裁决。
 - `backend/app/services/agents/base_tool_agent.py`: agent 写 JSON/YAML/TOML 前会自动重建父目录，避免运行期输出目录被清理后回写 map 文件直接失败。
+- `backend/app/services/paper_service.py`: 社区策展执行阶段默认超时放宽到 2 小时；源码归档改为安全 zip 写入，钳制 1980 年前文件时间戳。
+- `backend/app/services/task_artifact_storage.py`: 译文源码归档写入同样钳制 zip 条目时间戳，避免旧 mtime 文件导致归档失败。
 
 - `backend/app/services/community_translation_quality.py`: 社区译文发布质量门禁，检查固定伪中文降级短语、多段或过长 source fallback、大段英文保留和致命 provider 状态，并输出机器可读诊断。
 - `backend/app/services/paper_service.py`: canonical 社区译文资产同步前先运行质量门禁；失败时保留任务产物、写入诊断 JSON，不发布为健康社区资产。

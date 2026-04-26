@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,7 +108,7 @@ _delete_job_tasks: Dict[str, asyncio.Task] = {}
 ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
 _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
 ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
-ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS = 7200
 ADMIN_CURATION_TIMEOUT_TERMINAL_REASONS = {
     "admission_timeout": "task_admission_timeout",
     "execution_timeout": "task_execution_timeout",
@@ -2497,15 +2498,21 @@ def _archive_directory_for_storage(
 ) -> Path:
     archive_root = settings.storage_temp_dir / "staged_archives"
     archive_root.mkdir(parents=True, exist_ok=True)
-    archive_base = archive_root / f"{task_id or 'shared'}-{uuid4().hex[:8]}"
-    archive_path = Path(
-        shutil.make_archive(
-            str(archive_base),
-            "zip",
-            root_dir=source_path.parent,
-            base_dir=source_path.name,
-        )
-    )
+    archive_path = archive_root / f"{task_id or 'shared'}-{uuid4().hex[:8]}.zip"
+    base_dir = source_path.name
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file_path in sorted(source_path.rglob("*")):
+            if not file_path.is_file():
+                continue
+            archive_name = (Path(base_dir) / file_path.relative_to(source_path)).as_posix()
+            info = zipfile.ZipInfo(archive_name)
+            try:
+                date_time = time.localtime(file_path.stat().st_mtime)[:6]
+            except OSError:
+                date_time = (1980, 1, 1, 0, 0, 0)
+            info.date_time = max(date_time, (1980, 1, 1, 0, 0, 0))
+            with file_path.open("rb") as handle:
+                archive.writestr(info, handle.read(), compress_type=zipfile.ZIP_DEFLATED)
     return archive_path
 
 

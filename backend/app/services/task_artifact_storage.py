@@ -4,6 +4,7 @@ import json
 import logging
 import mimetypes
 import shutil
+import time
 import zipfile
 from pathlib import Path
 from typing import Any, Optional
@@ -227,7 +228,14 @@ def _create_translated_source_archive(output_dir: Path) -> Optional[str]:
                 continue
             if file_path.suffix.lower() not in TRANSLATED_SOURCE_SUFFIXES:
                 continue
-            archive.write(file_path, file_path.relative_to(output_dir))
+            info = zipfile.ZipInfo(file_path.relative_to(output_dir).as_posix())
+            try:
+                date_time = time.localtime(file_path.stat().st_mtime)[:6]
+            except OSError:
+                date_time = (1980, 1, 1, 0, 0, 0)
+            info.date_time = max(date_time, (1980, 1, 1, 0, 0, 0))
+            with file_path.open("rb") as handle:
+                archive.writestr(info, handle.read(), compress_type=zipfile.ZIP_DEFLATED)
             added = True
 
     if not added:
