@@ -259,6 +259,11 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_ARXIV_METADATA_REPAIR_LIMIT",
         description="Maximum published arXiv papers to scan per metadata repair pass.",
     )
+    pipeline_timeout_seconds: float = Field(
+        default=1800.0,
+        validation_alias="PIPELINE_TIMEOUT_SECONDS",
+        description="Global translation pipeline timeout in seconds; set to 0 to disable.",
+    )
     community_agent_product_enabled: bool = Field(
         default=False,
         validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",

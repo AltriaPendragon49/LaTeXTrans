@@ -38,6 +38,7 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from backend.app.core.timezone_utils import get_cst_now_iso
+from backend.app.core.config import get_settings
 from backend.app.models.config_models import (
     ORIGIN_CLI_PARITY_MODE,
     is_origin_cli_parity_config,
@@ -57,6 +58,16 @@ logger = logging.getLogger(__name__)
 # Gate 4b-2 常量：全局超时（秒），可被测试 monkeypatch
 # ---------------------------------------------------------------------------
 MAX_PIPELINE_TIMEOUT_SEC: float = 1800.0  # 30 分钟
+
+
+def _resolve_pipeline_timeout_seconds(config: Dict[str, Any]) -> float:
+    raw_value = (config or {}).get("pipeline_timeout_seconds")
+    if raw_value is None:
+        raw_value = getattr(get_settings(), "pipeline_timeout_seconds", MAX_PIPELINE_TIMEOUT_SEC)
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return float(MAX_PIPELINE_TIMEOUT_SEC)
 
 # Gate 4b-2 常量：validate_and_retry 最大轮次
 MAX_VALIDATE_RETRIES: int = 2
@@ -1950,15 +1961,19 @@ async def run_pipeline(
     graph = build_pipeline_graph(enable_diagnostics=enable_diagnostics, config=config)
 
     # Gate 4b-2：全局超时拦截
+    pipeline_timeout_sec = _resolve_pipeline_timeout_seconds(config)
     try:
-        final_state = await asyncio.wait_for(
-            graph.ainvoke(initial_state),
-            timeout=MAX_PIPELINE_TIMEOUT_SEC,
-        )
+        if pipeline_timeout_sec > 0:
+            final_state = await asyncio.wait_for(
+                graph.ainvoke(initial_state),
+                timeout=pipeline_timeout_sec,
+            )
+        else:
+            final_state = await graph.ainvoke(initial_state)
     except asyncio.TimeoutError:
         _write_audit_log(
             transed_project_dir, task_id, "pipeline_timeout",
-            {"timeout_sec": MAX_PIPELINE_TIMEOUT_SEC}
+            {"timeout_sec": pipeline_timeout_sec}
         )
         raise
 
