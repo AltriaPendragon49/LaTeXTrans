@@ -1,6 +1,6 @@
 ## ADDED Requirements
 ### Requirement: Origin CLI Parity Translation Kernel
-The backend translation core SHALL execute the legacy CLI translation-kernel behavior from `texts/origin` when `origin_cli_parity` mode is active.
+The backend translation core SHALL execute backend-owned code that reproduces the legacy CLI translation-kernel behavior from `texts/origin` when `origin_cli_parity` mode is active.
 
 #### Scenario: Parser artifacts match the legacy CLI
 - **WHEN** the backend parity kernel parses the same LaTeX source tree as `texts/origin`
@@ -9,8 +9,14 @@ The backend translation core SHALL execute the legacy CLI translation-kernel beh
 
 #### Scenario: Translator LLM calls match the legacy CLI contract
 - **WHEN** the backend parity kernel translates parsed artifacts
-- **THEN** it SHALL use the same legacy prompt initialization, prompt text, message payload shape, `temperature`, `max_new_tokens`, timeout behavior, retry behavior, source fallback behavior, and per-section translation semantics as `texts/origin`
+- **THEN** it SHALL use backend-owned migrated prompt code with the same legacy prompt initialization, prompt text, message payload shape, `temperature`, `max_new_tokens`, timeout behavior, retry behavior, source fallback behavior, and per-section translation semantics as `texts/origin`
 - **AND** backend-only hard-freeze, rescue, repair, no-op retry, target-language fallback, and payload-skip guard logic SHALL NOT change the accepted translation content in parity mode.
+
+#### Scenario: Production runtime is backend-owned
+- **WHEN** production backend code runs an `origin_cli_parity` task
+- **THEN** every required legacy behavior SHALL be provided from files under `backend/`
+- **AND** production code SHALL NOT dynamically import, extend `sys.path` to, or read runtime code from repo-root `texts/origin`, `src.formats`, or `src.agents`
+- **AND** `texts/origin` SHALL be used only by tests, parity comparison scripts, or explicit offline diagnostics as the canonical behavior baseline.
 
 #### Scenario: Validator retry loop matches the legacy CLI
 - **WHEN** validation reports errors after the first translation pass

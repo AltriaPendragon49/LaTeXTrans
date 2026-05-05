@@ -29,3 +29,4 @@
 - [x] 4.5 Add no-invocation tests or assertions for retained modern systems during parity tasks.
 - [x] 4.6 Run focused backend parity tests.
 - [x] 4.7 Run `openspec validate refactor-backend-origin-cli-parity --strict --no-interactive`.
+- [x] 4.8 Add a production runtime guard proving backend code does not import or load repo-root `texts/origin`.

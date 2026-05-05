@@ -7,7 +7,7 @@
 - `backend/app/services/paper_service.py`: 社区论文、admin 策展、content-pool 预热与 community-agent 触发的翻译桥接现在复用 translate 路由的 origin CLI parity 有效配置，确保持久化 advanced_config、config_hash 与最终内核执行保持一致。
 - `backend/app/services/agents/langgraph_orchestrator.py`: 增加 parity-only LangGraph 包装图，执行路径仅保留 parse、translate、validate_and_retry、generate、finalize，并在任务日志/审计日志记录 parity 模式与未调用的现代系统。
 - `backend/app/services/agents/parser_agent.py`、`backend/app/services/latex/parser.py`: 增加旧 CLI parser parity 分支，关闭后端长 section chunk 元数据、恢复旧环境抽取/need_trans 规则，并使用旧 CLI 串行环境翻译判定。
-- `backend/app/services/agents/translator_agent.py`、`backend/app/services/latex/prompts.py`: parity 模式使用 `texts/origin` 旧提示词快照、旧请求 payload/retry/source fallback 语义，并恢复旧 section/error 并发上限。
+- `backend/app/services/agents/translator_agent.py`、`backend/app/services/latex/prompts.py`、`backend/app/services/latex/origin_cli_prompts.py`: parity 模式使用迁入 backend 的 `texts/origin` 旧提示词快照、旧请求 payload/retry/source fallback 语义，并恢复旧 section/error 并发上限；生产容器不再运行时依赖 repo 根目录的 `texts/origin` 文件。
 - `backend/app/services/agents/validator_agent.py`: parity 模式仅执行旧 CLI command、placeholder、bracket 校验与旧 retry 目标选择，不触发后端新增结构/数学/残留英文/全局 placeholder 校验。
 - `backend/app/services/agents/generator_agent.py`、`backend/app/services/latex/reconstruct.py`、`backend/app/services/latex/compiler.py`: parity 模式跳过格式化、结构 guard 与智能编译 fallback，按旧 CLI 直接重构 LaTeX，并以 pdflatex 后 xelatex 的旧顺序编译。
 

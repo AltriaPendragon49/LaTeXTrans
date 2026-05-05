@@ -329,6 +329,68 @@ def test_backend_origin_cli_parity_translator_payloads_match_legacy_cli():
     assert backend_session.calls == legacy_session.calls
 
 
+def test_backend_origin_cli_parity_prompts_are_backend_owned_and_match_legacy():
+    import inspect
+
+    from backend.app.services.latex import origin_cli_prompts as owned_origin_prompts
+    from backend.app.services.latex import prompts as backend_prompts
+
+    backend_snapshot = backend_prompts.create_origin_cli_parity_prompts("en", "zh")
+    with legacy_origin_imports():
+        legacy_prompts = importlib.import_module("src.formats.latex.prompts")
+        legacy_prompts.init_prompts("en", "zh")
+        legacy_snapshot = {
+            key: getattr(legacy_prompts, key)
+            for key in backend_prompts._PROMPT_KEYS
+        }
+
+    assert backend_snapshot == legacy_snapshot
+    assert "backend/app/services/latex/origin_cli_prompts.py" in Path(
+        owned_origin_prompts.__file__
+    ).as_posix()
+    assert "texts/origin" not in inspect.getsource(
+        backend_prompts.create_origin_cli_parity_prompts
+    )
+
+
+def test_backend_origin_cli_parity_production_code_has_no_legacy_origin_runtime_dependency():
+    production_roots = [
+        REPO_ROOT / "backend" / "app",
+        REPO_ROOT / "backend" / "scripts",
+        REPO_ROOT / "backend" / "migrations",
+        REPO_ROOT / "backend" / "migrations_mysql",
+    ]
+    production_files = [REPO_ROOT / "backend" / "__init__.py"]
+    forbidden_markers = (
+        "texts/origin",
+        "texts\\origin",
+        "origin/src",
+        "origin\\src",
+        "src.formats",
+        "src.agents",
+        "importlib.util",
+        "spec_from_file_location",
+        "_load_origin_cli",
+        "LEGACY_SRC_ROOT",
+        "legacy_origin_imports",
+    )
+    offenders = []
+
+    paths = []
+    for root in production_roots:
+        if root.exists():
+            paths.extend(root.rglob("*.py"))
+    paths.extend(path for path in production_files if path.exists())
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for marker in forbidden_markers:
+            if marker in text:
+                offenders.append(f"{path.relative_to(REPO_ROOT)} contains {marker!r}")
+
+    assert offenders == []
+
+
 def test_backend_origin_cli_parity_parser_env_judgment_uses_origin_prompt_snapshot(
     monkeypatch,
     tmp_path,
