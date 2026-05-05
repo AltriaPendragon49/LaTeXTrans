@@ -264,6 +264,21 @@ class Settings(BaseSettings):
         validation_alias="PIPELINE_TIMEOUT_SECONDS",
         description="Global translation pipeline timeout in seconds; set to 0 to disable.",
     )
+    admin_curation_task_wait_timeout_seconds: int = Field(
+        default=1800,
+        validation_alias="ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS",
+        description="Legacy admin curation task wait timeout in seconds; set to 0 to disable stage wait timeouts.",
+    )
+    admin_curation_admission_timeout_seconds: int = Field(
+        default=1800,
+        validation_alias="ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS",
+        description="Admin curation queued/admission-stage wait timeout in seconds; set to 0 to disable.",
+    )
+    admin_curation_execution_timeout_seconds: int = Field(
+        default=7200,
+        validation_alias="ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS",
+        description="Admin curation processing/execution-stage wait timeout in seconds; set to 0 to disable.",
+    )
     community_agent_product_enabled: bool = Field(
         default=False,
         validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",

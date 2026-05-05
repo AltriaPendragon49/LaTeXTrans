@@ -1,5 +1,10 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-06 CLI parity timeout)
+
+- `backend/app/core/config.py`: 新增 admin curation 等待超时环境配置，支持将 admission/execution 等待超时设为 `0` 以关闭外层等待限制。
+- `backend/app/services/paper_service.py`: admin curation 等待任务终态逻辑改为读取可配置超时，并在超时值为 `0` 时持续等待，避免与 CLI parity 翻译路径产生额外半小时终止差异。
+
 ## Recent Responsibility Updates (2026-05-05 Origin CLI Parity Kernel)
 
 - `backend/app/models/config_models.py`: 新增 `origin_cli_parity` 翻译内核模式常量、现代系统禁用清单与统一 agent 配置归一化函数，确保当前后端翻译任务默认进入旧 CLI 等价内核。

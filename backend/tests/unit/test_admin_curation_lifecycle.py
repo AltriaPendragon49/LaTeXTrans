@@ -88,6 +88,9 @@ def test_wait_for_task_terminal_state_uses_30_minute_timeout_budget(monkeypatch)
     async def _fake_sleep(_seconds: int):
         sleep_calls.append(1)
 
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS", 1800)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS", 1800, raising=False)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS", 7200, raising=False)
     monkeypatch.setattr(paper_service.task_manager, "get_task", lambda _task_id: None)
     monkeypatch.setattr(paper_service.asyncio, "sleep", _fake_sleep)
 
@@ -99,6 +102,33 @@ def test_wait_for_task_terminal_state_uses_30_minute_timeout_budget(monkeypatch)
         raise AssertionError("expected timeout after bounded wait budget")
 
     assert len(sleep_calls) == 1800
+
+
+def test_wait_for_task_terminal_state_can_disable_wait_timeout(monkeypatch):
+    sleep_calls: list[int] = []
+
+    class _StopWait(Exception):
+        pass
+
+    async def _fake_sleep(_seconds: int):
+        sleep_calls.append(1)
+        if len(sleep_calls) >= 5:
+            raise _StopWait()
+
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS", 0)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS", 0, raising=False)
+    monkeypatch.setattr(paper_service, "ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS", 0, raising=False)
+    monkeypatch.setattr(paper_service.task_manager, "get_task", lambda _task_id: None)
+    monkeypatch.setattr(paper_service.asyncio, "sleep", _fake_sleep)
+
+    try:
+        asyncio.run(paper_service._wait_for_task_terminal_state("task-no-timeout"))
+    except _StopWait:
+        pass
+    else:
+        raise AssertionError("expected synthetic stop after timeout was bypassed")
+
+    assert len(sleep_calls) == 5
 
 
 def test_wait_for_task_terminal_state_reports_admission_timeout_before_processing(monkeypatch):

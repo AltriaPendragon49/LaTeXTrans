@@ -106,10 +106,11 @@ _curation_semaphore: Optional[asyncio.Semaphore] = None
 _delete_semaphore: Optional[asyncio.Semaphore] = None
 _curation_job_tasks: Dict[str, asyncio.Task] = {}
 _delete_job_tasks: Dict[str, asyncio.Task] = {}
-ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
 _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = 1800
-ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
-ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS = 7200
+_DEFAULT_ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS = 7200
+ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS = settings.admin_curation_task_wait_timeout_seconds
+ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS = settings.admin_curation_admission_timeout_seconds
+ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS = settings.admin_curation_execution_timeout_seconds
 ADMIN_CURATION_TIMEOUT_TERMINAL_REASONS = {
     "admission_timeout": "task_admission_timeout",
     "execution_timeout": "task_execution_timeout",
@@ -169,12 +170,15 @@ class AdminCurationTaskWaitTimeout(TimeoutError):
 
 
 def _resolve_admin_curation_timeout_seconds(stage: str) -> int:
+    stage_default = (
+        _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+        if stage == "admission"
+        else _DEFAULT_ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS
+    )
     legacy_timeout = ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
     try:
         resolved_legacy = int(legacy_timeout)
     except (TypeError, ValueError):
-        resolved_legacy = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
-    if resolved_legacy <= 0:
         resolved_legacy = _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
 
     stage_value = (
@@ -186,11 +190,9 @@ def _resolve_admin_curation_timeout_seconds(stage: str) -> int:
         resolved_stage = int(stage_value)
     except (TypeError, ValueError):
         resolved_stage = resolved_legacy
-    if resolved_stage <= 0:
-        resolved_stage = resolved_legacy
 
     if (
-        resolved_stage == _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
+        resolved_stage == stage_default
         and resolved_legacy != _DEFAULT_ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS
     ):
         return resolved_legacy
@@ -6552,7 +6554,7 @@ async def _wait_for_task_terminal_state(task_id: str) -> Dict[str, Any]:
         stage_timeout_seconds = (
             execution_timeout_seconds if observed_execution_start else admission_timeout_seconds
         )
-        if current_stage_elapsed_seconds >= stage_timeout_seconds:
+        if stage_timeout_seconds > 0 and current_stage_elapsed_seconds >= stage_timeout_seconds:
             raise AdminCurationTaskWaitTimeout(
                 task_id,
                 "execution_timeout" if observed_execution_start else "admission_timeout",
