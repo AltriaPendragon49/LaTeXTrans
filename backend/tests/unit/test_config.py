@@ -22,7 +22,7 @@ def test_cors_origins_accepts_comma_separated_string() -> None:
     ]
 
 
-def test_advanced_config_defaults_to_deepseek_chat() -> None:
+def test_advanced_config_defaults_to_gemini_flash() -> None:
     from backend.app.models.config_models import AdvancedConfig
 
-    assert AdvancedConfig().translation_model == "deepseek-chat"
+    assert AdvancedConfig().translation_model == "gemini-2.5-flash"

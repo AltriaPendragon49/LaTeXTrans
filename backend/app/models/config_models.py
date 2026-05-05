@@ -159,7 +159,7 @@ class AdvancedConfig(BaseModel):
         description="Generate terminology reference table (CSV)"
     )
     translation_model: str = Field(
-        default="deepseek-chat",
+        default="gemini-2.5-flash",
         description="Translation LLM model name"
     )
     translation_core_mode: str = Field(

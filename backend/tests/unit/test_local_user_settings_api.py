@@ -95,7 +95,7 @@ def test_settings_routes_use_central_authorization(monkeypatch: pytest.MonkeyPat
     assert authorize_calls == [("settings", "read"), ("settings", "update")]
 
 
-def test_settings_defaults_include_deepseek_chat_model(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_settings_defaults_include_gemini_flash_model(monkeypatch: pytest.MonkeyPatch) -> None:
     from backend.app.api.routes import settings as settings_route
 
     fake_repo = _FakeSettingsRepository()
@@ -110,4 +110,4 @@ def test_settings_defaults_include_deepseek_chat_model(monkeypatch: pytest.Monke
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json()["translation_model"] == "deepseek-chat"
+    assert response.json()["translation_model"] == "gemini-2.5-flash"
