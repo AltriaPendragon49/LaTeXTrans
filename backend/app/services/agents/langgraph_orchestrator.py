@@ -38,6 +38,11 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from backend.app.core.timezone_utils import get_cst_now_iso
+from backend.app.models.config_models import (
+    ORIGIN_CLI_PARITY_MODE,
+    is_origin_cli_parity_config,
+    normalize_origin_cli_parity_agent_config,
+)
 from .generator_agent import GeneratorAgent
 from .parser_agent import ParserAgent
 from .pipeline_schema import FallbackReport
@@ -1066,12 +1071,38 @@ async def node_finalize(state: PipelineState) -> PipelineState:
                              {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000})
             return {**state, "final_result": final_result}
 
-        from backend.app.services.latex.compiler import verify_pdf_ready
-
         compile_status = generation_result.get("status", "completed")
         compile_warnings = _merge_warnings(validation_warning, generation_result.get("warnings"))
         if compile_status == "completed" and compile_warnings:
             compile_status = "completed_with_warnings"
+        if is_origin_cli_parity_config(config):
+            if compile_status == "completed_with_warnings":
+                _write_task_log(
+                    transed_project_dir,
+                    "compilation_completed_with_warnings",
+                    {"pdf_path": new_PDF_path, "warnings": compile_warnings},
+                )
+                _update_progress(state, 100, "Translation completed with compilation warnings")
+            else:
+                _write_task_log(
+                    transed_project_dir,
+                    "compilation_completed",
+                    {"pdf_path": new_PDF_path},
+                )
+                _update_progress(state, 100, "Translation completed successfully")
+
+            final_result = {
+                "status": compile_status,
+                "pdf_path": new_PDF_path,
+                "error_summary": None,
+                "warnings": compile_warnings,
+            }
+            _write_audit_log(transed_project_dir, task_id, "node_exit:finalize",
+                             {"status": "ok", "elapsed_ms": (time.monotonic() - _t0) * 1000})
+            return {**state, "final_result": final_result}
+
+        from backend.app.services.latex.compiler import verify_pdf_ready
+
         if verify_pdf_ready(new_PDF_path):
             logger.info("PDF verified ready: %s", new_PDF_path)
             if compile_status == "completed_with_warnings":
@@ -1747,7 +1778,7 @@ async def node_compilation_diagnostic(state: PipelineState) -> PipelineState:
 # ---------------------------------------------------------------------------
 
 
-def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
+def build_pipeline_graph(enable_diagnostics: bool = True, config: Optional[Dict[str, Any]] = None) -> Any:
     """组装并编译 PipelineState StateGraph，返回可调用的已编译图。
 
     Args:
@@ -1760,9 +1791,19 @@ def build_pipeline_graph(enable_diagnostics: bool = True) -> Any:
     graph.add_node("translate", node_translate)
     graph.add_node("validate_and_retry", node_validate_and_retry)
     graph.add_node("generate", node_generate)
+    graph.add_node("finalize", node_finalize)
+
+    if is_origin_cli_parity_config(config):
+        graph.set_entry_point("parse")
+        graph.add_edge("parse", "translate")
+        graph.add_edge("translate", "validate_and_retry")
+        graph.add_edge("validate_and_retry", "generate")
+        graph.add_edge("generate", "finalize")
+        graph.add_edge("finalize", END)
+        return graph.compile()
+
     graph.add_node("post_compile_target_language_fallback", node_post_compile_target_language_fallback)
     graph.add_node("abort_structure_invalid", node_abort_structure_invalid)
-    graph.add_node("finalize", node_finalize)
     # eliminate-silent-fallback: repair loop node
     graph.add_node("repair_translation", node_repair_translation)
     graph.add_node("ultimate_downgrade", node_ultimate_downgrade)
@@ -1832,6 +1873,7 @@ async def run_pipeline(
     Returns:
         结果字典 {status, pdf_path, error_summary, warnings, ...（视情况含 failure_* 字段）}
     """
+    config = normalize_origin_cli_parity_agent_config(config or {})
     base_name = os.path.basename(project_dir)
     target_language = config.get("target_language", "zh")
     transed_project_dir = os.path.join(output_dir, f"{target_language}_{base_name}")
@@ -1859,6 +1901,18 @@ async def run_pipeline(
 
     # Gate 4b-1：写入 pipeline_start 审计条目
     _write_audit_log(transed_project_dir, task_id, "pipeline_start", {"project": base_name, "mode": config.get("mode", 0)})
+    if config.get("translation_core_mode") == ORIGIN_CLI_PARITY_MODE:
+        _write_audit_log(
+            transed_project_dir,
+            task_id,
+            "origin_cli_parity_kernel_selected",
+            {
+                "modern_systems_not_invoked": config.get(
+                    "origin_cli_parity_modern_systems_not_invoked", []
+                ),
+                "single_kernel_lineage": True,
+            },
+        )
 
     initial_state: PipelineState = {
         "config": config,
@@ -1893,7 +1947,7 @@ async def run_pipeline(
 
     # Gate 4b-3：按 feature flag 决定是否挂入诊断节点（默认开启）
     enable_diagnostics = bool(config.get("use_compilation_diagnostics", True))
-    graph = build_pipeline_graph(enable_diagnostics=enable_diagnostics)
+    graph = build_pipeline_graph(enable_diagnostics=enable_diagnostics, config=config)
 
     # Gate 4b-2：全局超时拦截
     try:

@@ -4175,6 +4175,9 @@ async def _start_arxiv_paper_translation(
     arxiv_id = paper.get("arxiv_id")
     if not arxiv_id:
         raise HTTPException(status_code=422, detail="Paper source is unavailable for translation")
+    effective_advanced_config = translate_route.normalize_origin_cli_parity_advanced_config(
+        request.advanced_config
+    )
 
     task_id = task_manager.create_task(
         source_type="arxiv",
@@ -4188,21 +4191,21 @@ async def _start_arxiv_paper_translation(
         arxiv_id=arxiv_id,
         source_language=request.source_language,
         target_language=request.target_language,
-        translation_mode=request.advanced_config.translation_mode,
-        compile_strategy=request.advanced_config.compile_strategy,
-        formatting=request.advanced_config.formatting,
+        translation_mode=effective_advanced_config.translation_mode,
+        compile_strategy=effective_advanced_config.compile_strategy,
+        formatting=effective_advanced_config.formatting,
     )
     task_manager.update_task(
         task_id=task_id,
         source_language=request.source_language,
         target_language=request.target_language,
-        advanced_config=request.advanced_config.model_dump(),
+        advanced_config=effective_advanced_config.model_dump(),
         config_hash=config_hash,
         user_id=context["user_id"],
     )
     task_manager.persist_task_if_needed(task_id)
 
-    llm_config = await translate_route.build_llm_config_async(request.advanced_config, context["user_id"])
+    llm_config = await translate_route.build_llm_config_async(effective_advanced_config, context["user_id"])
     pool_routing_key = str(llm_config.get("pool_routing_key") or "").strip()
     if pool_routing_key:
         token_hash = hashlib.md5(pool_routing_key.encode()).hexdigest()
@@ -4215,7 +4218,7 @@ async def _start_arxiv_paper_translation(
             user_id=context["user_id"],
             source_language=request.source_language,
             target_language=request.target_language,
-            advanced_config=request.advanced_config,
+            advanced_config=effective_advanced_config,
             tq=get_task_queue(),
             token_hash=token_hash,
             llm_capacity=translate_route.resolve_llm_task_capacity(llm_config),
@@ -7305,6 +7308,10 @@ async def start_paper_translation(
     else:
         context = await resolve_submitter_context(current_user)
     paper = await _ensure_public_paper(paper_id)
+    effective_request = request.model_copy(deep=True) if hasattr(request, "model_copy") else request
+    effective_request.advanced_config = translate_route.normalize_origin_cli_parity_advanced_config(
+        request.advanced_config
+    )
 
     active_task_id = paper.get("community_selected_task_id")
     if active_task_id and paper.get("trans_status") in {"queued", "processing"}:
@@ -7331,8 +7338,8 @@ async def start_paper_translation(
                 source_type=paper.get("source") or "upload",
                 arxiv_id=paper.get("arxiv_id"),
                 user_id=context["user_id"],
-                source_language=request.source_language,
-                target_language=request.target_language,
+                source_language=effective_request.source_language,
+                target_language=effective_request.target_language,
                 persist_to_db=False,
             )
             task_manager.update_task(
@@ -7340,21 +7347,22 @@ async def start_paper_translation(
                 source_path=str(resolved_source_path).replace("\\", "/"),
                 source_available=True,
                 arxiv_id=paper.get("arxiv_id"),
-                source_language=request.source_language,
-                target_language=request.target_language,
-                advanced_config=request.advanced_config.model_dump(),
+                source_language=effective_request.source_language,
+                target_language=effective_request.target_language,
+                advanced_config=effective_request.advanced_config.model_dump(),
                 user_id=context["user_id"],
             )
             task_manager.persist_task_if_needed(task_id)
             translation_result = await _enqueue_existing_task_translation(
                 task_id=task_id,
-                request=request,
+                request=effective_request,
                 credentials=credentials,
+                current_user={"id": context["user_id"]} if context.get("user_id") else current_user,
             )
         elif paper.get("source") == "arxiv" and paper.get("arxiv_id"):
             translation_result = await _start_arxiv_paper_translation(
                 paper=paper,
-                request=request,
+                request=effective_request,
                 context=context,
             )
             task_id = translation_result["task_id"]
@@ -7363,7 +7371,7 @@ async def start_paper_translation(
     elif paper.get("source") == "arxiv" and paper.get("arxiv_id"):
         translation_result = await _start_arxiv_paper_translation(
             paper=paper,
-            request=request,
+            request=effective_request,
             context=context,
         )
         task_id = translation_result["task_id"]

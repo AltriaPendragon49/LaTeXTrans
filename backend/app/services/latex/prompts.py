@@ -1,8 +1,11 @@
 import argparse
+import importlib.util
 import toml
 import os
 import sys
 import threading
+import warnings
+from pathlib import Path
 
 # base_dir = os.getcwd()
 # sys.path.append(base_dir)
@@ -547,6 +550,57 @@ def init_prompts(source_lang: str, target_lang: str):
 # create_prompts() holds this lock while calling init_prompts() and reading
 # back the results, preventing another concurrent call from overwriting them.
 _prompts_lock = threading.Lock()
+_origin_cli_prompts_module = None
+
+_PROMPT_KEYS = (
+    "caption_system_prompt",
+    "section_system_prompt",
+    "env_system_prompt",
+    "caption_system_prompt_with_dict",
+    "section_system_prompt_with_dict",
+    "env_system_prompt_with_dict",
+    "set_need_trans_for_envs_system_prompt",
+    "retrans_error_parts_system_prompt",
+    "extract_terminology_system_prompt",
+    "get_summary_system_prompt",
+    "refine_summary_system_prompt",
+    "section_system_prompt_with_sum",
+    "caption_system_prompt_with_sum",
+    "env_system_prompt_with_sum",
+    "section_system_prompt_with_terms_sum",
+    "section_system_prompt_with_prev",
+    "section_system_prompt_with_terms_prev",
+)
+
+
+def _snapshot_prompt_module(module) -> dict:
+    return {key: getattr(module, key) for key in _PROMPT_KEYS}
+
+
+def _load_origin_cli_prompts_module():
+    global _origin_cli_prompts_module
+    if _origin_cli_prompts_module is not None:
+        return _origin_cli_prompts_module
+
+    repo_root = Path(__file__).resolve().parents[4]
+    prompt_path = repo_root / "texts" / "origin" / "src" / "formats" / "latex" / "prompts.py"
+    spec = importlib.util.spec_from_file_location("_latextrans_origin_cli_prompts", prompt_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load origin CLI prompts from {prompt_path}")
+    module = importlib.util.module_from_spec(spec)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=SyntaxWarning)
+        spec.loader.exec_module(module)
+    _origin_cli_prompts_module = module
+    return module
+
+
+def create_origin_cli_parity_prompts(source_lang: str, target_lang: str) -> dict:
+    """Snapshot prompt globals from the legacy CLI prompt module."""
+    with _prompts_lock:
+        module = _load_origin_cli_prompts_module()
+        module.init_prompts(source_lang, target_lang)
+        return _snapshot_prompt_module(module)
 
 
 def create_prompts(source_lang: str, target_lang: str) -> dict:

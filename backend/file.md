@@ -1,5 +1,16 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-05 Origin CLI Parity Kernel)
+
+- `backend/app/models/config_models.py`: 新增 `origin_cli_parity` 翻译内核模式常量、现代系统禁用清单与统一 agent 配置归一化函数，确保当前后端翻译任务默认进入旧 CLI 等价内核。
+- `backend/app/api/routes/translate.py`: 共享翻译任务入口在创建 `CoordinatorAgent` 前统一应用 parity 配置，普通上传、arXiv、批量、社区与管理触发路径通过同一执行配置进入后端内核。
+- `backend/app/services/paper_service.py`: 社区论文、admin 策展、content-pool 预热与 community-agent 触发的翻译桥接现在复用 translate 路由的 origin CLI parity 有效配置，确保持久化 advanced_config、config_hash 与最终内核执行保持一致。
+- `backend/app/services/agents/langgraph_orchestrator.py`: 增加 parity-only LangGraph 包装图，执行路径仅保留 parse、translate、validate_and_retry、generate、finalize，并在任务日志/审计日志记录 parity 模式与未调用的现代系统。
+- `backend/app/services/agents/parser_agent.py`、`backend/app/services/latex/parser.py`: 增加旧 CLI parser parity 分支，关闭后端长 section chunk 元数据、恢复旧环境抽取/need_trans 规则，并使用旧 CLI 串行环境翻译判定。
+- `backend/app/services/agents/translator_agent.py`、`backend/app/services/latex/prompts.py`: parity 模式使用 `texts/origin` 旧提示词快照、旧请求 payload/retry/source fallback 语义，并恢复旧 section/error 并发上限。
+- `backend/app/services/agents/validator_agent.py`: parity 模式仅执行旧 CLI command、placeholder、bracket 校验与旧 retry 目标选择，不触发后端新增结构/数学/残留英文/全局 placeholder 校验。
+- `backend/app/services/agents/generator_agent.py`、`backend/app/services/latex/reconstruct.py`、`backend/app/services/latex/compiler.py`: parity 模式跳过格式化、结构 guard 与智能编译 fallback，按旧 CLI 直接重构 LaTeX，并以 pdflatex 后 xelatex 的旧顺序编译。
+
 ## Recent Responsibility Updates (2026-04-27 worker 运行时任务取消)
 
 - `backend/app/services/task_runtime_client.py`: 新增 web 进程到 worker 进程的内部签名取消通道，用于前端删除任务或管理员删除策展任务时，同步终止 worker 内存队列中正在运行/等待运行的翻译任务。

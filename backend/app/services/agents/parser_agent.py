@@ -25,6 +25,7 @@ from backend.app.services.latex.utils import (
     preprocess_risky_tokens,
 )
 from backend.app.core.config import get_settings
+from backend.app.models.config_models import is_origin_cli_parity_config
 from .llm_runtime import build_llm_client_timeout, resolve_llm_max_concurrent_requests, resolve_llm_timeout
 from .llm_token_pool import post_chat_completion_with_pool
 from pathlib import Path
@@ -95,6 +96,7 @@ class ParserAgent(BaseToolAgent):
             config,
             default=settings.llm_max_concurrent_requests,
         )
+        self.origin_cli_parity = is_origin_cli_parity_config(config)
         self.enable_env_llm_judgment = self._coerce_bool(
             config.get("enable_parser_env_llm_judgment", True),
             default=True,
@@ -142,7 +144,12 @@ class ParserAgent(BaseToolAgent):
 
     async def execute(self) -> Any:
         """Execute parsing task (async version with parallel LLM calls)"""
-        self.prompts = pm.create_prompts(
+        prompt_factory = (
+            pm.create_origin_cli_parity_prompts
+            if self.origin_cli_parity
+            else pm.create_prompts
+        )
+        self.prompts = prompt_factory(
             self.config.get("source_language", "en"),
             self.config.get("target_language", "ch")
         )
@@ -150,8 +157,20 @@ class ParserAgent(BaseToolAgent):
         self.log(f"Starting parsing for project: {os.path.basename(self.project_dir)}")
         self.update_progress(0, f"Parsing {os.path.basename(self.project_dir)}")
 
-        latex_parser = LatexParser(self.project_dir, self.output_dir)
+        latex_parser = LatexParser(
+            self.project_dir,
+            self.output_dir,
+            origin_cli_parity=self.origin_cli_parity,
+        )
         await asyncio.to_thread(latex_parser.parse, self.on_progress)
+
+        if self.origin_cli_parity:
+            await asyncio.to_thread(self._judge_envs_origin_cli_parity, latex_parser)
+            self._save_parser_outputs(latex_parser)
+            self.update_progress(100, "Parsing complete")
+            self.log(f"Successfully parsed {os.path.basename(self.project_dir)}")
+            self.log(f"Parsed files saved in {self.output_dir}")
+            return
 
         env_need_trans = []
         skipped_by_type = 0
@@ -201,15 +220,44 @@ class ParserAgent(BaseToolAgent):
 
         self.update_progress(90, "Saving parsed data to JSON files")
         
+        self._save_parser_outputs(latex_parser)
+
+        self.update_progress(100, "Parsing complete")
+        self.log(f"Successfully parsed {os.path.basename(self.project_dir)}")
+        self.log(f"Parsed files saved in {self.output_dir}")
+
+    def _save_parser_outputs(self, latex_parser: LatexParser) -> None:
         self.save_file(Path(self.output_dir, "inputs_map.json"), "json", latex_parser.inputs_json)
         self.save_file(Path(self.output_dir, "envs_map.json"), "json", latex_parser.envs_json)
         self.save_file(Path(self.output_dir, "captions_map.json"), "json", latex_parser.captions_json)
         self.save_file(Path(self.output_dir, "newcommands_map.json"), "json", latex_parser.newcommands_json)
         self.save_file(Path(self.output_dir, "sections_map.json"), "json", latex_parser.sections_json)
 
-        self.update_progress(100, "Parsing complete")
-        self.log(f"Successfully parsed {os.path.basename(self.project_dir)}")
-        self.log(f"Parsed files saved in {self.output_dir}")
+    def _judge_envs_origin_cli_parity(self, latex_parser: LatexParser) -> None:
+        env_need_trans = []
+        if latex_parser.envs_json:
+            for env in latex_parser.envs_json:
+                if env["need_trans"] and env["env_name"] not in ['abstract', 'itemize']:
+                    env_need_trans.append(env)
+
+        if not env_need_trans:
+            return
+
+        self.log(f"Setting need_trans for {len(env_need_trans)} environments (legacy serial)")
+        placeholder_to_index = {
+            env["placeholder"]: i for i, env in enumerate(latex_parser.envs_json)
+        }
+
+        total_envs = len(env_need_trans)
+        for idx, env in enumerate(env_need_trans, start=1):
+            if idx == 1 or idx == total_envs or idx % 10 == 0:
+                self.log(f"Setting need_trans: {idx}/{total_envs}")
+            i = placeholder_to_index.get(env["placeholder"])
+            if i is not None:
+                latex_parser.envs_json[i]["need_trans"] = self._request_llm_for_judge_origin_cli_parity(
+                    self.prompts["set_need_trans_for_envs_system_prompt"],
+                    env["content"],
+                )
 
     def _request_llm_for_judge(self, system_prompt: str, text: str) -> bool:
         """
@@ -267,6 +315,43 @@ class ParserAgent(BaseToolAgent):
                 else:
                     logger.error(f"Failed to determine translation need, defaulting to True")
                     return True
+
+    def _request_llm_for_judge_origin_cli_parity(self, system_prompt: str, text: str) -> bool:
+        payload = {
+            "model": f"{self.model}",
+            "messages": [
+                {"role": "system", "content": f"{system_prompt}"},
+                {"role": "user", "content": f"{text}"},
+            ],
+            "temperature": 0,
+            "max_tokens": 50,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        for attempt in range(1, 4):
+            try:
+                response = requests.post(self.base_url, json=payload, headers=headers, timeout=100)
+                response.raise_for_status()
+                result = response.json()
+                output = result["choices"][0]["message"]["content"].strip()
+
+                if output.lower() == "true":
+                    return True
+                if output.lower() == "false":
+                    return False
+                return True
+            except requests.exceptions.RequestException as e:
+                if attempt < 3:
+                    logger.warning(f"LLM request failed (attempt {attempt}): {e}")
+                    time.sleep(3)
+                else:
+                    logger.error("Failed to determine translation need, defaulting to True")
+                    return True
+        return True
 
     async def _request_llm_for_judge_async(
         self, 

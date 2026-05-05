@@ -21,6 +21,16 @@ from backend.app.services.translation.ultimate_downgrade import (
 logger = logging.getLogger(__name__)
 
 
+def _add_ctex_package_origin_cli_parity(latex_code: str) -> str:
+    if "\\usepackage[UTF8]{ctex}" in latex_code:
+        return latex_code
+    match = get_command_pattern(r'documentclass').search(latex_code)
+    if not match:
+        return latex_code
+    position = match.end()
+    return latex_code[:position] + "\n\\usepackage[UTF8]{ctex}\n" + latex_code[position:]
+
+
 class LatexConstructor:
     SECTION_FALLBACK_STATUSES = {
         "final_target_language_fallback_applied",
@@ -34,7 +44,8 @@ class LatexConstructor:
                  inputs: List[Dict[str, Any]],
                  newcommands: List[Dict[str, Any]],
                  output_latex_dir: str,
-                 target_language: str = "en"
+                 target_language: str = "en",
+                 origin_cli_parity: bool = False
                  ):
         self.sections = sections
         self.captions = captions
@@ -43,6 +54,7 @@ class LatexConstructor:
         self.newcommands = newcommands
         self.output_latex_dir = output_latex_dir
         self.target_language = target_language
+        self.origin_cli_parity = origin_cli_parity
 
     def construct(self, on_progress: Optional[Callable[[str, int, str], None]] = None):
         """
@@ -57,6 +69,16 @@ class LatexConstructor:
             on_progress("reconstructing", 10, "Merging sections...")
         
         tex = self._merge_sections()
+
+        if self.origin_cli_parity:
+            tex = self._revert_envs(tex)
+            tex = self._revert_captions(tex)
+            tex = self._revert_newcommands(tex)
+            self._revert_inputs(tex)
+            if on_progress:
+                on_progress("reconstructing", 100, "Reconstruction complete")
+            logger.info("LaTeX reconstruction complete")
+            return
         
         if on_progress:
             on_progress("reconstructing", 30, "Restoring mangled placeholders...")
@@ -138,6 +160,9 @@ class LatexConstructor:
         logger.debug(f"Merging {len(self.sections)} sections")
         tex = ""
         for section in self.sections:
+            if self.origin_cli_parity:
+                tex += section["trans_content"] + "\n"
+                continue
             original = section.get("content", "")
             translated = section.get("trans_content") or original
             translated = self._sanitize_section_translation(section, translated)
@@ -185,6 +210,9 @@ class LatexConstructor:
         logger.debug(f"Reverting {len(self.envs)} environments")
         for env in self.envs:
             placeholder = env["placeholder"]
+            if self.origin_cli_parity:
+                tex = tex.replace(placeholder, env["trans_content"])
+                continue
             original = env.get("content", "")
             translated = env.get("trans_content") or original
             content = restore_display_math_delimiters(original, translated)
@@ -208,6 +236,9 @@ class LatexConstructor:
         logger.debug(f"Reverting {len(self.captions)} captions")
         for caption in self.captions:
             placeholder = caption["placeholder"]
+            if self.origin_cli_parity:
+                tex = tex.replace(placeholder, caption["trans_content"])
+                continue
             original = caption.get("content", "")
             translated = caption.get("trans_content") or original
             content = restore_caption_command_structure(original, translated)
@@ -258,12 +289,16 @@ class LatexConstructor:
                 pos = match.end()
             elif tag in end_map:
                 if not stack:
+                    if self.origin_cli_parity:
+                        raise ValueError(f"Unmatched end tag: {tag}")
                     logger.warning(f"Unmatched end tag found and skipped: {tag}")
                     pos = match.end()
                     continue
                 
                 begin_tag, begin_pos = stack.pop()
                 if end_map[tag] != begin_map[begin_tag]:
+                    if self.origin_cli_parity:
+                        raise ValueError(f"Mismatched tags: {begin_tag} vs {tag}")
                     logger.warning(f"Mismatched tags: {begin_tag} vs {tag}, skipping end tag")
                     stack.append((begin_tag, begin_pos))
                     pos = match.end()
@@ -301,6 +336,19 @@ class LatexConstructor:
             logger.warning(f"Residual placeholders found and removed: {residual_matches}")
             print(f"⚠️ Warning: Residual placeholders found and removed: {residual_matches}")
             tex = re.sub(r"<PLACEHOLDER_[^>]*>", "", tex)
+
+        if self.origin_cli_parity:
+            tex = _add_ctex_package_origin_cli_parity(tex)
+            main_file_path = find_main_tex_file(self.output_latex_dir)
+            if main_file_path and os.path.exists(main_file_path):
+                with open(main_file_path, "w", encoding="utf-8") as f:
+                    f.write(tex)
+            else:
+                print(f"鈿狅笍 Warning: No main.tex file found in {self.output_latex_dir}, creating a new one.")
+                main_file_path = os.path.join(self.output_latex_dir, "main.tex")
+                with open(main_file_path, "w", encoding="utf-8") as f:
+                    f.write(tex)
+            return
 
         # Add language-specific packages based on target language
         main_file_path = find_main_tex_file(self.output_latex_dir)

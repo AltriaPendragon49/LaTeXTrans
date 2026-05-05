@@ -14,6 +14,7 @@ from backend.app.services.latex.reconstruct import LatexConstructor
 import asyncio
 import time
 from backend.app.services.latex.compiler import (
+    compile_with_origin_cli_parity,
     compile_with_intelligent_fallback,
     compile_with_intelligent_fallback_async,
     find_main_tex_file,
@@ -25,6 +26,7 @@ from backend.app.services.latex.structure_guard import (
     validate_project_structure,
 )
 from backend.app.core.config import get_settings
+from backend.app.models.config_models import is_origin_cli_parity_config
 from backend.app.services.latex.utils import apply_formatting_config
 from pathlib import Path
 import os
@@ -74,6 +76,9 @@ class GeneratorAgent(BaseToolAgent):
         if explicit_value is not None:
             return self._coerce_bool(explicit_value, default=True)
         return self._coerce_bool(get_settings().enable_precompile_structure_guard, default=True)
+
+    def _is_origin_cli_parity_enabled(self) -> bool:
+        return is_origin_cli_parity_config(self.config)
 
     def _update_replay_bundle(self, **fields: Any) -> Optional[str]:
         if not self.output_dir:
@@ -392,6 +397,7 @@ class GeneratorAgent(BaseToolAgent):
 
         self.update_progress(70, "Reconstructing LaTeX document")
         target_language = self.config.get("target_language", "en")
+        origin_cli_parity = self._is_origin_cli_parity_enabled()
         latex_constructor = LatexConstructor(
             sections=sections,
             captions=captions,
@@ -399,9 +405,74 @@ class GeneratorAgent(BaseToolAgent):
             inputs=inputs,
             newcommands=newcommands,
             output_latex_dir=transed_latex_dir,
-            target_language=target_language
+            target_language=target_language,
+            origin_cli_parity=origin_cli_parity,
         )
         latex_constructor.construct(on_progress=self.on_progress)
+
+        if origin_cli_parity:
+            main_tex_path = find_main_tex_file(transed_latex_dir)
+            if not main_tex_path:
+                error_summary = f"No reliable main .tex file found in {transed_latex_dir}"
+                logger.error(error_summary)
+                self.update_progress(100, "No main .tex file found")
+                return {
+                    "status": "failed_compilation",
+                    "pdf_path": None,
+                    "error_summary": error_summary,
+                    "warnings": None,
+                    "engine": None,
+                    "error_count": 0,
+                }
+
+            main_tex = Path(main_tex_path)
+            self.update_progress(80, "Compiling PDF document")
+            logger.info(f"Compiling {main_tex.name} with origin CLI parity...")
+            self._update_replay_bundle(
+                compile_attempted=True,
+                compile_verdict_source="origin_cli_parity_compiler",
+                guard_blocking=False,
+                guard_warning_only=False,
+            )
+            result = compile_with_origin_cli_parity(str(main_tex), transed_latex_dir)
+            pdf_file = result.get("pdf_path")
+            if pdf_file and not Path(pdf_file).exists():
+                logger.error(f"Compiler returned a missing PDF path: {pdf_file}")
+                result["errors"] = result.get("errors") or f"Compilation returned a missing PDF path: {pdf_file}"
+                pdf_file = None
+
+            if pdf_file:
+                self.update_progress(100, "PDF generation complete")
+                self.log(f"Successfully generated PDF: {pdf_file}")
+                return {
+                    "status": result.get("status", "completed"),
+                    "pdf_path": pdf_file,
+                    "error_summary": None,
+                    "warnings": result.get("warnings"),
+                    "engine": result.get("engine"),
+                    "error_count": result.get("error_count", 0),
+                    "guard_warning_only": False,
+                    "guard_reason_code": None,
+                    "guard_scope": None,
+                    "guard_details": None,
+                    "replay_bundle_ref": result.get("replay_bundle_ref"),
+                }
+
+            self.update_progress(100, "PDF compilation failed")
+            self.log("Failed to compile PDF document", level="error")
+            return {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": result.get("errors") or "Compilation failed without detailed error output",
+                "warnings": result.get("warnings"),
+                "engine": result.get("engine"),
+                "error_count": result.get("error_count", 0),
+                "guard_warning_only": False,
+                "guard_reason_code": None,
+                "guard_scope": None,
+                "guard_details": None,
+                "replay_bundle_ref": result.get("replay_bundle_ref"),
+            }
 
         self.update_progress(80, "Applying formatting config")
         
@@ -532,6 +603,7 @@ class GeneratorAgent(BaseToolAgent):
 
         self.update_progress(70, "Reconstructing LaTeX document")
         target_language = self.config.get("target_language", "en")
+        origin_cli_parity = self._is_origin_cli_parity_enabled()
         latex_constructor = LatexConstructor(
             sections=sections,
             captions=captions,
@@ -539,9 +611,96 @@ class GeneratorAgent(BaseToolAgent):
             inputs=inputs,
             newcommands=newcommands,
             output_latex_dir=transed_latex_dir,
-            target_language=target_language
+            target_language=target_language,
+            origin_cli_parity=origin_cli_parity,
         )
         await asyncio.to_thread(latex_constructor.construct, self.on_progress)
+
+        if origin_cli_parity:
+            main_tex_path = find_main_tex_file(transed_latex_dir)
+            if not main_tex_path:
+                error_summary = f"No reliable main .tex file found in {transed_latex_dir}"
+                logger.error(error_summary)
+                self.update_progress(100, "No main .tex file found")
+                return {
+                    "status": "failed_compilation",
+                    "pdf_path": None,
+                    "error_summary": error_summary,
+                    "warnings": None,
+                    "engine": None,
+                    "error_count": 0,
+                }
+
+            main_tex = Path(main_tex_path)
+            wait_started_at = time.monotonic()
+            compile_sem = get_compile_semaphore()
+            if compile_sem.locked():
+                self.update_progress(80, "Waiting for compile slot")
+            await compile_sem.acquire()
+            try:
+                compile_queue_wait_ms = int((time.monotonic() - wait_started_at) * 1000)
+                self.update_progress(80, "Compiling PDF document")
+                compile_started_at = time.monotonic()
+                self._update_replay_bundle(
+                    compile_attempted=True,
+                    compile_verdict_source="origin_cli_parity_compiler",
+                    guard_blocking=False,
+                    guard_warning_only=False,
+                )
+                result = await asyncio.to_thread(
+                    compile_with_origin_cli_parity,
+                    str(main_tex),
+                    transed_latex_dir,
+                )
+                compile_exec_ms = int((time.monotonic() - compile_started_at) * 1000)
+            finally:
+                compile_sem.release()
+
+            logger.info(
+                "Origin CLI parity compile timing for %s: queue_wait=%dms exec=%dms",
+                main_tex.name,
+                compile_queue_wait_ms,
+                compile_exec_ms,
+            )
+            pdf_file = result.get("pdf_path")
+            if pdf_file and not Path(pdf_file).exists():
+                result["errors"] = result.get("errors") or f"Compilation returned a missing PDF path: {pdf_file}"
+                pdf_file = None
+
+            if pdf_file:
+                self.update_progress(100, "PDF generation complete")
+                return {
+                    "status": result.get("status", "completed"),
+                    "pdf_path": pdf_file,
+                    "error_summary": None,
+                    "warnings": result.get("warnings"),
+                    "engine": result.get("engine"),
+                    "error_count": result.get("error_count", 0),
+                    "compile_queue_wait_ms": compile_queue_wait_ms,
+                    "compile_exec_ms": compile_exec_ms,
+                    "guard_warning_only": False,
+                    "guard_reason_code": None,
+                    "guard_scope": None,
+                    "guard_details": None,
+                    "replay_bundle_ref": result.get("replay_bundle_ref"),
+                }
+
+            self.update_progress(100, "PDF compilation failed")
+            return {
+                "status": "failed_compilation",
+                "pdf_path": None,
+                "error_summary": result.get("errors") or "Compilation failed without detailed error output",
+                "warnings": result.get("warnings"),
+                "engine": result.get("engine"),
+                "error_count": result.get("error_count", 0),
+                "compile_queue_wait_ms": compile_queue_wait_ms,
+                "compile_exec_ms": compile_exec_ms,
+                "guard_warning_only": False,
+                "guard_reason_code": None,
+                "guard_scope": None,
+                "guard_details": None,
+                "replay_bundle_ref": result.get("replay_bundle_ref"),
+            }
 
         self.update_progress(80, "Applying formatting config")
         formatting_config = self.config.get("formatting")

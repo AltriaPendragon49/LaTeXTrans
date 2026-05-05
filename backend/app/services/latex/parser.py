@@ -14,6 +14,7 @@ from .token_estimator import estimate_tokens_v1
 import tiktoken
 import logging
 import re
+import regex
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +45,18 @@ _PREAMBLE_COMMAND_RE = re.compile(
     r"\\(?:usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|def|title|author|date)\b"
 )
 
+_ORIGIN_CLI_NO_TRANSLATE_ENVS = [
+    'equation', 'align', 'align*', 'gather', 'gather*', 'verbatim', 'verbatim*', 'lstlisting*', 'minted', 'minted*',
+    'equation*', 'alignat', 'alignat*', 'flalign', 'flalign*', 'split', 'split*', 'cases', 'cases*', 'subequations',
+    'figure', 'figure*', 'wrapfigure', 'SCfigure', 'tikzpicture', 'CJK', 'scope',
+    'tabularx', 'tabulary', 'longtable*', 'sidewaystable', 'table', 'table*', 'tabular', 'tabular*', 'longtable',
+    'multline', 'multline*', 'lstlisting', 'tcolorbox', 'thebibliography', 'bibliography', 'bibitem',
+    'algorithm', 'algorithmic', 'algorithmicx', 'algorithm2e', 'algorithmicx*', 'algorithmic*', 'algorithm*',
+]
+
 
 class LatexParser:
-    def __init__(self, dir: str, output_dir: str):
+    def __init__(self, dir: str, output_dir: str, origin_cli_parity: bool = False):
         self.inputs_json = []
         self.envs_json = []
         self.captions_json = []
@@ -56,6 +66,7 @@ class LatexParser:
         self.output_dir = output_dir  # Output directory for parsed files
         self.env_count = 0
         self.caption_count = 0
+        self.origin_cli_parity = bool(origin_cli_parity)
 
     def parse(self, on_progress: Optional[Callable[[str, int, str], None]] = None):
         """
@@ -99,8 +110,9 @@ class LatexParser:
         # Merge short sections to avoid too many sections
         self._merge_short_sections(min_tokens=50)
 
-        # Chunk overly long sections to prevent LLM catastrophic truncation
-        self._chunk_long_sections(max_tokens=4000)
+        if not self.origin_cli_parity:
+            # Chunk overly long sections to prevent LLM catastrophic truncation
+            self._chunk_long_sections(max_tokens=4000)
 
         total_sections = len(self.sections_json)
         if on_progress:
@@ -119,9 +131,10 @@ class LatexParser:
                 section_content = self._extract_captions(section["content"])
                 self.sections_json[i]["content"] = self._extract_envs(section_content)
 
-        enc = self._get_token_encoder()
-        for i, section in enumerate(self.sections_json):
-            self.sections_json[i] = self._annotate_section_chunk(section, enc, max_tokens=4000)
+        if not self.origin_cli_parity:
+            enc = self._get_token_encoder()
+            for i, section in enumerate(self.sections_json):
+                self.sections_json[i] = self._annotate_section_chunk(section, enc, max_tokens=4000)
 
         if on_progress:
             on_progress("parsing", 100, "Parsing complete")
@@ -194,18 +207,21 @@ class LatexParser:
         """
         full_tex = remove_comments(tex)
         command_name = r'.*?'
-        pattern_env = get_env_pattern(command_name)
+        pattern_env = self._get_origin_cli_env_pattern(command_name) if self.origin_cli_parity else get_env_pattern(command_name)
         placeholder_pattern_cap = r"<PLACEHOLDER_CAP_\d+>"
         
-        no_translate_envs = [
-            'equation', 'align', 'align*', 'gather', 'gather*', 'verbatim', 'verbatim*', 'lstlisting*', 'minted', 'minted*',
-            'equation*', 'alignat', 'alignat*', 'flalign', 'flalign*', 'split', 'split*', 'cases', 'cases*', 'subequations',
-            'figure', 'figure*', 'wrapfigure', 'SCfigure', 'tikzpicture', 'CJK', 'scope',
-            'tabularx', 'tabulary', 'longtable*', 'sidewaystable', 'table', 'table*', 'tabular', 'tabular*', 'longtable',
-            'multline', 'multline*', 'lstlisting', 'tcolorbox', 'thebibliography', 'bibliography', 'bibitem',
-            'algorithm', 'algorithmic', 'algorithmicx', 'algorithm2e', 'algorithmicx*', 'algorithmic*', 'algorithm*',
-            'theorem', 'theorem*', 'lemma', 'lemma*', 'proof', 'proof*', 'definition', 'definition*'
-        ]
+        if self.origin_cli_parity:
+            no_translate_envs = _ORIGIN_CLI_NO_TRANSLATE_ENVS
+        else:
+            no_translate_envs = [
+                'equation', 'align', 'align*', 'gather', 'gather*', 'verbatim', 'verbatim*', 'lstlisting*', 'minted', 'minted*',
+                'equation*', 'alignat', 'alignat*', 'flalign', 'flalign*', 'split', 'split*', 'cases', 'cases*', 'subequations',
+                'figure', 'figure*', 'wrapfigure', 'SCfigure', 'tikzpicture', 'CJK', 'scope',
+                'tabularx', 'tabulary', 'longtable*', 'sidewaystable', 'table', 'table*', 'tabular', 'tabular*', 'longtable',
+                'multline', 'multline*', 'lstlisting', 'tcolorbox', 'thebibliography', 'bibliography', 'bibitem',
+                'algorithm', 'algorithmic', 'algorithmicx', 'algorithm2e', 'algorithmicx*', 'algorithmic*', 'algorithm*',
+                'theorem', 'theorem*', 'lemma', 'lemma*', 'proof', 'proof*', 'definition', 'definition*'
+            ]
         
         while True:
             result = pattern_env.search(full_tex)
@@ -221,7 +237,9 @@ class LatexParser:
             if env_name in no_translate_envs:
                 need_trans = False
 
-            if placeholders_cap_in_env:
+            if placeholders_cap_in_env and self.origin_cli_parity:
+                need_trans = False
+            elif placeholders_cap_in_env:
                 # If there are placeholders in the environment, we usually do not translate it.
                 # HOWEVER, for high-level containers like title, author, abstract, frontmatter, keywords,
                 # we SHOULD translate them as the TranslatorAgent can handle nested placeholders.
@@ -272,11 +290,14 @@ class LatexParser:
         """
         def get_nonNone(*args):
             result = [arg for arg in args if arg is not None]
-            assert len(result) >= 1
+            if self.origin_cli_parity:
+                assert len(result) == 1
+            else:
+                assert len(result) >= 1
             return result[0]
         
         full_tex = remove_comments(tex)
-        pattern = get_newcommand_pattern()
+        pattern = self._get_origin_cli_newcommand_pattern() if self.origin_cli_parity else get_newcommand_pattern()
         count = 0
         
         while True:
@@ -284,14 +305,20 @@ class LatexParser:
             if match is None:
                 break
             
-            # Groups 1,2: newcommand name; Group 6: newenvironment name
-            name1 = match.group(1)
-            name2 = match.group(2)
-            env_name = match.group(6)
-            name = get_nonNone(name1, name2, env_name)
-            
-            # Group 3: newcommand args; Group 7: newenvironment args
-            n_arguments = match.group(3) or match.group(7)
+            if self.origin_cli_parity:
+                name1 = match.group(1)
+                name2 = match.group(2)
+                name = get_nonNone(name1, name2)
+                n_arguments = match.group(3)
+            else:
+                # Groups 1,2: newcommand name; Group 6: newenvironment name
+                name1 = match.group(1)
+                name2 = match.group(2)
+                env_name = match.group(6)
+                name = get_nonNone(name1, name2, env_name)
+
+                # Group 3: newcommand args; Group 7: newenvironment args
+                n_arguments = match.group(3) or match.group(7)
             
             if n_arguments is None:
                 n_arguments = 0
@@ -307,6 +334,16 @@ class LatexParser:
             count += 1
 
         return full_tex
+
+    @staticmethod
+    def _get_origin_cli_env_pattern(command_name):
+        get_command_env = lambda name: rf"\\begin{spaces}\{{(?!document\b|center\b|proof\b|multicols\b)({name})\}}{spaces}({options})?(.*?)\\end{spaces}\{{\1\}}"
+        return regex.compile(get_command_env(command_name), regex.DOTALL)
+
+    @staticmethod
+    def _get_origin_cli_newcommand_pattern():
+        newcommand = rf'\\(?:newcommand\*?|def|renewcommand|newenvironment|renewenvironment){spaces}(?:\{{\\([a-zA-Z]+)\}}|\\([a-zA-Z]+)){spaces}(?:\[(\d)\])?{spaces}({get_pattern_brace(4)})'
+        return regex.compile(newcommand, regex.DOTALL)
     
     def _split_to_sections(self, tex: str) -> Any:
         """
@@ -412,7 +449,7 @@ class LatexParser:
         """
         Merge sections that are too short to save the number of API requests
         """
-        enc = self._get_token_encoder()
+        enc = tiktoken.encoding_for_model("gpt-4") if self.origin_cli_parity else self._get_token_encoder()
         merged_sections = []
         i = 0
         sections = self.sections_json

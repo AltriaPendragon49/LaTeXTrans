@@ -34,6 +34,11 @@ from .llm_runtime import (
 )
 from .llm_token_pool import post_chat_completion_with_pool
 from backend.app.services.translation.ultimate_downgrade import sanitize_section_translation_shells
+from backend.app.models.config_models import (
+    ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS,
+    ORIGIN_CLI_PARITY_MODE,
+    ORIGIN_CLI_PARITY_SECTION_LLM_MAX_CONCURRENT_REQUESTS,
+)
 from pathlib import Path
 import os
 import inspect
@@ -184,10 +189,33 @@ class TranslatorAgent(BaseToolAgent):
         self.generate_terminology = generate_terminology
         self.terminology_table = []  # 瀛樺偍鏈瀵? [(婧愭湳璇? 璇戞湳璇?, ...]
         self.term_dict = {}
-        self.request_timeout_seconds = resolve_llm_timeout(config, default=settings.llm_timeout)
-        self.llm_max_concurrent_requests = resolve_llm_max_concurrent_requests(
-            config,
-            default=settings.llm_max_concurrent_requests,
+        mode = str(config.get("translation_core_mode") or "").strip().lower()
+        self.origin_cli_parity = (
+            mode == ORIGIN_CLI_PARITY_MODE
+            or self._coerce_bool(config.get("enable_legacy_translation_core", False), default=False)
+        )
+        self.request_timeout_seconds = (
+            100
+            if self.origin_cli_parity
+            else resolve_llm_timeout(config, default=settings.llm_timeout)
+        )
+        if self.origin_cli_parity:
+            self.llm_max_concurrent_requests = self._resolve_positive_int(
+                config.get("llm_max_concurrent_requests"),
+                ORIGIN_CLI_PARITY_SECTION_LLM_MAX_CONCURRENT_REQUESTS,
+            )
+        else:
+            self.llm_max_concurrent_requests = resolve_llm_max_concurrent_requests(
+                config,
+                default=settings.llm_max_concurrent_requests,
+            )
+        self.llm_error_max_concurrent_requests = self._resolve_positive_int(
+            config.get("llm_error_max_concurrent_requests"),
+            (
+                ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS
+                if self.origin_cli_parity
+                else self.llm_max_concurrent_requests
+            ),
         )
         self.summary = ''
         self.prev_text = ''
@@ -212,10 +240,7 @@ class TranslatorAgent(BaseToolAgent):
             config.get("enable_hard_freeze_tokens", True),
             default=True,
         )
-        self.enable_legacy_translation_core = self._coerce_bool(
-            config.get("enable_legacy_translation_core", False),
-            default=False,
-        )
+        self.enable_legacy_translation_core = self.origin_cli_parity
         self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
         self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
         if self.structural_fallback_cap_mode not in {"soft", "hard"}:
@@ -2716,7 +2741,16 @@ class TranslatorAgent(BaseToolAgent):
 
     async def execute(self, error_retry_count=0, Maxtry=3):
 
-        self.prompts = pm.create_prompts(self.config["source_language"], self.config["target_language"])
+        if self.origin_cli_parity:
+            self.prompts = pm.create_origin_cli_parity_prompts(
+                self.config["source_language"],
+                self.config["target_language"],
+            )
+        else:
+            self.prompts = pm.create_prompts(
+                self.config["source_language"],
+                self.config["target_language"],
+            )
         self.add_placeholder()
         self.build_term_dict()
 
@@ -3331,7 +3365,7 @@ class TranslatorAgent(BaseToolAgent):
                             )
                             return
 
-            sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
+            sem = asyncio.Semaphore(self.llm_error_max_concurrent_requests)
 
             async def guarded_process(error_report):
                 async with sem:
@@ -3342,7 +3376,7 @@ class TranslatorAgent(BaseToolAgent):
                 await future
             return
 
-        sem = asyncio.Semaphore(self.llm_max_concurrent_requests)
+        sem = asyncio.Semaphore(self.llm_error_max_concurrent_requests)
         completed = 0
         total = len(self.errors_report)
         self.structural_fallback_denominator = self._compute_structural_fallback_denominator(secs, caps, envs)

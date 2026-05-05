@@ -11,6 +11,7 @@ Adapted from prototype system with:
 from typing import Dict, Any, List, Optional, Callable
 from .base_tool_agent import BaseToolAgent
 from .pipeline_invariants import SpeculativeRepairForbiddenError
+from backend.app.models.config_models import is_origin_cli_parity_config
 from pathlib import Path
 from collections import Counter
 from pylatexenc.latexwalker import LatexWalker
@@ -264,6 +265,7 @@ class ValidatorAgent(BaseToolAgent):
         self.project_dir = project_dir
         self.output_dir = output_dir
         self.code_like_filtered_bare_tokens = 0
+        self.origin_cli_parity = is_origin_cli_parity_config(config)
 
     def execute(self, errors_report: Optional[List[Dict]] = None) -> List[Dict]:
         """
@@ -283,14 +285,21 @@ class ValidatorAgent(BaseToolAgent):
         captions = self.read_file(Path(self.output_dir, "captions_map.json"), "json")
         envs = self.read_file(Path(self.output_dir, "envs_map.json"), "json")
         inputs_path = Path(self.output_dir, "inputs_map.json")
-        inputs = self.read_file(inputs_path, "json") if inputs_path.exists() else []
+        inputs = [] if self.origin_cli_parity else self.read_file(inputs_path, "json") if inputs_path.exists() else []
 
         self.update_progress(30, "Extracting parts to validate")
         
         if errors_report is None:
-            parts_need_val = self._extract_parts_need_validate(secs=sections,
-                                                               caps=captions,
-                                                               envs=envs)
+            if self.origin_cli_parity:
+                parts_need_val = self._extract_parts_need_validate_origin_cli_parity(
+                    secs=sections,
+                    caps=captions,
+                    envs=envs,
+                )
+            else:
+                parts_need_val = self._extract_parts_need_validate(secs=sections,
+                                                                   caps=captions,
+                                                                   envs=envs)
         else:
             parts_need_val = self._extract_parts_from_report(secs=sections, 
                                                                caps=captions,
@@ -310,12 +319,13 @@ class ValidatorAgent(BaseToolAgent):
                 errors_report.append(error_report)
 
         # Global placeholder stack validation for input begin/end tags.
-        global_placeholder_errors = self._validate_global_input_placeholder_stack(
-            sections=sections,
-            inputs=inputs,
-        )
-        if global_placeholder_errors:
-            errors_report.extend(global_placeholder_errors)
+        if not self.origin_cli_parity:
+            global_placeholder_errors = self._validate_global_input_placeholder_stack(
+                sections=sections,
+                inputs=inputs,
+            )
+            if global_placeholder_errors:
+                errors_report.extend(global_placeholder_errors)
 
         # Always overwrite errors_report.json to avoid stale residual errors from
         # previous validation rounds.
@@ -333,6 +343,9 @@ class ValidatorAgent(BaseToolAgent):
 
     def _validate(self, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Validate a single part (section/caption/environment)"""
+        if self.origin_cli_parity:
+            return self._validate_origin_cli_parity(part)
+
         command_error = self._validate_command(part)
         ph_error = self._validate_placeholder(part)
         bracket_error = self._validate_closed_brackets(part)
@@ -401,6 +414,34 @@ class ValidatorAgent(BaseToolAgent):
 
         return error_report
 
+    def _validate_origin_cli_parity(self, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        command_error = self._validate_command(part)
+        ph_error = self._validate_placeholder_origin_cli_parity(part)
+        bracket_error = self._validate_closed_brackets_origin_cli_parity(part)
+        error_report = {}
+
+        if not command_error and not ph_error and not bracket_error:
+            return None
+
+        if "section" in part:
+            error_report["part"] = "sec"
+            error_report["num_or_ph"] = part["section"]
+        elif "env_name" in part:
+            error_report["part"] = "env"
+            error_report["num_or_ph"] = part["placeholder"]
+        elif "cap_type" in part:
+            error_report["part"] = "cap"
+            error_report["num_or_ph"] = part["placeholder"]
+
+        if command_error:
+            error_report["command_error"] = command_error
+        if ph_error:
+            error_report["ph_error"] = ph_error
+        if bracket_error:
+            error_report["bracket_error"] = bracket_error
+
+        return error_report
+
     def _validate_command(self, part: Dict[str, Any]) -> Optional[str]:
         """Validate LaTeX commands are preserved in translation"""
         content = part.get("content", "")
@@ -441,6 +482,18 @@ class ValidatorAgent(BaseToolAgent):
             errors.append(f"Extra placeholders: {', '.join(extra)} translation error or is redundant")
 
         return "\n".join(errors) if errors else None
+
+    def _validate_placeholder_origin_cli_parity(self, part: Dict[str, Any]) -> Optional[str]:
+        original_placeholders = self._extract_placeholders_origin_cli_parity(part["content"])
+        translated_placeholders = self._extract_placeholders_origin_cli_parity(part["trans_content"])
+        missing = original_placeholders - translated_placeholders
+        extra = translated_placeholders - original_placeholders
+        errors = []
+        if missing:
+            errors.append(f"Missing placeholders: {', '.join(sorted(missing))} translation error or is missing!")
+        if extra:
+            errors.append(f"Extra placeholders: {', '.join(sorted(extra))} translation error or is redundant")
+        return "\n".join(errors) if errors else None
         
     def _validate_escaped_dollar_leak(self, part: Dict[str, Any]) -> Optional[str]:
         """Detect when LLM incorrectly escaped $ as \\$ outside math context.
@@ -480,6 +533,16 @@ class ValidatorAgent(BaseToolAgent):
             return "Brackets error:\n" + "\n".join(errors)
         else:
             return None
+
+    def _validate_closed_brackets_origin_cli_parity(self, part: Dict[str, Any]) -> Optional[str]:
+        content = part.get("content", "")
+        trans_content = part.get("trans_content", "")
+        org_errors = self._find_brackets_errors_origin_cli_parity(content, org=1)
+        errors = self._find_brackets_errors_origin_cli_parity(trans_content)
+
+        if errors and not org_errors:
+            return "Brackets error:\n" + "\n".join(errors)
+        return None
         
     # ------------------------------------------------------------------ #
     # Math-mode delimiter validation & repair (Task 1)                    #
@@ -1051,6 +1114,36 @@ class ValidatorAgent(BaseToolAgent):
 
         return errors
 
+    def _find_brackets_errors_origin_cli_parity(self, content, org=None):
+        if org:
+            bracket_pairs = {'[': ']', '{': '}'}
+        else:
+            bracket_pairs = {'(': ')', '[': ']', '{': '}'}
+
+        opening_brackets = set(bracket_pairs.keys())
+        closing_brackets = set(bracket_pairs.values())
+
+        stack = []
+        errors = []
+        for idx, char in enumerate(content):
+            if char in opening_brackets:
+                stack.append((char, idx))
+            elif char in closing_brackets:
+                if not stack:
+                    fragment = content[max(0, idx - 10): idx + 10]
+                    errors.append(f"Extra closing bracket '{char}' at position {idx}, context: {fragment}")
+                else:
+                    last_open, open_idx = stack.pop()
+                    if bracket_pairs[last_open] != char:
+                        fragment = content[open_idx: idx + 1]
+                        errors.append(f"Bracket mismatch: '{last_open}' opened at {open_idx} does not match '{char}' at {idx}, fragment: {fragment}")
+
+        for open_bracket, pos in stack:
+            fragment = content[pos: pos + 20]
+            errors.append(f"Unmatched opening bracket '{open_bracket}' at position {pos}, fragment: {fragment}")
+
+        return errors
+
     def extract_command_counts(self, latex_code: str) -> Counter:
         """Extract and count LaTeX commands using AST"""
         walker = LatexWalker(latex_code)
@@ -1104,11 +1197,33 @@ class ValidatorAgent(BaseToolAgent):
         placeholders = combined_pattern.findall(content)
         return placeholders
 
+    def _extract_placeholders_origin_cli_parity(self, content):
+        input_pattern = re.compile(r"<PLACEHOLDER_[^>]+?_begin>|<PLACEHOLDER_[^>]+?_end>")
+        placeholder_pattern_cap = re.compile(r"<PLACEHOLDER_CAP_\d+>")
+        placeholder_pattern_env = re.compile(r"<PLACEHOLDER_ENV_\d+>")
+        placeholders = set()
+        for pattern in [input_pattern, placeholder_pattern_cap, placeholder_pattern_env]:
+            placeholders.update(pattern.findall(content))
+        return placeholders
+
     def _extract_parts_need_validate(self, secs, caps, envs):
         """Extract parts that need validation"""
         secs_need_val = [sec for sec in secs if sec["section"] != "0" and sec["section"] != "-1"]
         caps_need_val = caps
         
+        if envs:
+            if "need_trans" in envs[0]:
+                envs_need_val = [env for env in envs if env["need_trans"]]
+            else:
+                envs_need_val = [env for env in envs if env["content"] != env["trans_content"]]
+        else:
+            envs_need_val = []
+
+        return secs_need_val + caps_need_val + envs_need_val
+
+    def _extract_parts_need_validate_origin_cli_parity(self, secs, caps, envs):
+        secs_need_val = [sec for sec in secs if sec["section"] != 0]
+        caps_need_val = caps
         if envs:
             if "need_trans" in envs[0]:
                 envs_need_val = [env for env in envs if env["need_trans"]]

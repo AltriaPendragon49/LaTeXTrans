@@ -565,7 +565,7 @@ def test_create_source_asset_is_noop_when_source_already_in_community_library(tm
     assert asset["id"] == "asset-source"
     assert source_dir.is_dir()
     assert tex_file.exists()
-    assert captured["file_path"] == "community_papers/paper-1/source/2508.18791"
+    assert captured["file_path"] == "community_papers/paper-1/source/2508.18791.zip"
 
 
 def test_detail_returns_public_asset_map_without_file_paths(monkeypatch):

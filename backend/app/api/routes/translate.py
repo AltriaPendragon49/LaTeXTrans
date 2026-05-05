@@ -32,7 +32,12 @@ from backend.app.core.auth import (
 )
 from backend.app.core.config import get_settings, TaskStatus
 from backend.app.repositories import TranslationTaskRepository, UserSettingsRepository
-from backend.app.models.config_models import AdvancedConfig, TRANSLATION_MODE_MAP
+from backend.app.models.config_models import (
+    AdvancedConfig,
+    ORIGIN_CLI_PARITY_MODE,
+    TRANSLATION_MODE_MAP,
+    normalize_origin_cli_parity_agent_config,
+)
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
 from backend.app.services.agents.llm_token_pool import (
@@ -117,6 +122,19 @@ class BatchTranslateResponse(BaseModel):
     task_ids: list
     message: str
     queued_count: int
+
+
+def normalize_origin_cli_parity_advanced_config(advanced_config: AdvancedConfig) -> AdvancedConfig:
+    """Return the user config shape that matches the effective origin CLI parity kernel."""
+    if hasattr(advanced_config, "model_copy"):
+        normalized = advanced_config.model_copy(deep=True)
+    else:
+        normalized = AdvancedConfig(**advanced_config.model_dump())
+    normalized.translation_core_mode = ORIGIN_CLI_PARITY_MODE
+    normalized.translation_mode = "full"
+    normalized.compile_strategy = "auto"
+    normalized.generate_terminology_table = False
+    return normalized
 
 
 def get_user_api_config(user_id: str) -> dict:
@@ -343,6 +361,7 @@ def compute_config_hash(
     # source_path to prevent different papers from sharing a hash.
     content_key = arxiv_id or source_path or ""
     config = {
+        "translation_core_mode": ORIGIN_CLI_PARITY_MODE,
         "content_key": content_key,
         "source_language": source_language,
         "target_language": target_language,
@@ -503,6 +522,7 @@ async def run_translation(
         user_id: Optional user ID for authenticated users
     """
     logger.info(f"Starting translation for task: {task_id}")
+    advanced_config = normalize_origin_cli_parity_advanced_config(advanced_config)
     logger.info(f"Advanced config: mode={advanced_config.translation_mode}, "
                 f"compile={advanced_config.compile_strategy}, "
                 f"user_id={user_id}")
@@ -708,6 +728,7 @@ async def run_translation(
             "sys_name": "PaperX",
             "target_language": target_language,
             "source_language": source_language,
+            "translation_core_mode": getattr(advanced_config, "translation_core_mode", None),
             "mode": TRANSLATION_MODE_MAP.get(advanced_config.translation_mode, 0),
             "translation_mode": advanced_config.translation_mode,
             "latex_engine": advanced_config.compile_strategy,
@@ -741,11 +762,13 @@ async def run_translation(
             "tex_sources_dir": str(settings.uploads_dir),
             "llm_config": llm_config
         }
+        agent_config = normalize_origin_cli_parity_agent_config(agent_config)
 
         logger.info(f"Agent config: mode={agent_config['mode']}, "
                     f"engine={agent_config['latex_engine']}, "
                     f"verify={agent_config['use_verification_agent']}, "
-                    f"llm_max_concurrent_requests={agent_config['llm_max_concurrent_requests']}")
+                    f"llm_max_concurrent_requests={agent_config['llm_max_concurrent_requests']}, "
+                    f"translation_core_mode={agent_config['translation_core_mode']}")
 
         captured_config_file = capture_task_config(
             task_id=task_id,
@@ -974,6 +997,7 @@ async def start_translation(
         HTTPException: If task not found or not ready for translation
     """
     logger.info(f"Translation request for task: {task_id}")
+    effective_advanced_config = normalize_origin_cli_parity_advanced_config(request.advanced_config)
 
     user_id = resolve_current_user_id(current_user, credentials)
     if user_id:
@@ -1014,10 +1038,10 @@ async def start_translation(
         arxiv_id=task.get("arxiv_id"),
         source_language=request.source_language,
         target_language=request.target_language,
-        translation_mode=request.advanced_config.translation_mode,
-        compile_strategy=request.advanced_config.compile_strategy,
+        translation_mode=effective_advanced_config.translation_mode,
+        compile_strategy=effective_advanced_config.compile_strategy,
         source_path=task.get("source_path"),
-        formatting=request.advanced_config.formatting,
+        formatting=effective_advanced_config.formatting,
     )
     logger.info(f"Computed config_hash for task {task_id}: {config_hash}")
 
@@ -1027,7 +1051,7 @@ async def start_translation(
         task_id=task_id,
         source_language=request.source_language,
         target_language=request.target_language,
-        advanced_config=request.advanced_config.model_dump(),
+        advanced_config=effective_advanced_config.model_dump(),
         config_hash=config_hash,
     )
 
@@ -1041,7 +1065,7 @@ async def start_translation(
     # Enqueue translation via TaskQueue
     if tq:
         # Compute token_hash for per-bucket routing isolation
-        _llm_cfg = await build_llm_config_async(request.advanced_config, user_id)
+        _llm_cfg = await build_llm_config_async(effective_advanced_config, user_id)
         pool_routing_key = str(_llm_cfg.get("pool_routing_key") or "").strip()
         if pool_routing_key:
             token_hash = hashlib.md5(pool_routing_key.encode()).hexdigest()
@@ -1054,7 +1078,7 @@ async def start_translation(
                 task_id=task_id,
                 target_language=request.target_language,
                 source_language=request.source_language,
-                advanced_config=request.advanced_config,
+                advanced_config=effective_advanced_config,
                 user_id=user_id
             )
 
@@ -1078,7 +1102,7 @@ async def start_translation(
                 task_id=task_id,
                 target_language=request.target_language,
                 source_language=request.source_language,
-                advanced_config=request.advanced_config,
+                advanced_config=effective_advanced_config,
                 user_id=user_id
             )
         )
@@ -1150,6 +1174,7 @@ async def batch_translate(
     user_id = resolve_current_user_id(current_user, credentials)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required for batch translation")
+    effective_advanced_config = normalize_origin_cli_parity_advanced_config(request.advanced_config)
 
     # Validate arxiv_ids count
     arxiv_ids = request.arxiv_ids
@@ -1205,15 +1230,15 @@ async def batch_translate(
                 arxiv_id=arxiv_id,
                 source_language=request.source_language,
                 target_language=request.target_language,
-                translation_mode=request.advanced_config.translation_mode,
-                compile_strategy=request.advanced_config.compile_strategy,
-                formatting=request.advanced_config.formatting,
+                translation_mode=effective_advanced_config.translation_mode,
+                compile_strategy=effective_advanced_config.compile_strategy,
+                formatting=effective_advanced_config.formatting,
             )
             task_manager.update_task(
                 task_id=task_id,
                 source_language=request.source_language,
                 target_language=request.target_language,
-                advanced_config=request.advanced_config.model_dump(),
+                advanced_config=effective_advanced_config.model_dump(),
                 config_hash=config_hash,
             )
 
@@ -1239,7 +1264,7 @@ async def batch_translate(
             # This prevents the HTTP request from blocking for minutes while
             # downloading arXiv source packages over the network.
             # Compute token_hash for bucket routing (same key as for single-task enqueue)
-            _batch_llm_cfg = await build_llm_config_async(request.advanced_config, user_id)
+            _batch_llm_cfg = await build_llm_config_async(effective_advanced_config, user_id)
             _pool_routing_key = str(_batch_llm_cfg.get("pool_routing_key") or "").strip()
             if _pool_routing_key:
                 _batch_token_hash = hashlib.md5(_pool_routing_key.encode()).hexdigest()
@@ -1255,7 +1280,7 @@ async def batch_translate(
                     user_id=user_id,
                     source_language=request.source_language,
                     target_language=request.target_language,
-                    advanced_config=request.advanced_config,
+                    advanced_config=effective_advanced_config,
                     tq=tq,
                     token_hash=_batch_token_hash,
                     llm_capacity=_batch_llm_capacity,
@@ -1308,6 +1333,7 @@ async def _download_and_enqueue(
         4. Enqueue translation via TaskQueue
     """
     logger.info(f"[BatchDownload] Starting background download for task {task_id}, arxiv_id={arxiv_id}")
+    advanced_config = normalize_origin_cli_parity_advanced_config(advanced_config)
     try:
         # Step 1: Mark as downloading
         task_manager.update_task(

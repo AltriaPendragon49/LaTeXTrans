@@ -2546,6 +2546,108 @@ def compile_with_fallback(tex_file: str, output_dir: str) -> Dict:
     return compile_with_intelligent_fallback(tex_file, output_dir)
 
 
+def _first_pdf_in_dir(output_dir: str) -> Optional[str]:
+    if not os.path.isdir(output_dir):
+        return None
+    for file_name in os.listdir(output_dir):
+        if file_name.lower().endswith(".pdf"):
+            return os.path.join(output_dir, file_name)
+    return None
+
+
+def _compile_latex_origin_cli_parity(
+    tex_file: str,
+    out_dir: str,
+    engine: str,
+    output_latex_dir: str,
+) -> CompilationResult:
+    os.makedirs(out_dir, exist_ok=True)
+    cmd = [
+        "latexmk",
+        f"-{engine}",
+        "-interaction=nonstopmode",
+        f"-outdir={out_dir}",
+        "-file-line-error",
+        "-synctex=1",
+        "-f",
+        tex_file,
+    ]
+    cwd = os.path.dirname(tex_file)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+        if engine == "pdflatex":
+            output_path = os.path.join(output_latex_dir, "success.txt")
+            with open(output_path, "w", encoding="utf-8") as handle:
+                handle.write("Compilation successful\n")
+        return CompilationResult(success=True, exit_code=0)
+    except subprocess.CalledProcessError as exc:
+        logger.info(
+            "Origin CLI parity latexmk failed with %s for engine %s",
+            exc.returncode,
+            engine,
+        )
+        return CompilationResult(
+            success=False,
+            exit_code=exc.returncode,
+            errors=[str(exc)],
+        )
+
+
+def compile_with_origin_cli_parity(tex_file: str, output_latex_dir: str) -> Dict:
+    """
+    Legacy CLI compile order: pdflatex build dir first, xelatex only if no PDF exists.
+    """
+    logger.info("Starting origin CLI parity compilation for %s", tex_file)
+
+    compile_out_dir_pdflatex = os.path.join(output_latex_dir, "build_pdflatex")
+    pdflatex_result = _compile_latex_origin_cli_parity(
+        tex_file,
+        compile_out_dir_pdflatex,
+        engine="pdflatex",
+        output_latex_dir=output_latex_dir,
+    )
+    pdf_path = _first_pdf_in_dir(compile_out_dir_pdflatex)
+    if pdf_path:
+        return {
+            "pdf_path": pdf_path,
+            "status": "completed",
+            "engine": "pdflatex",
+            "error_count": getattr(pdflatex_result, "error_count", 0),
+            "warnings": None,
+            "errors": None,
+        }
+
+    compile_out_dir_xelatex = os.path.join(output_latex_dir, "build_xelatex")
+    xelatex_result = _compile_latex_origin_cli_parity(
+        tex_file,
+        compile_out_dir_xelatex,
+        engine="xelatex",
+        output_latex_dir=output_latex_dir,
+    )
+    pdf_path = _first_pdf_in_dir(compile_out_dir_xelatex)
+    if pdf_path:
+        return {
+            "pdf_path": pdf_path,
+            "status": "completed",
+            "engine": "xelatex",
+            "error_count": getattr(xelatex_result, "error_count", 0),
+            "warnings": None,
+            "errors": None,
+        }
+
+    errors: List[str] = []
+    errors.extend(getattr(pdflatex_result, "errors", []) or [])
+    errors.extend(getattr(xelatex_result, "errors", []) or [])
+    return {
+        "pdf_path": None,
+        "status": "failed_compilation",
+        "engine": "xelatex",
+        "error_count": getattr(xelatex_result, "error_count", 0),
+        "warnings": None,
+        "errors": "\n".join(errors) if errors else "Compilation failed without generated PDF",
+    }
+
+
 # Keep the old compile_with_fallback_legacy for reference (can be removed later)
 def _compile_with_fallback_legacy(tex_file: str, output_dir: str) -> Dict:
     """
