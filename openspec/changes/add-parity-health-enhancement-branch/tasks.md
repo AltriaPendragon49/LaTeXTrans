@@ -25,8 +25,8 @@
 - [x] 4.5 Run focused backend compiler/parity tests.
 
 ## 5. Deployment Verification
-- [ ] 5.1 Commit the implementation.
-- [ ] 5.2 Deploy to the production server.
-- [ ] 5.3 Start admin curation translation for `1910.10683` and confirm the enhanced branch repairs the citation/pre-bibliography compile issue.
-- [ ] 5.4 Compare `1910.10683` output against `NiuTrans/LaTeXTrans/outputs/zh_1910.10683` for the expected citation/PDF behavior.
-- [ ] 5.5 Start admin curation translation for `2508.15260` and confirm non-triggering tasks preserve baseline behavior.
+- [x] 5.1 Commit the implementation.
+- [x] 5.2 Deploy to the production server.
+- [x] 5.3 Start admin curation translation for `1910.10683` and confirm the enhanced branch repairs the citation/pre-bibliography compile issue.
+- [x] 5.4 Compare `1910.10683` output against `NiuTrans/LaTeXTrans/outputs/zh_1910.10683` for the expected citation/PDF behavior.
+- [x] 5.5 Start admin curation translation for `2508.15260` and, after confirming the broader CJK compatibility trigger is intentional, confirm the enhanced branch completes and publishes without PDF regression.
