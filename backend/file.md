@@ -1,5 +1,10 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-07 parity health branch)
+
+- `backend/app/services/latex/compiler.py`: `origin_cli_parity` 编译新增可丢弃的健康增强分支，基线仍按旧 CLI 顺序 `pdflatex -> xelatex` 并优先保留已生成 PDF；引用/BibTeX flag、裸 `%`、旧 biblatex `.bbl`、CJK/pdfTeX 兼容、预编译包清理与图片 sanitizer 等修复仅在临时副本或受控触发路径中运行，失败时回退基线结果。
+- `backend/app/services/agents/generator_agent.py`: parity 编译调用透传目标语言，用于健康增强分支判断 CJK 相关触发条件，不改变任务状态策略。
+
 ## Recent Responsibility Updates (2026-05-07 daily translation quotas)
 
 - `backend/app/api/routes/upload.py`: 批量上传新增 `/upload/batch-translate` 认证入口，按文件数在创建任何上传/翻译任务前一次性预留每日 LaTeX 额度；单文件上传成功后复用翻译启动流程但跳过二次扣减，并对未被接受的文件释放预留额度。

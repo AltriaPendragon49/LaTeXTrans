@@ -553,6 +553,7 @@ def test_backend_origin_cli_parity_compiler_uses_legacy_latexmk_command(
                 "-file-line-error",
                 "-synctex=1",
                 "-f",
+                "-bibtex-",
                 str(tex_file),
             ],
             "check": True,

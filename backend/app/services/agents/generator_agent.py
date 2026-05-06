@@ -434,7 +434,11 @@ class GeneratorAgent(BaseToolAgent):
                 guard_blocking=False,
                 guard_warning_only=False,
             )
-            result = compile_with_origin_cli_parity(str(main_tex), transed_latex_dir)
+            result = compile_with_origin_cli_parity(
+                str(main_tex),
+                transed_latex_dir,
+                target_language=target_language,
+            )
             pdf_file = result.get("pdf_path")
             if pdf_file and not Path(pdf_file).exists():
                 logger.error(f"Compiler returned a missing PDF path: {pdf_file}")
@@ -651,6 +655,7 @@ class GeneratorAgent(BaseToolAgent):
                     compile_with_origin_cli_parity,
                     str(main_tex),
                     transed_latex_dir,
+                    target_language,
                 )
                 compile_exec_ms = int((time.monotonic() - compile_started_at) * 1000)
             finally:

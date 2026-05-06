@@ -149,11 +149,73 @@ def test_compile_with_origin_cli_parity_stops_after_pdflatex_pdf(monkeypatch, tm
     assert calls == [("main.tex", "build_pdflatex", "pdflatex", True, True, tmp_path.name)]
 
 
-def test_compile_with_origin_cli_parity_escapes_texttt_bare_percent_before_latexmk(monkeypatch, tmp_path):
+def test_compile_with_origin_cli_parity_skips_health_branch_for_cjk_without_trigger(monkeypatch, tmp_path):
     from backend.app.services.latex import compiler
 
     tex_file = tmp_path / "main.tex"
     tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\usepackage[UTF8]{ctex}\n"
+        "\\begin{document}中文正文 without health triggers.\\end{document}",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(cmd, check, capture_output, cwd):
+        engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
+        output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+        calls.append((engine, output_dir.name))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "main.pdf").write_bytes(b"%PDF")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(compiler.subprocess, "run", fake_run)
+
+    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path), target_language="zh")
+
+    assert result["status"] == "completed"
+    assert result["engine"] == "pdflatex"
+    assert calls == [("pdflatex", "build_pdflatex")]
+
+
+def test_compile_with_origin_cli_parity_uses_bibliography_flag_for_latexmk(monkeypatch, tmp_path):
+    from backend.app.services.latex import compiler
+
+    def run_case(project_dir: Path, has_real_bib: bool) -> list[str]:
+        project_dir.mkdir()
+        tex_file = project_dir / "main.tex"
+        tex_file.write_text(
+            "\\documentclass{article}\\begin{document}\\cite{x}\\bibliography{refs}\\end{document}",
+            encoding="utf-8",
+        )
+        if has_real_bib:
+            (project_dir / "refs.bib").write_text("@article{x,title={X}}", encoding="utf-8")
+        calls = []
+
+        def fake_run(cmd, check, capture_output, cwd):
+            calls.append(list(cmd))
+            output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "main.pdf").write_bytes(b"%PDF")
+            return SimpleNamespace(returncode=0)
+
+        monkeypatch.setattr(compiler.subprocess, "run", fake_run)
+        result = compiler.compile_with_origin_cli_parity(str(tex_file), str(project_dir))
+        assert result["status"] == "completed"
+        return calls[0]
+
+    no_bib_cmd = run_case(tmp_path / "no_bib", has_real_bib=False)
+    real_bib_cmd = run_case(tmp_path / "real_bib", has_real_bib=True)
+
+    assert "-bibtex-" in no_bib_cmd
+    assert "-bibtex" in real_bib_cmd
+
+
+def test_compile_with_origin_cli_parity_escapes_texttt_bare_percent_only_in_health_copy(monkeypatch, tmp_path):
+    from backend.app.services.latex import compiler
+
+    tex_file = tmp_path / "main.tex"
+    original_tex = (
         "\\documentclass{article}\n"
         "\\begin{document}\n"
         "\\texttt{Estimated indoor area is 0.5% of ice-free land.}\n"
@@ -161,32 +223,76 @@ def test_compile_with_origin_cli_parity_escapes_texttt_bare_percent_before_latex
         "\\texttt{Already escaped 15\\% remains safe.}\n"
         "Outside text 20% remains a comment.\n"
         "\\bibliography{biblio}\n"
-        "\\end{document}\n",
-        encoding="utf-8",
+        "\\end{document}\n"
     )
-    observed_tex = []
+    tex_file.write_text(original_tex, encoding="utf-8")
+    observed_runs = []
 
     def fake_run(cmd, check, capture_output, cwd):
-        observed_tex.append(tex_file.read_text(encoding="utf-8"))
+        tex_path = Path(cmd[-1])
+        tex_content = tex_path.read_text(encoding="utf-8")
         engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
         output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+        observed_runs.append((engine, output_dir.name, tex_path.parent, tex_content))
         output_dir.mkdir(parents=True, exist_ok=True)
-        if engine == "pdflatex":
+        if "\\texttt{Estimated indoor area is 0.5\\% of ice-free land.}" in tex_content:
             (output_dir / "main.pdf").write_bytes(b"%PDF")
-        return SimpleNamespace(returncode=0)
+            return SimpleNamespace(returncode=0)
+        raise compiler.subprocess.CalledProcessError(1, cmd)
 
     monkeypatch.setattr(compiler.subprocess, "run", fake_run)
 
-    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path))
+    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path), target_language="zh")
 
     assert result["status"] == "completed"
-    assert len(observed_tex) == 1
-    prepared_tex = observed_tex[0]
+    assert result["pdf_path"].endswith("build_parity_health_selected\\main.pdf") or result["pdf_path"].endswith("build_parity_health_selected/main.pdf")
+    assert tex_file.read_text(encoding="utf-8") == original_tex
+    baseline_runs = [run for run in observed_runs if run[1] in {"build_pdflatex", "build_xelatex"}]
+    health_runs = [run for run in observed_runs if run[1].startswith("build_parity_health")]
+    assert baseline_runs
+    assert health_runs
+    assert "\\texttt{Estimated indoor area is 0.5% of ice-free land.}" in baseline_runs[0][3]
+    prepared_tex = health_runs[0][3]
     assert "\\texttt{Estimated indoor area is 0.5\\% of ice-free land.}" in prepared_tex
     assert "% keep this real comment intact" in prepared_tex
     assert "\\texttt{Already escaped 15\\% remains safe.}" in prepared_tex
     assert "Outside text 20% remains a comment." in prepared_tex
     assert "\\bibliography{biblio}" in prepared_tex
+
+
+def test_compile_with_origin_cli_parity_returns_baseline_pdf_when_health_branch_fails(monkeypatch, tmp_path):
+    from backend.app.services.latex import compiler
+
+    tex_file = tmp_path / "main.tex"
+    original_tex = (
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\texttt{Estimated indoor area is 0.5% of ice-free land.}\n"
+        "\\end{document}\n"
+    )
+    tex_file.write_text(original_tex, encoding="utf-8")
+    calls = []
+
+    def fake_run(cmd, check, capture_output, cwd):
+        tex_path = Path(cmd[-1])
+        engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
+        output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+        calls.append((engine, output_dir.name, tex_path.parent))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        if output_dir.name == "build_pdflatex":
+            (output_dir / "main.pdf").write_bytes(b"%PDF")
+            return SimpleNamespace(returncode=0)
+        raise compiler.subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(compiler.subprocess, "run", fake_run)
+
+    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path), target_language="zh")
+
+    assert result["status"] == "completed"
+    assert result["engine"] == "pdflatex"
+    assert result["pdf_path"].endswith("build_pdflatex\\main.pdf") or result["pdf_path"].endswith("build_pdflatex/main.pdf")
+    assert tex_file.read_text(encoding="utf-8") == original_tex
+    assert any(call[1].startswith("build_parity_health") for call in calls)
 
 
 def test_run_pipeline_logs_parity_mode_and_not_invoked_systems(monkeypatch, tmp_path):

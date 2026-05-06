@@ -15,11 +15,19 @@ import asyncio
 import logging
 import json
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List, Protocol, Callable
 import platform
 import signal
 from .sanitizer import try_sanitize_images_in_errors, apply_precompile_sanitization
+from .utils import (
+    _comment_out_pdflatex_commands,
+    _fix_page_overflow_for_cjk,
+    _inject_cjk_dummy_environments,
+    _inject_cjk_math_family_fallback,
+    _patch_sibling_style_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +204,7 @@ def _has_bibliography_driver(tex_path: Path) -> bool:
     return bool(_BIBLIOGRAPHY_DRIVER_RE.search(tex_content))
 
 
-def _prepare_bibliography_inputs(tex_path: Path) -> str:
+def _prepare_bibliography_inputs(tex_path: Path, restore_manual_bbl: bool = True) -> str:
     tex_path = Path(tex_path)
     tex_dir = tex_path.parent
     has_real_bib = _has_real_bib_files(tex_dir)
@@ -205,13 +213,14 @@ def _prepare_bibliography_inputs(tex_path: Path) -> str:
 
     if manual_bbl_targets and not has_driver:
         restored_targets = 0
-        for bbl_path in manual_bbl_targets:
-            alt_bbl_path = bbl_path.with_suffix(bbl_path.suffix + ".tex")
-            needs_restore = not bbl_path.exists() or bbl_path.stat().st_size == 0
-            if needs_restore and alt_bbl_path.exists() and alt_bbl_path.stat().st_size > 0:
-                bbl_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(alt_bbl_path, bbl_path)
-                restored_targets += 1
+        if restore_manual_bbl:
+            for bbl_path in manual_bbl_targets:
+                alt_bbl_path = bbl_path.with_suffix(bbl_path.suffix + ".tex")
+                needs_restore = not bbl_path.exists() or bbl_path.stat().st_size == 0
+                if needs_restore and alt_bbl_path.exists() and alt_bbl_path.stat().st_size > 0:
+                    bbl_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(alt_bbl_path, bbl_path)
+                    restored_targets += 1
         logger.info(
             "Bibliography detection: manual prebuilt .bbl input%s detected -> using -bibtex-",
             f" (restored {restored_targets})" if restored_targets else "",
@@ -1154,7 +1163,7 @@ def _extract_content_between_braces(text: str, start_index: int) -> str:
     return "".join(content)
 
 def _fallback_biblatex_to_thebibliography(tex_dir: str, output_dir: str) -> None:
-    """
+    r"""
     Fallback for biblatex projects without .bib files (like many arXiv submissions).
     Modern biblatex cannot parse older format .bbl files, causing raw data spill.
     This parses the old .bbl manually and replaces \printbibliography
@@ -2668,87 +2677,23 @@ def _first_pdf_in_dir(output_dir: str) -> Optional[str]:
     return None
 
 
-def _compile_latex_origin_cli_parity(
-    tex_file: str,
-    out_dir: str,
-    engine: str,
-    output_latex_dir: str,
-) -> CompilationResult:
-    os.makedirs(out_dir, exist_ok=True)
-    _escape_bare_percent_in_texttt_file(Path(tex_file))
-    cmd = [
-        "latexmk",
-        f"-{engine}",
-        "-interaction=nonstopmode",
-        f"-outdir={out_dir}",
-        "-file-line-error",
-        "-synctex=1",
-        "-f",
-        tex_file,
-    ]
-    cwd = os.path.dirname(tex_file)
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
-        if engine == "pdflatex":
-            output_path = os.path.join(output_latex_dir, "success.txt")
-            with open(output_path, "w", encoding="utf-8") as handle:
-                handle.write("Compilation successful\n")
-        return CompilationResult(success=True, exit_code=0)
-    except subprocess.CalledProcessError as exc:
-        logger.info(
-            "Origin CLI parity latexmk failed with %s for engine %s",
-            exc.returncode,
-            engine,
-        )
-        return CompilationResult(
-            success=False,
-            exit_code=exc.returncode,
-            errors=[str(exc)],
-        )
+def _parity_result_for_pdf(pdf_path: str, engine: str, result: CompilationResult) -> Dict[str, Any]:
+    return {
+        "pdf_path": pdf_path,
+        "status": "completed",
+        "engine": engine,
+        "error_count": getattr(result, "error_count", 0),
+        "warnings": None,
+        "errors": None,
+        "_error_lines": list(getattr(result, "errors", []) or []),
+        "_engine_results": [result],
+    }
 
 
-def compile_with_origin_cli_parity(tex_file: str, output_latex_dir: str) -> Dict:
-    """
-    Legacy CLI compile order: pdflatex build dir first, xelatex only if no PDF exists.
-    """
-    logger.info("Starting origin CLI parity compilation for %s", tex_file)
-
-    compile_out_dir_pdflatex = os.path.join(output_latex_dir, "build_pdflatex")
-    pdflatex_result = _compile_latex_origin_cli_parity(
-        tex_file,
-        compile_out_dir_pdflatex,
-        engine="pdflatex",
-        output_latex_dir=output_latex_dir,
-    )
-    pdf_path = _first_pdf_in_dir(compile_out_dir_pdflatex)
-    if pdf_path:
-        return {
-            "pdf_path": pdf_path,
-            "status": "completed",
-            "engine": "pdflatex",
-            "error_count": getattr(pdflatex_result, "error_count", 0),
-            "warnings": None,
-            "errors": None,
-        }
-
-    compile_out_dir_xelatex = os.path.join(output_latex_dir, "build_xelatex")
-    xelatex_result = _compile_latex_origin_cli_parity(
-        tex_file,
-        compile_out_dir_xelatex,
-        engine="xelatex",
-        output_latex_dir=output_latex_dir,
-    )
-    pdf_path = _first_pdf_in_dir(compile_out_dir_xelatex)
-    if pdf_path:
-        return {
-            "pdf_path": pdf_path,
-            "status": "completed",
-            "engine": "xelatex",
-            "error_count": getattr(xelatex_result, "error_count", 0),
-            "warnings": None,
-            "errors": None,
-        }
-
+def _parity_result_for_failure(
+    pdflatex_result: CompilationResult,
+    xelatex_result: CompilationResult,
+) -> Dict[str, Any]:
     errors: List[str] = []
     errors.extend(getattr(pdflatex_result, "errors", []) or [])
     errors.extend(getattr(xelatex_result, "errors", []) or [])
@@ -2759,7 +2704,467 @@ def compile_with_origin_cli_parity(tex_file: str, output_latex_dir: str) -> Dict
         "error_count": getattr(xelatex_result, "error_count", 0),
         "warnings": None,
         "errors": "\n".join(errors) if errors else "Compilation failed without generated PDF",
+        "_error_lines": errors,
+        "_engine_results": [pdflatex_result, xelatex_result],
     }
+
+
+def _strip_parity_internal_fields(result: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: value for key, value in result.items() if not key.startswith("_")}
+
+
+def _compile_latex_origin_cli_parity(
+    tex_file: str,
+    out_dir: str,
+    engine: str,
+    output_latex_dir: str,
+    restore_bibliography_inputs: bool = False,
+) -> CompilationResult:
+    os.makedirs(out_dir, exist_ok=True)
+    tex_path = Path(tex_file)
+    bibtex_flag = _prepare_bibliography_inputs(
+        tex_path,
+        restore_manual_bbl=restore_bibliography_inputs,
+    )
+    log_path = os.path.join(out_dir, f"{tex_path.stem}.log")
+    cmd = [
+        "latexmk",
+        f"-{engine}",
+        "-interaction=nonstopmode",
+        f"-outdir={out_dir}",
+        "-file-line-error",
+        "-synctex=1",
+        "-f",
+        bibtex_flag,
+        tex_file,
+    ]
+    cwd = os.path.dirname(tex_file)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+        if engine == "pdflatex":
+            output_path = os.path.join(output_latex_dir, "success.txt")
+            with open(output_path, "w", encoding="utf-8") as handle:
+                handle.write("Compilation successful\n")
+        return CompilationResult(
+            success=True,
+            log_path=log_path if os.path.exists(log_path) else None,
+            error_count=0,
+            errors=[],
+            exit_code=0,
+        )
+    except subprocess.CalledProcessError as exc:
+        logger.info(
+            "Origin CLI parity latexmk failed with %s for engine %s",
+            exc.returncode,
+            engine,
+        )
+        error_count, errors = parse_log_errors(log_path)
+        if not errors:
+            errors = [str(exc)]
+        return CompilationResult(
+            success=False,
+            log_path=log_path if os.path.exists(log_path) else None,
+            error_count=error_count,
+            exit_code=exc.returncode,
+            errors=errors,
+        )
+
+
+def _run_origin_cli_parity_sequence(
+    tex_file: str,
+    output_latex_dir: str,
+    *,
+    pdflatex_build_dir_name: str = "build_pdflatex",
+    xelatex_build_dir_name: str = "build_xelatex",
+    restore_bibliography_inputs: bool = False,
+) -> Dict[str, Any]:
+    compile_out_dir_pdflatex = os.path.join(output_latex_dir, pdflatex_build_dir_name)
+    pdflatex_result = _compile_latex_origin_cli_parity(
+        tex_file,
+        compile_out_dir_pdflatex,
+        engine="pdflatex",
+        output_latex_dir=output_latex_dir,
+        restore_bibliography_inputs=restore_bibliography_inputs,
+    )
+    pdf_path = _first_pdf_in_dir(compile_out_dir_pdflatex)
+    if pdf_path:
+        return _parity_result_for_pdf(pdf_path, "pdflatex", pdflatex_result)
+
+    compile_out_dir_xelatex = os.path.join(output_latex_dir, xelatex_build_dir_name)
+    xelatex_result = _compile_latex_origin_cli_parity(
+        tex_file,
+        compile_out_dir_xelatex,
+        engine="xelatex",
+        output_latex_dir=output_latex_dir,
+        restore_bibliography_inputs=restore_bibliography_inputs,
+    )
+    pdf_path = _first_pdf_in_dir(compile_out_dir_xelatex)
+    if pdf_path:
+        return _parity_result_for_pdf(pdf_path, "xelatex", xelatex_result)
+
+    return _parity_result_for_failure(pdflatex_result, xelatex_result)
+
+
+def _iter_parity_project_tex_files(tex_dir: Path) -> List[Path]:
+    return sorted(path for path in tex_dir.rglob("*.tex") if path.is_file())
+
+
+def _manual_bbl_restore_needed(tex_path: Path) -> bool:
+    if _has_bibliography_driver(tex_path):
+        return False
+    for bbl_path in _iter_manual_bbl_inputs(tex_path):
+        alt_bbl_path = bbl_path.with_suffix(bbl_path.suffix + ".tex")
+        needs_restore = not bbl_path.exists() or bbl_path.stat().st_size == 0
+        if needs_restore and alt_bbl_path.exists() and alt_bbl_path.stat().st_size > 0:
+            return True
+    return False
+
+
+def _has_biblatex_bbl_candidate(tex_dir: Path) -> bool:
+    for bbl_path in tex_dir.rglob("*.bbl"):
+        try:
+            if "biblatex bbl format version" in bbl_path.read_text(encoding="utf-8", errors="replace"):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _should_apply_parity_biblatex_fallback(tex_path: Path) -> bool:
+    tex_dir = tex_path.parent
+    manual_prebuilt_bbl = bool(_iter_manual_bbl_inputs(tex_path)) and not _has_bibliography_driver(tex_path)
+    return (
+        not _has_real_bib_files(tex_dir)
+        and not manual_prebuilt_bbl
+        and _has_biblatex_bbl_candidate(tex_dir)
+    )
+
+
+def _detect_precompile_sanitization_trigger(tex_files: List[Path]) -> bool:
+    for tex_path in tex_files:
+        try:
+            content = tex_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        _, warnings = apply_precompile_sanitization(content)
+        if warnings:
+            return True
+    return False
+
+
+def _has_cjk_compat_trigger(tex_file: Path, language: str) -> bool:
+    if language != "cjk":
+        return False
+
+    trigger_re = re.compile(
+        r"\\(?:pdfoutput|pdfinfo|pdfcatalog|pdftrailer|pdfcompresslevel|"
+        r"pdfobjcompresslevel|pdfminorversion|pdfpagewidth|pdfpageheight|"
+        r"pdfinclusioncopyfonts|pdfglyphtounicode|pdfgentounicode)\b"
+        r"|\\begin\s*\{CJK\*?\}"
+        r"|\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\s*\{[^}]*"
+        r"(?:a4wide|CJKutf8|newtxtext|newtxmath|txfonts|fontenc)[^}]*\}",
+        re.IGNORECASE,
+    )
+
+    candidates = _iter_parity_project_tex_files(tex_file.parent)
+    candidates.extend(
+        path
+        for pattern in ("*.cls", "*.sty")
+        for path in sorted(tex_file.parent.glob(pattern))
+        if path.is_file()
+    )
+    for candidate in candidates:
+        try:
+            content = candidate.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if trigger_re.search(content):
+            return True
+    return False
+
+
+def _detect_parity_health_triggers(tex_path: Path, target_language: Optional[str]) -> List[str]:
+    tex_files = _iter_parity_project_tex_files(tex_path.parent)
+    triggers: List[str] = []
+
+    for candidate in tex_files:
+        try:
+            content = candidate.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        _, replacements = _escape_bare_percent_in_texttt(content)
+        if replacements:
+            triggers.append("bare_percent_texttt")
+            break
+
+    if _manual_bbl_restore_needed(tex_path):
+        triggers.append("manual_bbl_restore")
+    if _should_apply_parity_biblatex_fallback(tex_path):
+        triggers.append("biblatex_thebibliography_fallback")
+
+    language = map_target_language_to_family(target_language)
+    if language is None:
+        language = detect_document_language(str(tex_path), include_inputs=True)
+
+    if language == "cjk" and _detect_precompile_sanitization_trigger(tex_files):
+        triggers.append("precompile_package_sanitization")
+    if _has_cjk_compat_trigger(tex_path, language):
+        triggers.append("cjk_pdftex_compat")
+
+    return triggers
+
+
+def _apply_parity_health_precompile_repairs(
+    tex_path: Path,
+    output_latex_dir: Path,
+    target_language: Optional[str],
+    planned_triggers: List[str],
+) -> List[str]:
+    tex_dir = tex_path.parent
+    applied: List[str] = []
+
+    texttt_replacements = 0
+    for candidate in _iter_parity_project_tex_files(tex_dir):
+        texttt_replacements += _escape_bare_percent_in_texttt_file(candidate)
+    if texttt_replacements:
+        applied.append("bare_percent_texttt")
+
+    if "manual_bbl_restore" in planned_triggers:
+        _prepare_bibliography_inputs(tex_path, restore_manual_bbl=True)
+        applied.append("manual_bbl_restore")
+
+    if "biblatex_thebibliography_fallback" in planned_triggers:
+        _fallback_biblatex_to_thebibliography(str(tex_dir), str(output_latex_dir))
+        applied.append("biblatex_thebibliography_fallback")
+
+    if "precompile_package_sanitization" in planned_triggers:
+        sanitized = 0
+        for candidate in _iter_parity_project_tex_files(tex_dir):
+            try:
+                content = candidate.read_text(encoding="utf-8", errors="replace")
+                sanitizer_output, warnings = apply_precompile_sanitization(content)
+                if warnings and sanitizer_output != content:
+                    candidate.write_text(sanitizer_output, encoding="utf-8")
+                    sanitized += 1
+            except Exception as exc:
+                logger.warning("Parity health branch: failed to sanitize %s: %s", candidate, exc)
+        if sanitized:
+            applied.append("precompile_package_sanitization")
+
+    language = map_target_language_to_family(target_language)
+    if language is None:
+        language = detect_document_language(str(tex_path), include_inputs=True)
+
+    if "cjk_pdftex_compat" in planned_triggers and language == "cjk":
+        try:
+            original = tex_path.read_text(encoding="utf-8", errors="replace")
+            patched = _comment_out_pdflatex_commands(original)
+            patched = _inject_cjk_math_family_fallback(patched)
+            patched = _inject_cjk_dummy_environments(patched)
+            patched = _fix_page_overflow_for_cjk(patched)
+            if patched != original:
+                tex_path.write_text(patched, encoding="utf-8")
+            _patch_sibling_style_files(str(tex_path))
+            applied.append("cjk_pdftex_compat")
+        except Exception as exc:
+            logger.warning("Parity health branch: failed CJK compatibility repair for %s: %s", tex_path, exc)
+
+    return applied
+
+
+def _has_image_error_trigger(error_lines: List[str]) -> bool:
+    image_triggers = ("reading image failed", "pdf inclusion")
+    return any(any(trigger in line.lower() for trigger in image_triggers) for line in error_lines)
+
+
+def _copy_parity_health_project(tex_path: Path) -> Tuple[Path, Path]:
+    source_dir = tex_path.parent.resolve()
+    temp_root = Path(tempfile.mkdtemp(prefix=f".parity_health_{source_dir.name}_", dir=str(source_dir.parent)))
+    copied_project = temp_root / source_dir.name
+    shutil.copytree(
+        source_dir,
+        copied_project,
+        ignore=shutil.ignore_patterns(
+            "build_pdflatex",
+            "build_xelatex",
+            "build_parity_health*",
+            ".parity_health_*",
+            "*.fdb_latexmk",
+            "*.fls",
+            "*.synctex.gz",
+        ),
+    )
+    health_tex = copied_project / tex_path.relative_to(source_dir)
+    return temp_root, health_tex
+
+
+def _clear_parity_health_build_dirs(output_latex_dir: Path) -> None:
+    for name in (
+        "build_parity_health_pdflatex",
+        "build_parity_health_xelatex",
+        "build_parity_health_image_pdflatex",
+        "build_parity_health_image_xelatex",
+        "build_parity_health_selected",
+    ):
+        candidate = output_latex_dir / name
+        try:
+            if candidate.exists() and candidate.parent.resolve() == output_latex_dir.resolve():
+                shutil.rmtree(candidate)
+        except Exception as exc:
+            logger.warning("Failed to clear parity health build dir %s: %s", candidate, exc)
+
+
+def _copy_selected_parity_health_pdf(result: Dict[str, Any], output_latex_dir: Path) -> Dict[str, Any]:
+    pdf_path = result.get("pdf_path")
+    if not pdf_path:
+        return result
+    source_pdf = Path(pdf_path)
+    if not source_pdf.exists():
+        return result
+    selected_dir = output_latex_dir / "build_parity_health_selected"
+    selected_dir.mkdir(parents=True, exist_ok=True)
+    selected_pdf = selected_dir / source_pdf.name
+    shutil.copy2(source_pdf, selected_pdf)
+    adopted = dict(result)
+    adopted["pdf_path"] = str(selected_pdf)
+    return adopted
+
+
+def _try_origin_cli_parity_health_branch(
+    tex_file: str,
+    output_latex_dir: str,
+    *,
+    target_language: Optional[str],
+    planned_triggers: List[str],
+    seed_image_errors: Optional[List[str]] = None,
+) -> Optional[Dict[str, Any]]:
+    original_tex = Path(tex_file).resolve()
+    output_dir = Path(output_latex_dir).resolve()
+    temp_root: Optional[Path] = None
+    try:
+        _clear_parity_health_build_dirs(output_dir)
+        temp_root, health_tex = _copy_parity_health_project(original_tex)
+        applied_triggers = _apply_parity_health_precompile_repairs(
+            health_tex,
+            output_dir,
+            target_language,
+            planned_triggers,
+        )
+
+        result = _run_origin_cli_parity_sequence(
+            str(health_tex),
+            str(output_dir),
+            pdflatex_build_dir_name="build_parity_health_pdflatex",
+            xelatex_build_dir_name="build_parity_health_xelatex",
+            restore_bibliography_inputs=True,
+        )
+        if result.get("pdf_path"):
+            adopted = _copy_selected_parity_health_pdf(result, output_dir)
+            adopted["_health_triggers"] = applied_triggers or list(planned_triggers)
+            adopted["warnings"] = (
+                "Origin CLI parity health branch adopted: "
+                + ", ".join(adopted["_health_triggers"] or ["compile_retry"])
+            )
+            adopted["parity_health_branch"] = {
+                "attempted": True,
+                "adopted": True,
+                "triggers": adopted["_health_triggers"],
+            }
+            return adopted
+
+        error_lines = list(result.get("_error_lines", []) or [])
+        if not error_lines and seed_image_errors:
+            error_lines = list(seed_image_errors)
+        if _has_image_error_trigger(error_lines):
+            sanitized_outputs, any_new, _ = try_sanitize_images_in_errors(
+                error_lines,
+                health_tex.parent,
+                already_sanitized=set(),
+            )
+            if any_new:
+                applied_triggers.append("image_sanitizer")
+                retry_result = _run_origin_cli_parity_sequence(
+                    str(health_tex),
+                    str(output_dir),
+                    pdflatex_build_dir_name="build_parity_health_image_pdflatex",
+                    xelatex_build_dir_name="build_parity_health_image_xelatex",
+                    restore_bibliography_inputs=True,
+                )
+                if retry_result.get("pdf_path"):
+                    adopted = _copy_selected_parity_health_pdf(retry_result, output_dir)
+                    adopted["_health_triggers"] = applied_triggers or list(planned_triggers)
+                    adopted["warnings"] = (
+                        "Origin CLI parity health branch adopted: "
+                        + ", ".join(adopted["_health_triggers"])
+                        + f" ({len(sanitized_outputs)} sanitized image PDF(s))"
+                    )
+                    adopted["parity_health_branch"] = {
+                        "attempted": True,
+                        "adopted": True,
+                        "triggers": adopted["_health_triggers"],
+                    }
+                    return adopted
+
+        logger.info(
+            "Origin CLI parity health branch produced no adoptable PDF; falling back to baseline."
+        )
+        return None
+    except Exception as exc:
+        logger.warning("Origin CLI parity health branch failed non-fatally: %s", exc)
+        return None
+    finally:
+        if temp_root is not None:
+            try:
+                shutil.rmtree(temp_root)
+            except Exception as exc:
+                logger.warning("Failed to remove parity health temp copy %s: %s", temp_root, exc)
+
+
+def compile_with_origin_cli_parity(
+    tex_file: str,
+    output_latex_dir: str,
+    target_language: Optional[str] = None,
+) -> Dict:
+    """
+    Legacy CLI compile order with a discardable health branch.
+
+    The baseline remains pdflatex-first and accepts any produced PDF. Targeted
+    health repairs run only in a temporary project copy and fall back to the
+    baseline result on failure.
+    """
+    logger.info("Starting origin CLI parity compilation for %s", tex_file)
+
+    planned_triggers = _detect_parity_health_triggers(Path(tex_file), target_language)
+    baseline_result = _run_origin_cli_parity_sequence(
+        tex_file,
+        output_latex_dir,
+        restore_bibliography_inputs=False,
+    )
+
+    baseline_pdf = baseline_result.get("pdf_path")
+    baseline_error_lines = list(baseline_result.get("_error_lines", []) or [])
+    baseline_image_trigger = (not baseline_pdf) and _has_image_error_trigger(baseline_error_lines)
+
+    if planned_triggers or baseline_image_trigger:
+        branch_triggers = list(planned_triggers)
+        if baseline_image_trigger and "image_compile_log" not in branch_triggers:
+            branch_triggers.append("image_compile_log")
+        logger.info(
+            "Origin CLI parity health branch triggered for %s: %s",
+            tex_file,
+            ", ".join(branch_triggers),
+        )
+        health_result = _try_origin_cli_parity_health_branch(
+            tex_file,
+            output_latex_dir,
+            target_language=target_language,
+            planned_triggers=branch_triggers,
+            seed_image_errors=baseline_error_lines if baseline_image_trigger else None,
+        )
+        if health_result and health_result.get("pdf_path") and (not baseline_pdf or health_result.get("_health_triggers")):
+            return _strip_parity_internal_fields(health_result)
+
+    return _strip_parity_internal_fields(baseline_result)
 
 
 # Keep the old compile_with_fallback_legacy for reference (can be removed later)
