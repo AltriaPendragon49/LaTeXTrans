@@ -51,13 +51,13 @@ function QuotaCells({
 
   return (
     <span
-      className="mt-2.5 grid w-full grid-cols-2 overflow-hidden border-y border-[color:var(--px-shell-line)] bg-white/45"
+      className="mt-1.5 grid w-full grid-cols-2 px-2"
       aria-label={t("profile.quota.summaryAria", {
         latexValue,
         pdfValue: pdfDirectValue,
       })}
     >
-      <span className="min-w-0 px-2.5 py-2 text-center">
+      <span className="min-w-0 py-1.5 pr-2 text-center">
         <span className="block truncate text-[10px] font-semibold text-[color:var(--px-shell-muted)]">
           {t("profile.quota.latexLabel")}
         </span>
@@ -65,7 +65,7 @@ function QuotaCells({
           {latexValue}
         </span>
       </span>
-      <span className="min-w-0 border-l border-[color:var(--px-shell-line)] px-2.5 py-2 text-center">
+      <span className="min-w-0 border-l border-[color:var(--px-shell-line)]/70 py-1.5 pl-2 text-center">
         <span className="block truncate text-[10px] font-semibold text-[color:var(--px-shell-muted)]">
           {t("profile.quota.pdfDirectLabel")}
         </span>
@@ -135,13 +135,13 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
           </button>
         </PopoverTrigger>
       ) : (
-        <div className="w-full px-1 py-1">
+        <div className="w-full">
           <PopoverTrigger asChild>
             <button
               type="button"
               aria-label={profileLabel}
               title={profileLabel}
-              className="group relative flex h-12 w-full items-center justify-center rounded-[12px] px-2 text-[color:var(--px-shell-muted)] transition-all duration-200 hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)] focus-visible:bg-[color:var(--px-shell-accent-soft)] focus-visible:text-[color:var(--px-shell-ink)]"
+              className="group relative flex h-12 w-full items-center justify-center rounded-[16px] px-4 text-[color:var(--px-shell-muted)] transition-all duration-200 hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)] focus-visible:bg-[color:var(--px-shell-accent-soft)] focus-visible:text-[color:var(--px-shell-ink)]"
             >
               {triggerContent}
             </button>
@@ -158,7 +158,7 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
         sideOffset={12}
         className="w-72 rounded-[24px] border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-3 shadow-[0_30px_70px_-42px_rgba(15,23,42,0.45)]"
       >
-        <div className="rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-4 py-3">
+        <div className="px-3 py-2.5">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--px-shell-muted)]">
             {menuLabel}
           </p>
