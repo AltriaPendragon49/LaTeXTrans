@@ -25,15 +25,41 @@ class LocalUserPayload(BaseModel):
     email: str | None = None
 
 
+class LatexTranslationQuotaPayload(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+    quota_date: str
+    reset_timezone: str
+
+
+class PdfDirectQuotaPayload(BaseModel):
+    unused_integral: int | None = None
+    source: str
+    status: str
+    fetched_at: str | None = None
+
+
+class QuotaSnapshotPayload(BaseModel):
+    latex_translation: LatexTranslationQuotaPayload
+    pdf_direct: PdfDirectQuotaPayload
+
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "Bearer"
     expires_in: int
     user: LocalUserPayload
+    quota_snapshot: QuotaSnapshotPayload
 
 
 class MeResponse(BaseModel):
     user: LocalUserPayload
+    quota_snapshot: QuotaSnapshotPayload
+
+
+class QuotaResponse(BaseModel):
+    quota_snapshot: QuotaSnapshotPayload
 
 
 def get_auth_service() -> LocalAuthService:
@@ -74,9 +100,28 @@ async def current_user(request: Request):
 
     try:
         user = await auth_service.get_current_user_from_token(token)
+        quota_snapshot = await auth_service.get_quota_snapshot_for_user(user["id"])
     except AuthServiceError as exc:
         return _error_response(exc)
-    return {"user": user}
+    return {"user": user, "quota_snapshot": quota_snapshot}
+
+
+@router.get("/quota", response_model=QuotaResponse)
+async def current_quota(request: Request):
+    auth_service = get_auth_service()
+    token = extract_bearer_token(request)
+    if not token:
+        return JSONResponse(
+            status_code=401,
+            content={"code": "AUTH_SESSION_INVALID", "message": "Session is invalid or expired."},
+        )
+
+    try:
+        user = await auth_service.get_current_user_from_token(token)
+        quota_snapshot = await auth_service.get_quota_snapshot_for_user(user["id"])
+    except AuthServiceError as exc:
+        return _error_response(exc)
+    return {"quota_snapshot": quota_snapshot}
 
 
 @router.post("/logout")

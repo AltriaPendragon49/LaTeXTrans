@@ -13,6 +13,7 @@ import httpx
 from backend.app.core.config import get_settings
 from backend.app.db import DatabaseUnavailableError
 from backend.app.repositories import AuthRepository
+from backend.app.services.translation_quota_service import TranslationQuotaService
 from backend.app.utils.async_blocking import run_blocking
 
 
@@ -56,6 +57,29 @@ class NiuTransAuthClient:
             if current is not None and str(current).strip():
                 return str(current).strip()
         return None
+
+    @staticmethod
+    def _extract_first_raw(payload: Any, *candidate_paths: tuple[str, ...]) -> Any:
+        for path in candidate_paths:
+            current = payload
+            for key in path:
+                if not isinstance(current, dict):
+                    current = None
+                    break
+                current = current.get(key)
+            if current is not None and str(current).strip():
+                return current
+        return None
+
+    @classmethod
+    def _extract_int(cls, payload: Any, *candidate_paths: tuple[str, ...]) -> Optional[int]:
+        value = cls._extract_first_raw(payload, *candidate_paths)
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     async def verify_credentials(self, *, identifier: str, password: str) -> dict[str, Any]:
         request_payload = {
@@ -161,6 +185,71 @@ class NiuTransAuthClient:
                 ("data", "user", "displayName"),
                 ("data", "user", "nickname"),
             ),
+            "upstream_token": self._extract_first(
+                payload,
+                ("token",),
+                ("accessToken",),
+                ("data", "token"),
+                ("data", "accessToken"),
+                ("data", "user", "token"),
+            ),
+        }
+
+    async def fetch_user_info_balance(self, *, token: str, user_id: str) -> dict[str, Any]:
+        request_headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Authorization": token,
+            "Niutrans-userid": user_id,
+            "User-Agent": "LaTexTrans-LocalAuth/1.0",
+        }
+        timeout = httpx.Timeout(15.0, connect=10.0)
+        fetched_at = _now_utc()
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(
+                    self._settings.niutrans_user_info_url,
+                    headers=request_headers,
+                )
+        except httpx.HTTPError:
+            return {
+                "unused_num_integral": None,
+                "status": "unavailable",
+                "fetched_at": fetched_at,
+            }
+
+        if response.status_code >= 400:
+            return {
+                "unused_num_integral": None,
+                "status": "unavailable",
+                "fetched_at": fetched_at,
+            }
+
+        try:
+            payload = response.json()
+        except ValueError:
+            return {
+                "unused_num_integral": None,
+                "status": "unavailable",
+                "fetched_at": fetched_at,
+            }
+
+        unused_num_integral = self._extract_int(
+            payload,
+            ("unusedNumIntegral",),
+            ("data", "unusedNumIntegral"),
+            ("data", "user", "unusedNumIntegral"),
+            ("user", "unusedNumIntegral"),
+        )
+        if unused_num_integral is None:
+            return {
+                "unused_num_integral": None,
+                "status": "unavailable",
+                "fetched_at": fetched_at,
+            }
+        return {
+            "unused_num_integral": unused_num_integral,
+            "status": "available",
+            "fetched_at": fetched_at,
         }
 
 
@@ -170,10 +259,12 @@ class LocalAuthService:
         *,
         repository: Optional[AuthRepository] = None,
         upstream_client: Optional[NiuTransAuthClient] = None,
+        quota_service: Optional[TranslationQuotaService] = None,
     ) -> None:
         self._settings = get_settings()
         self._repository = repository or AuthRepository()
         self._upstream_client = upstream_client or NiuTransAuthClient()
+        self._quota_service = quota_service or TranslationQuotaService()
 
     def _parse_jwt_keys(self) -> list[tuple[str, str]]:
         raw_value = str(self._settings.auth_jwt_keys or "").strip()
@@ -201,6 +292,48 @@ class LocalAuthService:
             "display_name": user.get("display_name"),
             "email": user.get("email"),
         }
+
+    async def _store_pdf_balance_snapshot_from_upstream(
+        self,
+        *,
+        user_id: str,
+        upstream_user: dict[str, Any],
+    ) -> None:
+        upstream_token = str(upstream_user.get("upstream_token") or "").strip()
+        external_user_id = str(upstream_user.get("external_user_id") or "").strip()
+        if not upstream_token or not external_user_id:
+            await run_blocking(
+                lambda: self._quota_service.store_pdf_direct_snapshot(
+                    user_id=user_id,
+                    unused_num_integral=None,
+                    status="unavailable",
+                    fetched_at=_now_utc(),
+                )
+            )
+            return
+
+        balance = await self._upstream_client.fetch_user_info_balance(
+            token=upstream_token,
+            user_id=external_user_id,
+        )
+        await run_blocking(
+            lambda: self._quota_service.store_pdf_direct_snapshot(
+                user_id=user_id,
+                unused_num_integral=balance.get("unused_num_integral"),
+                status=str(balance.get("status") or "unavailable"),
+                fetched_at=balance.get("fetched_at"),
+            )
+        )
+
+    async def get_quota_snapshot_for_user(self, user_id: str) -> dict[str, Any]:
+        try:
+            return await run_blocking(lambda: self._quota_service.get_quota_snapshot(user_id))
+        except DatabaseUnavailableError as exc:
+            raise AuthServiceError(
+                503,
+                "AUTH_SESSION_INVALID",
+                "Local auth persistence is not configured.",
+            ) from exc
 
     def _encode_jwt(self, payload: dict[str, Any]) -> str:
         version, secret = self._parse_jwt_keys()[0]
@@ -288,6 +421,23 @@ class LocalAuthService:
                 "Local auth persistence is not configured.",
             ) from exc
 
+        try:
+            await self._store_pdf_balance_snapshot_from_upstream(
+                user_id=user["id"],
+                upstream_user=upstream_user,
+            )
+        except Exception:
+            await run_blocking(
+                lambda: self._quota_service.store_pdf_direct_snapshot(
+                    user_id=user["id"],
+                    unused_num_integral=None,
+                    status="unavailable",
+                    fetched_at=_now_utc(),
+                )
+            )
+
+        quota_snapshot = await self.get_quota_snapshot_for_user(user["id"])
+
         payload = {
             "iss": self._settings.auth_jwt_issuer,
             "aud": self._settings.auth_jwt_audience,
@@ -306,6 +456,7 @@ class LocalAuthService:
             "token_type": "Bearer",
             "expires_in": self._settings.auth_access_token_ttl_seconds,
             "user": self._build_local_user_payload(user),
+            "quota_snapshot": quota_snapshot,
         }
 
     async def get_current_user_from_token(self, token: str) -> dict[str, Any]:

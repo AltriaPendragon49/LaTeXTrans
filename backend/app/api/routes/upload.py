@@ -5,23 +5,26 @@ Provides endpoints for uploading .zip, .tar.gz, .rar or .tex files.
 Supports automatic extraction and LaTeX project validation.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Any, Optional, List
+import json
 import logging
 import shutil
 import zipfile
 import tarfile
 import re
+import uuid
 from pathlib import Path
 
-from backend.app.core.auth import optional_current_user, resolve_current_user_id
+from backend.app.core.auth import optional_current_user, require_current_user, resolve_current_user_id
 from backend.app.services.task_manager import get_task_manager
 from backend.app.services import task_artifact_storage
 from backend.app.services.latex_validator import validate_latex_directory
 from backend.app.core.config import get_settings, TaskStatus
-from backend.app.models.config_models import LatexValidation
+from backend.app.models.config_models import AdvancedConfig, LatexValidation
+from backend.app.api.routes.translate import BatchTranslateResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,6 +33,7 @@ task_manager = get_task_manager()
 
 # Allow missing Authorization header (guest mode)
 security = HTTPBearer(auto_error=False)
+required_security = HTTPBearer(auto_error=True)
 
 
 class LatexValidationResponse(BaseModel):
@@ -48,6 +52,29 @@ class UploadResponse(BaseModel):
     message: str
     source_path: str
     latex_validation: Optional[LatexValidationResponse] = None
+
+
+def _parse_advanced_config_form(raw_value: Optional[str]) -> AdvancedConfig:
+    if not raw_value or not str(raw_value).strip():
+        return AdvancedConfig()
+
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="advanced_config must be valid JSON") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="advanced_config must be a JSON object")
+
+    try:
+        return AdvancedConfig(**payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid advanced_config: {exc}") from exc
+
+
+def _safe_upload_filename(filename: Optional[str]) -> str:
+    safe_name = Path(filename or "upload").name.strip()
+    return safe_name or "upload"
 
 
 def extract_rar(file_path: Path, extract_dir: Path) -> None:
@@ -84,7 +111,7 @@ def extract_rar(file_path: Path, extract_dir: Path) -> None:
             )
 
 
-def get_file_extension(filename: str) -> str:
+def get_file_extension(filename: Optional[str]) -> str:
     """
     Get file extension, handling compound extensions like .tar.gz
     
@@ -94,12 +121,137 @@ def get_file_extension(filename: str) -> str:
     Returns:
         File extension (e.g., ".zip", ".tar.gz", ".rar")
     """
+    filename = filename or ""
     name = filename.lower()
     if name.endswith('.tar.gz'):
         return '.tar.gz'
     if name.endswith('.tgz'):
         return '.tgz'
     return Path(filename).suffix.lower()
+
+
+@router.post("/upload/batch-translate", response_model=BatchTranslateResponse)
+async def batch_upload_translate(
+    files: List[UploadFile] = File(...),
+    source_language: str = Form("en"),
+    target_language: str = Form("ch"),
+    advanced_config: Optional[str] = Form(None),
+    credentials: HTTPAuthorizationCredentials = Depends(required_security),
+    current_user: dict[str, Any] = Depends(require_current_user),
+):
+    """
+    Upload multiple source packages and start translations with one atomic
+    daily-quota reservation before any upload task is created.
+    """
+    from backend.app.api.routes import translate as translate_route
+
+    user_id = resolve_current_user_id(current_user, credentials)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required for batch upload translation")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    if len(files) > 9:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Batch limit exceeded: maximum 9 files per request, got {len(files)}",
+        )
+
+    invalid_files = [
+        f"{file.filename}: {get_file_extension(file.filename)}"
+        for file in files
+        if get_file_extension(file.filename) not in settings.allowed_extensions
+    ]
+    if invalid_files:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type in batch: {', '.join(invalid_files)}",
+        )
+
+    parsed_advanced_config = _parse_advanced_config_form(advanced_config)
+
+    tq = translate_route.get_task_queue()
+    if tq:
+        user_active = tq.get_user_active_count(user_id)
+        remaining = settings.max_user_active_tasks - user_active
+        if remaining <= 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Quota exceeded: you have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete.",
+            )
+        if len(files) > remaining:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Quota exceeded: you can submit at most {remaining} more tasks (currently {user_active}/{settings.max_user_active_tasks} active).",
+            )
+
+    quota_service = translate_route.get_translation_quota_service()
+    reserved_count = len(files)
+    try:
+        quota_service.reserve_latex_translation(
+            user_id=user_id,
+            requested_count=reserved_count,
+        )
+    except translate_route.DailyQuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=translate_route._quota_exceeded_detail(exc)) from exc
+
+    task_ids: list[str] = []
+    errors: list[str] = []
+    accepted_count = 0
+    batch_id = str(uuid.uuid4())
+
+    for file in files:
+        filename = _safe_upload_filename(file.filename)
+        try:
+            if hasattr(file.file, "seek"):
+                file.file.seek(0)
+
+            upload_response = await upload_file(
+                file=file,
+                credentials=credentials,
+                current_user=current_user,
+            )
+            translate_request = translate_route.TranslateRequest(
+                source_language=source_language,
+                target_language=target_language,
+                advanced_config=parsed_advanced_config,
+            )
+            await translate_route._start_translation_for_task(
+                task_id=upload_response.task_id,
+                request=translate_request,
+                credentials=credentials,
+                current_user=current_user,
+                reserve_daily_quota=False,
+            )
+            task_ids.append(upload_response.task_id)
+            accepted_count += 1
+        except HTTPException as exc:
+            errors.append(f"{filename}: {exc.detail}")
+        except Exception as exc:
+            logger.error("[BatchUploadTranslate] Failed to process %s: %s", filename, exc, exc_info=True)
+            errors.append(f"{filename}: {exc}")
+
+    unaccepted_count = max(reserved_count - accepted_count, 0)
+    if unaccepted_count:
+        try:
+            quota_service.release_latex_translation(user_id=user_id, count=unaccepted_count)
+        except Exception:
+            logger.warning("Failed to release daily quota for unaccepted batch uploads", exc_info=True)
+
+    if not task_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"All batch upload translations failed: {'; '.join(errors)}",
+        )
+
+    return BatchTranslateResponse(
+        batch_id=batch_id,
+        task_ids=task_ids,
+        message=f"Batch upload translation started: {len(task_ids)} tasks queued" + (
+            f" ({len(errors)} failed)" if errors else ""
+        ),
+        queued_count=len(task_ids),
+    )
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -169,7 +321,7 @@ async def upload_file(
     
     try:
         # Save uploaded file
-        file_path = task_dir / file.filename
+        file_path = task_dir / _safe_upload_filename(file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         

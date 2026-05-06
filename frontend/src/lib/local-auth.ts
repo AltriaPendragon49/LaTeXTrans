@@ -12,11 +12,32 @@ export interface LocalAuthUser {
     phone?: string | null
 }
 
+export interface LatexTranslationQuotaSnapshot {
+    limit: number
+    used: number
+    remaining: number
+    quota_date: string
+    reset_timezone: string
+}
+
+export interface PdfDirectQuotaSnapshot {
+    unused_integral: number | null
+    source: string
+    status: string
+    fetched_at: string | null
+}
+
+export interface QuotaSnapshot {
+    latex_translation: LatexTranslationQuotaSnapshot
+    pdf_direct: PdfDirectQuotaSnapshot
+}
+
 export interface LocalAuthSession {
     access_token: string
     token_type: string
     expires_in: number
     user: LocalAuthUser
+    quota_snapshot?: QuotaSnapshot | null
 }
 
 export interface LocalAuthError {
@@ -55,6 +76,55 @@ function normalizeUser(input: Partial<LocalAuthUser>): LocalAuthUser | null {
                 : typeof (input as { phone_number?: unknown }).phone_number === "string"
                   ? (input as { phone_number: string }).phone_number
                   : null,
+    }
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+    return Boolean(input && typeof input === "object")
+}
+
+function normalizeNumber(input: unknown): number | null {
+    if (typeof input !== "number" || !Number.isFinite(input)) {
+        return null
+    }
+    return input
+}
+
+function normalizeString(input: unknown, fallback: string): string {
+    return typeof input === "string" && input.trim() ? input : fallback
+}
+
+export function normalizeQuotaSnapshot(input: unknown): QuotaSnapshot | null {
+    if (!isRecord(input) || !isRecord(input.latex_translation)) {
+        return null
+    }
+
+    const latex = input.latex_translation
+    const limit = normalizeNumber(latex.limit)
+    const used = normalizeNumber(latex.used)
+    const remaining = normalizeNumber(latex.remaining)
+
+    if (limit === null || used === null || remaining === null) {
+        return null
+    }
+
+    const pdf = isRecord(input.pdf_direct) ? input.pdf_direct : {}
+    const unusedIntegral = normalizeNumber(pdf.unused_integral)
+
+    return {
+        latex_translation: {
+            limit,
+            used,
+            remaining,
+            quota_date: normalizeString(latex.quota_date, ""),
+            reset_timezone: normalizeString(latex.reset_timezone, "Asia/Shanghai"),
+        },
+        pdf_direct: {
+            unused_integral: unusedIntegral,
+            source: normalizeString(pdf.source, "niutrans"),
+            status: normalizeString(pdf.status, unusedIntegral === null ? "unavailable" : "available"),
+            fetched_at: typeof pdf.fetched_at === "string" && pdf.fetched_at.trim() ? pdf.fetched_at : null,
+        },
     }
 }
 
@@ -98,12 +168,14 @@ export function getStoredSession(): LocalAuthSession | null {
         if (!user) {
             return null
         }
+        const quotaSnapshot = normalizeQuotaSnapshot((parsed as { quota_snapshot?: unknown }).quota_snapshot)
 
         return {
             access_token: parsed.access_token,
             token_type: parsed.token_type,
             expires_in: parsed.expires_in,
             user,
+            quota_snapshot: quotaSnapshot,
         }
     } catch {
         return null
@@ -161,6 +233,9 @@ export async function signInWithPassword(
 
         const session = payload as Partial<LocalAuthSession>
         const user = normalizeUser((session.user as Partial<LocalAuthUser>) ?? {})
+        const quotaSnapshot = normalizeQuotaSnapshot(
+            payload && typeof payload === "object" ? (payload as { quota_snapshot?: unknown }).quota_snapshot : null,
+        )
         if (
             typeof session.access_token !== "string" ||
             typeof session.token_type !== "string" ||
@@ -178,6 +253,7 @@ export async function signInWithPassword(
             token_type: session.token_type,
             expires_in: session.expires_in,
             user,
+            quota_snapshot: quotaSnapshot,
         }
         persistSession(nextSession)
         return { session: nextSession, error: null }
@@ -211,23 +287,88 @@ export async function bootstrapLocalSession(): Promise<{
         )
 
         const payload = await response.json().catch(() => null)
+        const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
         const restoredUser = normalizeUser(
-            payload && typeof payload === "object" ? ((payload as { user?: Partial<LocalAuthUser> }).user ?? {}) : {},
+            ((payloadRecord as { user?: Partial<LocalAuthUser> }).user ?? {}),
         )
         if (!response.ok || !restoredUser) {
             clearStoredSession()
             return { session: null, user: null }
         }
+        const quotaSnapshot = normalizeQuotaSnapshot(payloadRecord.quota_snapshot) ?? session.quota_snapshot ?? null
 
         const nextSession: LocalAuthSession = {
             ...session,
             user: restoredUser,
+            quota_snapshot: quotaSnapshot,
         }
         persistSession(nextSession)
         return { session: nextSession, user: restoredUser }
     } catch {
         clearStoredSession()
         return { session: null, user: null }
+    }
+}
+
+export async function fetchQuotaSnapshot(accessToken?: string | null): Promise<{
+    quotaSnapshot: QuotaSnapshot | null
+    error: LocalAuthError | null
+}> {
+    const token = accessToken ?? (await getAccessToken())
+    if (!token) {
+        return {
+            quotaSnapshot: null,
+            error: { message: "Unable to load quota snapshot.", code: "AUTH_SESSION_MISSING" },
+        }
+    }
+
+    try {
+        const response = await retryOnTransientNetworkError(
+            () =>
+                fetch(`${API_BASE_URL}/api/auth/quota`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                }),
+            { attempts: 3, baseDelayMs: 150 },
+        )
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            return {
+                quotaSnapshot: null,
+                error: {
+                    ...parseErrorPayload(payload, "Unable to load quota snapshot."),
+                    status: response.status,
+                },
+            }
+        }
+
+        const quotaSnapshot = normalizeQuotaSnapshot(
+            payload && typeof payload === "object" ? (payload as { quota_snapshot?: unknown }).quota_snapshot : null,
+        )
+        if (!quotaSnapshot) {
+            return {
+                quotaSnapshot: null,
+                error: { message: "Unable to load quota snapshot." },
+            }
+        }
+
+        const session = getStoredSession()
+        if (session?.access_token === token) {
+            persistSession({
+                ...session,
+                quota_snapshot: quotaSnapshot,
+            })
+        }
+
+        return { quotaSnapshot, error: null }
+    } catch {
+        return {
+            quotaSnapshot: null,
+            error: { message: "Unable to load quota snapshot." },
+        }
     }
 }
 

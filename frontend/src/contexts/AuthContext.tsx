@@ -4,17 +4,19 @@ import type { ReactNode } from 'react'
 import i18n from '@/i18n'
 import {
     bootstrapLocalSession,
+    fetchQuotaSnapshot,
     isLocalAuthConfigured,
     signInWithPassword,
     signOutCurrentSession,
 } from '@/lib/local-auth'
-import type { LocalAuthError, LocalAuthSession, LocalAuthUser } from '@/lib/local-auth'
+import type { LocalAuthError, LocalAuthSession, LocalAuthUser, QuotaSnapshot } from '@/lib/local-auth'
 import { toast } from 'sonner'
 import { useTranslationStore } from '@/features/translation-workflow/store/useTranslationStore'
 
 interface AuthState {
     user: LocalAuthUser | null
     session: LocalAuthSession | null
+    quotaSnapshot: QuotaSnapshot | null
     loading: boolean
     error: string | null
     isAuthenticated: boolean
@@ -26,6 +28,7 @@ interface AuthMethods {
     signUp: (email: string, password: string) => Promise<{ error: LocalAuthError | null, needsEmailConfirmation?: boolean }>
     verifyOtp: (email: string, token: string) => Promise<{ error: LocalAuthError | null }>
     signOut: () => Promise<void>
+    refreshQuotaSnapshot: () => Promise<QuotaSnapshot | null>
     clearError: () => void
 }
 
@@ -34,6 +37,7 @@ type AuthContextType = AuthState & AuthMethods
 const defaultContext: AuthContextType = {
     user: null,
     session: null,
+    quotaSnapshot: null,
     loading: true,
     error: null,
     isAuthenticated: false,
@@ -42,6 +46,7 @@ const defaultContext: AuthContextType = {
     signUp: async () => ({ error: null }),
     verifyOtp: async () => ({ error: null }),
     signOut: async () => { },
+    refreshQuotaSnapshot: async () => null,
     clearError: () => { },
 }
 
@@ -54,6 +59,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
     const [user, setUser] = useState<LocalAuthUser | null>(null)
     const [session, setSession] = useState<LocalAuthSession | null>(null)
+    const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -70,6 +76,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
             setSession(restoredSession)
             setUser(restoredUser)
+            setQuotaSnapshot(restoredSession?.quota_snapshot ?? null)
             setLoading(false)
         })
 
@@ -90,6 +97,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (nextSession) {
             setSession(nextSession)
             setUser(nextSession.user)
+            setQuotaSnapshot(nextSession.quota_snapshot ?? null)
 
             try {
                 useTranslationStore.getState().invalidateUserSettings()
@@ -126,7 +134,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await signOutCurrentSession(session?.access_token)
         setSession(null)
         setUser(null)
+        setQuotaSnapshot(null)
         useTranslationStore.getState().invalidateUserSettings()
+    }
+
+    const refreshQuotaSnapshot = async () => {
+        const token = session?.access_token
+        if (!token) {
+            setQuotaSnapshot(null)
+            return null
+        }
+
+        const { quotaSnapshot: nextQuotaSnapshot, error: quotaError } = await fetchQuotaSnapshot(token)
+        if (quotaError || !nextQuotaSnapshot) {
+            return null
+        }
+
+        setQuotaSnapshot(nextQuotaSnapshot)
+        setSession((currentSession) => (
+            currentSession
+                ? {
+                    ...currentSession,
+                    quota_snapshot: nextQuotaSnapshot,
+                }
+                : currentSession
+        ))
+        return nextQuotaSnapshot
     }
 
     const clearError = () => {
@@ -136,6 +169,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const value: AuthContextType = {
         user,
         session,
+        quotaSnapshot,
         loading,
         error,
         isAuthenticated,
@@ -144,6 +178,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         signUp,
         verifyOtp,
         signOut,
+        refreshQuotaSnapshot,
         clearError,
     }
 

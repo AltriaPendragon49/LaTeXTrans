@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { API_BASE_URL } from "@/api-base"
 import i18n from "@/i18n"
-import { downloadArxiv, getTaskStatus, startTranslation } from "@/lib/api"
+import { downloadArxiv, getDailyLatexQuotaExceededMessage, getTaskStatus, startTranslation } from "@/lib/api"
 import { getAccessToken, isLocalAuthConfigured } from "@/lib/local-auth"
 import { DEFAULT_CONFIG } from "@/types/config"
 import type { AdvancedConfig, LatexValidation, TranslationConfig } from "@/types/config"
@@ -501,9 +501,10 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
       toast.success(i18n.t("task.toast.translationStarted"))
       get().pollStatus()
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : i18n.t("task.error.startFailed")
+      const quotaMessage = getDailyLatexQuotaExceededMessage(error, i18n.t.bind(i18n))
+      const message = quotaMessage ?? (error instanceof Error ? error.message : i18n.t("task.error.startFailed"))
       set({ error: message, status: "failed" })
-      toast.error(i18n.t("task.error.startFailed"))
+      toast.error(quotaMessage ?? i18n.t("task.error.startFailed"))
       throw error
     }
   },

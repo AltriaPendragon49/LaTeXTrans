@@ -9,7 +9,7 @@ const fetchMock = vi.fn()
 vi.stubGlobal("fetch", fetchMock)
 
 function Consumer() {
-  const { loading, isAuthenticated, user, session } = useAuth()
+  const { loading, isAuthenticated, user, session, quotaSnapshot } = useAuth()
 
   return (
     <div>
@@ -17,6 +17,14 @@ function Consumer() {
       <span data-testid="authenticated">{String(isAuthenticated)}</span>
       <span data-testid="user-id">{user?.id ?? ""}</span>
       <span data-testid="session-token">{session?.access_token ?? ""}</span>
+      <span data-testid="latex-quota">
+        {quotaSnapshot
+          ? `${quotaSnapshot.latex_translation.remaining}/${quotaSnapshot.latex_translation.limit}`
+          : ""}
+      </span>
+      <span data-testid="pdf-direct-quota">
+        {quotaSnapshot?.pdf_direct.unused_integral ?? ""}
+      </span>
     </div>
   )
 }
@@ -58,6 +66,21 @@ describe("AuthProvider local auth bootstrap", () => {
           roles: ["user"],
           display_name: "Local User",
         },
+        quota_snapshot: {
+          latex_translation: {
+            limit: 3,
+            used: 1,
+            remaining: 2,
+            quota_date: "2026-05-07",
+            reset_timezone: "Asia/Shanghai",
+          },
+          pdf_direct: {
+            unused_integral: 60,
+            source: "niutrans",
+            status: "available",
+            fetched_at: "2026-05-07T00:00:00Z",
+          },
+        },
       }),
     })
 
@@ -78,5 +101,11 @@ describe("AuthProvider local auth bootstrap", () => {
     expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
     expect(screen.getByTestId("user-id")).toHaveTextContent("usr_local_1")
     expect(screen.getByTestId("session-token")).toHaveTextContent("stored-token")
+    expect(screen.getByTestId("latex-quota")).toHaveTextContent("2/3")
+    expect(screen.getByTestId("pdf-direct-quota")).toHaveTextContent("60")
+
+    const storedSession = JSON.parse(window.localStorage.getItem("latextrans.localAuth.session") ?? "{}")
+    expect(storedSession.quota_snapshot?.latex_translation?.remaining).toBe(2)
+    expect(storedSession.quota_snapshot?.pdf_direct?.unused_integral).toBe(60)
   })
 })

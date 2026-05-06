@@ -9,6 +9,9 @@ from backend.app.repositories.translation_task_repository import (
     TRANSLATION_TASK_COLUMNS,
     TranslationTaskRepository,
 )
+from backend.app.repositories.translation_quota_repository import (
+    TranslationQuotaRepository,
+)
 from backend.app.repositories.community_agent_repository import (
     CommunityAgentConversationRepository,
 )
@@ -24,6 +27,7 @@ __all__ = [
     "USER_SETTINGS_DEFAULTS",
     "TranslationTaskRepository",
     "TRANSLATION_TASK_COLUMNS",
+    "TranslationQuotaRepository",
     "CommunityAgentConversationRepository",
     "CommunityPaperRepository",
     "PAPER_COLUMNS",

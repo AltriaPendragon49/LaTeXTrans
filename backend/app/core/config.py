@@ -184,6 +184,21 @@ class Settings(BaseSettings):
         default="https://niutrans.com/login?active=0",
         validation_alias="NIUTRANS_ACCOUNT_URL",
     )
+    niutrans_user_info_url: str = Field(
+        default="https://niutrans.com/NiuTransConsole/user/getUserInfo",
+        validation_alias="NIUTRANS_USER_INFO_URL",
+        description="NiuTrans account user-info endpoint used only for safe PDF direct credit snapshots.",
+    )
+    daily_latex_translation_quota_limit: int = Field(
+        default=3,
+        validation_alias="DAILY_LATEX_TRANSLATION_QUOTA_LIMIT",
+        description="Daily local LaTeX translation items per authenticated user.",
+    )
+    daily_latex_translation_quota_timezone: str = Field(
+        default="Asia/Shanghai",
+        validation_alias="DAILY_LATEX_TRANSLATION_QUOTA_TIMEZONE",
+        description="Natural-day timezone for local daily LaTeX translation quota reset.",
+    )
     local_admin_external_user_ids: list[str] = Field(
         default_factory=list,
         validation_alias="LOCAL_ADMIN_EXTERNAL_USER_IDS",

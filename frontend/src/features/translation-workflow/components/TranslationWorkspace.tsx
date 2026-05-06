@@ -24,11 +24,12 @@ import { DropZone } from "@/features/translation-workflow/components/DropZone"
 import { useTranslationConfig } from "@/features/translation-workflow/hooks/useTranslationConfig"
 import { useTranslationTask } from "@/features/translation-workflow/hooks/useTranslationTask"
 import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
+import { getDailyLatexQuotaExceededDetail } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export function TranslationWorkspace() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { refreshQuotaSnapshot, user } = useAuth()
   const { t } = useTranslation()
   const isAuthenticated = !!user
   const { config, loadUserSettings } = useTranslationConfig()
@@ -93,12 +94,19 @@ export function TranslationWorkspace() {
       return
     }
 
-    await startTranslation({
-      source_language: config.source_language,
-      target_language: config.target_language,
-      advanced_config: config.advanced_config,
-    })
-    navigate("/processing")
+    try {
+      await startTranslation({
+        source_language: config.source_language,
+        target_language: config.target_language,
+        advanced_config: config.advanced_config,
+      })
+      void refreshQuotaSnapshot()
+      navigate("/processing")
+    } catch (error: unknown) {
+      if (getDailyLatexQuotaExceededDetail(error)) {
+        void refreshQuotaSnapshot()
+      }
+    }
   }
 
   return (
@@ -205,6 +213,7 @@ export function TranslationWorkspace() {
                   targetLanguage={config.target_language}
                   sourceLanguage={config.source_language}
                   onStateChange={setBatchState}
+                  onQuotaChanged={() => void refreshQuotaSnapshot()}
                 />
               ) : (
                 <LoginPrompt

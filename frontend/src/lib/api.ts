@@ -3,6 +3,18 @@ import type { AdvancedConfig, LatexValidation } from "@/types/config"
 import { API_BASE_URL } from "@/api-base"
 import { getAccessToken } from "./local-auth"
 
+const DAILY_LATEX_QUOTA_EXCEEDED_CODE = "DAILY_LATEX_QUOTA_EXCEEDED"
+
+export interface DailyLatexQuotaExceededDetail {
+    code: typeof DAILY_LATEX_QUOTA_EXCEEDED_CODE
+    requested_count: number
+    limit: number
+    used: number
+    remaining: number
+    quota_date: string
+    reset_timezone: string
+}
+
 export interface ArxivResponse {
     task_id: string
     arxiv_id: string
@@ -56,6 +68,68 @@ export interface UploadResponse {
     message: string
     source_path: string
     latex_validation?: LatexValidation
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+    return Boolean(input && typeof input === "object")
+}
+
+function normalizeNumber(input: unknown): number | null {
+    return typeof input === "number" && Number.isFinite(input) ? input : null
+}
+
+export function getDailyLatexQuotaExceededDetail(error: unknown): DailyLatexQuotaExceededDetail | null {
+    if (!isRecord(error) || !isRecord(error.response)) {
+        return null
+    }
+
+    const response = error.response
+    if (!isRecord(response.data) || !isRecord(response.data.detail)) {
+        return null
+    }
+
+    const detail = response.data.detail
+    if (detail.code !== DAILY_LATEX_QUOTA_EXCEEDED_CODE) {
+        return null
+    }
+
+    const requestedCount = normalizeNumber(detail.requested_count)
+    const limit = normalizeNumber(detail.limit)
+    const used = normalizeNumber(detail.used)
+    const remaining = normalizeNumber(detail.remaining)
+
+    if (requestedCount === null || limit === null || used === null || remaining === null) {
+        return null
+    }
+
+    return {
+        code: DAILY_LATEX_QUOTA_EXCEEDED_CODE,
+        requested_count: requestedCount,
+        limit,
+        used,
+        remaining,
+        quota_date: typeof detail.quota_date === "string" ? detail.quota_date : "",
+        reset_timezone: typeof detail.reset_timezone === "string" ? detail.reset_timezone : "",
+    }
+}
+
+export function getDailyLatexQuotaExceededMessage(
+    error: unknown,
+    translate: (key: string, values?: Record<string, unknown>) => string,
+): string | null {
+    const detail = getDailyLatexQuotaExceededDetail(error)
+    if (!detail) {
+        return null
+    }
+
+    return translate("task.error.dailyLatexQuotaExceeded", {
+        requested: detail.requested_count,
+        remaining: detail.remaining,
+        limit: detail.limit,
+        used: detail.used,
+        quotaDate: detail.quota_date,
+        resetTimezone: detail.reset_timezone,
+    })
 }
 
 const api = axios.create({
@@ -201,6 +275,13 @@ export interface BatchTranslateResponse {
     queued_count: number
 }
 
+export interface BatchUploadTranslateRequest {
+    files: File[]
+    target_language: string
+    source_language: string
+    advanced_config?: AdvancedConfig
+}
+
 export interface QueueStatusResponse {
     active_count: number
     queue_size: number
@@ -217,6 +298,30 @@ export const startBatchTranslation = async (
     request: BatchTranslateRequest
 ): Promise<BatchTranslateResponse> => {
     const response = await api.post<BatchTranslateResponse>('/batch-translate', request)
+    return response.data
+}
+
+/**
+ * Start batch translation for multiple uploaded files (authenticated users only).
+ */
+export const startBatchUploadTranslation = async (
+    request: BatchUploadTranslateRequest
+): Promise<BatchTranslateResponse> => {
+    const formData = new FormData()
+    for (const file of request.files) {
+        formData.append("files", file)
+    }
+    formData.append("source_language", request.source_language)
+    formData.append("target_language", request.target_language)
+    if (request.advanced_config) {
+        formData.append("advanced_config", JSON.stringify(request.advanced_config))
+    }
+
+    const response = await api.post<BatchTranslateResponse>('/upload/batch-translate', formData, {
+        headers: {
+            "Content-Type": "multipart/form-data",
+        },
+    })
     return response.data
 }
 

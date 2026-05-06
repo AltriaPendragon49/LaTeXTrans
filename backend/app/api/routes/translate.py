@@ -43,6 +43,10 @@ from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurr
 from backend.app.services.agents.llm_token_pool import (
     LlmMemberScheduler,
 )
+from backend.app.services.translation_quota_service import (
+    DailyQuotaExceededError,
+    TranslationQuotaService,
+)
 from backend.app.services.latex.utils import batch_download_arxiv_tex, extract_arxiv_ids, get_arxiv_category
 from backend.app.utils.async_blocking import run_db_blocking
 
@@ -92,6 +96,24 @@ def _schedule_community_publish_watch(task_id: str, user_id: Optional[str]) -> N
 
 def get_translation_task_repository() -> TranslationTaskRepository:
     return TranslationTaskRepository()
+
+
+def get_translation_quota_service() -> TranslationQuotaService:
+    return TranslationQuotaService()
+
+
+def _quota_exceeded_detail(exc: DailyQuotaExceededError) -> dict[str, Any]:
+    snapshot = exc.snapshot
+    return {
+        "code": "DAILY_LATEX_QUOTA_EXCEEDED",
+        "message": "Daily LaTeX translation quota exceeded.",
+        "requested_count": exc.requested_count,
+        "limit": snapshot.limit,
+        "used": snapshot.used,
+        "remaining": snapshot.remaining,
+        "quota_date": snapshot.quota_date,
+        "reset_timezone": snapshot.reset_timezone,
+    }
 
 
 class TranslateRequest(BaseModel):
@@ -975,13 +997,14 @@ async def run_translation(
             logger.warning("Failed to sync paper status to failed for errored task %s", task_id, exc_info=True)
 
 
-@router.post("/translate/{task_id}", response_model=TranslateResponse)
-async def start_translation(
+async def _start_translation_for_task(
     task_id: str,
     request: TranslateRequest,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    current_user: Optional[dict[str, Any]] = Depends(optional_current_user),
-):
+    credentials: Optional[HTTPAuthorizationCredentials],
+    current_user: Optional[dict[str, Any]],
+    *,
+    reserve_daily_quota: bool = True,
+) -> TranslateResponse:
     """
     Start translation for a task
 
@@ -1034,6 +1057,16 @@ async def start_translation(
                 detail=f"Too many active tasks. You have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete."
             )
 
+    quota_service: Optional[TranslationQuotaService] = None
+    quota_reserved = False
+    if user_id and reserve_daily_quota:
+        quota_service = get_translation_quota_service()
+        try:
+            quota_service.reserve_latex_translation(user_id=user_id, requested_count=1)
+            quota_reserved = True
+        except DailyQuotaExceededError as exc:
+            raise HTTPException(status_code=429, detail=_quota_exceeded_detail(exc)) from exc
+
     config_hash = compute_config_hash(
         arxiv_id=task.get("arxiv_id"),
         source_language=request.source_language,
@@ -1060,57 +1093,89 @@ async def start_translation(
     if not persisted:
         logger.warning(f"Failed to persist task {task_id}, but continuing with translation")
     elif user_id:
-        await persist_task_config_hash(task_id, config_hash)
+        try:
+            await persist_task_config_hash(task_id, config_hash)
+        except Exception:
+            if quota_reserved and quota_service is not None:
+                try:
+                    quota_service.release_latex_translation(user_id=user_id, count=1)
+                except Exception:
+                    logger.warning("Failed to release daily quota after config persistence failure", exc_info=True)
+            raise
 
-    # Enqueue translation via TaskQueue
-    if tq:
-        # Compute token_hash for per-bucket routing isolation
-        _llm_cfg = await build_llm_config_async(effective_advanced_config, user_id)
-        pool_routing_key = str(_llm_cfg.get("pool_routing_key") or "").strip()
-        if pool_routing_key:
-            token_hash = hashlib.md5(pool_routing_key.encode()).hexdigest()
+    try:
+        # Enqueue translation via TaskQueue
+        if tq:
+            # Compute token_hash for per-bucket routing isolation
+            _llm_cfg = await build_llm_config_async(effective_advanced_config, user_id)
+            pool_routing_key = str(_llm_cfg.get("pool_routing_key") or "").strip()
+            if pool_routing_key:
+                token_hash = hashlib.md5(pool_routing_key.encode()).hexdigest()
+            else:
+                _api_key = (_llm_cfg.get("api_key") or "").encode()
+                token_hash = hashlib.md5(_api_key).hexdigest()
+
+            async def translation_factory():
+                await run_translation(
+                    task_id=task_id,
+                    target_language=request.target_language,
+                    source_language=request.source_language,
+                    advanced_config=effective_advanced_config,
+                    user_id=user_id
+                )
+
+            llm_capacity = resolve_llm_task_capacity(_llm_cfg)
+            await tq.enqueue(
+                task_id,
+                translation_factory,
+                user_id,
+                token_hash,
+                llm_capacity=llm_capacity,
+            )
+            logger.info(
+                f"Task {task_id} enqueued via TaskQueue "
+                f"(token_hash={token_hash[:8]}..., llm_capacity={llm_capacity})"
+            )
         else:
-            _api_key = (_llm_cfg.get("api_key") or "").encode()
-            token_hash = hashlib.md5(_api_key).hexdigest()
-
-        async def translation_factory():
-            await run_translation(
-                task_id=task_id,
-                target_language=request.target_language,
-                source_language=request.source_language,
-                advanced_config=effective_advanced_config,
-                user_id=user_id
+            # Fallback: direct asyncio.create_task (TaskQueue not initialized)
+            logger.warning("TaskQueue not initialized, falling back to direct asyncio.create_task")
+            asyncio.create_task(
+                run_translation(
+                    task_id=task_id,
+                    target_language=request.target_language,
+                    source_language=request.source_language,
+                    advanced_config=effective_advanced_config,
+                    user_id=user_id
+                )
             )
-
-        llm_capacity = resolve_llm_task_capacity(_llm_cfg)
-        await tq.enqueue(
-            task_id,
-            translation_factory,
-            user_id,
-            token_hash,
-            llm_capacity=llm_capacity,
-        )
-        logger.info(
-            f"Task {task_id} enqueued via TaskQueue "
-            f"(token_hash={token_hash[:8]}..., llm_capacity={llm_capacity})"
-        )
-    else:
-        # Fallback: direct asyncio.create_task (TaskQueue not initialized)
-        logger.warning("TaskQueue not initialized, falling back to direct asyncio.create_task")
-        asyncio.create_task(
-            run_translation(
-                task_id=task_id,
-                target_language=request.target_language,
-                source_language=request.source_language,
-                advanced_config=effective_advanced_config,
-                user_id=user_id
-            )
-        )
+    except Exception:
+        if quota_reserved and quota_service is not None and user_id:
+            try:
+                quota_service.release_latex_translation(user_id=user_id, count=1)
+            except Exception:
+                logger.warning("Failed to release daily quota for pre-acceptance failure", exc_info=True)
+        raise
 
     return TranslateResponse(
         task_id=task_id,
         status="queued",
         message="Translation queued successfully"
+    )
+
+
+@router.post("/translate/{task_id}", response_model=TranslateResponse)
+async def start_translation(
+    task_id: str,
+    request: TranslateRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    current_user: Optional[dict[str, Any]] = Depends(optional_current_user),
+):
+    return await _start_translation_for_task(
+        task_id=task_id,
+        request=request,
+        credentials=credentials,
+        current_user=current_user,
+        reserve_daily_quota=True,
     )
 
 
@@ -1186,6 +1251,20 @@ async def batch_translate(
             detail=f"Batch limit exceeded: maximum 9 arXiv IDs per request, got {len(arxiv_ids)}"
         )
 
+    normalized_arxiv_ids: list[str] = []
+    invalid_arxiv_ids: list[str] = []
+    for raw_id in arxiv_ids:
+        normalized = extract_arxiv_ids([raw_id])
+        if not normalized:
+            invalid_arxiv_ids.append(str(raw_id))
+            continue
+        normalized_arxiv_ids.append(normalized[0])
+    if invalid_arxiv_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid arXiv ID format: {', '.join(invalid_arxiv_ids)}",
+        )
+
     # Check user quota
     tq = get_task_queue()
     if tq:
@@ -1196,25 +1275,29 @@ async def batch_translate(
                 status_code=429,
                 detail=f"Quota exceeded: you have {user_active}/{settings.max_user_active_tasks} active tasks. Please wait for existing tasks to complete."
             )
-        if len(arxiv_ids) > remaining:
+        if len(normalized_arxiv_ids) > remaining:
             raise HTTPException(
                 status_code=429,
                 detail=f"Quota exceeded: you can submit at most {remaining} more tasks (currently {user_active}/{settings.max_user_active_tasks} active)."
             )
 
+    quota_service = get_translation_quota_service()
+    reserved_count = len(normalized_arxiv_ids)
+    try:
+        quota_service.reserve_latex_translation(
+            user_id=user_id,
+            requested_count=reserved_count,
+        )
+    except DailyQuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=_quota_exceeded_detail(exc)) from exc
+
     import uuid
     batch_id = str(uuid.uuid4())
     task_ids = []
     errors = []
+    accepted_count = 0
 
-    for raw_id in arxiv_ids:
-        # Normalize arXiv ID (strip URL prefix etc.)
-        normalized = extract_arxiv_ids([raw_id])
-        if not normalized:
-            errors.append(f"{raw_id}: invalid arXiv ID format")
-            continue
-        arxiv_id = normalized[0]
-
+    for arxiv_id in normalized_arxiv_ids:
         try:
             # Create task in memory only (no DB yet)
             task_id = task_manager.create_task(
@@ -1286,6 +1369,7 @@ async def batch_translate(
                     llm_capacity=_batch_llm_capacity,
                 )
             )
+            accepted_count += 1
             logger.info(f"[BatchTranslate] Created task {task_id} for arxiv_id={arxiv_id}, download started in background")
 
         except Exception as e:
@@ -1293,10 +1377,15 @@ async def batch_translate(
             errors.append(f"{arxiv_id}: {str(e)}")
 
     if not task_ids:
+        quota_service.release_latex_translation(user_id=user_id, count=reserved_count)
         raise HTTPException(
             status_code=500,
             detail=f"All batch tasks failed: {'; '.join(errors)}"
         )
+
+    unaccepted_count = max(reserved_count - accepted_count, 0)
+    if unaccepted_count:
+        quota_service.release_latex_translation(user_id=user_id, count=unaccepted_count)
 
     return BatchTranslateResponse(
         batch_id=batch_id,

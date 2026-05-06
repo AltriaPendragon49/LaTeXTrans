@@ -35,6 +35,21 @@ class _FakeAuthService:
                 "display_name": "Alice",
                 "email": None,
             },
+            "quota_snapshot": {
+                "latex_translation": {
+                    "limit": 3,
+                    "used": 0,
+                    "remaining": 3,
+                    "quota_date": "2026-05-06",
+                    "reset_timezone": "Asia/Shanghai",
+                },
+                "pdf_direct": {
+                    "unused_integral": 60,
+                    "source": "niutrans",
+                    "status": "available",
+                    "fetched_at": "2026-05-06T12:00:00+00:00",
+                },
+            },
         }
 
     async def get_current_user_from_token(self, token: str):
@@ -48,6 +63,24 @@ class _FakeAuthService:
             "roles": ["user"],
             "display_name": "Alice",
             "email": None,
+        }
+
+    async def get_quota_snapshot_for_user(self, user_id: str):
+        assert user_id == "usr_123"
+        return {
+            "latex_translation": {
+                "limit": 3,
+                "used": 0,
+                "remaining": 3,
+                "quota_date": "2026-05-06",
+                "reset_timezone": "Asia/Shanghai",
+            },
+            "pdf_direct": {
+                "unused_integral": 60,
+                "source": "niutrans",
+                "status": "available",
+                "fetched_at": "2026-05-06T12:00:00+00:00",
+            },
         }
 
     async def logout_current_session(self, token: str) -> None:
@@ -82,6 +115,21 @@ def test_auth_login_returns_local_session_contract(monkeypatch: pytest.MonkeyPat
             "roles": ["user"],
             "display_name": "Alice",
             "email": None,
+        },
+        "quota_snapshot": {
+            "latex_translation": {
+                "limit": 3,
+                "used": 0,
+                "remaining": 3,
+                "quota_date": "2026-05-06",
+                "reset_timezone": "Asia/Shanghai",
+            },
+            "pdf_direct": {
+                "unused_integral": 60,
+                "source": "niutrans",
+                "status": "available",
+                "fetched_at": "2026-05-06T12:00:00+00:00",
+            },
         },
     }
 
@@ -122,6 +170,56 @@ def test_auth_me_returns_bootstrap_user_for_valid_local_token(monkeypatch: pytes
             "roles": ["user"],
             "display_name": "Alice",
             "email": None,
+        },
+        "quota_snapshot": {
+            "latex_translation": {
+                "limit": 3,
+                "used": 0,
+                "remaining": 3,
+                "quota_date": "2026-05-06",
+                "reset_timezone": "Asia/Shanghai",
+            },
+            "pdf_direct": {
+                "unused_integral": 60,
+                "source": "niutrans",
+                "status": "available",
+                "fetched_at": "2026-05-06T12:00:00+00:00",
+            },
+        },
+    }
+
+
+def test_auth_quota_returns_snapshot_for_valid_local_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.api.routes import auth as auth_route
+
+    fake_service = _FakeAuthService()
+    monkeypatch.setattr(auth_route, "get_auth_service", lambda: fake_service)
+
+    async def _call():
+        async with _make_client() as client:
+            return await client.get(
+                "/api/auth/quota",
+                headers={"Authorization": "Bearer local-token-123"},
+            )
+
+    response = asyncio.run(_call())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "quota_snapshot": {
+            "latex_translation": {
+                "limit": 3,
+                "used": 0,
+                "remaining": 3,
+                "quota_date": "2026-05-06",
+                "reset_timezone": "Asia/Shanghai",
+            },
+            "pdf_direct": {
+                "unused_integral": 60,
+                "source": "niutrans",
+                "status": "available",
+                "fetched_at": "2026-05-06T12:00:00+00:00",
+            },
         }
     }
 

@@ -1,5 +1,16 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-07 daily translation quotas)
+
+- `backend/app/api/routes/upload.py`: 批量上传新增 `/upload/batch-translate` 认证入口，按文件数在创建任何上传/翻译任务前一次性预留每日 LaTeX 额度；单文件上传成功后复用翻译启动流程但跳过二次扣减，并对未被接受的文件释放预留额度。
+- `backend/app/repositories/translation_quota_repository.py`: 新增每日 LaTeX 翻译额度与 NiuTrans PDF 直译积分快照仓储，提供按用户/额度类型/UTC+8 日期的原子预留、释放和安全快照读写。
+- `backend/app/services/translation_quota_service.py`: 新增额度业务服务，计算 UTC+8 自然日、默认每日 3 次 LaTeX 翻译额度、稳定超额异常和前端可展示的双额度快照。
+- `backend/app/services/auth_service.py`: 登录成功后调用 NiuTrans user-info 接口，仅提取 `unusedNumIntegral` 并保存安全 PDF 直译积分快照；登录和会话自举返回独立额度快照，不暴露上游 token、apikey 或密码字段。
+- `backend/app/api/routes/auth.py`: 登录、`/auth/me` 与 `/auth/quota` 响应新增 `quota_snapshot`，统一返回本地 LaTeX 每日额度和 NiuTrans PDF 直译积分状态。
+- `backend/app/api/routes/translate.py`: 普通 arXiv/上传源翻译启动前预留 1 次本地 LaTeX 额度，批量 arXiv 提交按条目数原子预留；超额时返回稳定 `DAILY_LATEX_QUOTA_EXCEEDED` 结构，预接收失败时释放额度。
+- `backend/app/core/config.py`: 新增 NiuTrans user-info URL、每日 LaTeX 翻译默认额度和重置时区配置。
+- `backend/migrations_mysql/20260507_0011_daily_translation_quotas.sql`: 新增 `user_daily_quotas` 与 `niutrans_balance_snapshots` 表，用于持久化本地每日额度和安全的 PDF 直译积分快照。
+
 ## Recent Responsibility Updates (2026-05-06 CLI parity timeout)
 
 - `backend/app/core/config.py`: 新增 admin curation 等待超时环境配置，支持将 admission/execution 等待超时设为 `0` 以关闭外层等待限制。
@@ -132,6 +143,7 @@
 - `backend/app/repositories/community_agent_repository.py`
 - `backend/app/repositories/community_paper_repository.py`
 - `backend/app/repositories/translation_task_repository.py`
+- `backend/app/repositories/translation_quota_repository.py`
 - `backend/app/repositories/user_settings_repository.py`
 - `backend/app/services/__init__.py`
 - `backend/app/services/agents/__init__.py`
@@ -211,6 +223,7 @@
 - `backend/app/services/task_artifact_storage.py`
 - `backend/app/services/task_detail.py`
 - `backend/app/services/task_manager.py`
+- `backend/app/services/translation_quota_service.py`
 - `backend/app/services/translation/__init__.py`
 - `backend/app/services/translation/downgrade_handler.py`
 - `backend/app/services/translation/repair_scheduler.py`
@@ -237,6 +250,7 @@
 - `backend/migrations_mysql/20260421_0008_community_paper_engagement.sql`
 - `backend/migrations_mysql/20260422_0009_add_arxiv_published_at.sql`
 - `backend/migrations_mysql/20260423_0010_add_login_identifier_to_users.sql`
+- `backend/migrations_mysql/20260507_0011_daily_translation_quotas.sql`
 - `backend/scripts/apply_mysql_migrations.py`
 - `backend/scripts/audit_pipeline_regression.py`
 - `backend/scripts/audit_community_translation_quality.py`
@@ -270,7 +284,7 @@
 - `backend/app/api/routes/settings.py`: 鐢ㄦ埛璁剧疆璇诲彇涓庢洿鏂版帴鍙ｃ€?| 椤跺眰绗﹀彿: UserSettingsResponse, UserSettingsUpdate, get_user_settings_repository, _resolve_user_settings_repository, _build_response, _ensure_settings_authorized, get_user_settings, update_user_settings
 - `backend/app/api/routes/task.py`: 浠诲姟鐘舵€佹煡璇€佸垹闄や笌娴佸紡璁㈤槄鎺ュ彛銆?| 椤跺眰绗﹀彿: TaskStatusResponse, get_translation_task_repository, _resolve_translation_task_repository, _is_guest_task, _authorize_authenticated_task, _load_authorized_task, get_task_status
 - `backend/app/api/routes/translate.py`: 缈昏瘧鍚姩銆佹壒閲忕炕璇戙€侀厤缃搱甯屼笌缁撴灉澶嶇敤鎺ュ彛銆?| 椤跺眰绗﹀彿: TranslateRequest, TranslateResponse, BatchTranslateRequest, BatchTranslateResponse, _schedule_community_publish_watch, get_translation_task_repository, get_user_api_config, get_user_api_config_async, build_llm_config, build_llm_config_async
-- `backend/app/api/routes/upload.py`: LaTeX 涓婁紶銆佹牎楠屼笌鍘嬬缉鍖呰В鍖呮帴鍙ｃ€?| 椤跺眰绗﹀彿: LatexValidationResponse, UploadResponse, extract_rar, get_file_extension, upload_file
+- `backend/app/api/routes/upload.py`: LaTeX 上传、校验、压缩包解包与批量上传翻译入口。| 顶层符号: LatexValidationResponse, UploadResponse, _parse_advanced_config_form, _safe_upload_filename, extract_rar, get_file_extension, batch_upload_translate, upload_file
 
 ### backend/app/core
 - `backend/app/core/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
@@ -304,6 +318,9 @@
 - `backend/app/repositories/translation_task_repository.py`: 缈昏瘧浠诲姟浠撳偍锛岃礋璐ｄ换鍔＄姸鎬併€佽鎯呫€侀厤缃搱甯屼笌鍘嗗彶璁板綍鐨勬寔涔呭寲銆?| 椤跺眰绗﹀彿: TranslationTaskRepository, _utc_now_naive, _placeholder, _placeholders, _fetchone, _fetchall, _decode_json
 - `backend/app/repositories/user_settings_repository.py`: 浠撳偍灞傛枃浠讹紝涓轰笂灞傛湇鍔℃彁渚涙寔涔呭寲璇诲啓鑳藉姏銆?| 椤跺眰绗﹀彿: UserSettingsRepository, _utc_now_naive, _placeholder, _fetchone, _decode_json
 
+#### backend/app/repositories daily quota additions
+- `backend/app/repositories/translation_quota_repository.py`: 每日翻译额度仓储，兼容 SQLite/MySQL，负责 `user_daily_quotas` 原子预留/释放与 `niutrans_balance_snapshots` 安全快照读写。| 顶层符号: TranslationQuotaRepository
+
 ### backend/app/services
 - `backend/app/services/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
 - `backend/app/services/auth_service.py`: 涓氬姟鏈嶅姟鏂囦欢銆?| 椤跺眰绗﹀彿: AuthServiceError, NiuTransAuthClient, LocalAuthService, _b64url_encode, _b64url_decode, _now_utc, _now_unix
@@ -320,6 +337,9 @@
 - `backend/app/services/task_artifact_storage.py`: 浠诲姟浜х墿鎸佷箙鍖栨湇鍔★紝鍦ㄦ湰鍦颁笌瀵硅薄瀛樺偍涔嬮棿鍚屾杈撳嚭鐩綍鍙婃竻鍗曘€?| 椤跺眰绗﹀彿: _get_storage_backend, _storage_uses_object_store, _normalize_stored_path, normalize_stored_task_path, resolve_local_task_path, persist_task_directory
 - `backend/app/services/task_detail.py`: 浠诲姟璇︽儏鎺ㄦ柇涓庢爣鍑嗗寲宸ュ叿锛岀粺涓€ stage銆乨etail_code銆乨etail_message 鐨勭敓鎴愩€?| 椤跺眰绗﹀彿: normalize_stage, normalize_detail_params, infer_task_detail
 - `backend/app/services/task_manager.py`: 浠诲姟绠＄悊鏍稿績锛岀淮鎶ゅ唴瀛樻€佷换鍔°€佸紓姝ュ埛搴撱€侀槦鍒楁墽琛屼笌杩愯鏃舵竻鐞嗐€?| 椤跺眰绗﹀彿: PersistentStateFlusher, TaskManager, GuestTaskTracker, TaskQueue, get_translation_task_repository, get_auth_repository, _delete_local_cache_path, _is_within_cleanup_roots, clear_cached_runtime_artifacts, set_runtime_shutting_down
+
+#### backend/app/services daily quota additions
+- `backend/app/services/translation_quota_service.py`: 每日 LaTeX 翻译额度服务，按 UTC+8 自然日生成额度快照，封装预留、释放、超额异常和 NiuTrans PDF 直译积分展示快照。| 顶层符号: DailyQuotaExceededError, LatexQuotaSnapshot, TranslationQuotaService
 
 ### backend/app/services/agents
 - `backend/app/services/agents/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?| 椤跺眰绗﹀彿: _SemaphoreProxy, _get_llm_semaphore
@@ -439,6 +459,8 @@
 - `backend/migrations_mysql/20260419_0006_admin_curation_retention_fields.sql`: MySQL 杩佺Щ鑴氭湰锛氫负绠＄悊鍛樼瓥灞曚换鍔¤ˉ鍏呭け璐ョ暀鐥曞瓧娈典笌宸插彂甯冭鏂囧叧鑱斿瓧娈点€?| SQL 鐗囨: alter table community_curation_jobs add column terminal_task_status varchar(32) null after status
 
  - `backend/migrations_mysql/20260423_0010_add_login_identifier_to_users.sql`: MySQL 迁移脚本，为 `users` 表补充 `login_identifier` 字段并兼容重复执行。| SQL 片段: alter table users add column login_identifier varchar(255) null after external_user_id
+
+ - `backend/migrations_mysql/20260507_0011_daily_translation_quotas.sql`: MySQL 迁移脚本，新增 `user_daily_quotas` 与 `niutrans_balance_snapshots`，用于每日本地 LaTeX 翻译额度和 NiuTrans PDF 直译积分安全快照。
 
 ### backend/scripts
 - `backend/scripts/apply_mysql_migrations.py`: 杩愮淮鎴栬縼绉昏剼鏈€?| 椤跺眰绗﹀彿: _load_sql_files, apply_migrations, main

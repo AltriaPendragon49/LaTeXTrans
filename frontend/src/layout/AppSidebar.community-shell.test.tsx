@@ -15,6 +15,23 @@ type MockAuthState = {
     login_identifier?: string | null
     external_user_id?: string | null
   } | null
+  loading?: boolean
+  quotaSnapshot?: {
+    latex_translation: {
+      limit: number
+      used: number
+      remaining: number
+      quota_date: string
+      reset_timezone: string
+    }
+    pdf_direct: {
+      unused_integral: number | null
+      source: string
+      status: string
+      fetched_at: string | null
+    }
+  } | null
+  signOut?: () => Promise<void>
 }
 
 let mockAuthState: MockAuthState = {
@@ -169,6 +186,48 @@ describe("AppSidebar community shell", () => {
     expect(screen.queryByRole("link", { name: /Admin curation/i })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Admin tasks/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument()
+  })
+
+  it("shows local LaTeX quota and NiuTrans PDF direct credits in the expanded account block", async () => {
+    await i18n.changeLanguage("en")
+    mockAuthState = {
+      isAuthenticated: true,
+      loading: false,
+      user: {
+        roles: ["user"],
+        display_name: "Researcher",
+        email: "researcher@example.com",
+        external_user_id: "internal-user-42",
+      },
+      quotaSnapshot: {
+        latex_translation: {
+          limit: 3,
+          used: 1,
+          remaining: 2,
+          quota_date: "2026-05-07",
+          reset_timezone: "Asia/Shanghai",
+        },
+        pdf_direct: {
+          unused_integral: 60,
+          source: "niutrans",
+          status: "available",
+          fetched_at: "2026-05-07T00:00:00Z",
+        },
+      },
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppSidebar />
+      </MemoryRouter>,
+    )
+
+    const accountButton = screen.getByRole("button", { name: /researcher@example.com/i })
+    expect(accountButton).toHaveTextContent("LaTeX translation")
+    expect(accountButton).toHaveTextContent("2/3")
+    expect(accountButton).toHaveTextContent("PDF direct")
+    expect(accountButton).toHaveTextContent("60 points")
+    expect(accountButton).not.toHaveTextContent("internal-user-42")
   })
 
   it("does not expose the internal external user id in the account menu when login contact is unavailable", async () => {

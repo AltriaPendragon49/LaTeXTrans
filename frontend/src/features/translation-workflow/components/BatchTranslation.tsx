@@ -28,7 +28,12 @@ import { StatusBadge } from "@/ui/status-badge/StatusBadge"
 import { Textarea } from "@/ui/input/Textarea"
 import { UploadDropSurface } from "@/ui/upload-card/UploadDropSurface"
 import { getTaskCopy } from "@/i18n/task-copy"
-import { getTaskStatus, startBatchTranslation, startTranslation, uploadFile } from "@/lib/api"
+import {
+  getDailyLatexQuotaExceededMessage,
+  getTaskStatus,
+  startBatchUploadTranslation,
+  startBatchTranslation,
+} from "@/lib/api"
 import { DEFAULT_CONFIG } from "@/types/config"
 import type { AdvancedConfig } from "@/types/config"
 
@@ -78,6 +83,7 @@ interface BatchTranslationProps {
   targetLanguage?: string
   sourceLanguage?: string
   onStateChange?: (state: BatchTranslationState) => void
+  onQuotaChanged?: () => void | Promise<void>
 }
 
 const uid = () => Math.random().toString(36).slice(2, 9)
@@ -186,6 +192,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
   targetLanguage = "ch",
   sourceLanguage = "en",
   onStateChange,
+  onQuotaChanged,
 }, ref) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<"arxiv" | "upload">("arxiv")
@@ -322,12 +329,17 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
       setArxivTasks(initial)
       setArxivText("")
       toast.success(t("batch.batch_translation_submitted_tasks_created_successfully", { count: response.queued_count }))
+      void onQuotaChanged?.()
       for (const task of initial) {
         void pollTask(task.task_id, setArxivTasks)
       }
     } catch (error: unknown) {
       console.error("[BatchTranslation] Failed to submit arXiv batch", error)
-      toast.error(t("batch.submission_failed"))
+      const quotaMessage = getDailyLatexQuotaExceededMessage(error, t)
+      toast.error(quotaMessage ?? t("batch.submission_failed"))
+      if (quotaMessage) {
+        void onQuotaChanged?.()
+      }
     } finally {
       setIsArxivSubmitting(false)
     }
@@ -391,50 +403,41 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
 
     setIsUploadSubmitting(true)
     const snapshot = [...queuedFiles]
-    setQueuedFiles([])
 
-    function appendTask(task: BatchTask) {
-      setUploadTasks((prev) => [...prev, task])
-    }
-
-    await Promise.all(snapshot.map(async (queuedFile) => {
-      try {
-        const uploadResponse = await uploadFile(queuedFile.file)
-        const taskId = uploadResponse.task_id
-
-        appendTask({
-          task_id: taskId,
-          label: queuedFile.file.name,
-          status: "processing",
-          stage: "parsing",
-          progress: 0,
-          message: t("task.detail.translationStarting"),
-          detail_code: "translation_starting",
-          detail_params: null,
-        })
-
-        void pollTask(taskId, setUploadTasks)
-
-        await startTranslation(taskId, {
-          target_language: targetLanguage,
-          source_language: sourceLanguage,
-          advanced_config: advancedConfig,
-        })
-      } catch (error: unknown) {
-        console.error("[BatchTranslation] Failed to process uploaded file", error)
-        appendTask({
-          task_id: `failed-${queuedFile.id}`,
-          label: queuedFile.file.name,
-          status: "failed",
-          progress: 0,
-          message: t("batch.submission_failed"),
-          failure_reason_code: null,
-        })
+    try {
+      const response = await startBatchUploadTranslation({
+        files: snapshot.map((queuedFile) => queuedFile.file),
+        target_language: targetLanguage,
+        source_language: sourceLanguage,
+        advanced_config: advancedConfig,
+      })
+      const initial: BatchTask[] = response.task_ids.map((taskId, index) => ({
+        task_id: taskId,
+        label: snapshot[index]?.file.name ?? taskId,
+        status: "processing",
+        stage: "parsing",
+        progress: 0,
+        message: t("task.detail.translationStarting"),
+        detail_code: "translation_starting",
+        detail_params: null,
+      }))
+      setUploadTasks(initial)
+      setQueuedFiles([])
+      void onQuotaChanged?.()
+      toast.success(t("batch.all_files_have_been_submitted_for_translation"))
+      for (const task of initial) {
+        void pollTask(task.task_id, setUploadTasks)
       }
-    }))
-
-    setIsUploadSubmitting(false)
-    toast.success(t("batch.all_files_have_been_submitted_for_translation"))
+    } catch (error: unknown) {
+      console.error("[BatchTranslation] Failed to submit upload batch", error)
+      const quotaMessage = getDailyLatexQuotaExceededMessage(error, t)
+      toast.error(quotaMessage ?? t("batch.submission_failed"))
+      if (quotaMessage) {
+        void onQuotaChanged?.()
+      }
+    } finally {
+      setIsUploadSubmitting(false)
+    }
   }
 
   return (

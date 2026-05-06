@@ -273,10 +273,20 @@ def test_batch_translate_persists_config_hash(monkeypatch):
         coro.close()
         return None
 
+    class _FakeQuotaService:
+        def reserve_latex_translation(self, *, user_id: str, requested_count: int):
+            assert user_id == "user-1"
+            assert requested_count == 1
+            return None
+
+        def release_latex_translation(self, *, user_id: str, count: int):
+            raise AssertionError("accepted batch tasks should not release reserved quota")
+
     monkeypatch.setattr(translate_route, "task_manager", _FakeTaskManager())
     monkeypatch.setattr(translate_route, "extract_arxiv_ids", lambda values: values)
     monkeypatch.setattr(translate_route, "build_llm_config_async", _fake_build_llm_config_async)
     monkeypatch.setattr(translate_route, "persist_task_config_hash", _fake_persist_task_config_hash)
+    monkeypatch.setattr(translate_route, "get_translation_quota_service", lambda: _FakeQuotaService())
     monkeypatch.setattr(translate_route.asyncio, "create_task", _fake_create_task)
     monkeypatch.setattr(
         "backend.app.services.task_manager.get_task_queue",
