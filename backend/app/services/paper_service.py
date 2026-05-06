@@ -1445,7 +1445,10 @@ def _extract_plaintext_abstract_from_directory(directory: Path) -> Optional[str]
                 if str(row.get("env_name") or "").strip() != "abstract":
                     continue
                 content = row.get("trans_content") or row.get("content") or ""
-                plain_text = _normalize_metadata_text(extract_text_from_tex(str(content)))
+                try:
+                    plain_text = _normalize_metadata_text(extract_text_from_tex(str(content)))
+                except Exception:
+                    continue
                 if plain_text:
                     return plain_text
 

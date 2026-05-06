@@ -11,6 +11,10 @@
 - `backend/app/core/config.py`: 新增 NiuTrans user-info URL、每日 LaTeX 翻译默认额度和重置时区配置。
 - `backend/migrations_mysql/20260507_0011_daily_translation_quotas.sql`: 新增 `user_daily_quotas` 与 `niutrans_balance_snapshots` 表，用于持久化本地每日额度和安全的 PDF 直译积分快照。
 
+## Recent Responsibility Updates (2026-05-06 orphan curation backfill)
+
+- `backend/scripts/backfill_orphan_translation_curation_jobs.py`: 新增一次性管理员策展补入库脚本，用于发现已经完成但未进入 `community_curation_jobs` 的历史翻译任务，按 arXiv 去重选择具备 source、output、task_log 与译文 PDF 的最佳任务，并通过现有管理员发布链路补建策展 job、社区论文记录与公开资产；默认 dry-run，只有显式 `--execute` 才写入数据库与资产。
+
 ## Recent Responsibility Updates (2026-05-06 CLI parity timeout)
 
 - `backend/app/core/config.py`: 新增 admin curation 等待超时环境配置，支持将 admission/execution 等待超时设为 `0` 以关闭外层等待限制。
