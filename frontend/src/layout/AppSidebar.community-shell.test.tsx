@@ -224,6 +224,8 @@ describe("AppSidebar community shell", () => {
 
     const accountButton = screen.getByRole("button", { name: /researcher@example.com/i })
     const quotaSummary = screen.getByLabelText("Account quotas: LaTeX translation 2/3, PDF direct 60 points.")
+    expect(accountButton).toHaveClass("hover:bg-[color:var(--px-shell-accent-soft)]")
+    expect(accountButton).toHaveClass("hover:text-[color:var(--px-shell-ink)]")
     expect(quotaSummary).toHaveTextContent("LaTeX translation")
     expect(quotaSummary).toHaveTextContent("2/3")
     expect(quotaSummary).toHaveTextContent("PDF direct")

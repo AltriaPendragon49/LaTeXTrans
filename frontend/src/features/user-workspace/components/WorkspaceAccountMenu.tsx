@@ -105,7 +105,7 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
             : "absolute left-1 top-1/2 flex -translate-y-1/2 items-center justify-center"
         }
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--px-shell-accent-soft)]">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-transparent bg-[color:var(--px-shell-accent-soft)] transition-all duration-200 group-hover:border-[color:var(--px-shell-accent)]/24 group-hover:bg-white group-hover:shadow-[0_12px_28px_-22px_rgba(18,118,199,0.58)] group-focus-visible:border-[color:var(--px-shell-accent)]/35 group-focus-visible:bg-white">
           <img
             src={userLogo}
             alt={t("profile.settings_and_account")}
@@ -114,7 +114,7 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
         </span>
       </span>
       <span className={collapsed ? "sr-only" : "min-w-0 max-w-[8.5rem] text-center"}>
-        <span className="block truncate text-sm font-semibold text-[color:var(--px-shell-ink)]">
+        <span className="block truncate text-sm font-semibold text-[color:var(--px-shell-ink)] transition-colors duration-200 group-hover:text-[color:var(--px-shell-accent-strong)] group-focus-visible:text-[color:var(--px-shell-accent-strong)]">
           {menuLabel}
         </span>
       </span>
@@ -129,7 +129,7 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
             type="button"
             aria-label={profileLabel}
             title={profileLabel}
-            className="flex w-full items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-0 py-2.5 transition-all duration-200 hover:border-[color:var(--px-shell-accent)]/24 hover:bg-white"
+            className="group flex w-full items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-0 py-2.5 text-[color:var(--px-shell-muted)] transition-all duration-200 hover:border-[color:var(--px-shell-accent)]/24 hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)] focus-visible:border-[color:var(--px-shell-accent)]/35 focus-visible:bg-[color:var(--px-shell-accent-soft)] focus-visible:text-[color:var(--px-shell-ink)]"
           >
             {triggerContent}
           </button>
@@ -141,7 +141,7 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
               type="button"
               aria-label={profileLabel}
               title={profileLabel}
-              className="relative flex h-12 w-full items-center justify-center rounded-[12px] px-2 transition-colors duration-200 hover:bg-white/65"
+              className="group relative flex h-12 w-full items-center justify-center rounded-[12px] px-2 text-[color:var(--px-shell-muted)] transition-all duration-200 hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)] focus-visible:bg-[color:var(--px-shell-accent-soft)] focus-visible:text-[color:var(--px-shell-ink)]"
             >
               {triggerContent}
             </button>
