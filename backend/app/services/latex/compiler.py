@@ -774,6 +774,119 @@ def _remove_comments(tex: str) -> str:
     return '\n'.join(cleaned)
 
 
+_TEXTTT_OPEN = r"\texttt{"
+
+
+def _is_escaped_by_backslash(text: str, index: int) -> bool:
+    slash_count = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        slash_count += 1
+        cursor -= 1
+    return slash_count % 2 == 1
+
+
+def _matching_brace_on_same_line(line: str, opening_brace_index: int) -> int:
+    depth = 1
+    cursor = opening_brace_index + 1
+    while cursor < len(line):
+        char = line[cursor]
+        if char in "\r\n":
+            return -1
+        if char == "\\":
+            cursor += 2
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return -1
+
+
+def _first_unescaped_percent(text: str, end: int) -> int:
+    cursor = 0
+    while cursor < end:
+        if text[cursor] == "%" and not _is_escaped_by_backslash(text, cursor):
+            return cursor
+        cursor += 1
+    return -1
+
+
+def _escape_bare_percent_chars(text: str) -> Tuple[str, int]:
+    escaped_chars: List[str] = []
+    replacements = 0
+    for index, char in enumerate(text):
+        if char == "%" and not _is_escaped_by_backslash(text, index):
+            escaped_chars.append(r"\%")
+            replacements += 1
+        else:
+            escaped_chars.append(char)
+    return "".join(escaped_chars), replacements
+
+
+def _escape_bare_percent_in_texttt_line(line: str) -> Tuple[str, int]:
+    if line.lstrip().startswith("%"):
+        return line, 0
+
+    replacements = 0
+    search_from = 0
+    while True:
+        start = line.find(_TEXTTT_OPEN, search_from)
+        if start == -1:
+            break
+        if _first_unescaped_percent(line, start) != -1:
+            break
+
+        opening_brace = start + len(_TEXTTT_OPEN) - 1
+        closing_brace = _matching_brace_on_same_line(line, opening_brace)
+        if closing_brace == -1:
+            search_from = start + len(_TEXTTT_OPEN)
+            continue
+
+        content_start = opening_brace + 1
+        content = line[content_start:closing_brace]
+        escaped_content, line_replacements = _escape_bare_percent_chars(content)
+        if line_replacements:
+            line = f"{line[:content_start]}{escaped_content}{line[closing_brace:]}"
+            closing_brace += len(escaped_content) - len(content)
+            replacements += line_replacements
+        search_from = closing_brace + 1
+
+    return line, replacements
+
+
+def _escape_bare_percent_in_texttt(tex: str) -> Tuple[str, int]:
+    replacements = 0
+    escaped_lines: List[str] = []
+    for line in tex.splitlines(keepends=True):
+        escaped_line, line_replacements = _escape_bare_percent_in_texttt_line(line)
+        escaped_lines.append(escaped_line)
+        replacements += line_replacements
+    return "".join(escaped_lines), replacements
+
+
+def _escape_bare_percent_in_texttt_file(tex_path: Path) -> int:
+    try:
+        tex_content = tex_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        logger.warning("Failed to inspect texttt percent escapes for %s: %s", tex_path, exc)
+        return 0
+
+    escaped_content, replacements = _escape_bare_percent_in_texttt(tex_content)
+    if replacements:
+        tex_path.write_text(escaped_content, encoding="utf-8")
+        logger.info(
+            "Escaped %d bare percent sign%s inside \\texttt before LaTeX compilation: %s",
+            replacements,
+            "" if replacements == 1 else "s",
+            tex_path,
+        )
+    return replacements
+
+
 class CompilationResult:
     """Result of a compilation attempt"""
     
@@ -2562,6 +2675,7 @@ def _compile_latex_origin_cli_parity(
     output_latex_dir: str,
 ) -> CompilationResult:
     os.makedirs(out_dir, exist_ok=True)
+    _escape_bare_percent_in_texttt_file(Path(tex_file))
     cmd = [
         "latexmk",
         f"-{engine}",

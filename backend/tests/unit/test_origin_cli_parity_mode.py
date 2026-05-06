@@ -149,6 +149,46 @@ def test_compile_with_origin_cli_parity_stops_after_pdflatex_pdf(monkeypatch, tm
     assert calls == [("main.tex", "build_pdflatex", "pdflatex", True, True, tmp_path.name)]
 
 
+def test_compile_with_origin_cli_parity_escapes_texttt_bare_percent_before_latexmk(monkeypatch, tmp_path):
+    from backend.app.services.latex import compiler
+
+    tex_file = tmp_path / "main.tex"
+    tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\texttt{Estimated indoor area is 0.5% of ice-free land.}\n"
+        "% keep this real comment intact\n"
+        "\\texttt{Already escaped 15\\% remains safe.}\n"
+        "Outside text 20% remains a comment.\n"
+        "\\bibliography{biblio}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    observed_tex = []
+
+    def fake_run(cmd, check, capture_output, cwd):
+        observed_tex.append(tex_file.read_text(encoding="utf-8"))
+        engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
+        output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        if engine == "pdflatex":
+            (output_dir / "main.pdf").write_bytes(b"%PDF")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(compiler.subprocess, "run", fake_run)
+
+    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path))
+
+    assert result["status"] == "completed"
+    assert len(observed_tex) == 1
+    prepared_tex = observed_tex[0]
+    assert "\\texttt{Estimated indoor area is 0.5\\% of ice-free land.}" in prepared_tex
+    assert "% keep this real comment intact" in prepared_tex
+    assert "\\texttt{Already escaped 15\\% remains safe.}" in prepared_tex
+    assert "Outside text 20% remains a comment." in prepared_tex
+    assert "\\bibliography{biblio}" in prepared_tex
+
+
 def test_run_pipeline_logs_parity_mode_and_not_invoked_systems(monkeypatch, tmp_path):
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
     from backend.app.models.config_models import (
