@@ -129,13 +129,13 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
             type="button"
             aria-label={profileLabel}
             title={profileLabel}
-            className="group flex w-full items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-0 py-2.5 text-[color:var(--px-shell-muted)] transition-all duration-200 hover:border-[color:var(--px-shell-accent)]/24 hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)] focus-visible:border-[color:var(--px-shell-accent)]/35 focus-visible:bg-[color:var(--px-shell-accent-soft)] focus-visible:text-[color:var(--px-shell-ink)]"
+            className="group flex w-full items-center justify-center rounded-[16px] px-0 py-3.5 text-[color:var(--px-shell-muted)] transition-all duration-200 hover:bg-[color:var(--px-shell-accent-soft)] hover:text-[color:var(--px-shell-ink)] focus-visible:bg-[color:var(--px-shell-accent-soft)] focus-visible:text-[color:var(--px-shell-ink)] focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/20"
           >
             {triggerContent}
           </button>
         </PopoverTrigger>
       ) : (
-        <div className="w-full rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-3 py-3 transition-colors duration-200">
+        <div className="w-full px-1 py-1">
           <PopoverTrigger asChild>
             <button
               type="button"
