@@ -223,10 +223,12 @@ describe("AppSidebar community shell", () => {
     )
 
     const accountButton = screen.getByRole("button", { name: /researcher@example.com/i })
-    expect(accountButton).toHaveTextContent("LaTeX translation")
-    expect(accountButton).toHaveTextContent("2/3")
-    expect(accountButton).toHaveTextContent("PDF direct")
-    expect(accountButton).toHaveTextContent("60 points")
+    const quotaSummary = screen.getByLabelText("Account quotas: LaTeX translation 2/3, PDF direct 60 points.")
+    expect(quotaSummary).toHaveTextContent("LaTeX translation")
+    expect(quotaSummary).toHaveTextContent("2/3")
+    expect(quotaSummary).toHaveTextContent("PDF direct")
+    expect(quotaSummary).toHaveTextContent("60 points")
+    expect(accountButton).not.toHaveTextContent("LaTeX translation")
     expect(accountButton).not.toHaveTextContent("internal-user-42")
   })
 

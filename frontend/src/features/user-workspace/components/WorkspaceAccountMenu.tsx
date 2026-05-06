@@ -51,25 +51,25 @@ function QuotaCells({
 
   return (
     <span
-      className="mt-3 grid w-full grid-cols-2 gap-2"
+      className="mt-2.5 grid w-full grid-cols-2 overflow-hidden border-y border-[color:var(--px-shell-line)] bg-white/45"
       aria-label={t("profile.quota.summaryAria", {
         latexValue,
         pdfValue: pdfDirectValue,
       })}
     >
-      <span className="min-w-0 rounded-[14px] border border-[color:var(--px-shell-line)] bg-white/65 px-2.5 py-2">
-        <span className="block truncate text-[10px] font-bold text-[color:var(--px-shell-muted)]">
+      <span className="min-w-0 px-2.5 py-2 text-center">
+        <span className="block truncate text-[10px] font-semibold text-[color:var(--px-shell-muted)]">
           {t("profile.quota.latexLabel")}
         </span>
-        <span className="block truncate font-mono text-xs font-bold text-[color:var(--px-shell-ink)]">
+        <span className="block truncate text-sm font-bold text-[color:var(--px-shell-ink)]">
           {latexValue}
         </span>
       </span>
-      <span className="min-w-0 rounded-[14px] border border-[color:var(--px-shell-line)] bg-white/65 px-2.5 py-2">
-        <span className="block truncate text-[10px] font-bold text-[color:var(--px-shell-muted)]">
+      <span className="min-w-0 border-l border-[color:var(--px-shell-line)] px-2.5 py-2 text-center">
+        <span className="block truncate text-[10px] font-semibold text-[color:var(--px-shell-muted)]">
           {t("profile.quota.pdfDirectLabel")}
         </span>
-        <span className="block truncate font-mono text-xs font-bold text-[color:var(--px-shell-ink)]">
+        <span className="block truncate text-sm font-bold text-[color:var(--px-shell-ink)]">
           {pdfDirectValue}
         </span>
       </span>
@@ -96,36 +96,61 @@ export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolea
     navigate("/")
   }
 
+  const triggerContent = (
+    <>
+      <span
+        className={
+          collapsed
+            ? "flex items-center justify-center"
+            : "absolute left-1 top-1/2 flex -translate-y-1/2 items-center justify-center"
+        }
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--px-shell-accent-soft)]">
+          <img
+            src={userLogo}
+            alt={t("profile.settings_and_account")}
+            className="h-full w-full object-cover"
+          />
+        </span>
+      </span>
+      <span className={collapsed ? "sr-only" : "min-w-0 max-w-[8.5rem] text-center"}>
+        <span className="block truncate text-sm font-semibold text-[color:var(--px-shell-ink)]">
+          {menuLabel}
+        </span>
+      </span>
+    </>
+  )
+
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={profileLabel}
-          title={profileLabel}
-          className={`flex w-full items-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] transition-all duration-200 hover:border-[color:var(--px-shell-accent)]/24 hover:bg-white ${
-            collapsed ? "justify-center px-0 py-2.5" : "flex-col px-3 py-3"
-          }`}
-        >
-          <span className={collapsed ? "flex items-center justify-center" : "flex w-full items-center gap-3"}>
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--px-shell-accent-soft)]">
-              <img
-                src={userLogo}
-                alt={t("profile.settings_and_account")}
-                className="h-full w-full object-cover"
-              />
-            </span>
-            <span className={collapsed ? "sr-only" : "min-w-0 flex-1 text-left"}>
-              <span className="block truncate text-sm font-semibold text-[color:var(--px-shell-ink)]">
-                {menuLabel}
-              </span>
-            </span>
-          </span>
-          {isAuthenticated && !collapsed ? (
+      {collapsed ? (
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={profileLabel}
+            title={profileLabel}
+            className="flex w-full items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-0 py-2.5 transition-all duration-200 hover:border-[color:var(--px-shell-accent)]/24 hover:bg-white"
+          >
+            {triggerContent}
+          </button>
+        </PopoverTrigger>
+      ) : (
+        <div className="w-full rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-3 py-3 transition-colors duration-200">
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={profileLabel}
+              title={profileLabel}
+              className="relative flex h-12 w-full items-center justify-center rounded-[12px] px-2 transition-colors duration-200 hover:bg-white/65"
+            >
+              {triggerContent}
+            </button>
+          </PopoverTrigger>
+          {isAuthenticated ? (
             <QuotaCells latexValue={latexQuotaValue} pdfDirectValue={pdfDirectQuotaValue} />
           ) : null}
-        </button>
-      </PopoverTrigger>
+        </div>
+      )}
 
       <PopoverContent
         side="top"
