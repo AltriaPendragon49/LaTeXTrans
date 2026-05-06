@@ -2856,30 +2856,42 @@ def _has_cjk_compat_trigger(tex_file: Path, language: str) -> bool:
     if language != "cjk":
         return False
 
-    trigger_re = re.compile(
+    tex_trigger_re = re.compile(
         r"\\(?:pdfoutput|pdfinfo|pdfcatalog|pdftrailer|pdfcompresslevel|"
         r"pdfobjcompresslevel|pdfminorversion|pdfpagewidth|pdfpageheight|"
         r"pdfinclusioncopyfonts|pdfglyphtounicode|pdfgentounicode)\b"
         r"|\\begin\s*\{CJK\*?\}"
         r"|\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\s*\{[^}]*"
-        r"(?:a4wide|CJKutf8|newtxtext|newtxmath|txfonts|fontenc)[^}]*\}",
+        r"(?:a4wide|CJKutf8|newtxtext|newtxmath|txfonts)[^}]*\}",
+        re.IGNORECASE,
+    )
+    style_trigger_re = re.compile(
+        r"\\(?:pdfoutput|pdfinfo|pdfcatalog|pdftrailer|pdfcompresslevel|"
+        r"pdfobjcompresslevel|pdfminorversion|pdfpagewidth|pdfpageheight|"
+        r"pdfinclusioncopyfonts|pdfglyphtounicode|pdfgentounicode)\b"
+        r"|\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\s*\{[^}]*"
+        r"(?:newtxtext|newtxmath|txfonts|fontenc)[^}]*\}",
         re.IGNORECASE,
     )
 
-    candidates = _iter_parity_project_tex_files(tex_file.parent)
-    candidates.extend(
-        path
-        for pattern in ("*.cls", "*.sty")
-        for path in sorted(tex_file.parent.glob(pattern))
-        if path.is_file()
-    )
-    for candidate in candidates:
+    for candidate in _iter_parity_project_tex_files(tex_file.parent):
         try:
             content = candidate.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
-        if trigger_re.search(content):
+        if tex_trigger_re.search(content):
             return True
+
+    for pattern in ("*.cls", "*.sty"):
+        for candidate in sorted(tex_file.parent.glob(pattern)):
+            if not candidate.is_file():
+                continue
+            try:
+                content = candidate.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            if style_trigger_re.search(content):
+                return True
     return False
 
 

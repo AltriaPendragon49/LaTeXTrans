@@ -178,6 +178,36 @@ def test_compile_with_origin_cli_parity_skips_health_branch_for_cjk_without_trig
     assert calls == [("pdflatex", "build_pdflatex")]
 
 
+def test_compile_with_origin_cli_parity_skips_health_branch_for_cjk_main_fontenc_only(monkeypatch, tmp_path):
+    from backend.app.services.latex import compiler
+
+    tex_file = tmp_path / "main.tex"
+    tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\usepackage[UTF8]{ctex}\n"
+        "\\usepackage[T1]{fontenc}\n"
+        "\\begin{document}中文正文 with legacy font encoding.\\end{document}",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(cmd, check, capture_output, cwd):
+        engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
+        output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+        calls.append((engine, output_dir.name))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "main.pdf").write_bytes(b"%PDF")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(compiler.subprocess, "run", fake_run)
+
+    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path), target_language="zh")
+
+    assert result["status"] == "completed"
+    assert result["engine"] == "pdflatex"
+    assert calls == [("pdflatex", "build_pdflatex")]
+
+
 def test_compile_with_origin_cli_parity_uses_bibliography_flag_for_latexmk(monkeypatch, tmp_path):
     from backend.app.services.latex import compiler
 
