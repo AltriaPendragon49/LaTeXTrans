@@ -1474,8 +1474,17 @@ def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
 
     task = task_manager.get_task(task_id) if task_id else None
     if task:
-        stored_output = _resolve_storage_path(task.get("output_path") or "")
-        _add_directory(stored_output)
+        output_path_raw = str(task.get("output_path") or "").strip()
+        if output_path_raw:
+            stored_output = _resolve_storage_path(output_path_raw)
+            _add_directory(stored_output)
+            if not stored_output.exists():
+                materialized_output = _materialize_task_directory_for_asset_recovery(
+                    output_path_raw,
+                    task_id=task_id,
+                    kind="output",
+                )
+                _add_directory(materialized_output)
 
     task_root = Path(settings.outputs_dir) / task_id
     _add_directory(task_root)
@@ -1751,6 +1760,35 @@ def _resolve_storage_path(stored_path: Optional[str]) -> Path:
     if candidate.is_absolute():
         return candidate
     return settings.base_dir / candidate
+
+
+def _materialize_task_directory_for_asset_recovery(
+    stored_path: str,
+    *,
+    task_id: Optional[str],
+    kind: str,
+) -> Optional[Path]:
+    normalized_path = str(stored_path or "").strip()
+    if not normalized_path:
+        return None
+    safe_task_id = re.sub(r"[^0-9A-Za-z._-]+", "_", str(task_id or "shared")).strip("._-") or "shared"
+    safe_kind = re.sub(r"[^0-9A-Za-z._-]+", "_", str(kind or "asset")).strip("._-") or "asset"
+    destination = Path(settings.storage_temp_dir) / "task_directory_recovery" / safe_task_id / safe_kind
+    try:
+        return task_artifact_storage.materialize_task_directory(
+            normalized_path,
+            destination=destination,
+            force=False,
+        )
+    except Exception as exc:
+        logger.debug(
+            "Failed to materialize task %s directory for %s recovery from %s: %s",
+            task_id,
+            safe_kind,
+            normalized_path,
+            exc,
+        )
+        return None
 
 
 def _translated_pdf_delivery_cache_dir() -> Path:
@@ -3158,21 +3196,31 @@ async def _create_source_asset(
     if not source_path:
         return None
     resolved_source = _resolve_storage_path(source_path)
+    materialized_cleanup: Optional[Path] = None
     if not resolved_source.exists():
-        return None
+        materialized_source = _materialize_task_directory_for_asset_recovery(
+            str(source_path),
+            task_id=task_id,
+            kind="source",
+        )
+        if not materialized_source or not materialized_source.exists():
+            return None
+        resolved_source = materialized_source
+        materialized_cleanup = materialized_source
+    source_path_name = Path(str(source_path)).name or resolved_source.name
     stored_ref, stored_name = _persist_retained_artifact(
         local_path=resolved_source,
         paper_id=paper_id,
         task_id=task_id,
         asset_type="source_archive",
-        source_name=resolved_source.name if resolved_source.is_file() else f"{resolved_source.name}.zip",
+        source_name=source_path_name if resolved_source.is_file() else f"{source_path_name}.zip",
         content_type=(
             mimetypes.guess_type(resolved_source.name)[0] or "application/octet-stream"
             if resolved_source.is_file()
             else None
         ),
     )
-    return await _upsert_latest_asset(
+    asset = await _upsert_latest_asset(
         paper_id=paper_id,
         task_id=task_id,
         asset_type="source_archive",
@@ -3181,6 +3229,12 @@ async def _create_source_asset(
         mime_type=stored_ref.content_type,
         storage_backend=stored_ref.storage_backend,
     )
+    if materialized_cleanup and stored_ref.storage_backend != "local_disk":
+        if task_id:
+            clear_cached_runtime_artifacts(task_id, [materialized_cleanup])
+        elif materialized_cleanup.exists():
+            shutil.rmtree(materialized_cleanup, ignore_errors=True)
+    return asset
 
 
 def _source_pdf_filename(arxiv_id: str) -> str:

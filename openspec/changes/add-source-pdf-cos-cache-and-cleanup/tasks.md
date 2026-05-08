@@ -14,8 +14,8 @@
 ## 3. Validation
 - [x] 3.1 Run targeted unit tests.
 - [x] 3.2 Run `openspec validate add-source-pdf-cos-cache-and-cleanup --strict --no-interactive`.
-- [ ] 3.3 Deploy code to production and restart backend/worker with COS mode preserved.
-- [ ] 3.4 Run cleanup dry-run report on production and review candidates before any execute mode.
+- [x] 3.3 Deploy code to production and restart backend/worker with COS mode preserved.
+- [x] 3.4 Run cleanup dry-run report on production and review candidates before any execute mode.
 
 ## 4. Production Acceptance
 - [ ] 4.1 Authenticate as admin `1593120349@qq.com` without exposing credentials in logs or final output.

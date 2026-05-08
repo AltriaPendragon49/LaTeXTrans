@@ -256,3 +256,87 @@ def test_sync_completed_arxiv_task_persists_source_pdf(monkeypatch):
     assert captured["source_pdf"]["paper_id"] == "paper-1"
     assert captured["source_pdf"]["task_id"] == "task-1"
     assert captured["source_pdf"]["paper"]["arxiv_id"] == "2501.12345"
+
+
+def test_create_source_asset_materializes_missing_object_storage_source(monkeypatch, tmp_path: Path):
+    source_dir = tmp_path / "materialized-source"
+    source_dir.mkdir()
+    (source_dir / "main.tex").write_text("\\documentclass{article}", encoding="utf-8")
+    captured = {}
+
+    def _fake_materialize(stored_path: str, *, task_id: str | None, kind: str):
+        assert stored_path == "data/uploads/arxiv_2501.12345/2501.12345"
+        assert task_id == "task-1"
+        assert kind == "source"
+        return source_dir
+
+    def _fake_persist(*, local_path: Path, paper_id: str, task_id: str | None, asset_type: str, source_name: str, content_type: str | None):
+        captured["persist"] = {
+            "local_path": local_path,
+            "paper_id": paper_id,
+            "task_id": task_id,
+            "asset_type": asset_type,
+            "source_name": source_name,
+            "content_type": content_type,
+        }
+        return type(
+            "StoredRef",
+            (),
+            {
+                "storage_backend": "object_storage",
+                "object_key": "latextrans-prod/data/community_papers/paper-1/source/source.zip",
+                "content_type": "application/zip",
+            },
+        )(), "source.zip"
+
+    async def _fake_upsert(**kwargs):
+        captured["upsert"] = kwargs
+        return {"id": "asset-source-archive", **kwargs}
+
+    monkeypatch.setattr(paper_service, "_resolve_storage_path", lambda _path: tmp_path / "missing-source")
+    monkeypatch.setattr(paper_service, "_materialize_task_directory_for_asset_recovery", _fake_materialize)
+    monkeypatch.setattr(paper_service, "_persist_retained_artifact", _fake_persist)
+    monkeypatch.setattr(paper_service, "_upsert_latest_asset", _fake_upsert)
+    monkeypatch.setattr(paper_service, "clear_cached_runtime_artifacts", lambda *_args, **_kwargs: captured.setdefault("cleared", True))
+
+    result = asyncio.run(
+        paper_service._create_source_asset(
+            paper_id="paper-1",
+            task_id="task-1",
+            source_path="data/uploads/arxiv_2501.12345/2501.12345",
+        )
+    )
+
+    assert result["asset_type"] == "source_archive"
+    assert captured["persist"]["local_path"] == source_dir
+    assert captured["persist"]["asset_type"] == "source_archive"
+    assert captured["upsert"]["storage_backend"] == "object_storage"
+    assert captured["cleared"] is True
+
+
+def test_candidate_output_directories_materializes_missing_object_storage_output(monkeypatch, tmp_path: Path):
+    output_dir = tmp_path / "materialized-output"
+    output_dir.mkdir()
+
+    class _FakeTaskManager:
+        def get_task(self, task_id: str):
+            assert task_id == "task-1"
+            return {"output_path": "data/outputs/task-1"}
+
+    def _fake_resolve(_path: str):
+        return tmp_path / "missing-output"
+
+    def _fake_materialize(stored_path: str, *, task_id: str | None, kind: str):
+        assert stored_path == "data/outputs/task-1"
+        assert task_id == "task-1"
+        assert kind == "output"
+        return output_dir
+
+    monkeypatch.setattr(paper_service, "task_manager", _FakeTaskManager())
+    monkeypatch.setattr(paper_service, "_resolve_storage_path", _fake_resolve)
+    monkeypatch.setattr(paper_service, "_materialize_task_directory_for_asset_recovery", _fake_materialize)
+    monkeypatch.setattr(paper_service.settings, "outputs_dir", tmp_path / "outputs")
+
+    result = paper_service._candidate_output_directories_for_task("task-1")
+
+    assert result == [output_dir]

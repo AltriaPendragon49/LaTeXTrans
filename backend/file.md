@@ -2,7 +2,7 @@
 
 ## Recent Responsibility Updates (2026-05-08 source PDF COS cache and cleanup)
 
-- `backend/app/services/paper_service.py`: 社区论文资产链路新增 `source_pdf` 原文 PDF 资产类型；arXiv 论文发布完成时会将原文 PDF 持久化到当前存储后端，COS 模式下写入 `data/community_papers/<paper_id>/source_pdf/<arxiv_id>.pdf` 并登记 `paper_assets`；公开源 PDF 解析优先使用 `source_pdf` 的对象存储签名 URL，再回退到源归档、本地源目录、arXiv 和 legacy task。
+- `backend/app/services/paper_service.py`: 社区论文资产链路新增 `source_pdf` 原文 PDF 资产类型；arXiv 论文发布完成时会将原文 PDF 持久化到当前存储后端，COS 模式下写入 `data/community_papers/<paper_id>/source_pdf/<arxiv_id>.pdf` 并登记 `paper_assets`；公开源 PDF 解析优先使用 `source_pdf` 的对象存储签名 URL，再回退到源归档、本地源目录、arXiv 和 legacy task；源归档与预览恢复会在本地目录缺失时从 COS 任务目录物化临时副本再生成 canonical 资产。
 - `backend/app/api/routes/papers.py`: `/api/papers/{paper_id}/source-pdf`、`source-download`、`source-thumbnail` 支持对象存储源 PDF，通过远端 PDF 代理保留 Range 预览与下载 disposition 行为。
 - `backend/scripts/backfill_community_source_pdfs_to_cos.py`: 新增 dry-run-first 运维脚本，用于发现已发布 arXiv 社区论文中缺失 `source_pdf` 的候选项，并在显式 `--execute` 时下载原文 PDF、上传到 COS、回写 `paper_assets`。
 - `backend/scripts/cleanup_cos_mode_local_residue.py`: 新增 dry-run-first 本地残留清理脚本，仅在 COS 模式执行删除，限制在 `data/uploads`、`data/outputs`、`data/community_papers`、`data/failed_tasks`、`data/tmp_storage` 等安全根下，并按最小年龄阈值清理。
