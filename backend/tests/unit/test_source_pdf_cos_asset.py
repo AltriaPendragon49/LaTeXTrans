@@ -199,6 +199,38 @@ def test_persist_arxiv_source_pdf_uploads_and_upserts(monkeypatch, tmp_path: Pat
     assert not downloaded_pdf.exists()
 
 
+def test_download_arxiv_source_pdf_uses_canonical_pdf_url(monkeypatch, tmp_path: Path):
+    captured = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size: int):
+            assert chunk_size == 1024 * 1024
+            yield b"%PDF-1.7\nsource"
+
+    def _fake_get(url: str, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _FakeResponse()
+
+    monkeypatch.setattr(paper_service, "_source_pdf_download_cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(paper_service.requests, "get", _fake_get)
+
+    downloaded_pdf = paper_service._download_arxiv_source_pdf_to_temp("2501.12345")
+
+    assert captured["url"] == "https://arxiv.org/pdf/2501.12345"
+    assert captured["kwargs"]["stream"] is True
+    assert downloaded_pdf.read_bytes().startswith(b"%PDF")
+
+
 def test_sync_completed_arxiv_task_persists_source_pdf(monkeypatch):
     captured = {}
 

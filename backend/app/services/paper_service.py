@@ -3278,7 +3278,7 @@ def _download_arxiv_source_pdf_to_temp(arxiv_id: str) -> Path:
     ) as handle:
         temp_path = Path(handle.name)
 
-    url = f"https://arxiv.org/pdf/{normalized_arxiv_id}.pdf"
+    url = f"https://arxiv.org/pdf/{normalized_arxiv_id}"
     try:
         with requests.get(
             url,
