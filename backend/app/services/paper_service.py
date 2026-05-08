@@ -1472,6 +1472,13 @@ def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
         if path.exists() and path.is_dir():
             candidates.append(path)
 
+    def _add_directory_children(path: Optional[Path]) -> None:
+        if path is None or not path.exists() or not path.is_dir():
+            return
+        for child in sorted(path.iterdir()):
+            if child.is_dir():
+                _add_directory(child)
+
     task = task_manager.get_task(task_id) if task_id else None
     if task:
         output_path_raw = str(task.get("output_path") or "").strip()
@@ -1485,13 +1492,11 @@ def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
                     kind="output",
                 )
                 _add_directory(materialized_output)
+                _add_directory_children(materialized_output)
 
     task_root = Path(settings.outputs_dir) / task_id
     _add_directory(task_root)
-    if task_root.exists() and task_root.is_dir():
-        for child in sorted(task_root.iterdir()):
-            if child.is_dir():
-                _add_directory(child)
+    _add_directory_children(task_root)
 
     return candidates
 

@@ -317,6 +317,8 @@ def test_create_source_asset_materializes_missing_object_storage_source(monkeypa
 def test_candidate_output_directories_materializes_missing_object_storage_output(monkeypatch, tmp_path: Path):
     output_dir = tmp_path / "materialized-output"
     output_dir.mkdir()
+    child_dir = output_dir / "zh_task"
+    child_dir.mkdir()
 
     class _FakeTaskManager:
         def get_task(self, task_id: str):
@@ -339,4 +341,4 @@ def test_candidate_output_directories_materializes_missing_object_storage_output
 
     result = paper_service._candidate_output_directories_for_task("task-1")
 
-    assert result == [output_dir]
+    assert result == [output_dir, child_dir]
