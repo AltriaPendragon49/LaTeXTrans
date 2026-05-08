@@ -18,9 +18,9 @@
 - [x] 3.4 Run cleanup dry-run report on production and review candidates before any execute mode.
 
 ## 4. Production Acceptance
-- [ ] 4.1 Authenticate as admin `1593120349@qq.com` without exposing credentials in logs or final output.
-- [ ] 4.2 Start admin curation for `2407.12818` and `2407.01489`.
-- [ ] 4.3 Verify both curation runs publish successfully or record actionable failure cause if external translation/arXiv dependencies fail.
-- [ ] 4.4 Verify both published papers have COS-backed `source_pdf`, `source_archive`, `preview_html`, and `translated_pdf` assets where applicable.
-- [ ] 4.5 Verify source PDF preview/download, translated PDF, preview HTML, detail, and list routes work after local durable roots remain clean.
-- [ ] 4.6 Capture final production DB/COS/storage cleanup audit evidence.
+- [x] 4.1 Authenticate as admin `1593120349@qq.com` without exposing credentials in logs or final output.
+- [x] 4.2 Start admin curation for `2407.12818` and `2407.01489`.
+- [x] 4.3 Verify both curation runs publish successfully or record actionable failure cause if external translation/arXiv dependencies fail.
+- [x] 4.4 Verify both published papers have COS-backed `source_pdf`, `source_archive`, `preview_html`, and `translated_pdf` assets where applicable.
+- [x] 4.5 Verify source PDF preview/download, translated PDF, preview HTML, detail, and list routes work after local durable roots remain clean.
+- [x] 4.6 Capture final production DB/COS/storage cleanup audit evidence.
