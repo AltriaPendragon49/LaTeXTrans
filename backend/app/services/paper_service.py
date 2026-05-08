@@ -278,7 +278,7 @@ STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS = {
     "future": ["当前局限", "可改进方向", "研究启发"],
 }
 COMMUNITY_FEED_ABSTRACT_MAX_CHARS = 320
-COMMUNITY_FEED_PUBLIC_ASSET_TYPES = {"source_archive", "translated_pdf"}
+COMMUNITY_FEED_PUBLIC_ASSET_TYPES = {"source_archive", "source_pdf", "translated_pdf"}
 
 STRUCTURED_INSIGHT_FINAL_SYSTEM_PROMPT = """
 You are the paper-guide writer for PaperX community papers.
@@ -2499,6 +2499,8 @@ def _community_asset_destination(
     safe_name = Path(source_name or asset_type).name or asset_type
     if asset_type == "source_archive":
         return paper_root / "source" / safe_name
+    if asset_type == "source_pdf":
+        return paper_root / "source_pdf" / safe_name
     if asset_type == "translated_pdf":
         filename = f"{task_id or 'latest'}-{safe_name}" if task_id else safe_name
         return paper_root / "translated" / filename
@@ -3179,6 +3181,134 @@ async def _create_source_asset(
         mime_type=stored_ref.content_type,
         storage_backend=stored_ref.storage_backend,
     )
+
+
+def _source_pdf_filename(arxiv_id: str) -> str:
+    normalized = str(arxiv_id or "").strip()
+    safe_stem = re.sub(r"[^0-9A-Za-z._-]+", "_", normalized).strip("._-")
+    return f"{safe_stem or 'source'}.pdf"
+
+
+def _source_pdf_download_cache_dir() -> Path:
+    cache_dir = Path(settings.storage_temp_dir) / "source_pdf_downloads"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _validate_source_pdf_file(path: Path) -> None:
+    if not path.exists() or not path.is_file():
+        raise ValueError("Downloaded source PDF is missing")
+    if path.stat().st_size <= 0:
+        raise ValueError("Downloaded source PDF is empty")
+    with path.open("rb") as handle:
+        header = handle.read(8)
+    if not header.startswith(b"%PDF"):
+        raise ValueError("Downloaded source PDF does not look like a PDF")
+
+
+def _download_arxiv_source_pdf_to_temp(arxiv_id: str) -> Path:
+    normalized_arxiv_id = str(arxiv_id or "").strip()
+    if not normalized_arxiv_id:
+        raise ValueError("arxiv_id is required")
+
+    with tempfile.NamedTemporaryFile(
+        dir=_source_pdf_download_cache_dir(),
+        prefix="source-pdf-",
+        suffix=".pdf",
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+
+    url = f"https://arxiv.org/pdf/{normalized_arxiv_id}.pdf"
+    try:
+        with requests.get(
+            url,
+            stream=True,
+            timeout=(10, 120),
+            headers={"User-Agent": "LaTeXTrans-SourcePDF/1.0"},
+        ) as response:
+            response.raise_for_status()
+            with temp_path.open("wb") as target:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        target.write(chunk)
+        _validate_source_pdf_file(temp_path)
+        return temp_path
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+async def persist_arxiv_source_pdf_asset(
+    *,
+    paper_id: str,
+    task_id: Optional[str],
+    arxiv_id: str,
+) -> Dict[str, Any]:
+    normalized_paper_id = str(paper_id or "").strip()
+    normalized_arxiv_id = _normalize_arxiv_identifier(arxiv_id) or str(arxiv_id or "").strip()
+    if not normalized_paper_id:
+        raise ValueError("paper_id is required")
+    if not normalized_arxiv_id:
+        raise ValueError("arxiv_id is required")
+
+    asset_map = await _fetch_asset_map_for_paper(paper_id=normalized_paper_id)
+    existing_asset = asset_map.get("source_pdf")
+    if existing_asset and str(existing_asset.get("file_path") or "").strip():
+        return existing_asset
+
+    local_pdf = await asyncio.to_thread(_download_arxiv_source_pdf_to_temp, normalized_arxiv_id)
+    try:
+        source_name = _source_pdf_filename(normalized_arxiv_id)
+        stored_ref, stored_name = _persist_retained_artifact(
+            local_path=local_pdf,
+            paper_id=normalized_paper_id,
+            task_id=task_id,
+            asset_type="source_pdf",
+            source_name=source_name,
+            content_type="application/pdf",
+        )
+        return await _upsert_latest_asset(
+            paper_id=normalized_paper_id,
+            task_id=task_id,
+            asset_type="source_pdf",
+            file_path=stored_ref.object_key,
+            file_name=stored_name,
+            mime_type=stored_ref.content_type or "application/pdf",
+            storage_backend=stored_ref.storage_backend,
+        )
+    finally:
+        local_pdf.unlink(missing_ok=True)
+
+
+async def _persist_source_pdf_for_paper_if_arxiv(
+    *,
+    paper_id: str,
+    task_id: Optional[str],
+    paper: Optional[Dict[str, Any]],
+    task: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    arxiv_id = (
+        _normalize_arxiv_identifier((paper or {}).get("arxiv_id"))
+        or _normalize_arxiv_identifier((task or {}).get("arxiv_id"))
+    )
+    if not arxiv_id:
+        return None
+    try:
+        return await persist_arxiv_source_pdf_asset(
+            paper_id=paper_id,
+            task_id=task_id,
+            arxiv_id=arxiv_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Source PDF persistence skipped for paper %s arXiv %s: %s",
+            paper_id,
+            arxiv_id,
+            exc,
+            exc_info=True,
+        )
+        return None
 
 
 def _serialize_latest_asset(asset: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -3898,6 +4028,7 @@ async def _fetch_sanitized_arxiv_html(arxiv_id: str) -> Optional[str]:
 def _source_reader_resource(
     *,
     paper: Dict[str, Any],
+    paper_id: str,
     source_html_content: Optional[str] = None,
     source_anchors: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -3913,7 +4044,7 @@ def _source_reader_resource(
         return {
             "kind": "source_pdf",
             "html_content": None,
-            "url": f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+            "url": f"/api/papers/{paper_id}/source-pdf",
             "anchors": list(source_anchors or []),
         }
     return None
@@ -4012,6 +4143,7 @@ def _build_reader_experience_payload(
     )
     source_resource = _source_reader_resource(
         paper=paper,
+        paper_id=paper_id,
         source_html_content=source_html_content,
         source_anchors=source_anchors,
     )
@@ -4618,6 +4750,12 @@ async def _sync_task_assets_for_paper(
             paper = await _fetch_paper_by_id(paper_id)
         if not paper:
             return {"done": True, "status": "paper_missing"}
+        source_pdf_asset = await _persist_source_pdf_for_paper_if_arxiv(
+            paper_id=paper_id,
+            task_id=task_id,
+            paper=paper,
+            task=task,
+        )
         translated_asset = await _resolve_translated_pdf_asset(
             paper_id=paper_id,
             task_id=task_id,
@@ -4659,6 +4797,7 @@ async def _sync_task_assets_for_paper(
             "paper": paper,
             "translated_asset": translated_asset,
             "preview_asset": preview_asset,
+            "source_pdf_asset": source_pdf_asset,
             "selected_asset": selected_asset,
             "needs_runtime_cleanup": bool(
                 defer_runtime_cleanup
@@ -7538,6 +7677,38 @@ async def resolve_paper_source_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
     task_id = str(paper.get("community_selected_task_id") or paper.get("trans_latest_task_id") or "").strip()
     preferred_arxiv_id = str(paper.get("arxiv_id") or "").strip() or None
 
+    source_pdf_asset = asset_map.get("source_pdf")
+    if source_pdf_asset and source_pdf_asset.get("file_path"):
+        filename = str(source_pdf_asset.get("file_name") or "").strip()
+        if not filename:
+            filename = _source_pdf_filename(preferred_arxiv_id or paper_id)
+        mime_type = str(source_pdf_asset.get("mime_type") or "application/pdf")
+        if source_pdf_asset.get("storage_backend") == "object_storage":
+            signed_url = _resolve_object_storage_signed_url(
+                source_pdf_asset,
+                expires_in=300,
+                response_params={
+                    "response-content-disposition": f'inline; filename="{filename}"',
+                    "response-content-type": mime_type,
+                },
+            )
+            if signed_url:
+                return {
+                    "paper_id": paper_id,
+                    "asset": source_pdf_asset,
+                    "signed_url": signed_url,
+                    "filename": filename,
+                }
+        else:
+            source_pdf_path = _resolve_storage_path(source_pdf_asset.get("file_path") or "")
+            if source_pdf_path.exists() and source_pdf_path.is_file():
+                return {
+                    "paper_id": paper_id,
+                    "asset": source_pdf_asset,
+                    "file_path": str(source_pdf_path),
+                    "filename": filename or source_pdf_path.name,
+                }
+
     source_asset = asset_map.get("source_archive")
     if source_asset and source_asset.get("file_path"):
         source_path = _resolve_storage_path(source_asset.get("file_path") or "")
@@ -7631,7 +7802,14 @@ async def _warm_public_paper_thumbnails(
 ) -> None:
     try:
         source_preview = await resolve_paper_source_pdf_preview(paper_id=paper_id)
-        if source_preview.get("file_path"):
+        if source_preview.get("signed_url"):
+            asset = source_preview.get("asset") or {}
+            cache_seed = f"source-object:{paper_id}:{asset.get('id') or source_preview.get('filename') or paper_id}"
+            await paper_thumbnail_service.ensure_pdf_thumbnail(
+                cache_seed=cache_seed,
+                remote_url=str(source_preview["signed_url"]),
+            )
+        elif source_preview.get("file_path"):
             resolved_path = Path(str(source_preview["file_path"]))
             if resolved_path.exists():
                 stat = resolved_path.stat()

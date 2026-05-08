@@ -368,7 +368,13 @@ def _ensure_local_admin(current_user: Optional[Dict[str, Any]]) -> None:
     )
 
 
-async def _proxy_remote_pdf_preview(*, url: str, filename: str, request: Request) -> Response:
+async def _proxy_remote_pdf_preview(
+    *,
+    url: str,
+    filename: str,
+    request: Request,
+    content_disposition: str = "inline",
+) -> Response:
     upstream_headers: Dict[str, str] = {
         "User-Agent": "LaTeXTrans-Preview/1.0",
     }
@@ -391,7 +397,7 @@ async def _proxy_remote_pdf_preview(*, url: str, filename: str, request: Request
 
     response_headers = {
         "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-        "Content-Disposition": f'inline; filename="{filename}"',
+        "Content-Disposition": f'{content_disposition}; filename="{filename}"',
     }
     for source_name, target_name in (
         ("accept-ranges", "Accept-Ranges"),
@@ -1114,6 +1120,15 @@ async def preview_translated_paper_thumbnail(paper_id: str):
 async def preview_source_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
 
+    if payload.get("signed_url"):
+        asset = payload.get("asset") or {}
+        filename = str(payload.get("filename") or asset.get("file_name") or f"{paper_id}.pdf")
+        return await _proxy_remote_pdf_preview(
+            url=str(payload["signed_url"]),
+            filename=filename,
+            request=request,
+        )
+
     arxiv_id = str(payload.get("arxiv_id") or "").strip()
     if arxiv_id:
         return await download_route._proxy_arxiv_pdf(
@@ -1142,6 +1157,16 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
 @router.get("/{paper_id}/source-download")
 async def download_source_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
+
+    if payload.get("signed_url"):
+        asset = payload.get("asset") or {}
+        filename = str(payload.get("filename") or asset.get("file_name") or f"{paper_id}.pdf")
+        return await _proxy_remote_pdf_preview(
+            url=str(payload["signed_url"]),
+            filename=filename,
+            request=request,
+            content_disposition="attachment",
+        )
 
     arxiv_id = str(payload.get("arxiv_id") or "").strip()
     if arxiv_id:
@@ -1173,6 +1198,13 @@ async def download_source_paper_pdf(paper_id: str, request: Request):
 @router.get("/{paper_id}/source-thumbnail")
 async def preview_source_paper_thumbnail(paper_id: str):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
+
+    if payload.get("signed_url"):
+        asset = payload.get("asset") or {}
+        return await _serve_pdf_thumbnail_response(
+            cache_seed=f"source-object:{paper_id}:{asset.get('id') or payload.get('filename') or paper_id}",
+            remote_url=str(payload["signed_url"]),
+        )
 
     if payload.get("file_path"):
         file_path = str(payload["file_path"])

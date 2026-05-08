@@ -1,5 +1,16 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-08 source PDF COS cache and cleanup)
+
+- `backend/app/services/paper_service.py`: 社区论文资产链路新增 `source_pdf` 原文 PDF 资产类型；arXiv 论文发布完成时会将原文 PDF 持久化到当前存储后端，COS 模式下写入 `data/community_papers/<paper_id>/source_pdf/<arxiv_id>.pdf` 并登记 `paper_assets`；公开源 PDF 解析优先使用 `source_pdf` 的对象存储签名 URL，再回退到源归档、本地源目录、arXiv 和 legacy task。
+- `backend/app/api/routes/papers.py`: `/api/papers/{paper_id}/source-pdf`、`source-download`、`source-thumbnail` 支持对象存储源 PDF，通过远端 PDF 代理保留 Range 预览与下载 disposition 行为。
+- `backend/scripts/backfill_community_source_pdfs_to_cos.py`: 新增 dry-run-first 运维脚本，用于发现已发布 arXiv 社区论文中缺失 `source_pdf` 的候选项，并在显式 `--execute` 时下载原文 PDF、上传到 COS、回写 `paper_assets`。
+- `backend/scripts/cleanup_cos_mode_local_residue.py`: 新增 dry-run-first 本地残留清理脚本，仅在 COS 模式执行删除，限制在 `data/uploads`、`data/outputs`、`data/community_papers`、`data/failed_tasks`、`data/tmp_storage` 等安全根下，并按最小年龄阈值清理。
+
+## Recent Responsibility Updates (2026-05-08 production asset COS migration)
+
+- `backend/scripts/migrate_production_assets_to_cos.py`: 新增生产资产迁移运维脚本，先生成 dry-run manifest，统计本地资产、MySQL 指针与 COS 对象，支持分阶段清理 COS 孤儿对象、上传本地 durable 资产、回填历史输出 manifest、更新 MySQL 指向以及最终清理本地资产目录。
+
 ## Recent Responsibility Updates (2026-05-07 parity health branch)
 
 - `backend/app/services/latex/compiler.py`: `origin_cli_parity` 编译新增可丢弃的健康增强分支，基线仍按旧 CLI 顺序 `pdflatex -> xelatex` 并优先保留已生成 PDF；引用/BibTeX flag、裸 `%`、旧 biblatex `.bbl`、CJK/pdfTeX 兼容、预编译包清理与图片 sanitizer 等修复仅在临时副本或受控触发路径中运行，失败时回退基线结果。
@@ -267,6 +278,7 @@
 - `backend/scripts/extract_core_pool_ids.py`
 - `backend/scripts/grant_local_admin.py`
 - `backend/scripts/import_source_to_mysql.py`
+- `backend/scripts/migrate_production_assets_to_cos.py`
 - `backend/scripts/mysql_script_connection.py`
 - `backend/scripts/sync_core_pool_complete_from_cos.py`
 

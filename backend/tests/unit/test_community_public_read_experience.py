@@ -179,7 +179,7 @@ def test_detail_includes_preview_bootstrap_when_reader_is_ready(monkeypatch, tmp
 
     assert result["reader_state"] == "ready"
     assert result["preview"]["asset"]["id"] == "asset-preview"
-    assert "Readable" in result["preview"]["html_content"]
+    assert result["preview"]["fetch_url"] == "/api/papers/paper-1/preview"
 
 
 def test_detail_marks_preview_as_warming_and_schedules_recovery(monkeypatch):
@@ -284,7 +284,7 @@ def test_detail_falls_back_to_source_pdf_when_sanitized_html_is_unavailable(monk
 
     assert result["reader_state"] == "ready"
     assert result["reader"]["source"]["kind"] == "source_pdf"
-    assert result["reader"]["source"]["url"].endswith("/2503.01010.pdf")
+    assert result["reader"]["source"]["url"] == "/api/papers/paper-1/source-pdf"
 
 
 def test_preview_route_keeps_unavailable_preview_as_not_found(monkeypatch):
@@ -378,7 +378,7 @@ def test_detail_recovers_translated_preview_even_when_task_failed(monkeypatch):
     result = asyncio.run(paper_service.get_community_paper_detail(paper_id="paper-1"))
 
     assert result["preview"] is not None
-    assert "Recovered preview" in result["preview"]["html_content"]
+    assert result["preview"]["fetch_url"] == "/api/papers/paper-1/preview"
     assert result["reader_state"] == "ready"
     assert result["reader"]["preferred_mode"] == "translated"
     assert result["reader"]["state"] == "translated_ready"
