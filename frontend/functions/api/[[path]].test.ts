@@ -16,7 +16,7 @@ describe("pages api proxy", () => {
 
     const response = await onRequest({
       env: {},
-      request: new Request("https://latextrans.niutrans.com/api/health?full=1"),
+      request: new Request("https://paperx.niutrans.com/api/health?full=1"),
     } as never)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)

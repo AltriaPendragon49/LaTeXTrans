@@ -4,7 +4,7 @@ const LOCAL_DEV_API_BASE_URL = "http://127.0.0.1:9001"
 const HOSTED_API_BASE_URL = "https://api.latextrans.online"
 const PAPER_PREVIEW_ENV_NAME = "VITE_PAPER_PREVIEW_API_BASE_URL"
 const TRANSLATED_HTML_READER_ENV_NAME = "VITE_ENABLE_TRANSLATED_HTML_READER"
-const PRODUCTION_FRONTEND_HOSTNAME = "latextrans.niutrans.com"
+const PRODUCTION_FRONTEND_HOSTNAMES = new Set(["latextrans.niutrans.com", "paperx.niutrans.com"])
 const PRODUCTION_PAPER_PREVIEW_API_BASE_URL = HOSTED_API_BASE_URL
 
 function normalizeBaseUrl(value: string | undefined): string | null {
@@ -24,7 +24,7 @@ function isBrowserEnvironment(): boolean {
 }
 
 function isPrimaryProductionFrontend(): boolean {
-  return isBrowserEnvironment() && window.location.hostname === PRODUCTION_FRONTEND_HOSTNAME
+  return isBrowserEnvironment() && PRODUCTION_FRONTEND_HOSTNAMES.has(window.location.hostname)
 }
 
 export function getApiBaseUrl(): string {

@@ -395,6 +395,7 @@ class Settings(BaseSettings):
         "https://latextrans.pages.dev",
         "https://latextrans.online",
         "https://latextrans.niutrans.com",
+        "https://paperx.niutrans.com",
     ],
     validation_alias="CORS_ORIGINS",
 )
