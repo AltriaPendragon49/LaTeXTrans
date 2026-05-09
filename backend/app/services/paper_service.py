@@ -133,6 +133,7 @@ STRUCTURED_INSIGHT_SECTION_KEYS = (
 )
 STRUCTURED_INSIGHT_MIN_TEXT_LENGTH = 80
 STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS = 2
+STRUCTURED_INSIGHT_MAX_OUTPUT_TOKENS = 1800
 STRUCTURED_INSIGHT_BASE_503_SWITCH_THRESHOLD = 3
 STRUCTURED_INSIGHT_READY_STATUS = "ready"
 STRUCTURED_INSIGHT_PROCESSING_STATUS = "processing"
@@ -154,6 +155,8 @@ STRUCTURED_INSIGHT_FAILURE_PLACEHOLDERS = (
     "pending",
     "processing",
 )
+STRUCTURED_INSIGHT_COMPLETE_ENDINGS = ("。", "！", "？", "；", ".", "!", "?", ";", "…")
+STRUCTURED_INSIGHT_TRAILING_CLOSERS = tuple('”’」』）》】）)]}"\'`*')
 STRUCTURED_INSIGHT_SECTION_QUESTIONS = {
     "problem": "这篇论文解决什么问题，为什么重要，现有方法的关键不足是什么？",
     "solution": "作者的核心思路是什么，方法整体是如何工作的？",
@@ -273,7 +276,8 @@ STRUCTURED_INSIGHT_DENSITY_REQUIREMENTS = {
 }
 STRUCTURED_INSIGHT_STRUCTURE_REQUIREMENTS = (
     "输出应采用轻结构化形式：先写一行总结句，再写2~4个子结构段；"
-    "每个子结构需有简短标题和对应解释内容；不要输出单一长段落，也不要改成纯 bullet 列表。"
+    "每个子结构需有简短标题和对应解释内容；不要输出单一长段落，也不要改成纯 bullet 列表；"
+    "最后必须以完整句子和句末标点结束，不要停在小标题、短语或半句话。"
 )
 STRUCTURED_INSIGHT_SUGGESTED_SUBHEADINGS = {
     "problem": ["问题本质", "现有方法的局限", "为什么重要"],
@@ -298,6 +302,7 @@ Rules:
 - Keep paragraph-first output; only when the style_requirements and density_requirements explicitly allow it may you use at most 2-3 short bullet-like lines.
 - Prefer a summary sentence followed by 2-4 titled mini-sections; use plain text short titles rather than markdown headings.
 - Write normal prose that is easy for readers to understand.
+- End with a complete sentence and terminal punctuation; never stop after a title, phrase, or half sentence.
 - If the evidence is limited, say that explicitly in Chinese instead of inventing facts.
 - Stay focused on the current question instead of summarizing the whole paper.
 - Prefer paper-specific details over generic praise or industry-level generalities.
@@ -5889,12 +5894,24 @@ def _truncate_debug_text(value: Any, limit: int = 500) -> str:
     return f"{text[:limit]}..."
 
 
+def _has_structured_insight_complete_ending(content: Optional[str]) -> bool:
+    normalized = _normalize_metadata_text(content)
+    if not normalized:
+        return False
+    stripped = normalized.rstrip()
+    while stripped and stripped[-1] in STRUCTURED_INSIGHT_TRAILING_CLOSERS:
+        stripped = stripped[:-1].rstrip()
+    return stripped.endswith(STRUCTURED_INSIGHT_COMPLETE_ENDINGS)
+
+
 def _is_structured_insight_content_readable(content: Optional[str]) -> bool:
     normalized = _normalize_metadata_text(content)
     if not normalized or len(normalized) < STRUCTURED_INSIGHT_MIN_TEXT_LENGTH:
         return False
     lowered = normalized.lower()
     if any(placeholder in normalized or placeholder in lowered for placeholder in STRUCTURED_INSIGHT_FAILURE_PLACEHOLDERS):
+        return False
+    if not _has_structured_insight_complete_ending(normalized):
         return False
     return _count_cjk_characters(normalized) >= 24
 
@@ -6092,7 +6109,11 @@ async def _call_structured_insight_llm(
     choices = payload.get("choices") if isinstance(payload, dict) else None
     if not isinstance(choices, list) or not choices:
         raise RuntimeError("Structured insight LLM response is missing choices")
-    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+    finish_reason = str(first_choice.get("finish_reason") or "").strip()
+    if finish_reason in {"length", "content_filter"}:
+        raise RuntimeError(f"Structured insight LLM response ended with finish_reason={finish_reason}")
+    message = first_choice.get("message") if isinstance(first_choice, dict) else None
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("Structured insight LLM response is empty")
@@ -6189,7 +6210,7 @@ async def _generate_single_structured_insight_section(
                         "source_excerpt_original": source_excerpt,
                     },
                     temperature=0.1,
-                    max_tokens=1200,
+                    max_tokens=STRUCTURED_INSIGHT_MAX_OUTPUT_TOKENS,
                     preferred_base_urls_getter=(
                         (lambda: list(base_preference_tracker.preferred_base_urls()))
                         if base_preference_tracker is not None

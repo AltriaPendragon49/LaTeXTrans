@@ -1,5 +1,9 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-09 structured insights completeness gate)
+
+- `backend/app/services/paper_service.py`: 社区/admin 发布链路的结构化解析现在会拒绝明显截断的模块内容，包含 LLM 返回 `finish_reason=length/content_filter`、正文未以完整句子和句末标点结束等情况；失败模块会进入既有重试流程，最终仍可用兜底模板发布，并在管理员策展任务 `error` 字段保留兜底提示。
+
 ## Recent Responsibility Updates (2026-05-09 structured insights COS recovery)
 
 - `backend/app/services/paper_service.py`: 社区/admin 发布链路的结构化解析现在会在本地任务输出缺失时，从持久化任务输出中定向恢复 `sections_map.json`、`envs_map.json`、`captions_map.json`，避免 COS 模式清理本地 `data/outputs/<task>` 后写入空源兜底内容；解析输入会跳过 LaTeX 导言区；若结构化模块最终使用兜底模板，发布仍可完成，但管理员策展任务历史会在 `error` 字段保留兜底提示。

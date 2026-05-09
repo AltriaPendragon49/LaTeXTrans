@@ -400,6 +400,22 @@ def test_validate_structured_insight_sections_rejects_failure_placeholder_conten
         paper_service._validate_structured_insight_sections(invalid_sections)
 
 
+def test_validate_structured_insight_sections_rejects_truncated_sentence_fragment():
+    invalid_sections = _valid_sections()
+    invalid_sections[0]["content"] = (
+        "\u8fd9\u7bc7\u8bba\u6587\u65e8\u5728\u89e3\u51b3\u5e26\u6709"
+        "\u53cd\u9988\u7684\u81ea\u52a8\u7b80\u7b54\u9898\u8bc4\u5206"
+        "\uff08ASAG\uff09\u95ee\u9898\uff0c\u4ee5\u51cf\u8f7b\u6559\u5e08"
+        "\u8d1f\u62c5\u5e76\u63d0\u5347\u5b66\u751f\u5b66\u4e60\u6548\u679c\u3002"
+        "\u95ee\u9898\u672c\u8d28 \u672c\u7814\u7a76\u7684\u6838\u5fc3\u95ee\u9898"
+        "\u662f\u5b9e\u73b0\u5e26\u6709\u53cd\u9988\u7684\u81ea\u52a8\u7b80"
+        "\u7b54\u9898\u8bc4\u5206\u3002\u603b\u7ed3\u6027\u8bc4\u4f30"
+    )
+
+    with pytest.raises(ValueError, match="problem"):
+        paper_service._validate_structured_insight_sections(invalid_sections)
+
+
 def test_validate_structured_insight_sections_rejects_duplicate_module_content():
     invalid_sections = _valid_sections()
     invalid_sections[1]["content"] = invalid_sections[0]["content"]
@@ -464,6 +480,68 @@ def test_generate_structured_insight_sections_calls_llm_once_per_module_and_retr
     assert next(section for section in sections if section["section_key"] == "future")["content"]
 
 
+def test_generate_structured_insight_sections_retries_truncated_module_content(monkeypatch):
+    monkeypatch.setattr(
+        paper_service,
+        "_prepare_structured_insight_sources",
+        lambda _task_id: {
+            section_key: f"source for {section_key} has enough Chinese context \u7814\u7a76\u95ee\u9898\u548c\u65b9\u6cd5\u90fd\u5728\u8fd9\u91cc\u6709\u660e\u786e\u8bf4\u660e\u3002"
+            for section_key in paper_service.STRUCTURED_INSIGHT_SECTION_KEYS
+        },
+    )
+
+    async def _fake_llm_config(_user_id):
+        return {
+            "base_url": "https://example.invalid/v1/chat/completions",
+            "api_key": "test-key",
+            "model": "test-model",
+            "timeout": 30,
+        }
+
+    monkeypatch.setattr(
+        paper_service,
+        "_build_structured_insight_llm_config",
+        _fake_llm_config,
+    )
+
+    truncated_problem = (
+        "\u8fd9\u7bc7\u8bba\u6587\u65e8\u5728\u89e3\u51b3\u5e26\u6709"
+        "\u53cd\u9988\u7684\u81ea\u52a8\u7b80\u7b54\u9898\u8bc4\u5206"
+        "\uff08ASAG\uff09\u95ee\u9898\uff0c\u4ee5\u51cf\u8f7b\u6559\u5e08"
+        "\u8d1f\u62c5\u5e76\u63d0\u5347\u5b66\u751f\u5b66\u4e60\u6548\u679c\u3002"
+        "\u95ee\u9898\u672c\u8d28 \u672c\u7814\u7a76\u7684\u6838\u5fc3\u95ee\u9898"
+        "\u662f\u5b9e\u73b0\u5e26\u6709\u53cd\u9988\u7684\u81ea\u52a8\u7b80"
+        "\u7b54\u9898\u8bc4\u5206\u3002\u603b\u7ed3\u6027\u8bc4\u4f30"
+    )
+    call_counts: dict[str, int] = {}
+
+    async def _fake_call_structured_insight_llm(*, user_payload, **_kwargs):
+        section_key = str(user_payload["section_key"])
+        call_counts[section_key] = call_counts.get(section_key, 0) + 1
+        if section_key == "problem" and call_counts[section_key] == 1:
+            return truncated_problem
+        return _readable_content(section_key)
+
+    monkeypatch.setattr(
+        paper_service,
+        "_call_structured_insight_llm",
+        _fake_call_structured_insight_llm,
+    )
+
+    sections = asyncio.run(
+        paper_service._generate_structured_insight_sections_from_task(
+            task_id="task-1",
+            title="Paper title",
+            abstract_raw="Abstract",
+            created_by="admin-1",
+        )
+    )
+
+    assert call_counts["problem"] == 2
+    problem = next(section for section in sections if section["section_key"] == "problem")
+    assert problem["content"] == _readable_content("problem")
+
+
 @pytest.mark.asyncio
 async def test_structured_insight_llm_uses_pool_helper_for_system_managed_credentials(monkeypatch):
     llm_config = {
@@ -497,6 +575,43 @@ async def test_structured_insight_llm_uses_pool_helper_for_system_managed_creden
     assert called["pool_mode"] == "system_managed"
     assert isinstance(called["payload"], dict)
     assert called["payload"]["model"] == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_structured_insight_llm_rejects_length_truncated_response(monkeypatch):
+    llm_config = {
+        "base_url": "https://custom.example/v1/chat/completions",
+        "api_key": "user-key",
+        "model": "test-model",
+        "timeout": 30,
+    }
+
+    class _LengthSession(_DirectAiohttpSession):
+        def post(self, url: str, *, json: dict[str, object], headers: dict[str, str], timeout: object):
+            return _AiohttpPostContext(
+                _AiohttpResponse(
+                    status=200,
+                    payload={
+                        "choices": [
+                            {
+                                "finish_reason": "length",
+                                "message": {
+                                    "content": "This response was cut off in the middle of the"
+                                },
+                            }
+                        ]
+                    },
+                )
+            )
+
+    monkeypatch.setattr(paper_service.aiohttp, "ClientSession", lambda *args, **kwargs: _LengthSession())
+
+    with pytest.raises(RuntimeError, match="finish_reason=length"):
+        await paper_service._call_structured_insight_llm(
+            llm_config=llm_config,
+            system_prompt="Summarize",
+            user_payload={"title": "Paper", "section_key": "problem"},
+        )
 
 
 @pytest.mark.asyncio
