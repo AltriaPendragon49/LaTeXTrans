@@ -134,7 +134,7 @@ def test_prepare_structured_insight_sources_routes_relevant_sections_and_falls_b
     monkeypatch.setattr(
         paper_service,
         "_candidate_output_directories_for_task",
-        lambda _task_id: [output_dir],
+        lambda _task_id, **_kwargs: [output_dir],
     )
 
     sources = paper_service._prepare_structured_insight_sources("task-1")
@@ -194,7 +194,7 @@ def test_prepare_structured_insight_sources_prioritizes_intro_contributions_and_
     monkeypatch.setattr(
         paper_service,
         "_candidate_output_directories_for_task",
-        lambda _task_id: [output_dir],
+        lambda _task_id, **_kwargs: [output_dir],
     )
 
     sources = paper_service._prepare_structured_insight_sources("task-2")
@@ -230,7 +230,7 @@ def test_prepare_structured_insight_sources_falls_back_to_preview_asset_when_run
     monkeypatch.setattr(
         paper_service,
         "_candidate_output_directories_for_task",
-        lambda _task_id: [],
+        lambda _task_id, **_kwargs: [],
     )
 
     class _FakeBackend:
@@ -279,7 +279,7 @@ def test_load_structured_insight_runtime_sections_preserves_source_and_translati
     monkeypatch.setattr(
         paper_service,
         "_candidate_output_directories_for_task",
-        lambda _task_id: [output_dir],
+        lambda _task_id, **_kwargs: [output_dir],
     )
 
     sections = paper_service._load_structured_insight_runtime_sections("task-runtime")
@@ -287,6 +287,95 @@ def test_load_structured_insight_runtime_sections_preserves_source_and_translati
     assert len(sections) == 1
     assert "Original problem statement" in sections[0]["source_content"]
     assert "中文问题描述" in sections[0]["translated_content"]
+
+
+def test_load_structured_insight_runtime_sections_materializes_structured_artifacts(monkeypatch, tmp_path):
+    stored_output = "data/outputs/task-cos"
+    section_payload = json.dumps(
+        [
+            {
+                "section": "1",
+                "title": "Introduction",
+                "content": "Original introduction explains the task-specific research problem and method.",
+                "trans_content": "中文引言说明论文特定的研究问题、方法设计和实验线索，内容足够支撑结构化解析。",
+            }
+        ],
+        ensure_ascii=False,
+    )
+    downloaded: list[str] = []
+
+    class _FakeBackend:
+        def list_files(self, *, prefix: str):
+            assert prefix == stored_output
+            return [
+                paper_service.StoredObjectRef(
+                    storage_backend="object_storage",
+                    object_key=f"{stored_output}/zh_2407.01489/sections_map.json",
+                )
+            ]
+
+        def download_file(self, *, object_key: str, local_path):
+            downloaded.append(object_key)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_text(section_payload, encoding="utf-8")
+            return local_path
+
+    monkeypatch.setattr(
+        paper_service,
+        "_materialize_task_directory_for_asset_recovery",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("structured insight recovery should not materialize the full task output")
+        ),
+    )
+    monkeypatch.setattr(
+        paper_service.task_manager,
+        "get_task",
+        lambda _task_id: {"task_id": "task-cos", "output_path": stored_output},
+    )
+    monkeypatch.setattr(paper_service, "_get_storage_backend", lambda: _FakeBackend())
+    monkeypatch.setattr(paper_service.settings, "storage_temp_dir", tmp_path / "tmp")
+
+    sections = paper_service._load_structured_insight_runtime_sections("task-cos")
+
+    assert downloaded == [f"{stored_output}/zh_2407.01489/sections_map.json"]
+    assert len(sections) == 1
+    assert "研究问题" in sections[0]["translated_content"]
+
+
+def test_load_structured_insight_runtime_sections_skips_latex_preamble(monkeypatch, tmp_path):
+    output_dir = tmp_path / "task-preamble" / "output" / "zh_2407.01489"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "sections_map.json").write_text(
+        json.dumps(
+            [
+                {
+                    "section": "-1",
+                    "title": "",
+                    "content": "\\documentclass{article}\\usepackage{amsmath}\\begin{document}",
+                    "trans_content": "\\documentclass{article}\\usepackage{amsmath}\\begin{document}",
+                },
+                {
+                    "section": "1",
+                    "title": "Introduction",
+                    "content": "The paper introduces a concrete problem and method.",
+                    "trans_content": "论文引言说明具体研究问题、方法思路和实验目标，足以作为真实结构化解析来源。",
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_service,
+        "_candidate_output_directories_for_task",
+        lambda _task_id, **_kwargs: [output_dir],
+    )
+
+    sections = paper_service._load_structured_insight_runtime_sections("task-preamble")
+
+    assert len(sections) == 1
+    assert sections[0]["section"] == "1"
+    assert "documentclass" not in sections[0]["raw_content"]
 
 
 def test_normalize_structured_insight_text_falls_back_when_tex_extraction_crashes(monkeypatch):
@@ -485,6 +574,72 @@ def test_generate_structured_insight_sections_uses_fallback_content_after_retrie
     future = next(section for section in sections if section["section_key"] == "future")
     assert "根据论文的中文内容" in future["content"]
     assert "future 来源内容足够长" in future["content"]
+
+
+def test_generate_structured_insight_sections_marks_fallback_for_admin_warning(monkeypatch):
+    monkeypatch.setattr(
+        paper_service,
+        "_prepare_structured_insight_sources",
+        lambda _task_id: {
+            section_key: f"标题：Paper\n摘要：这是一段足够长的中文论文摘录。\n{section_key} 来源内容足够长，并且都是可靠的中文论文摘录。"
+            for section_key in paper_service.STRUCTURED_INSIGHT_SECTION_KEYS
+        },
+    )
+
+    async def _fake_llm_config(_user_id):
+        return {
+            "base_url": "https://example.invalid/v1/chat/completions",
+            "api_key": "test-key",
+            "model": "test-model",
+            "timeout": 30,
+        }
+
+    monkeypatch.setattr(
+        paper_service,
+        "_build_structured_insight_llm_config",
+        _fake_llm_config,
+    )
+
+    async def _fake_call_structured_insight_llm(*, user_payload, **_kwargs):
+        if str(user_payload["section_key"]) == "future":
+            raise RuntimeError("provider failed")
+        return _readable_content(str(user_payload["section_key"]))
+
+    monkeypatch.setattr(
+        paper_service,
+        "_call_structured_insight_llm",
+        _fake_call_structured_insight_llm,
+    )
+
+    sections = asyncio.run(
+        paper_service._generate_structured_insight_sections_from_task(
+            task_id="task-1",
+            title="Paper title",
+            abstract_raw="Abstract",
+            created_by="admin-1",
+        )
+    )
+
+    future = next(section for section in sections if section["section_key"] == "future")
+    assert future["generation_mode"] == "fallback"
+    assert future["source_excerpt_present"] is True
+    assert paper_service._build_structured_insight_admin_warning(sections) == (
+        "结构化解析使用兜底模板：future。"
+    )
+
+
+def test_build_completed_curation_job_update_preserves_structured_fallback_warning():
+    payload = paper_service._build_completed_curation_job_update(
+        {
+            "id": "paper-1",
+            "_structured_insight_admin_warning": "结构化解析使用兜底模板：future。",
+        }
+    )
+
+    assert payload["paper_id"] == "paper-1"
+    assert payload["published_paper_id"] == "paper-1"
+    assert payload["status"] == "completed"
+    assert payload["error"] == "结构化解析使用兜底模板：future。"
 
 
 def test_generate_structured_insight_sections_sends_paper_specific_boundary_constraints_to_llm(monkeypatch):

@@ -1,5 +1,9 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-09 structured insights COS recovery)
+
+- `backend/app/services/paper_service.py`: 社区/admin 发布链路的结构化解析现在会在本地任务输出缺失时，从持久化任务输出中定向恢复 `sections_map.json`、`envs_map.json`、`captions_map.json`，避免 COS 模式清理本地 `data/outputs/<task>` 后写入空源兜底内容；解析输入会跳过 LaTeX 导言区；若结构化模块最终使用兜底模板，发布仍可完成，但管理员策展任务历史会在 `error` 字段保留兜底提示。
+
 ## Recent Responsibility Updates (2026-05-08 source PDF COS cache and cleanup)
 
 - `backend/app/services/paper_service.py`: 社区论文资产链路新增 `source_pdf` 原文 PDF 资产类型；arXiv 论文发布完成时会将原文 PDF 持久化到当前存储后端，COS 模式下写入 `data/community_papers/<paper_id>/source_pdf/<arxiv_id>.pdf` 并登记 `paper_assets`；公开源 PDF 解析优先使用 `source_pdf` 的对象存储签名 URL，再回退到源归档、本地源目录、arXiv 和 legacy task；源归档与预览恢复会在本地目录缺失时从 COS 任务目录物化临时副本再生成 canonical 资产。

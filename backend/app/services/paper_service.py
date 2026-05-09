@@ -138,6 +138,11 @@ STRUCTURED_INSIGHT_READY_STATUS = "ready"
 STRUCTURED_INSIGHT_PROCESSING_STATUS = "processing"
 STRUCTURED_INSIGHT_NOT_READY_STATUS = "not_ready"
 STRUCTURED_INSIGHT_SOURCE_MAX_CHARS = 2400
+STRUCTURED_INSIGHT_RUNTIME_ARTIFACT_FILENAMES = {
+    "sections_map.json",
+    "envs_map.json",
+    "captions_map.json",
+}
 STRUCTURED_INSIGHT_DEFAULT_BLOCK_HEADING = "核心内容"
 STRUCTURED_INSIGHT_FAILURE_PLACEHOLDERS = (
     "暂时无法生成",
@@ -1455,7 +1460,7 @@ def _extract_plaintext_abstract_from_directory(directory: Path) -> Optional[str]
     return None
 
 
-def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
+def _candidate_output_directories_for_task(task_id: str, *, recover_missing: bool = True) -> List[Path]:
     candidates: List[Path] = []
     seen: set[str] = set()
 
@@ -1485,7 +1490,7 @@ def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
         if output_path_raw:
             stored_output = _resolve_storage_path(output_path_raw)
             _add_directory(stored_output)
-            if not stored_output.exists():
+            if recover_missing and not stored_output.exists():
                 materialized_output = _materialize_task_directory_for_asset_recovery(
                     output_path_raw,
                     task_id=task_id,
@@ -1498,6 +1503,132 @@ def _candidate_output_directories_for_task(task_id: str) -> List[Path]:
     _add_directory(task_root)
     _add_directory_children(task_root)
 
+    return candidates
+
+
+def _task_snapshot_for_artifact_recovery(task_id: str) -> Optional[Dict[str, Any]]:
+    if not task_id:
+        return None
+    task: Optional[Dict[str, Any]] = None
+    try:
+        task = task_manager.get_task(task_id)
+    except Exception as exc:
+        logger.debug("Failed to read runtime task snapshot for %s: %s", task_id, exc)
+    if task and str(task.get("output_path") or "").strip():
+        return task
+    try:
+        persisted_task = _get_translation_task_repository().get_task(task_id)
+    except Exception as exc:
+        logger.debug("Failed to read persisted task snapshot for %s: %s", task_id, exc)
+        persisted_task = None
+    return persisted_task or task
+
+
+def _relative_object_key_under_prefix(object_key: str, prefix: str) -> Optional[str]:
+    normalized_key = str(object_key or "").replace("\\", "/").strip("/")
+    normalized_prefix = str(prefix or "").replace("\\", "/").strip("/")
+    if not normalized_key or not normalized_prefix:
+        return None
+
+    candidate_prefixes = [normalized_prefix]
+    base_prefix = str(getattr(settings, "cos_base_prefix", "") or "").strip().strip("/")
+    if base_prefix:
+        candidate_prefixes.append(f"{base_prefix}/{normalized_prefix}")
+
+    for candidate_prefix in dict.fromkeys(candidate_prefixes):
+        if normalized_key == candidate_prefix:
+            return Path(normalized_key).name
+        prefix_with_slash = f"{candidate_prefix}/"
+        if normalized_key.startswith(prefix_with_slash):
+            return normalized_key[len(prefix_with_slash) :]
+    return None
+
+
+def _safe_structured_insight_recovery_destination(task_id: str) -> Path:
+    safe_task_id = re.sub(r"[^0-9A-Za-z._-]+", "_", str(task_id or "shared")).strip("._-") or "shared"
+    return Path(settings.storage_temp_dir) / "task_directory_recovery" / safe_task_id / "structured_insights_output"
+
+
+def _materialize_structured_insight_artifacts_from_task_output(
+    *,
+    task_id: str,
+    output_path: str,
+    force: bool = False,
+) -> Optional[Path]:
+    normalized_output = str(output_path or "").strip()
+    if not normalized_output:
+        return None
+
+    backend = _get_storage_backend()
+    if not _storage_uses_object_store(backend):
+        resolved = _resolve_storage_path(normalized_output)
+        return resolved if resolved.exists() and resolved.is_dir() else None
+
+    stored_root = task_artifact_storage.normalize_stored_task_path(normalized_output)
+    destination = _safe_structured_insight_recovery_destination(task_id)
+    if destination.exists():
+        if force:
+            shutil.rmtree(destination)
+        elif any(destination.rglob("sections_map.json")):
+            return destination
+
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        refs = backend.list_files(prefix=stored_root)
+    except Exception as exc:
+        logger.debug(
+            "Failed to list structured insight artifacts for task %s from %s: %s",
+            task_id,
+            stored_root,
+            exc,
+        )
+        return None
+
+    downloaded = 0
+    for ref in refs:
+        object_key = str(ref.object_key or "").replace("\\", "/")
+        if Path(object_key).name not in STRUCTURED_INSIGHT_RUNTIME_ARTIFACT_FILENAMES:
+            continue
+        relative = _relative_object_key_under_prefix(object_key, stored_root)
+        if not relative:
+            continue
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or any(part == ".." for part in relative_path.parts):
+            continue
+        try:
+            backend.download_file(object_key=ref.object_key, local_path=destination / relative_path)
+            downloaded += 1
+        except Exception as exc:
+            logger.debug(
+                "Failed to materialize structured insight artifact %s for task %s: %s",
+                object_key,
+                task_id,
+                exc,
+            )
+
+    return destination if downloaded else None
+
+
+def _candidate_structured_insight_recovery_directories_for_task(
+    task_id: str,
+    *,
+    force: bool = False,
+) -> List[Path]:
+    task = _task_snapshot_for_artifact_recovery(task_id)
+    output_path = str((task or {}).get("output_path") or "").strip()
+    if not output_path:
+        return []
+
+    recovered_root = _materialize_structured_insight_artifacts_from_task_output(
+        task_id=task_id,
+        output_path=output_path,
+        force=force,
+    )
+    if not recovered_root or not recovered_root.exists() or not recovered_root.is_dir():
+        return []
+
+    candidates = [recovered_root]
+    candidates.extend(child for child in sorted(recovered_root.iterdir()) if child.is_dir())
     return candidates
 
 
@@ -5365,8 +5496,25 @@ def _normalize_structured_insight_text(text: str) -> Optional[str]:
     return _normalize_multiline_text(text)
 
 
-def _load_structured_insight_runtime_sections(task_id: str) -> List[Dict[str, Any]]:
-    for output_dir in _candidate_output_directories_for_task(task_id):
+def _looks_like_latex_preamble_for_structured_insight(*values: str) -> bool:
+    raw = "\n".join(str(value or "") for value in values if str(value or "").strip())
+    if not raw:
+        return False
+    head = raw[:3000].lower()
+    if "\\documentclass" in head or "\\begin{document}" in head:
+        return True
+    preamble_markers = (
+        "\\usepackage",
+        "\\newcommand",
+        "\\renewcommand",
+        "placeholder_newcommand",
+        "placeholder_usepackage",
+    )
+    return sum(1 for marker in preamble_markers if marker in head) >= 2
+
+
+def _load_structured_insight_runtime_sections_from_dirs(output_dirs: List[Path]) -> List[Dict[str, Any]]:
+    for output_dir in output_dirs:
         sections = _load_task_artifact_json(output_dir, "sections_map.json")
         if not sections:
             continue
@@ -5384,6 +5532,8 @@ def _load_structured_insight_runtime_sections(task_id: str) -> List[Dict[str, An
             if not normalized_translated and not normalized_source:
                 continue
             title = _normalize_metadata_text(section.get("title"))
+            if not title and _looks_like_latex_preamble_for_structured_insight(expanded_translated, expanded_source):
+                continue
             normalized_sections.append(
                 {
                     "index": index,
@@ -5397,6 +5547,21 @@ def _load_structured_insight_runtime_sections(task_id: str) -> List[Dict[str, An
             )
         if normalized_sections:
             return normalized_sections
+    return []
+
+
+def _load_structured_insight_runtime_sections(task_id: str) -> List[Dict[str, Any]]:
+    sections = _load_structured_insight_runtime_sections_from_dirs(
+        _candidate_output_directories_for_task(task_id, recover_missing=False)
+    )
+    if sections:
+        return sections
+
+    sections = _load_structured_insight_runtime_sections_from_dirs(
+        _candidate_structured_insight_recovery_directories_for_task(task_id, force=True)
+    )
+    if sections:
+        return sections
     return []
 
 
@@ -5701,12 +5866,18 @@ def _prepare_structured_insight_sources(
 
 
 def _normalize_structured_insight_section(section: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    normalized = {
         "section_key": str(section.get("section_key") or "").strip(),
         "content": _normalize_multiline_text(section.get("content")),
         "status": str(section.get("status") or STRUCTURED_INSIGHT_READY_STATUS).strip() or STRUCTURED_INSIGHT_READY_STATUS,
         "updated_at": section.get("updated_at") or _utc_now_iso(),
     }
+    generation_mode = str(section.get("generation_mode") or "").strip()
+    if generation_mode:
+        normalized["generation_mode"] = generation_mode
+    if "source_excerpt_present" in section:
+        normalized["source_excerpt_present"] = bool(section.get("source_excerpt_present"))
+    return normalized
 
 
 def _truncate_debug_text(value: Any, limit: int = 500) -> str:
@@ -5891,19 +6062,32 @@ async def _call_structured_insight_llm(
     }
     timeout = aiohttp.ClientTimeout(total=max(float(llm_config.get("timeout") or settings.llm_timeout), 10.0))
 
+    use_system_pool = (
+        str(scheduler_llm_config.get("pool_mode") or "").strip() == "system_managed"
+        and bool(list(scheduler_llm_config.get("pool_members") or []))
+    )
     async with aiohttp.ClientSession() as session:
-        payload = await post_chat_completion_with_pool(
-            session=session,
-            llm_config=scheduler_llm_config,
-            payload=payload,
-            timeout=timeout,
-            on_retry_message=lambda message: logger.warning(
-                "Structured insight LLM pool retry: %s",
-                message,
-            ),
-            preferred_base_urls_getter=preferred_base_urls_getter,
-            on_retryable_status=on_retryable_status,
-        )
+        if use_system_pool:
+            payload = await post_chat_completion_with_pool(
+                session=session,
+                llm_config=scheduler_llm_config,
+                payload=payload,
+                timeout=timeout,
+                on_retry_message=lambda message: logger.warning(
+                    "Structured insight LLM pool retry: %s",
+                    message,
+                ),
+                preferred_base_urls_getter=preferred_base_urls_getter,
+                on_retryable_status=on_retryable_status,
+            )
+        else:
+            headers = {
+                "Authorization": f"Bearer {provider_key}",
+                "Content-Type": "application/json",
+            }
+            async with session.post(provider_url, json=payload, headers=headers, timeout=timeout) as response:
+                response.raise_for_status()
+                payload = await response.json()
 
     choices = payload.get("choices") if isinstance(payload, dict) else None
     if not isinstance(choices, list) or not choices:
@@ -5929,6 +6113,28 @@ def _build_structured_insight_source_briefs(
     return briefs
 
 
+def _build_structured_insight_admin_warning(sections: List[Dict[str, Any]]) -> Optional[str]:
+    fallback_keys: List[str] = []
+    fallback_without_source_keys: List[str] = []
+    for section in sections:
+        section_key = str(section.get("section_key") or "").strip()
+        if section_key not in STRUCTURED_INSIGHT_SECTION_KEYS:
+            continue
+        if str(section.get("generation_mode") or "").strip() != "fallback":
+            continue
+        fallback_keys.append(section_key)
+        if not bool(section.get("source_excerpt_present")):
+            fallback_without_source_keys.append(section_key)
+
+    if not fallback_keys:
+        return None
+
+    parts = [f"结构化解析使用兜底模板：{', '.join(fallback_keys)}。"]
+    if fallback_without_source_keys:
+        parts.append(f"缺少可用正文摘录：{', '.join(fallback_without_source_keys)}。")
+    return " ".join(parts)
+
+
 async def _generate_single_structured_insight_section(
     *,
     task_id: str,
@@ -5951,8 +6157,10 @@ async def _generate_single_structured_insight_section(
     last_error: Optional[Exception] = None
     boundaries = STRUCTURED_INSIGHT_SECTION_BOUNDARIES.get(section_key, {})
     banned_contents = set(disallowed_contents or set())
+    source_excerpt_present = bool(translated_excerpt or source_excerpt or combined_excerpt)
+    generation_mode = "empty"
 
-    if translated_excerpt or source_excerpt or combined_excerpt:
+    if source_excerpt_present:
         for attempt in range(STRUCTURED_INSIGHT_MAX_REPAIR_ATTEMPTS + 1):
             try:
                 raw_content = await _call_structured_insight_llm(
@@ -6005,6 +6213,7 @@ async def _generate_single_structured_insight_section(
                 if normalized_content in banned_contents:
                     raise ValueError(f"Structured insight section {section_key} duplicated another module")
                 content = normalized_content
+                generation_mode = "llm"
                 break
             except Exception as exc:
                 last_error = exc
@@ -6022,6 +6231,7 @@ async def _generate_single_structured_insight_section(
             section_key=section_key,
             excerpt=translated_excerpt or combined_excerpt,
         )
+        generation_mode = "fallback"
         if last_error is not None:
             logger.warning(
                 "Using fallback structured insight content for task %s section %s after generation failure: %s",
@@ -6035,6 +6245,8 @@ async def _generate_single_structured_insight_section(
         "content": content or "",
         "status": STRUCTURED_INSIGHT_READY_STATUS,
         "updated_at": _utc_now_iso(),
+        "generation_mode": generation_mode,
+        "source_excerpt_present": source_excerpt_present,
     }
 
 
@@ -6250,6 +6462,7 @@ async def _publish_admin_curation_job(
         created_by=str(job.get("created_by") or ""),
         preview_asset=sync_result.get("preview_asset"),
     )
+    structured_insight_warning = _build_structured_insight_admin_warning(structured_insight_sections)
     _validate_structured_insight_sections(structured_insight_sections)
     await _upsert_structured_insight_sections(
         paper_id=paper["id"],
@@ -6300,6 +6513,8 @@ async def _publish_admin_curation_job(
             "updated_at": _utc_now_iso(),
         },
     )
+    if structured_insight_warning:
+        updated["_structured_insight_admin_warning"] = structured_insight_warning
     return updated
 
 
@@ -6908,6 +7123,23 @@ async def _reset_existing_admin_arxiv_curation(
             await _run_local_repo(lambda job_id=job_id: repository.delete_curation_job(job_id))
 
 
+def _build_completed_curation_job_update(published: Dict[str, Any]) -> Dict[str, Any]:
+    paper_id = published.get("id")
+    structured_warning = str(published.get("_structured_insight_admin_warning") or "").strip() or None
+    return {
+        "paper_id": paper_id,
+        "published_paper_id": paper_id,
+        "status": "completed",
+        "terminal_task_status": "completed",
+        "terminal_reason": None,
+        "timeout_reason": None,
+        "error": structured_warning,
+        "failed_artifact_path": None,
+        "artifact_storage_backend": None,
+        "updated_at": _utc_now_iso(),
+    }
+
+
 async def _run_curation_job(job_id: str) -> None:
     repository = get_community_paper_repository()
     async with _get_curation_semaphore():
@@ -7019,18 +7251,7 @@ async def _run_curation_job(job_id: str) -> None:
             await _run_local_repo(
                 lambda: repository.update_curation_job(
                     job_id,
-                    {
-                        "paper_id": published.get("id"),
-                        "published_paper_id": published.get("id"),
-                        "status": "completed",
-                        "terminal_task_status": "completed",
-                        "terminal_reason": None,
-                        "timeout_reason": None,
-                        "error": None,
-                        "failed_artifact_path": None,
-                        "artifact_storage_backend": None,
-                        "updated_at": _utc_now_iso(),
-                    },
+                    _build_completed_curation_job_update(published),
                 )
             )
         except AdminCurationTaskWaitTimeout as exc:
@@ -7051,18 +7272,7 @@ async def _run_curation_job(job_id: str) -> None:
                 await _run_local_repo(
                     lambda: repository.update_curation_job(
                         job_id,
-                        {
-                            "paper_id": published.get("id"),
-                            "published_paper_id": published.get("id"),
-                            "status": "completed",
-                            "terminal_task_status": "completed",
-                            "terminal_reason": None,
-                            "timeout_reason": None,
-                            "error": None,
-                            "failed_artifact_path": None,
-                            "artifact_storage_backend": None,
-                            "updated_at": _utc_now_iso(),
-                        },
+                        _build_completed_curation_job_update(published),
                     )
                 )
                 return
