@@ -15,7 +15,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
-from starlette.background import BackgroundTask
 
 from backend.app.api.routes import download as download_route
 from backend.app.api.routes.translate import TranslateRequest
@@ -365,68 +364,6 @@ def _ensure_local_admin(current_user: Optional[Dict[str, Any]]) -> None:
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={"code": "AUTH_FORBIDDEN", "message": "Admin role required."},
-    )
-
-
-async def _proxy_remote_pdf_preview(
-    *,
-    url: str,
-    filename: str,
-    request: Request,
-    content_disposition: str = "inline",
-) -> Response:
-    upstream_headers: Dict[str, str] = {
-        "User-Agent": "LaTeXTrans-Preview/1.0",
-    }
-    range_header = request.headers.get("range")
-    if range_header:
-        upstream_headers["Range"] = range_header
-
-    client = httpx.AsyncClient(follow_redirects=True, timeout=60.0)
-    upstream_request = client.build_request("GET", url, headers=upstream_headers)
-    try:
-        upstream_response = await client.send(upstream_request, stream=True)
-    except httpx.HTTPError as exc:
-        await client.aclose()
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Translated PDF upstream fetch failed") from exc
-
-    if upstream_response.status_code not in (200, 206):
-        await upstream_response.aclose()
-        await client.aclose()
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Translated PDF upstream response invalid")
-
-    response_headers = {
-        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-        "Content-Disposition": f'{content_disposition}; filename="{filename}"',
-    }
-    for source_name, target_name in (
-        ("accept-ranges", "Accept-Ranges"),
-        ("content-range", "Content-Range"),
-        ("content-length", "Content-Length"),
-        ("etag", "ETag"),
-        ("last-modified", "Last-Modified"),
-    ):
-        value = upstream_response.headers.get(source_name)
-        if value:
-            response_headers[target_name] = value
-
-    media_type = upstream_response.headers.get("content-type") or "application/pdf"
-
-    async def _stream():
-        async for chunk in upstream_response.aiter_bytes():
-            if chunk:
-                yield chunk
-
-    async def _close_stream() -> None:
-        await upstream_response.aclose()
-        await client.aclose()
-
-    return StreamingResponse(
-        _stream(),
-        status_code=upstream_response.status_code,
-        media_type=media_type,
-        headers=response_headers,
-        background=BackgroundTask(_close_stream),
     )
 
 
@@ -1090,11 +1027,9 @@ async def preview_translated_paper_pdf(paper_id: str, request: Request):
     asset = payload["asset"]
     filename = asset.get("file_name") or f"{paper_id}.pdf"
     if payload.get("signed_url"):
-        return await _proxy_remote_pdf_preview(
+        return RedirectResponse(
             url=str(payload["signed_url"]),
-            filename=str(filename),
-            request=request,
-            content_disposition="inline",
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
     return await _serve_local_pdf_preview(
         file_path=Path(payload["file_path"]),
@@ -1125,17 +1060,9 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
 
     if payload.get("signed_url"):
-        asset = payload.get("asset") or {}
-        filename = str(
-            payload.get("filename")
-            or asset.get("file_name")
-            or f"{paper_id}.pdf"
-        )
-        return await _proxy_remote_pdf_preview(
+        return RedirectResponse(
             url=str(payload["signed_url"]),
-            filename=filename,
-            request=request,
-            content_disposition="inline",
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
 
     arxiv_id = str(payload.get("arxiv_id") or "").strip()

@@ -61,41 +61,6 @@ function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
 
 type PdfViewerMode = "single" | "bilingual"
 
-interface PdfPreviewFrameProps {
-  testId: string
-  title: string
-  src: string
-  className?: string
-}
-
-function PdfPreviewFrame({ testId, title, src, className }: PdfPreviewFrameProps) {
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    setLoaded(false)
-  }, [src])
-
-  return (
-    <div className={cn("relative min-h-0 overflow-hidden bg-white", className)}>
-      {!loaded ? (
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 z-10 bg-white"
-        >
-          <div className="mx-auto h-full w-[74%] animate-pulse bg-[linear-gradient(90deg,rgba(241,245,249,0.92),rgba(255,255,255,0.98),rgba(241,245,249,0.92))]" />
-        </div>
-      ) : null}
-      <iframe
-        data-testid={testId}
-        title={title}
-        src={src}
-        onLoad={() => setLoaded(true)}
-        className="h-full w-full border-0 bg-white"
-      />
-    </div>
-  )
-}
-
 function buildPdfViewerUrl(url: string, mode: PdfViewerMode = "single") {
   const view = mode === "bilingual" ? "FitH" : "FitH"
   const viewerParams = `page=1&view=${view}&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`
@@ -666,12 +631,12 @@ export function PaperDetailWorkspace({
         >
           {preferredMode === "source" ? (
             sourceDocumentUrl ? (
-              <PdfPreviewFrame
-                testId="paper-source-pdf-reader"
+              <iframe
+                data-testid="paper-source-pdf-reader"
                 title={`${paper.title} PDF`}
                 src={sourcePdfViewerUrl}
                 className={cn(
-                  "h-full mx-auto w-[60%] bg-white",
+                  "h-full border-0 mx-auto w-[60%] bg-white",
                   !isDesktop && "mx-0 w-full bg-white",
                 )}
               />
@@ -703,12 +668,12 @@ export function PaperDetailWorkspace({
               </article>
             )
           ) : isTranslatedPdfMode(preferredMode) && canDownload ? (
-            <PdfPreviewFrame
-              testId="paper-translated-pdf-reader"
+            <iframe
+              data-testid="paper-translated-pdf-reader"
               title={`${paper.title} Translated PDF`}
               src={translatedPdfViewerUrl}
               className={cn(
-                "h-full mx-auto w-[60%] bg-white",
+                "h-full border-0 mx-auto w-[60%] bg-white",
                 !isDesktop && "mx-0 w-full bg-white",
               )}
             />
@@ -719,17 +684,17 @@ export function PaperDetailWorkspace({
                 !isDesktop && "gap-0 bg-white p-0",
               )}
             >
-              <PdfPreviewFrame
-                testId="paper-bilingual-source-pdf-reader"
+              <iframe
+                data-testid="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}
                 src={bilingualSourcePdfViewerUrl}
-                className="h-full w-full bg-white"
+                className="h-full w-full border-0 bg-white"
               />
-              <PdfPreviewFrame
-                testId="paper-bilingual-translated-pdf-reader"
+              <iframe
+                data-testid="paper-bilingual-translated-pdf-reader"
                 title={`${paper.title} Translated PDF Compare`}
                 src={bilingualTranslatedPdfViewerUrl}
-                className="h-full w-full bg-white"
+                className="h-full w-full border-0 bg-white"
               />
             </div>
           ) : (

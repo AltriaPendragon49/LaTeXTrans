@@ -1,9 +1,9 @@
 # Backend File Index
 
-## Recent Responsibility Updates (2026-05-09 COS PDF preview proxy adjustment)
+## Recent Responsibility Updates (2026-05-09 COS PDF preview direct redirect rollback)
 
-- `backend/app/api/routes/papers.py`: 社区论文 `translated-pdf` 与 `source-pdf` 预览在拿到对象存储签名 URL 时改为第一方 inline Range 代理，恢复 iframe 原生 PDF 预览稳定性；显式下载路由仍保留 COS 签名 URL 重定向，避免下载流量经由后端。
-- `backend/app/api/routes/download.py`: 普通任务 `/api/preview/{task_id}/pdf` 在 COS 模式下改为代理签名 PDF 并转发浏览器 Range 请求；`/api/download/{task_id}/pdf` 等下载类路由继续优先重定向到 COS；arXiv raw-cache PDF 在预览场景下经由后端 Range 代理，在下载场景下仍可直连 COS。
+- `backend/app/api/routes/papers.py`: 社区论文 `translated-pdf` 与 `source-pdf` 预览在拿到对象存储签名 URL 时恢复为 307 重定向到 COS，优先换回历史直连预览速度；本地 PDF 仍保留后端 Range 预览，显式下载路由继续使用签名 URL 重定向。
+- `backend/app/api/routes/download.py`: 普通任务 `/api/preview/{task_id}/pdf` 在 COS 模式下恢复为签名 URL 重定向；arXiv raw-cache PDF 无论预览还是下载均优先直连 COS，只有无 raw-cache URL 时才走后端到 arXiv 的流式代理。
 
 ## Recent Responsibility Updates (2026-05-09 COS 回源缓存与直连交付)
 

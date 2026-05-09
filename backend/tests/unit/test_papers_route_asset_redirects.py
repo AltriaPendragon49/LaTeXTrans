@@ -3,8 +3,6 @@ import os
 from pathlib import Path
 
 from fastapi import Request
-from fastapi.responses import Response
-from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
@@ -33,7 +31,7 @@ def _request_with_headers(headers: dict[str, str] | None = None) -> Request:
     )
 
 
-def test_preview_translated_pdf_proxies_signed_object_storage_url(monkeypatch):
+def test_preview_translated_pdf_redirects_to_inline_signed_object_storage_url(monkeypatch):
     async def _fake_preview(*, paper_id: str):
         assert paper_id == "paper-1"
         return {
@@ -46,102 +44,21 @@ def test_preview_translated_pdf_proxies_signed_object_storage_url(monkeypatch):
             "signed_url": "https://cos.example.com/paper.pdf?sign=abc",
         }
 
-    async def _fake_proxy(*, url: str, filename: str, request: Request, content_disposition: str = "inline"):
-        assert url == "https://cos.example.com/paper.pdf?sign=abc"
-        assert filename == "translated.pdf"
-        assert request.headers.get("range") == "bytes=0-1023"
-        assert content_disposition == "inline"
-        return Response(
-            content=b"%PDF-proxy",
-            status_code=206,
-            media_type="application/pdf",
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Range": "bytes 0-1023/2048",
-                "Content-Disposition": 'inline; filename="translated.pdf"',
-            },
-        )
-
     monkeypatch.setattr(
         papers_route.paper_service,
         "resolve_paper_translated_pdf_preview",
         _fake_preview,
     )
-    monkeypatch.setattr(papers_route, "_proxy_remote_pdf_preview", _fake_proxy)
 
     response = asyncio.run(
         papers_route.preview_translated_paper_pdf(
             "paper-1",
-            _request_with_headers({"range": "bytes=0-1023"}),
+            _request_with_headers(),
         )
     )
 
-    assert response.status_code == 206
-    assert response.headers["content-disposition"] == 'inline; filename="translated.pdf"'
-    assert response.headers["accept-ranges"] == "bytes"
-
-
-def test_proxy_remote_pdf_preview_streams_range_response(monkeypatch):
-    class _FakeUpstreamResponse:
-        status_code = 206
-        headers = {
-            "content-type": "application/pdf",
-            "accept-ranges": "bytes",
-            "content-range": "bytes 0-8/9",
-            "content-length": "9",
-            "etag": '"etag-1"',
-        }
-
-        async def aiter_bytes(self):
-            yield b"%PDF"
-            yield b"-mock"
-
-        async def aclose(self):
-            return None
-
-    class _FakeClient:
-        def __init__(self, *args, **kwargs):
-            self.request_headers = None
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        def build_request(self, method: str, url: str, headers: dict[str, str]):
-            self.request_headers = headers
-            return {"method": method, "url": url}
-
-        async def send(self, request, stream: bool = False):
-            assert request["method"] == "GET"
-            assert request["url"] == "https://cos.example.com/paper.pdf?sign=abc"
-            assert stream is True
-            assert self.request_headers == {
-                "Range": "bytes=0-8",
-                "User-Agent": "LaTeXTrans-Preview/1.0",
-            }
-            return _FakeUpstreamResponse()
-
-        async def aclose(self):
-            return None
-
-    monkeypatch.setattr(papers_route.httpx, "AsyncClient", _FakeClient)
-
-    response = asyncio.run(
-        papers_route._proxy_remote_pdf_preview(
-            url="https://cos.example.com/paper.pdf?sign=abc",
-            filename="translated.pdf",
-            request=_request_with_headers({"range": "bytes=0-8"}),
-        )
-    )
-
-    assert isinstance(response, StreamingResponse)
-    assert isinstance(response.background, BackgroundTask)
-    assert response.status_code == 206
-    assert response.headers["content-disposition"] == 'inline; filename="translated.pdf"'
-    assert response.headers["accept-ranges"] == "bytes"
-    assert response.headers["content-range"] == "bytes 0-8/9"
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://cos.example.com/paper.pdf?sign=abc"
 
 
 def test_download_paper_redirects_to_signed_url(monkeypatch):
