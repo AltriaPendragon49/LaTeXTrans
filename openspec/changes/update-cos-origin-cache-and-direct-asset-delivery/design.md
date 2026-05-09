@@ -15,7 +15,7 @@ The backend already persists community paper assets and task outputs to COS in o
 
 ## Decisions
 - Add a small `arxiv_raw_cache` service that owns raw-cache enablement checks, object key construction, and signed URL generation.
-- Use raw-cache object keys under an optional configurable prefix, defaulting to root-level `pdf/<arxiv_id>.pdf` and `e-print/<arxiv_id>` paths so COS mirror-origin can map object keys directly to arXiv paths.
+- Use raw-cache object keys under an optional configurable prefix, defaulting to root-level `pdf/<arxiv_id>` and `e-print/<arxiv_id>` paths so COS mirror-origin can map object keys directly to arXiv paths; signed response headers still present the original PDF filename with a `.pdf` suffix.
 - In COS mode, `source_pdf` assets for arXiv papers may point at the shared raw-cache PDF object instead of forcing a paper-owned duplicate copy.
 - Proxy iframe PDF preview routes through the backend with Range forwarding when the source PDF is object-storage-backed, because the current COS default public domain can force `Content-Disposition: attachment`.
 - Keep explicit download routes as signed COS redirects when available, where attachment disposition is desired and backend byte proxying would waste bandwidth.

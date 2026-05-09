@@ -161,7 +161,7 @@ def test_persist_arxiv_source_pdf_registers_raw_cache_asset_without_download(mon
 
     def _fake_raw_key(arxiv_id: str):
         assert arxiv_id == "2501.12345"
-        return "arxiv/raw/pdf/2501.12345.pdf"
+        return "arxiv/raw/pdf/2501.12345"
 
     def _fake_raw_enabled():
         return True
@@ -185,7 +185,7 @@ def test_persist_arxiv_source_pdf_registers_raw_cache_asset_without_download(mon
     )
 
     assert result["asset_type"] == "source_pdf"
-    assert captured["upsert"]["file_path"] == "arxiv/raw/pdf/2501.12345.pdf"
+    assert captured["upsert"]["file_path"] == "arxiv/raw/pdf/2501.12345"
     assert captured["upsert"]["storage_backend"] == "object_storage"
 
 
@@ -229,6 +229,7 @@ def test_persist_arxiv_source_pdf_uploads_and_upserts(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(paper_service, "_download_arxiv_source_pdf_to_temp", _fake_download)
     monkeypatch.setattr(paper_service, "_persist_retained_artifact", _fake_persist)
     monkeypatch.setattr(paper_service, "_upsert_latest_asset", _fake_upsert)
+    monkeypatch.setattr(paper_service.arxiv_raw_cache, "is_enabled", lambda: False)
 
     result = asyncio.run(
         paper_service.persist_arxiv_source_pdf_asset(
@@ -273,13 +274,13 @@ def test_download_arxiv_source_pdf_prefers_raw_cache_url(monkeypatch, tmp_path: 
     monkeypatch.setattr(
         paper_service.arxiv_raw_cache,
         "build_pdf_download_url",
-        lambda arxiv_id, **_kwargs: "https://cos.example.com/arxiv/raw/pdf/2501.12345.pdf?sign=abc",
+        lambda arxiv_id, **_kwargs: "https://cos.example.com/arxiv/raw/pdf/2501.12345?sign=abc",
     )
     monkeypatch.setattr(paper_service.requests, "get", _fake_get)
 
     downloaded_pdf = paper_service._download_arxiv_source_pdf_to_temp("2501.12345")
 
-    assert captured["url"] == "https://cos.example.com/arxiv/raw/pdf/2501.12345.pdf?sign=abc"
+    assert captured["url"] == "https://cos.example.com/arxiv/raw/pdf/2501.12345?sign=abc"
     assert captured["kwargs"]["stream"] is True
     assert downloaded_pdf.read_bytes().startswith(b"%PDF")
 

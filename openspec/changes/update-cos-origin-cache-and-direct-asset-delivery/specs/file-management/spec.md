@@ -17,7 +17,8 @@ When object storage mode and arXiv raw cache are enabled, the system SHALL prefe
 #### Scenario: Original PDF materializes through COS raw cache
 - **WHEN** the backend needs the original arXiv PDF for runtime cache, source PDF asset creation, or thumbnail generation
 - **AND** raw cache is enabled
-- **THEN** it SHALL prefer the configured COS raw-cache `pdf/<arxiv_id>.pdf` object before direct arXiv PDF retrieval.
+- **THEN** it SHALL prefer the configured COS raw-cache `pdf/<arxiv_id>` object before direct arXiv PDF retrieval
+- **AND** signed responses SHALL still present a `.pdf` filename for browser download and preview behavior.
 
 ### Requirement: Local arXiv files remain runtime cache in COS mode
 When object storage mode is active, locally materialized arXiv raw files SHALL be treated as temporary runtime cache rather than long-lived durable storage.

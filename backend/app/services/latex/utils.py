@@ -2745,7 +2745,7 @@ def batch_download_arxiv_tex(
                 filename=f"{arxiv_id}.pdf",
                 inline=True,
             )
-            or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            or f"https://arxiv.org/pdf/{arxiv_id}"
         )
         pdf_path = os.path.join(save_dir, arxiv_id, f"{arxiv_id}.pdf")
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)

@@ -300,7 +300,7 @@ async def _proxy_arxiv_pdf(
     if raw_cache_url and content_disposition == "attachment":
         return RedirectResponse(url=raw_cache_url, status_code=307)
 
-    arxiv_pdf_url = raw_cache_url or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+    arxiv_pdf_url = raw_cache_url or f"https://arxiv.org/pdf/{arxiv_id}"
     client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
     forward_headers = {"User-Agent": "LaTeXTrans-Preview/1.0"}
     range_header = request.headers.get("range") if request else None

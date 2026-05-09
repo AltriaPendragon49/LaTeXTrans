@@ -7,7 +7,7 @@
 
 ## Recent Responsibility Updates (2026-05-09 COS 回源缓存与直连交付)
 
-- `backend/app/services/arxiv_raw_cache.py`: 新增 arXiv 原始资源 COS raw cache 帮助服务，集中生成 `pdf/<arxiv_id>.pdf` 与 `e-print/<arxiv_id>` 的对象 key 和签名 URL；在 COS 模式且显式启用 raw cache 时，供 arXiv source/PDF 下载、社区 source_pdf 资产和 arXiv PDF 回退路径优先走 COS 回源。
+- `backend/app/services/arxiv_raw_cache.py`: 新增 arXiv 原始资源 COS raw cache 帮助服务，集中生成 `pdf/<arxiv_id>` 与 `e-print/<arxiv_id>` 的对象 key 和签名 URL（PDF 下载文件名仍以 `.pdf` 呈现）；在 COS 模式且显式启用 raw cache 时，供 arXiv source/PDF 下载、社区 source_pdf 资产和 arXiv PDF 回退路径优先走 COS 回源。
 - `backend/app/services/latex/utils.py`: arXiv 源码归档和原文 PDF 运行时下载现在会在 raw cache 启用时优先读取 COS 签名 URL，失败后仍保留原有 arXiv 端点回退。
 - `backend/app/api/routes/download.py`: 普通任务 COS 输出的 PDF 预览现在返回签名 COS URL 重定向；arXiv PDF 回退代理会在 raw cache 可用时优先重定向到 COS，减少后端流式中转。
 - `backend/app/api/routes/papers.py`: 社区论文 source/translated PDF 预览与下载在对象存储可用时返回签名 URL 重定向；缩略图路由改为复用缩略图服务的 COS 持久化交付结果。

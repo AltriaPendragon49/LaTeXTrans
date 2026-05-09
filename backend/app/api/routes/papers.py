@@ -1164,7 +1164,7 @@ async def preview_source_paper_thumbnail(paper_id: str):
     if arxiv_id:
         return await _serve_pdf_thumbnail_response(
             cache_seed=f"source-arxiv:{arxiv_id}",
-            remote_url=f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+            remote_url=f"https://arxiv.org/pdf/{arxiv_id}",
         )
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source PDF thumbnail not available")

@@ -8160,7 +8160,7 @@ async def _warm_public_paper_thumbnails(
         elif source_preview.get("arxiv_id"):
             await paper_thumbnail_service.ensure_pdf_thumbnail(
                 cache_seed=f"source-arxiv:{source_preview['arxiv_id']}",
-                remote_url=f"https://arxiv.org/pdf/{source_preview['arxiv_id']}.pdf",
+                remote_url=f"https://arxiv.org/pdf/{source_preview['arxiv_id']}",
             )
     except Exception as exc:
         logger.debug("Source thumbnail warmup skipped for paper %s: %s", paper_id, exc)

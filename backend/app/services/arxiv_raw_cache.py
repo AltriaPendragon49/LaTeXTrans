@@ -42,6 +42,11 @@ def normalize_arxiv_id_for_object(arxiv_id: str) -> str:
 
 def raw_pdf_object_key(arxiv_id: str, *, settings: Optional[Any] = None) -> str:
     active_settings = settings or get_settings()
+    return _join_key(_normalize_prefix(active_settings), "pdf", normalize_arxiv_id_for_object(arxiv_id))
+
+
+def _legacy_raw_pdf_object_key(arxiv_id: str, *, settings: Optional[Any] = None) -> str:
+    active_settings = settings or get_settings()
     return _join_key(_normalize_prefix(active_settings), "pdf", f"{normalize_arxiv_id_for_object(arxiv_id)}.pdf")
 
 
@@ -75,7 +80,11 @@ def _get_backend(settings: Any, backend: Optional[Any] = None) -> Optional[Any]:
 
 def is_raw_pdf_object_key(object_key: str, arxiv_id: str, *, settings: Optional[Any] = None) -> bool:
     try:
-        return str(object_key or "").strip().strip("/") == raw_pdf_object_key(arxiv_id, settings=settings)
+        normalized_key = str(object_key or "").strip().strip("/")
+        return normalized_key in {
+            raw_pdf_object_key(arxiv_id, settings=settings),
+            _legacy_raw_pdf_object_key(arxiv_id, settings=settings),
+        }
     except ValueError:
         return False
 
