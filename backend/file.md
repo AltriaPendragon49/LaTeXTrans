@@ -1,9 +1,9 @@
 # Backend File Index
 
-## Recent Responsibility Updates (2026-05-09 COS PDF preview direct redirect rollback)
+## Recent Responsibility Updates (2026-05-09 COS PDF stable preview and fast download)
 
-- `backend/app/api/routes/papers.py`: 社区论文 `translated-pdf` 与 `source-pdf` 预览在拿到对象存储签名 URL 时恢复为 307 重定向到 COS，优先换回历史直连预览速度；本地 PDF 仍保留后端 Range 预览，显式下载路由继续使用签名 URL 重定向。
-- `backend/app/api/routes/download.py`: 普通任务 `/api/preview/{task_id}/pdf` 在 COS 模式下恢复为签名 URL 重定向；arXiv raw-cache PDF 无论预览还是下载均优先直连 COS，只有无 raw-cache URL 时才走后端到 arXiv 的流式代理。
+- `backend/app/api/routes/papers.py`: 社区论文 `translated-pdf` 与 `source-pdf` 预览在拿到对象存储签名 URL 时由后端代理交付并覆盖 `inline` 响应头，避免 COS 默认域名触发打开即下载；显式 PDF 下载仍保留签名 COS URL 重定向以维持下载速度。
+- `backend/app/api/routes/download.py`: 普通任务 `/api/preview/{task_id}/pdf` 在 COS 模式下由后端代理交付并保持 Range 转发；`/api/download/{task_id}/pdf` 与 arXiv raw-cache 附件下载继续重定向到签名 COS URL。
 
 ## Recent Responsibility Updates (2026-05-09 COS 回源缓存与直连交付)
 

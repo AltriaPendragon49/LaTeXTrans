@@ -297,7 +297,7 @@ async def _proxy_arxiv_pdf(
         filename=filename,
         inline=content_disposition != "attachment",
     )
-    if raw_cache_url:
+    if raw_cache_url and content_disposition == "attachment":
         return RedirectResponse(url=raw_cache_url, status_code=307)
 
     arxiv_pdf_url = raw_cache_url or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
@@ -350,6 +350,62 @@ async def _proxy_arxiv_pdf(
         _stream(),
         status_code=upstream.status_code,
         media_type="application/pdf",
+        headers=headers,
+        background=BackgroundTask(_close_stream),
+    )
+
+
+async def _proxy_remote_pdf_asset(
+    url: str,
+    *,
+    filename: str,
+    request: Optional[Request] = None,
+    content_disposition: str = "inline",
+    media_type: str = "application/pdf",
+) -> StreamingResponse:
+    client = httpx.AsyncClient(follow_redirects=True, timeout=60.0)
+    forward_headers = {"User-Agent": "LaTeXTrans-Preview/1.0"}
+    range_header = request.headers.get("range") if request else None
+    if range_header:
+        forward_headers["Range"] = range_header
+
+    upstream_request = client.build_request("GET", url, headers=forward_headers)
+    upstream = await client.send(upstream_request, stream=True)
+
+    if upstream.status_code not in (200, 206):
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(
+            status_code=upstream.status_code if upstream.status_code >= 400 else 502,
+            detail=f"Failed to fetch remote PDF ({upstream.status_code})",
+        )
+
+    async def _stream():
+        async for chunk in upstream.aiter_bytes():
+            if chunk:
+                yield chunk
+
+    async def _close_stream() -> None:
+        await upstream.aclose()
+        await client.aclose()
+
+    headers = {"Content-Disposition": f'{content_disposition}; filename="{filename}"'}
+    for source_name, target_name in (
+        ("content-length", "Content-Length"),
+        ("accept-ranges", "Accept-Ranges"),
+        ("content-range", "Content-Range"),
+        ("etag", "ETag"),
+        ("last-modified", "Last-Modified"),
+        ("cache-control", "Cache-Control"),
+    ):
+        value = upstream.headers.get(source_name)
+        if value:
+            headers[target_name] = value
+
+    return StreamingResponse(
+        _stream(),
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type") or media_type,
         headers=headers,
         background=BackgroundTask(_close_stream),
     )
@@ -492,7 +548,12 @@ async def preview_pdf(task_id: str, request: Request):
         )
         if not signed_url:
             raise HTTPException(status_code=404, detail="Translated PDF not found")
-        return RedirectResponse(url=signed_url, status_code=307)
+        return await _proxy_remote_pdf_asset(
+            signed_url,
+            filename=f"preview_{task_id}.pdf",
+            request=request,
+            content_disposition="inline",
+        )
 
     pdf_file: Optional[Path] = None
     for output_dir in _candidate_output_dirs(task_id, task):

@@ -2,7 +2,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from fastapi import Request
+from fastapi import Request, Response
 from starlette.responses import StreamingResponse
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
@@ -31,7 +31,7 @@ def _request_with_headers(headers: dict[str, str] | None = None) -> Request:
     )
 
 
-def test_preview_translated_pdf_redirects_to_inline_signed_object_storage_url(monkeypatch):
+def test_preview_translated_pdf_proxies_inline_signed_object_storage_url(monkeypatch):
     async def _fake_preview(*, paper_id: str):
         assert paper_id == "paper-1"
         return {
@@ -50,15 +50,43 @@ def test_preview_translated_pdf_redirects_to_inline_signed_object_storage_url(mo
         _fake_preview,
     )
 
+    async def _fake_proxy(
+        url: str,
+        *,
+        filename: str,
+        request: Request | None = None,
+        content_disposition: str = "inline",
+        media_type: str = "application/pdf",
+    ):
+        assert url == "https://cos.example.com/paper.pdf?sign=abc"
+        assert filename == "translated.pdf"
+        assert request is not None
+        assert request.headers.get("range") == "bytes=0-1023"
+        assert content_disposition == "inline"
+        assert media_type == "application/pdf"
+        return Response(
+            content=b"%PDF-translated",
+            status_code=206,
+            media_type="application/pdf",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": "bytes 0-1023/2048",
+                "Content-Disposition": 'inline; filename="translated.pdf"',
+            },
+        )
+
+    monkeypatch.setattr(papers_route.download_route, "_proxy_remote_pdf_asset", _fake_proxy)
+
     response = asyncio.run(
         papers_route.preview_translated_paper_pdf(
             "paper-1",
-            _request_with_headers(),
+            _request_with_headers({"range": "bytes=0-1023"}),
         )
     )
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "https://cos.example.com/paper.pdf?sign=abc"
+    assert response.status_code == 206
+    assert response.headers["content-disposition"] == 'inline; filename="translated.pdf"'
+    assert response.headers["accept-ranges"] == "bytes"
 
 
 def test_download_paper_redirects_to_signed_url(monkeypatch):
