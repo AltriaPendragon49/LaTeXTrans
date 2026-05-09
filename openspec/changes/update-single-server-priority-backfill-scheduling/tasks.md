@@ -6,7 +6,7 @@
 - [x] 1.5 Route post-translation system-managed structured insight generation through the shared pool helper instead of a direct single-member HTTP call.
 
 ## 2. Phase-1 Verification
-- [ ] 2.1 Add runtime observability needed to confirm which system-managed pool member served a request and when failover occurred.
+- [x] 2.1 Add runtime observability needed to confirm which system-managed pool member served a request and when failover occurred.
 - [x] 2.2 Add automated coverage for system-pool selection, consecutive `429` failover, consecutive `503` failover, all-members-exhausted retry behavior, structured-insight pool reuse, and custom-key bypass behavior.
 - [x] 2.3 Validate the OpenSpec change with `openspec validate update-single-server-priority-backfill-scheduling --strict --no-interactive`.
 
@@ -14,7 +14,7 @@
 - [x] 3.1 Introduce a dual-lane single-server scheduler with `interactive` priority and opportunistic `backfill` capacity borrowing.
 - [ ] 3.2 Add cooperative yield requests plus durable resume checkpoints at approved orchestration boundaries.
 - [ ] 3.3 Reduce wasteful backfill retry churn when the whole token pool is exhausted without penalizing interactive retries.
-- [ ] 3.4 Move terminology-table generation and success-only compilation diagnostics behind resumable sidecar feature flags while keeping failure diagnostics synchronous.
+- [x] 3.4 Removed from this change scope per 2026-05-09 direction; terminology-table generation and success-only compilation diagnostics stay on the existing inline path.
 
 ## 4. Single-Server Web/Worker Isolation
 - [x] 4.1 Add `all|web|worker` runtime-role config and keep legacy single-process behavior available.

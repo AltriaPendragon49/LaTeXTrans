@@ -17,7 +17,7 @@ This leads to a different optimization target from a typical public queueing ser
   - Pause backfill only at safe, resumable checkpoints.
   - Reduce 429 waiting time by using multiple tokens from the same relay provider more intelligently.
   - Keep the current single-paper LangGraph orchestration as the inner translation kernel.
-  - Make the rollout incremental, feature-flagged, and easy to disable.
+  - Make the rollout incremental and easy to disable.
 
 - Non-Goals:
   - No distributed queue, multi-host scheduler, or mandatory Redis dependency in this phase.
@@ -170,22 +170,7 @@ Important scope boundary for phase 1:
 
 This isolates the rollout and avoids silently changing user-owned API routing behavior.
 
-### 6. Defer only non-critical post-success artifacts
-
-Two parts of the current path are good candidates for sidecarization:
-
-- terminology-table generation
-- successful-compilation diagnostic enrichment
-
-They will move out of the main slot only behind feature flags and only when the preceding translation result is already durable. Failure-path diagnostics stay synchronous because they are part of correctness and operator actionability.
-
-For rollout safety:
-
-- interactive traffic can keep legacy inline behavior by default
-- backfill can enable deferred artifacts first
-- sidecar jobs must be idempotent and resumable
-
-### 6a. Move community feed reads to paginated first-page caching
+### 6. Move community feed reads to paginated first-page caching
 
 The public homepage should no longer fetch the full community paper list on first render. The feed now returns:
 
@@ -198,14 +183,14 @@ The public homepage should no longer fetch the full community paper list on firs
 
 The web runtime caches the first `latest` page with an empty query for a short TTL and invalidates that cache whenever public paper state changes. The frontend increments via `load more` instead of re-fetching the whole corpus.
 
-### 6b. Prewarm thumbnail cache on publish
+### 7. Prewarm thumbnail cache on publish
 
 Thumbnail endpoints already cache after first access, but the first homepage visit still pays the rasterization/download cost. This change adds a shared thumbnail-cache helper and schedules warmup when a paper becomes publicly ready, covering:
 
 - source PDF thumbnails when a local or arXiv source preview exists
 - translated PDF thumbnails when translated output becomes public
 
-### 7. No external Redis requirement in phase 1
+### 8. No external Redis requirement in phase 1
 
 A Redis queue is not required for this phase because:
 
@@ -224,7 +209,6 @@ Redis remains a future option if the system later needs:
 
 - Cooperative yield is more complex than plain FIFO. Mitigation: keep checkpoint boundaries narrow and explicit.
 - Token-pool behavior can accidentally change quality if it alters model/runtime parity. Mitigation: the pool chooses credentials only; it does not change prompt, model, or repair semantics.
-- Deferred artifacts can create output-timing differences. Mitigation: gate the behavior behind flags and roll it out to backfill first.
 - Single-server throughput can still be compile-bound. Mitigation: keep compile concurrency fixed at `1` and optimize scheduler utilization around it instead of pretending compilation is parallel-safe.
 - Attempt-token monotonicity adds runtime bookkeeping. Mitigation: keep the token runtime-only and use it only for stale-update rejection, not for cross-process scheduling.
 - Persistent-state reconciliation can convert an impossible non-terminal row into a failed task. Mitigation: limit reconciliation to states that are already contradictory, record an explicit recovery message, and keep the original artifacts for diagnosis.
@@ -238,7 +222,6 @@ Redis remains a future option if the system later needs:
 5. Enable frontend-pressure-aware backfill admission in the worker runtime.
 6. Roll community feed pagination/load-more and first-page cache together so the web runtime stops whole-list fetches.
 7. Enable thumbnail prewarm after public-paper publish transitions.
-8. Enable deferred post-success artifacts for backfill only after parity testing passes.
 
 ## Validation Plan
 
@@ -259,7 +242,6 @@ Add targeted automated checks for:
 - custom user key bypassing the system-managed pool
 - all-token-exhausted retry behavior
 - compile-slot protection
-- feature-flag rollback to legacy behavior
 
 ## Open Questions
 

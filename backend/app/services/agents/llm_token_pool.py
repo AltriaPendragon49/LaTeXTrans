@@ -507,6 +507,76 @@ def _parse_retry_after_seconds(headers: Optional[Mapping[str, str]]) -> int:
     return 1
 
 
+def _log_pool_request_success(
+    *,
+    pool_id: str,
+    member_id: str,
+    base_url: str,
+    status_code: int,
+) -> None:
+    logger.info(
+        "LLM pool request served by member %s",
+        member_id,
+        extra={
+            "llm_pool_event": "request_success",
+            "llm_pool_id": pool_id,
+            "llm_pool_member_id": member_id,
+            "llm_pool_base_url": base_url,
+            "llm_pool_status_code": status_code,
+        },
+    )
+
+
+def _log_pool_failover(
+    *,
+    pool_id: str,
+    current: _MemberState,
+    alternative: _MemberState,
+    status_code: int,
+    reason: str,
+) -> None:
+    logger.warning(
+        "LLM pool failover from member %s to %s after HTTP %s",
+        current.member_id,
+        alternative.member_id,
+        status_code,
+        extra={
+            "llm_pool_event": "failover",
+            "llm_pool_id": pool_id,
+            "llm_pool_member_id": current.member_id,
+            "llm_pool_base_url": current.base_url,
+            "llm_pool_next_member_id": alternative.member_id,
+            "llm_pool_next_base_url": alternative.base_url,
+            "llm_pool_status_code": status_code,
+            "llm_pool_failover_reason": reason,
+        },
+    )
+
+
+def _log_pool_exhausted_retry(
+    *,
+    pool_id: str,
+    member_id: str,
+    base_url: str,
+    status_code: int,
+    wait_seconds: int,
+) -> None:
+    logger.warning(
+        "LLM pool all members unavailable after HTTP %s; retrying member %s in %ss",
+        status_code,
+        member_id,
+        wait_seconds,
+        extra={
+            "llm_pool_event": "all_members_unavailable_retry",
+            "llm_pool_id": pool_id,
+            "llm_pool_member_id": member_id,
+            "llm_pool_base_url": base_url,
+            "llm_pool_status_code": status_code,
+            "llm_pool_retry_wait_seconds": wait_seconds,
+        },
+    )
+
+
 async def _perform_member_request(
     *,
     session: aiohttp.ClientSession,
@@ -620,6 +690,12 @@ async def post_chat_completion_with_pool(
                 headers=headers,
             )
             raise response
+        _log_pool_request_success(
+            pool_id=pool_id,
+            member_id=single_member["member_id"],
+            base_url=single_member["base_url"],
+            status_code=status_code,
+        )
         return result or {}
 
     pool_id = str(llm_config.get("pool_routing_key") or compute_pool_routing_key(members))
@@ -688,6 +764,13 @@ async def post_chat_completion_with_pool(
                 )
             )
             if may_failover and alternative is not None:
+                _log_pool_failover(
+                    pool_id=pool_id,
+                    current=current,
+                    alternative=alternative,
+                    status_code=status_code,
+                    reason="status_threshold",
+                )
                 if on_retry_message is not None:
                     on_retry_message(
                         f"LLM pool member {current.member_id} returned {status_code}; fail over to {alternative.member_id}"
@@ -695,6 +778,13 @@ async def post_chat_completion_with_pool(
                 current = alternative
                 continue
             if preferred_alternative_available:
+                _log_pool_failover(
+                    pool_id=pool_id,
+                    current=current,
+                    alternative=alternative,
+                    status_code=status_code,
+                    reason="preferred_base",
+                )
                 if on_retry_message is not None:
                     on_retry_message(
                         f"LLM pool member {current.member_id} returned {status_code}; prefer base fail over to {alternative.member_id}"
@@ -702,6 +792,13 @@ async def post_chat_completion_with_pool(
                 current = alternative
                 continue
             if alternative is not None and status_code == 429:
+                _log_pool_failover(
+                    pool_id=pool_id,
+                    current=current,
+                    alternative=alternative,
+                    status_code=status_code,
+                    reason="rate_limit",
+                )
                 if on_retry_message is not None:
                     on_retry_message(
                         f"LLM pool member {current.member_id} hit 429; fail over to {alternative.member_id}"
@@ -710,6 +807,13 @@ async def post_chat_completion_with_pool(
                 continue
 
             wait_seconds = retry_after_seconds if status_code == 429 else _ALL_MEMBERS_UNAVAILABLE_503_RETRY_SECONDS
+            _log_pool_exhausted_retry(
+                pool_id=pool_id,
+                member_id=current.member_id,
+                base_url=current.base_url,
+                status_code=status_code,
+                wait_seconds=wait_seconds,
+            )
             if on_retry_message is not None:
                 on_retry_message(
                     f"LLM pool all members unavailable on {status_code}; retry current member {current.member_id} in {wait_seconds}s"
@@ -718,4 +822,10 @@ async def post_chat_completion_with_pool(
             continue
 
         _POOL_REGISTRY.record_success(pool_id, current.member_id)
+        _log_pool_request_success(
+            pool_id=pool_id,
+            member_id=current.member_id,
+            base_url=current.base_url,
+            status_code=status_code,
+        )
         return result or {}

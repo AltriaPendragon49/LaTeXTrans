@@ -13,7 +13,6 @@
 - Change the community feed API and UI from whole-list fetches to paginated incremental loading, with first-page caching for the public latest feed.
 - Prewarm homepage PDF thumbnail cache entries when papers become publicly readable so the first homepage render does not pay thumbnail generation cost.
 - Keep one-paper LangGraph orchestration intact; do not split graph nodes for the same paper across multiple workers in this change.
-- Allow non-critical post-success artifacts such as terminology-table generation and successful-compilation diagnostics to move behind resumable sidecar execution under feature flags.
 - Preserve the existing validation, repair, compile, and target-language fallback guardrails.
 
 ## Impact

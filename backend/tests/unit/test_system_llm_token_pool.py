@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List
@@ -172,6 +173,49 @@ async def test_pool_fails_over_to_another_member_after_429():
     assert result["choices"][0]["message"]["content"] == "ok"
     assert len(session.calls) == 2
     assert session.calls[0]["api_key"] != session.calls[1]["api_key"]
+
+
+@pytest.mark.asyncio
+async def test_pool_logs_serving_member_and_failover(caplog):
+    from backend.app.services.agents.llm_token_pool import post_chat_completion_with_pool
+
+    llm_config = {
+        "model": "test-model",
+        "pool_mode": "system_managed",
+        "pool_members": [
+            {"member_id": "a1", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k1"},
+            {"member_id": "a2", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k2"},
+        ],
+    }
+    session = _FakeSession(
+        [
+            _FakeResponse(status=429, headers={"Retry-After": "0"}),
+            _FakeResponse(status=200, json_data={"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    caplog.set_level(logging.INFO, logger="backend.app.services.agents.llm_token_pool")
+
+    await post_chat_completion_with_pool(
+        session=session,
+        llm_config=llm_config,
+        payload={"model": "test-model", "messages": []},
+        timeout=aiohttp.ClientTimeout(total=5),
+    )
+
+    failover_records = [
+        record for record in caplog.records if getattr(record, "llm_pool_event", "") == "failover"
+    ]
+    success_records = [
+        record for record in caplog.records if getattr(record, "llm_pool_event", "") == "request_success"
+    ]
+    assert failover_records
+    assert getattr(failover_records[0], "llm_pool_member_id") == "a1"
+    assert getattr(failover_records[0], "llm_pool_next_member_id") == "a2"
+    assert getattr(failover_records[0], "llm_pool_status_code") == 429
+    assert success_records
+    assert getattr(success_records[-1], "llm_pool_member_id") == "a2"
+    assert "k1" not in caplog.text
+    assert "k2" not in caplog.text
 
 
 @pytest.mark.asyncio
