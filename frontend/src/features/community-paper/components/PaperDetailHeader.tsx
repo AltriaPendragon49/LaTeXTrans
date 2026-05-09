@@ -366,7 +366,7 @@ export function PaperDetailHeader({
             data-testid={isMobile ? "paper-detail-header-mobile-modes" : undefined}
             className={cn(
               "flex justify-center px-1",
-              isMobile ? "min-w-0" : "col-start-2 row-start-1 min-w-0 lg:pr-[20vw]",
+              isMobile ? "min-w-0" : "col-start-2 row-start-1 min-w-0 lg:pr-[16vw]",
             )}
           >
             <SegmentedControl
