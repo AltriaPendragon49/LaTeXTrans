@@ -515,7 +515,7 @@ async def download_pdf(task_id: str):
 
 
 @router.get("/preview/{task_id}/pdf")
-async def preview_pdf(task_id: str, request: Request):
+async def preview_pdf(task_id: str):
     """
     Preview translated PDF (inline display for iframe)
     
@@ -551,7 +551,6 @@ async def preview_pdf(task_id: str, request: Request):
         return await _proxy_remote_pdf_asset(
             signed_url,
             filename=f"preview_{task_id}.pdf",
-            request=request,
             content_disposition="inline",
         )
 

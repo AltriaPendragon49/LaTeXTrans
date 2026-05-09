@@ -99,7 +99,7 @@ def test_proxy_remote_pdf_asset_forwards_range_and_overrides_disposition(monkeyp
     assert response.headers["content-range"] == "bytes 0-11/200"
 
 
-def test_preview_pdf_proxies_signed_url_in_object_storage_mode(monkeypatch):
+def test_preview_pdf_proxies_object_storage_asset_like_may_8(monkeypatch):
     from backend.app.api.routes import download as download_route
 
     class _FakeTaskManager:
@@ -131,17 +131,14 @@ def test_preview_pdf_proxies_signed_url_in_object_storage_mode(monkeypatch):
     ):
         assert url == "https://cos.example.com/preview.pdf?sign=abc"
         assert filename == "preview_task-cos-preview.pdf"
-        assert request is not None
-        assert request.headers.get("range") == "bytes=0-1023"
+        assert request is None
         assert content_disposition == "inline"
         assert media_type == "application/pdf"
         return Response(
             content=b"%PDF-preview",
-            status_code=206,
+            status_code=200,
             media_type="application/pdf",
             headers={
-                "Accept-Ranges": "bytes",
-                "Content-Range": "bytes 0-1023/2048",
                 "Content-Disposition": 'inline; filename="preview_task-cos-preview.pdf"',
             },
         )
@@ -150,13 +147,9 @@ def test_preview_pdf_proxies_signed_url_in_object_storage_mode(monkeypatch):
 
     async def _call():
         async with _make_client() as client:
-            return await client.get(
-                "/api/preview/task-cos-preview/pdf",
-                headers={"Range": "bytes=0-1023"},
-            )
+            return await client.get("/api/preview/task-cos-preview/pdf")
 
     response = asyncio.run(_call())
 
-    assert response.status_code == 206
+    assert response.status_code == 200
     assert response.headers["content-disposition"] == 'inline; filename="preview_task-cos-preview.pdf"'
-    assert response.headers["accept-ranges"] == "bytes"
