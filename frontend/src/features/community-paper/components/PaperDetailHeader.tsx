@@ -73,8 +73,8 @@ export function PaperDetailHeader({
   const publishedAt = paper.arxiv_published_at ?? paper.official_published_at ?? paper.created_at
   const publishedLabel = publishedAt
     ? t("community.detail.publishedAt", {
-        value: new Date(publishedAt).toLocaleDateString(),
-      })
+      value: new Date(publishedAt).toLocaleDateString(),
+    })
     : t("community.card.dateUnknown")
 
   const repositoryUrl = paper.github_url?.trim() || null
@@ -366,7 +366,7 @@ export function PaperDetailHeader({
             data-testid={isMobile ? "paper-detail-header-mobile-modes" : undefined}
             className={cn(
               "flex justify-center px-1",
-              isMobile ? "min-w-0" : "col-start-2 row-start-1 min-w-0 lg:pr-[16vw]",
+              isMobile ? "min-w-0" : "col-start-2 row-start-1 min-w-0 lg:pr-[12vw]",
             )}
           >
             <SegmentedControl
