@@ -761,21 +761,8 @@ async def run_translation(
             "user_term": "",
             "category": category_map,
             "formatting": formatting,
-            "use_compilation_diagnostics": False if community_production_translation else True,
-            "enable_compile_first_structural_fallback": (
-                False if community_production_translation else settings.enable_compile_first_structural_fallback
-            ),
-            "enable_post_compile_target_language_fallback": (
-                False if community_production_translation else settings.enable_post_compile_target_language_fallback
-            ),
-            "enable_precompile_structure_guard": (
-                False if community_production_translation else settings.enable_precompile_structure_guard
-            ),
-            "enable_hard_freeze_tokens": False if community_production_translation else True,
             "enable_parser_env_llm_judgment": False if community_production_translation else True,
             "enable_legacy_translation_core": True if community_production_translation else False,
-            "structural_fallback_ratio_cap": settings.structural_fallback_ratio_cap,
-            "structural_fallback_cap_mode": settings.structural_fallback_cap_mode,
             "model_context_tokens": settings.model_context_tokens or CLI_PARITY_MODEL_CONTEXT_TOKENS,
             "prompt_reserve_tokens": settings.prompt_reserve_tokens or CLI_PARITY_PROMPT_RESERVE_TOKENS,
             "llm_max_concurrent_requests": task_llm_max_concurrent_requests,

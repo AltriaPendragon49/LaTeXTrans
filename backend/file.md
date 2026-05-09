@@ -1,5 +1,14 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-09 parity kernel cleanup)
+
+- `backend/app/models/config_models.py`: 当前翻译任务统一归一到 `origin_cli_parity` 单内核，仅保留旧 CLI 等价执行所需的配置、并发和谱系标记；已移除未参与生产路径的增强开关写入。
+- `backend/app/services/agents/langgraph_orchestrator.py`: 生产图固定为 `parse -> translate -> validate_and_retry -> generate -> finalize`，审计只记录 parity 单内核谱系。
+- `backend/app/services/agents/generator_agent.py`: 生成阶段只重建 parity LaTeX 并调用 `compile_with_origin_cli_parity`，保留编译队列计时和可丢弃健康分支。
+- `backend/app/services/agents/translator_agent.py`: 翻译阶段保留旧 CLI 顺序、直接请求语义、重试预算、超大块源文回退和当前占位符 mask/restore；已剥离未接入 parity 生产路径的外层增强节点。
+- `backend/app/services/latex/reconstruct.py`: 重建阶段保持 parity 字节语义，不再执行额外结构改写链路。
+- `backend/app/services/latex/compiler.py`: 保留 `compile_with_origin_cli_parity` 及其健康分支；下载预览仍可使用同步智能编译恢复源码 PDF，已移除不再被内核调用的旧异步包装和历史参考实现。
+
 ## Recent Responsibility Updates (2026-05-09 structured insights completeness gate)
 
 - `backend/app/services/paper_service.py`: 社区/admin 发布链路的结构化解析现在会拒绝明显截断的模块内容，包含 LLM 返回 `finish_reason=length/content_filter`、正文未以完整句子和句末标点结束等情况；失败模块会进入既有重试流程，最终仍可用兜底模板发布，并在管理员策展任务 `error` 字段保留兜底提示。
@@ -28,7 +37,6 @@
 
 - `backend/app/api/routes/upload.py`: 批量上传新增 `/upload/batch-translate` 认证入口，按文件数在创建任何上传/翻译任务前一次性预留每日 LaTeX 额度；单文件上传成功后复用翻译启动流程但跳过二次扣减，并对未被接受的文件释放预留额度。
 - `backend/app/repositories/translation_quota_repository.py`: 新增每日 LaTeX 翻译额度与 NiuTrans PDF 直译积分快照仓储，提供按用户/额度类型/UTC+8 日期的原子预留、释放和安全快照读写。
-- `backend/app/services/translation_quota_service.py`: 新增额度业务服务，计算 UTC+8 自然日、默认每日 3 次 LaTeX 翻译额度、稳定超额异常和前端可展示的双额度快照。
 - `backend/app/services/auth_service.py`: 登录成功后调用 NiuTrans user-info 接口，仅提取 `unusedNumIntegral` 并保存安全 PDF 直译积分快照；登录和会话自举返回独立额度快照，不暴露上游 token、apikey 或密码字段。
 - `backend/app/api/routes/auth.py`: 登录、`/auth/me` 与 `/auth/quota` 响应新增 `quota_snapshot`，统一返回本地 LaTeX 每日额度和 NiuTrans PDF 直译积分状态。
 - `backend/app/api/routes/translate.py`: 普通 arXiv/上传源翻译启动前预留 1 次本地 LaTeX 额度，批量 arXiv 提交按条目数原子预留；超额时返回稳定 `DAILY_LATEX_QUOTA_EXCEEDED` 结构，预接收失败时释放额度。
@@ -88,7 +96,6 @@
 - `backend/app/core/config.py`: `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 默认值调整为 10，与原系统 section 并发一致。
 
 - `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译现在走简化内核：关闭 hard-freeze transport、编译前结构门禁、编译后结构/目标语降级和诊断 LLM，减少占位符过度保护导致的慢、回退和坏译文。
-- `backend/app/services/agents/translator_agent.py`: 新增 `enable_hard_freeze_tokens` 配置；关闭时保留数学、环境、命令 mask/restore，但不再把占位符二次包装为 hard-freeze token。
 - `backend/app/services/latex/utils.py`: hard-freeze 风险分层将普通 inline math 视为低风险 token，section relaxed 模式不再因相邻数学占位符重排而整段回退。
 
 - `backend/app/api/routes/translate.py`: 社区/admin curation 生产翻译现在按 `COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS` 收紧单任务 LLM 并发，默认 3，避免单篇论文内部打穿同一 API 池。
@@ -127,7 +134,6 @@
 - `backend/app/services/agents`: LaTeX 缈昏瘧浠ｇ悊涓庣紪鎺掔绾裤€?
 - `backend/app/services/community_agent`: 绀惧尯鏅鸿兘浣撹繍琛屾椂銆佹妧鑳戒笌宸ュ叿銆?
 - `backend/app/services/latex`: LaTeX 瑙ｆ瀽銆侀噸寤恒€佺紪璇戙€佺粨鏋勫畧鍗€?
-- `backend/app/services/translation`: 闄嶇骇銆佷慨澶嶃€佺粨鏋勬鏌ョ瓑缈昏瘧鍏滃簳閫昏緫銆?
 - `backend/app/utils`: 閫氱敤寮傛鎴栭樆濉炶緟鍔╁伐鍏枫€?
 - `backend/migrations`: 涓绘暟鎹簱杩佺Щ鑴氭湰銆?
 - `backend/migrations_mysql`: MySQL 杩佺Щ鑴氭湰銆?
@@ -176,9 +182,7 @@
 - `backend/app/services/__init__.py`
 - `backend/app/services/agents/__init__.py`
 - `backend/app/services/agents/base_tool_agent.py`
-- `backend/app/services/agents/compilation_diagnostic_node.py`
 - `backend/app/services/agents/compile_runtime.py`
-- `backend/app/services/agents/controlled_repair_agent.py`
 - `backend/app/services/agents/coordinator_agent.py`
 - `backend/app/services/agents/generator_agent.py`
 - `backend/app/services/agents/langgraph_orchestrator.py`
@@ -186,9 +190,6 @@
 - `backend/app/services/agents/llm_token_pool.py`
 - `backend/app/services/agents/parser_agent.py`
 - `backend/app/services/agents/pipeline_invariants.py`
-- `backend/app/services/agents/pipeline_schema.py`
-- `backend/app/services/agents/structure_repair_node.py`
-- `backend/app/services/agents/translation_repair_agent.py`
 - `backend/app/services/agents/translator_agent.py`
 - `backend/app/services/agents/validator_agent.py`
 - `backend/app/services/auth_service.py`
@@ -239,7 +240,6 @@
 - `backend/app/services/latex/prompts.py`
 - `backend/app/services/latex/reconstruct.py`
 - `backend/app/services/latex/sanitizer.py`
-- `backend/app/services/latex/structure_guard.py`
 - `backend/app/services/latex/token_estimator.py`
 - `backend/app/services/latex/utils.py`
 - `backend/app/services/latex_validator.py`
@@ -251,12 +251,6 @@
 - `backend/app/services/task_artifact_storage.py`
 - `backend/app/services/task_detail.py`
 - `backend/app/services/task_manager.py`
-- `backend/app/services/translation_quota_service.py`
-- `backend/app/services/translation/__init__.py`
-- `backend/app/services/translation/downgrade_handler.py`
-- `backend/app/services/translation/repair_scheduler.py`
-- `backend/app/services/translation/structure_checker.py`
-- `backend/app/services/translation/ultimate_downgrade.py`
 - `backend/app/utils/__init__.py`
 - `backend/app/utils/async_blocking.py`
 - `backend/migrations/20260316_add_task_detail_metadata.sql`
@@ -368,14 +362,11 @@
 - `backend/app/services/task_manager.py`: 浠诲姟绠＄悊鏍稿績锛岀淮鎶ゅ唴瀛樻€佷换鍔°€佸紓姝ュ埛搴撱€侀槦鍒楁墽琛屼笌杩愯鏃舵竻鐞嗐€?| 椤跺眰绗﹀彿: PersistentStateFlusher, TaskManager, GuestTaskTracker, TaskQueue, get_translation_task_repository, get_auth_repository, _delete_local_cache_path, _is_within_cleanup_roots, clear_cached_runtime_artifacts, set_runtime_shutting_down
 
 #### backend/app/services daily quota additions
-- `backend/app/services/translation_quota_service.py`: 每日 LaTeX 翻译额度服务，按 UTC+8 自然日生成额度快照，封装预留、释放、超额异常和 NiuTrans PDF 直译积分展示快照。| 顶层符号: DailyQuotaExceededError, LatexQuotaSnapshot, TranslationQuotaService
 
 ### backend/app/services/agents
 - `backend/app/services/agents/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?| 椤跺眰绗﹀彿: _SemaphoreProxy, _get_llm_semaphore
 - `backend/app/services/agents/base_tool_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: BaseToolAgent
-- `backend/app/services/agents/compilation_diagnostic_node.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: DiagnosticSuggestion, DiagnosticReport, CompilationDiagnosticNode
 - `backend/app/services/agents/compile_runtime.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: get_compile_semaphore
-- `backend/app/services/agents/controlled_repair_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: RepairRateLimitExceededError, ControlledRepairAgent
 - `backend/app/services/agents/coordinator_agent.py`: 缈昏瘧娴佹按绾垮崗璋冨櫒锛岀紪鎺掕В鏋愩€佺炕璇戙€佹牎楠屻€佷慨澶嶄笌缂栬瘧姝ラ銆?| 椤跺眰绗﹀彿: CoordinatorAgent
 - `backend/app/services/agents/generator_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: GeneratorAgent
 - `backend/app/services/agents/langgraph_orchestrator.py`: 缈昏瘧浠ｇ悊缂栨帓灞傦紝璐熻矗鑺傜偣娴佽浆銆佸璁℃棩蹇椼€佽繘搴︽洿鏂帮紝浠ュ強鍦ㄦ牎楠岄噸璇曞悗闃绘柇浠嶆畫鐣欒嫳鏂囬暱娈电殑浠诲姟瀹屾垚銆?| 椤跺眰绗﹀彿: PipelineState, _should_skip_deterministic_section_downgrade, _normalize_error_signature, _write_audit_log, _update_progress, _write_task_log, _write_stage_failed_log
@@ -383,9 +374,6 @@
 - `backend/app/services/agents/llm_token_pool.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: _MemberState, _PoolRegistry, build_pool_members_from_groups, compute_pool_routing_key, _parse_retry_after_seconds, _perform_member_request, post_chat_completion_with_pool
 - `backend/app/services/agents/parser_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: ParserAgent
 - `backend/app/services/agents/pipeline_invariants.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: PipelineInvariantViolation, SpeculativeRepairForbiddenError, RawStructurePayloadViolation, RawContentLeakageViolation, HardFreezeProtocolViolation, assert_no_raw_structure, assert_no_long_raw_span, is_absolute_path_like
-- `backend/app/services/agents/pipeline_schema.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: PipelineInput, NodeOutput, PipelineAuditEntry, FallbackReport
-- `backend/app/services/agents/structure_repair_node.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: StructureRepairNode, _count_open_braces, _repair_unclosed_braces, _find_unmatched_environments, _repair_unmatched_environments, _apply_structural_repairs
-- `backend/app/services/agents/translation_repair_agent.py`: 缈昏瘧浠ｇ悊绠＄嚎鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: TranslationRepairAgent, _extract_placeholders, _estimate_tokens, _count_math_delimiters, _math_delimiter_guard, _placeholder_guard, _edit_budget_check
 - `backend/app/services/agents/translator_agent.py`: 鏍稿績缈昏瘧浠ｇ悊锛岃礋璐ｅ垎娈电炕璇戙€佹湳璇鐞嗐€乸ayload 瀹堝崼銆侀檷绾т笌閲嶈瘯鎺у埗锛屽苟鎵挎媴娈嬬暀鑻辨枃闀挎鐨勪繚瀹堜腑鏂囪ˉ鏁戜笌璇垽 immutable 鍒嗘鐨勫厹搴曠炕璇戙€?| 椤跺眰绗﹀彿: TranslatorAgent
 - `backend/app/services/agents/validator_agent.py`: 缈昏瘧鏍￠獙浠ｇ悊锛屾鏌ュ畬鏁存€с€佺粨鏋勯闄╁拰閿欒绫诲瀷鍒嗙被銆?| 椤跺眰绗﹀彿: ValidatorAgent, find_long_english_prose_spans, classify_error
 
@@ -452,16 +440,9 @@
 - `backend/app/services/latex/prompts.py`: LaTeX 澶勭悊閾捐矾鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: init_prompts, create_prompts
 - `backend/app/services/latex/reconstruct.py`: LaTeX 閲嶅缓鏈嶅姟锛屽皢缈昏瘧鍚庣殑鐗囨鎸夊師缁撴瀯鍥炲～骞堕噸缁勮緭鍑恒€?| 椤跺眰绗﹀彿: LatexConstructor
 - `backend/app/services/latex/sanitizer.py`: LaTeX 娓呮礂鍣紝棰勫鐞嗗嵄闄╂垨涓嶅吋瀹瑰懡浠ゅ苟淇鏂囨。椹卞姩缁嗚妭銆?| 椤跺眰绗﹀彿: apply_precompile_sanitization, _find_ghostscript, extract_failed_pdf_paths, check_pdf_syntax_error, sanitize_pdf, patch_tex_includegraphics
-- `backend/app/services/latex/structure_guard.py`: 缁撴瀯瀹堝崼锛屾牎楠岃В鏋愭垨缈昏瘧鍚庣殑鎷彿銆佺幆澧冧笌鍛戒护缁撴瀯瀹屾暣鎬с€?| 椤跺眰绗﹀彿: StructureGuardResult, _is_escaped, _strip_line_comments, _mask_verbatim_like_envs, _consume_braced_group, _consume_optional_bracket_group, _consume_command_token
 - `backend/app/services/latex/token_estimator.py`: LaTeX 澶勭悊閾捐矾鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: _formula_digest, estimate_tokens_v1, safe_limit_v1
 - `backend/app/services/latex/utils.py`: LaTeX 澶勭悊閾捐矾鐩稿叧鏂囦欢銆?| 椤跺眰绗﹀彿: ArxivDownloadError, ArxivNoSourceAvailableError, ArxivNetworkFailureError, ArxivArchiveCorruptedError, DownloadProgressCallback, get_pattern_command_full, extract_compressed_files, get_profect_dirs, has_appendix, remove_appendix_content, extract_latex_nodes
 
-### backend/app/services/translation
-- `backend/app/services/translation/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
-- `backend/app/services/translation/downgrade_handler.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: deterministic_downgrade
-- `backend/app/services/translation/repair_scheduler.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: QueueTimeoutError, TokenRepairScheduler
-- `backend/app/services/translation/structure_checker.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: _has_bare_dollars, _has_leaked_env, _has_unbalanced_braces, detect_structure_invariant
-- `backend/app/services/translation/ultimate_downgrade.py`: 缈昏瘧闄嶇骇涓庝慨澶嶇浉鍏虫枃浠躲€?| 椤跺眰绗﹀彿: _is_verbatim_segment, _extract_natural_language, _escape_latex_special, _strip_downgrade_comment_lines, _looks_like_downgrade_output, _split_title_and_body
 
 ### backend/app/utils
 - `backend/app/utils/__init__.py`: 鍖呭垵濮嬪寲涓庡鍑烘枃浠躲€?
@@ -536,7 +517,6 @@
 - `backend/scripts/backfill_translated_pdf_delivery.py`: 社区译文 PDF 交付回填脚本，现已负责批量将现有论文的译文 PDF 升级为已完成首页空白裁剪的最终交付资产。
 - `backend/app/services/agents/translator_agent.py`: 翻译代理现已补充 task 级补救 LLM 调用预算、`HARD_FREEZE_PROTOCOL_VIOLATION` 预算，以及预算耗尽后的稳定 fallback reason，确保补救调用不会无限放大。
 - `backend/app/services/agents/langgraph_orchestrator.py`: 编排层现已按 `2` 次 validate 重翻预算执行，并在补救预算耗尽时停止继续进入 repair 环，直接转入有界降级路径。
-- `backend/app/services/agents/translation_repair_agent.py`: repair agent 现已接入同一 task 级补救预算口径，避免外层 repair LLM 调用绕过主翻译预算上限。
 
 ## Recent Responsibility Updates (2026-04-21 Community Engagement)
 

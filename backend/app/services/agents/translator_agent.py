@@ -1,17 +1,10 @@
 ﻿from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
 from .validator_agent import (
-    ERROR_TYPE_A,
-    ERROR_TYPE_B,
-    ERROR_TYPE_C,
-    ERROR_TYPE_C1,
-    ERROR_TYPE_C2,
     ValidatorAgent,
     find_long_english_prose_spans,
 )
-from .pipeline_schema import FallbackReport
 from .pipeline_invariants import (
-    HardFreezeProtocolViolation,
     PipelineInvariantViolation,
     SpeculativeRepairForbiddenError,
     assert_no_raw_structure,
@@ -26,14 +19,10 @@ from backend.app.services.latex.utils import (
     unmask_sensitive_commands,
 )
 from backend.app.core.timezone_utils import get_cst_now
-from backend.app.core.config import settings
 from .llm_runtime import (
     build_llm_client_timeout,
-    resolve_llm_max_concurrent_requests,
-    resolve_llm_timeout,
 )
 from .llm_token_pool import post_chat_completion_with_pool
-from backend.app.services.translation.ultimate_downgrade import sanitize_section_translation_shells
 from backend.app.models.config_models import (
     ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS,
     ORIGIN_CLI_PARITY_MODE,
@@ -88,17 +77,36 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
+_DOCUMENT_BOUNDARY_RE = re.compile(r"\\(?:begin|end)\s*\{document\}")
+
+
+def sanitize_section_translation_shells(
+    text: str,
+    *,
+    leading_structure_shell: str = "",
+    trailing_structure_shell: str = "",
+) -> str:
+    body = text or ""
+    if leading_structure_shell:
+        while body.startswith(leading_structure_shell):
+            body = body[len(leading_structure_shell):].lstrip()
+    if trailing_structure_shell:
+        while body.endswith(trailing_structure_shell):
+            body = body[: -len(trailing_structure_shell)].rstrip()
+    if not _DOCUMENT_BOUNDARY_RE.search(body):
+        return body
+    stripped = _DOCUMENT_BOUNDARY_RE.sub("", body)
+    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+    return stripped.strip()
+
 
 class TranslatorAgent(BaseToolAgent):
     STATUS_TRANSLATED = "translated"
     STATUS_TRANSLATED_AFTER_NOOP_RETRY = "translated_after_noop_retry"
-    STATUS_FALLBACK_SOURCE_COMPILE_FIRST = "fallback_source_compile_first"
-    STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE = "structural_fallback_pending_compile"
     STATUS_FALLBACK_SOURCE_API_FAILURE = "fallback_source_api_failure"
     STATUS_PAYLOAD_INVARIANT_PASSTHROUGH = "payload_invariant_passthrough"
     STATUS_SOURCE_PASS_THROUGH = "source_pass_through"
     STATUS_IMMUTABLE_PASSTHROUGH = "immutable_passthrough"
-    STATUS_REPAIR_SKIPPED_NON_TRANSLATABLE = "repair_skipped_non_translatable"
     STATUS_MATH_PRESERVED = "math_preserved"
     FALLBACK_SUBTYPE_NONE = "none"
     FALLBACK_SUBTYPE_MATH_ENV = "math_env_fallback"
@@ -134,10 +142,8 @@ class TranslatorAgent(BaseToolAgent):
     _RESCUE_MAX_NESTED_LLM_CALLS_PER_BASE_PART = 4
     _RESCUE_MAX_NESTED_LLM_CALLS_PER_TASK = 24
     _RESCUE_MAX_REMEDIAL_LLM_CALLS_PER_TASK = 40
-    _RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK = 8
     _RESCUE_MAX_CONSECUTIVE_NO_PROGRESS_ATTEMPTS = 3
     _RESCUE_MAX_FAILED_ALPHA_CHARS = 32
-    _BRUTAL_TARGET_LANGUAGE_FALLBACK_TEXT = "相关内容已转为简要中文表述"
     _TERMINAL_NO_RETRY_STATUSES = frozenset({
         STATUS_TRANSLATED,
         STATUS_TRANSLATED_AFTER_NOOP_RETRY,
@@ -146,19 +152,6 @@ class TranslatorAgent(BaseToolAgent):
         STATUS_IMMUTABLE_PASSTHROUGH,
         STATUS_MATH_PRESERVED,
     })
-
-    @staticmethod
-    def _coerce_bool(value: Any, default: bool = False) -> bool:
-        """Safely coerce env/config style values to bool."""
-        if value is None:
-            return default
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "on"}
-        return default
 
     def __init__(self, 
                  config: Dict[str, Any], 
@@ -189,83 +182,33 @@ class TranslatorAgent(BaseToolAgent):
         self.generate_terminology = generate_terminology
         self.terminology_table = []  # 瀛樺偍鏈瀵? [(婧愭湳璇? 璇戞湳璇?, ...]
         self.term_dict = {}
-        mode = str(config.get("translation_core_mode") or "").strip().lower()
-        self.origin_cli_parity = (
-            mode == ORIGIN_CLI_PARITY_MODE
-            or self._coerce_bool(config.get("enable_legacy_translation_core", False), default=False)
+        self.origin_cli_parity = True
+        self.request_timeout_seconds = 100
+        self.llm_max_concurrent_requests = self._resolve_positive_int(
+            config.get("llm_max_concurrent_requests"),
+            ORIGIN_CLI_PARITY_SECTION_LLM_MAX_CONCURRENT_REQUESTS,
         )
-        self.request_timeout_seconds = (
-            100
-            if self.origin_cli_parity
-            else resolve_llm_timeout(config, default=settings.llm_timeout)
-        )
-        if self.origin_cli_parity:
-            self.llm_max_concurrent_requests = self._resolve_positive_int(
-                config.get("llm_max_concurrent_requests"),
-                ORIGIN_CLI_PARITY_SECTION_LLM_MAX_CONCURRENT_REQUESTS,
-            )
-        else:
-            self.llm_max_concurrent_requests = resolve_llm_max_concurrent_requests(
-                config,
-                default=settings.llm_max_concurrent_requests,
-            )
         self.llm_error_max_concurrent_requests = self._resolve_positive_int(
             config.get("llm_error_max_concurrent_requests"),
-            (
-                ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS
-                if self.origin_cli_parity
-                else self.llm_max_concurrent_requests
-            ),
+            ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS,
         )
         self.summary = ''
         self.prev_text = ''
         self.prev_transed_text = ''
         self.currant_content = ''
-        self.enable_compile_first_structural_fallback = self._coerce_bool(
-            config.get("enable_compile_first_structural_fallback", False),
-            default=False,
-        )
-        self.enable_post_compile_target_language_fallback = self._coerce_bool(
-            config.get("enable_post_compile_target_language_fallback", True),
-            default=True,
-        )
-        self.enable_section_internal_parallelism = self._coerce_bool(
-            config.get(
-                "enable_section_internal_parallelism",
-                os.getenv("LATEXTRANS_ENABLE_SECTION_INTERNAL_PARALLELISM"),
-            ),
-            default=False,
-        )
-        self.enable_hard_freeze_tokens = self._coerce_bool(
-            config.get("enable_hard_freeze_tokens", True),
-            default=True,
-        )
-        self.enable_legacy_translation_core = self.origin_cli_parity
-        self.structural_fallback_cap = float(config.get("structural_fallback_ratio_cap", 0.10) or 0.10)
-        self.structural_fallback_cap_mode = str(config.get("structural_fallback_cap_mode", "soft") or "soft").lower()
-        if self.structural_fallback_cap_mode not in {"soft", "hard"}:
-            self.structural_fallback_cap_mode = "soft"
-        self.structural_fallback_count = 0
-        self.structural_fallback_candidate_count = 0
-        self.structural_fallback_denominator = 0
-        self.structural_fallback_ratio = 0.0
-        self.structural_fallback_warning: Optional[str] = None
+        self.enable_legacy_translation_core = True
         self._structural_validator: Optional[ValidatorAgent] = None
         self._section_retry_counts: Dict[str, int] = {}
         self._c1_retried_parts: set[str] = set()
         self._api_fallback_parts: Dict[str, str] = {}
         self.c1_retry_enforced_once = False
-        self.structural_fallback_parts: List[str] = []
         self.noop_sections: List[str] = []
         self.payload_invariant_sections: List[str] = []
         self._oversize_downgrade_events: List[Dict[str, Any]] = []
         self._nested_rescue_attempt_counts: Dict[str, int] = {}
         self._nested_rescue_attempts_total = 0
         self._remedial_llm_call_count = 0
-        self._hard_freeze_protocol_violation_count = 0
         self._remedial_budget_exhausted_reason: Optional[str] = None
-        # eliminate-silent-fallback: structured fallback reports for repair loop
-        self.fallback_reports: List[FallbackReport] = []
         (
             self.model_context_tokens,
             self.prompt_reserve_tokens,
@@ -500,18 +443,6 @@ class TranslatorAgent(BaseToolAgent):
             **metadata,
         }
         self._oversize_downgrade_events.append(event)
-        # eliminate-silent-fallback: emit structured FallbackReport for repair loop
-        try:
-            report = FallbackReport(
-                fallback_kind="oversize_downgrade",
-                chunk_scope=str(metadata.get("section_id", "")),
-                root_cause=str(metadata.get("reason", "oversize_no_safe_boundary")),
-                validation_evidence=None,
-                translated_text=None,
-            )
-            self.fallback_reports.append(report)
-        except Exception as _fr_exc:
-            logger.warning("Failed to emit FallbackReport for oversize downgrade: %s", _fr_exc)
 
     def _flush_oversize_downgrade_events(self) -> None:
         if not self._oversize_downgrade_events or not self.output_dir:
@@ -670,37 +601,6 @@ class TranslatorAgent(BaseToolAgent):
         self._remedial_llm_call_count += 1
         return True
 
-    def _record_hard_freeze_protocol_violation(
-        self,
-        *,
-        part_type: str,
-        identifier: str,
-    ) -> bool:
-        self._hard_freeze_protocol_violation_count += 1
-        max_violations = self._resolve_positive_int(
-            getattr(
-                self,
-                "_RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK",
-                self._RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK,
-            ),
-            self._RESCUE_MAX_HARD_FREEZE_PROTOCOL_VIOLATIONS_PER_TASK,
-        )
-        exhausted = self._hard_freeze_protocol_violation_count >= max_violations
-        if exhausted:
-            self._set_remedial_budget_exhausted_reason(
-                "hard_freeze_protocol_violation_budget_exhausted",
-                part_type=part_type,
-                identifier=identifier,
-            )
-            logger.warning(
-                "Hard-freeze protocol violation budget exhausted for %s (%s): %s/%s",
-                part_type,
-                identifier,
-                self._hard_freeze_protocol_violation_count,
-                max_violations,
-            )
-        return exhausted
-
     def _reserve_nested_rescue_attempt(self, part_type: str, fail_part: str) -> bool:
         identifier = str(fail_part or "")
         if ":" not in identifier:
@@ -855,7 +755,6 @@ class TranslatorAgent(BaseToolAgent):
                 self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH,
                 self.STATUS_SOURCE_PASS_THROUGH,
                 self.STATUS_IMMUTABLE_PASSTHROUGH,
-                self.STATUS_FALLBACK_SOURCE_COMPILE_FIRST,
             }:
                 section["translated"] = False
         if no_op_detected is not None:
@@ -2215,49 +2114,20 @@ class TranslatorAgent(BaseToolAgent):
         )
         preprocessed_text = preprocess_risky_tokens(masked_text, math_map)
         masked_text = preprocessed_text
-        if self.enable_hard_freeze_tokens:
-            frozen_text, hard_freeze_context = freeze_protected_tokens(masked_text)
-        else:
-            frozen_text = masked_text
-            hard_freeze_context = {
-                "request_nonce": "",
-                "token_map": {},
-                "token_sequence": [],
-                "audit_entries": [],
-            }
-        return frozen_text, {
+        return masked_text, {
             "math_map": math_map,
             "env_map": env_map,
             "mask_mapping": mask_mapping,
-            "hard_freeze_request_nonce": hard_freeze_context.get("request_nonce", ""),
-            "hard_freeze_token_map": hard_freeze_context.get("token_map", {}),
-            "hard_freeze_token_sequence": hard_freeze_context.get("token_sequence", []),
-            "hard_freeze_audit_entries": hard_freeze_context.get("audit_entries", []),
         }
 
     def _restore_llm_output_text(self, raw_text: str, context: Dict[str, Any]) -> str:
         math_map = context.get("math_map", {}) if context else {}
         env_map = context.get("env_map", {}) if context else {}
         mask_mapping = context.get("mask_mapping", {}) if context else {}
-        hard_freeze_token_map = context.get("hard_freeze_token_map", {}) if context else {}
-        hard_freeze_token_sequence = context.get("hard_freeze_token_sequence", []) if context else []
-        hard_freeze_audit_entries = context.get("hard_freeze_audit_entries", []) if context else []
-        hard_freeze_verification_mode = context.get("hard_freeze_verification_mode", "strict") if context else "strict"
         try:
-            verify_hard_freeze_token_stream(
-                raw_text,
-                hard_freeze_token_sequence,
-                audit_entries=hard_freeze_audit_entries,
-                mask_mapping=mask_mapping,
-                verification_mode=hard_freeze_verification_mode,
-            )
-            hard_freeze_restored = restore_hard_freeze_tokens(raw_text, hard_freeze_token_map)
-        except Exception as exc:
-            raise HardFreezeProtocolViolation(str(exc)) from exc
-        try:
-            unmasked = unmask_sensitive_commands(hard_freeze_restored, mask_mapping)
+            unmasked = unmask_sensitive_commands(raw_text, mask_mapping)
         except Exception:
-            unmasked = hard_freeze_restored
+            unmasked = raw_text
 
         try:
             env_restored = restore_env_blocks(unmasked, env_map)
@@ -2278,14 +2148,7 @@ class TranslatorAgent(BaseToolAgent):
         part_type: str,
         identifier: str,
     ) -> str:
-        try:
-            return self._restore_llm_output_text(raw_text, context)
-        except HardFreezeProtocolViolation:
-            self._record_hard_freeze_protocol_violation(
-                part_type=part_type,
-                identifier=str(identifier),
-            )
-            raise
+        return self._restore_llm_output_text(raw_text, context)
 
     def _register_llm_part_failure(self, part_type: str, identifier: str) -> None:
         normalized = self._normalize_llm_failure_identifier(part_type, identifier)
@@ -2562,12 +2425,8 @@ class TranslatorAgent(BaseToolAgent):
         fallback_text: str,
         include_glossary: bool = False,
         user_prefix: str = "",
-        verification_mode: Optional[str] = None,
     ) -> str:
         prepared_text, llm_context = self._prepare_llm_payload_text(user_text)
-        llm_context["hard_freeze_verification_mode"] = verification_mode or (
-            "section_relaxed" if part_type == "sec" else "strict"
-        )
         user_content = f"{user_prefix}{prepared_text}"
         assert_no_raw_structure(user_content, context=f"translator:{part_type}:{fail_part}")
 
@@ -2627,7 +2486,6 @@ class TranslatorAgent(BaseToolAgent):
                         self._log_protection_actions(
                             llm_context.get("mask_mapping", {}),
                             fail_part,
-                            hard_freeze_entries=llm_context.get("hard_freeze_audit_entries", []),
                         )
                         self._clear_api_fallback(part_type, str(fail_part))
                         return restored
@@ -2667,7 +2525,6 @@ class TranslatorAgent(BaseToolAgent):
                             self._log_protection_actions(
                                 llm_context.get("mask_mapping", {}),
                                 fail_part,
-                                hard_freeze_entries=llm_context.get("hard_freeze_audit_entries", []),
                             )
                             self._clear_api_fallback(part_type, str(fail_part))
                             return restored
@@ -2803,7 +2660,6 @@ class TranslatorAgent(BaseToolAgent):
                 self.update_progress(100, "Successfully translated sections!")
 
         elif self.trans_mode == 1:
-            self._reset_structural_fallback_metrics()
             async with aiohttp.ClientSession() as session:
                 error_parts = [error_part["num_or_ph"] for error_part in self.errors_report]
                 logger.info(f"Starting retranslating for error parts: {error_parts}, attempt {error_retry_count + 1}/{Maxtry}")
@@ -3034,11 +2890,8 @@ class TranslatorAgent(BaseToolAgent):
             placeholders_cap.extend(cap_phs_in_env)
             envs[idx] = await self._translate_env(env, session)
 
-        if placeholders_env and self.enable_section_internal_parallelism:
-            await asyncio.gather(*[_translate_env_by_ph(ph) for ph in placeholders_env])
-        else:
-            for ph in placeholders_env:
-                await _translate_env_by_ph(ph)
+        for ph in placeholders_env:
+            await _translate_env_by_ph(ph)
 
         # Phase 3: translate referenced captions sequentially by default.
         # Remove duplicates while preserving order (captions from section + from envs).
@@ -3052,11 +2905,8 @@ class TranslatorAgent(BaseToolAgent):
                 return
             captions[idx] = await self._translate_caption(captions[idx], session)
 
-        if placeholders_cap and self.enable_section_internal_parallelism:
-            await asyncio.gather(*[_translate_caption_by_ph(ph) for ph in placeholders_cap])
-        else:
-            for ph in placeholders_cap:
-                await _translate_caption_by_ph(ph)
+        for ph in placeholders_cap:
+            await _translate_caption_by_ph(ph)
 
         return section
     
@@ -3119,462 +2969,56 @@ class TranslatorAgent(BaseToolAgent):
                         envs[i] = await self._translate_env(envs[i], session)
             return
 
-        # Local import to avoid circular deps at module load.
-        from backend.app.services.translation.downgrade_handler import DOWNGRADE_STATUS
-        sec_nums = self.fail_section_nums[:]
-        cap_phs = self.fail_caption_phs[:]
-        env_phs = self.fail_env_phs[:]
-        self.fail_section_nums.clear()
-        self.fail_caption_phs.clear()
-        self.fail_env_phs.clear()
-        self.have_fail_parts = False
-
-        sec_dict = {s["section"]: i for i, s in enumerate(secs)}
-        cap_dict = {c["placeholder"]: i for i, c in enumerate(caps)}
-        env_dict = {e["placeholder"]: i for i, e in enumerate(envs)}
-
-        if sec_nums:
-            self.log(f"Retranslating for {sec_nums}")
-            for sec_num in sec_nums:
-                if sec_num in sec_dict:
-                    i = sec_dict[sec_num]
-                    # Document-root / preamble chunks are never retranslatable.
-                    if self._is_document_root_section_chunk(secs[i]):
-                        continue
-                    if self._should_skip_fail_part_retry(secs[i]):
-                        logger.info("Maxtry guard: skipping payload-safe section %s", sec_num)
-                        continue
-                    # Section 0 should be translated only if it has translatable content.
-                    if sec_num == "0" and not self._section_has_translatable_content(secs[i]["content"]):
-                        continue
-                    # ── Phase 3 Guard: skip deterministically downgraded sections ──
-                    if secs[i].get("translation_status") == DOWNGRADE_STATUS:
-                        logger.info("Maxtry guard: skipping downgraded section %s", sec_num)
-                        continue
-                    if self._is_immutable_section(secs[i]):
-                        logger.info("Maxtry guard: skipping immutable passthrough section %s", sec_num)
-                        continue
-                    secs[i] = await self._translate_section(secs[i], session)
-            # else:
-            #     print(f"[Warning] Section {sec_num} not found.")
-        if cap_phs:
-            self.log(f"Retranslating for {cap_phs}")
-            for cap_ph in cap_phs:
-                if cap_ph in cap_dict:
-                    i = cap_dict[cap_ph]
-                    if self._should_skip_fail_part_retry(caps[i]):
-                        logger.info("Maxtry guard: skipping payload-safe caption %s", cap_ph)
-                        continue
-                    # ── Phase 3 Guard: skip deterministically downgraded captions ──
-                    if caps[i].get("translation_status") == DOWNGRADE_STATUS:
-                        logger.info("Maxtry guard: skipping downgraded caption %s", cap_ph)
-                        continue
-                    caps[i] = await self._translate_caption(caps[i], session)
-            # else:
-            #     print(f"[Warning] Caption placeholder {cap_ph} not found.")
-        if env_phs:
-            self.log(f"Retranslating for {env_phs}")
-            for env_ph in env_phs:
-                if env_ph in env_dict:
-                    i = env_dict[env_ph]
-                    if self._should_skip_fail_part_retry(envs[i]):
-                        logger.info("Maxtry guard: skipping payload-safe env %s", env_ph)
-                        continue
-                    # ── Phase 3 Guard: skip deterministically downgraded envs ──────
-                    # Envs with DOWNGRADE_STATUS are final (Phase 2 queue timeout or
-                    # 429 limit). Maxtry MUST NOT re-consume their repair opportunity.
-                    if envs[i].get("translation_status") == DOWNGRADE_STATUS:
-                        logger.info("Maxtry guard: skipping downgraded env %s", env_ph)
-                        continue
-                    envs[i] = await self._translate_env(envs[i], session)
-            # else:
-            #     print(f"[Warning] Environment placeholder {env_ph} not found.")
-
-    def _reset_structural_fallback_metrics(self) -> None:
-        self.structural_fallback_count = 0
-        self.structural_fallback_candidate_count = 0
-        self.structural_fallback_denominator = 0
-        self.structural_fallback_ratio = 0.0
-        self.structural_fallback_warning = None
-        self.structural_fallback_parts = []
-
-    def _compute_structural_fallback_denominator(self, secs: List[Dict], caps: List[Dict], envs: List[Dict]) -> int:
-        sec_count = 0
-        for sec in secs:
-            sec_id = str(sec.get("section"))
-            if sec_id == "-1":
-                continue
-            if sec_id == "0" and not self._section_has_translatable_content(sec.get("content", "")):
-                continue
-            sec_count += 1
-
-        env_count = 0
-        for env in envs:
-            if env.get("need_trans", True):
-                env_count += 1
-
-        denominator = sec_count + len(caps) + env_count
-        return max(denominator, 1)
-
-    def _finalize_structural_fallback_metrics(self) -> None:
-        if self.structural_fallback_denominator <= 0:
-            self.structural_fallback_ratio = 0.0
-        else:
-            self.structural_fallback_ratio = self.structural_fallback_count / self.structural_fallback_denominator
-
-        if self.structural_fallback_ratio > self.structural_fallback_cap:
-            self.structural_fallback_warning = (
-                f"Compile-first structural fallback ratio {self.structural_fallback_ratio:.2%} "
-                f"exceeds cap {self.structural_fallback_cap:.2%} "
-                f"(mode={self.structural_fallback_cap_mode})"
-            )
-            logger.warning(self.structural_fallback_warning)
-
-    def _get_structural_validator(self) -> ValidatorAgent:
-        if self._structural_validator is None:
-            self._structural_validator = ValidatorAgent(
-                config=self.config,
-                project_dir=self.project_dir,
-                output_dir=self.output_dir,
-            )
-        return self._structural_validator
-
-    def _validate_part_after_structural_fix(self, part: Dict) -> Optional[Dict]:
-        """Re-validate one part immediately after structural fix."""
-        try:
-            validator = self._get_structural_validator()
-            return validator._validate(part)
-        except Exception as exc:
-            logger.warning("Immediate post-fix validation failed: %s", exc)
-            return {"math_error": f"post_fix_validation_failed: {exc}"}
-
-    @staticmethod
-    def _summarize_structural_errors(error_report: Dict) -> str:
-        keys = ["command_error", "ph_error", "bracket_error", "math_error", "global_ph_error"]
-        items = []
-        for key in keys:
-            val = error_report.get(key)
-            if val:
-                first_line = str(val).splitlines()[0]
-                items.append(f"{key}={first_line}")
-        return "; ".join(items) if items else "unknown_error"
-
-    @staticmethod
-    def _is_level_a_related_error(error_report: Dict[str, Any]) -> bool:
-        payload = " ".join(
-            str(error_report.get(k, ""))
-            for k in ("command_error", "ph_error", "bracket_error", "math_error", "global_ph_error")
-        ).lower()
-        return (
-            "level_a_env_placeholder_residual" in payload
-            or "env_boundary_mismatch" in payload
-            or "env_restore_failed" in payload
-            or "<env_restore_failed>" in payload
-        )
-
-    def _apply_compile_first_fallback(self, part: Dict, error: Dict, recheck_report: Optional[Dict] = None) -> bool:
-        """Mark a part for post-compile target-language fallback when structural fix remains unsafe."""
-        self.structural_fallback_candidate_count += 1
-        identifier = error.get("num_or_ph", "?")
-        reason = self._summarize_structural_errors(recheck_report or error)
-
-        projected_ratio = (self.structural_fallback_count + 1) / max(self.structural_fallback_denominator, 1)
-        self.structural_fallback_count += 1
-        if identifier not in self.structural_fallback_parts:
-            self.structural_fallback_parts.append(identifier)
-
-        if "section" in part:
-            err_type = str(error.get("error_type", "C2"))
-            reason_tag = "math_delimiter_mismatch" if "math_delimiter_mismatch" in reason else "structural_validation_failed"
-            fallback_reason = f"compile_first_structural_fallback:{err_type}_{reason_tag}"
-            self._update_section_metadata(
-                part,
-                status=self.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
-                fallback_reason=fallback_reason,
-            )
-        elif "env_name" in part:
-            err_type = str(error.get("error_type", "C2"))
-            fallback_reason = f"compile_first_structural_fallback:{err_type}_{reason}"
-            self._update_env_metadata(
-                part,
-                status=self.STATUS_STRUCTURAL_FALLBACK_PENDING_COMPILE,
-                fallback_reason=fallback_reason,
-                fallback_subtype=self._infer_env_fallback_subtype(part),
-            )
-
-        logger.warning(
-            "Post-compile fallback candidate recorded for part %s (reason: %s)",
-            identifier,
-            reason,
-        )
-
-        if projected_ratio > self.structural_fallback_cap:
-            self.structural_fallback_warning = (
-                f"Compile-first structural fallback ratio {projected_ratio:.2%} "
-                f"exceeds cap {self.structural_fallback_cap:.2%} (mode={self.structural_fallback_cap_mode})"
-            )
-            logger.warning(self.structural_fallback_warning)
-
-        return True
-
     async def _retranslate_error_parts(self, secs, caps, envs, session) -> Any:
-        """
-        Retranslate error parts with A/B/C error type routing:
-        - Type A (resource missing): Apply degradation, keep existing translation
-        - Type B (recoverable): Allow one translation retry
-        - Type C (structural): Apply algorithmic fix without LLM retry
-        """
-        if self.enable_legacy_translation_core:
-            async def process_error_part(error_report):
-                error_message = []
-                if "command_error" in error_report:
-                    error_message.append(error_report["command_error"])
-                if "ph_error" in error_report:
-                    error_message.append(error_report["ph_error"])
-                if "bracket_error" in error_report:
-                    error_message.append(error_report["bracket_error"])
-                error_message_text = "\n".join(error_message)
+        async def process_error_part(error_report):
+            error_message = []
+            if "command_error" in error_report:
+                error_message.append(error_report["command_error"])
+            if "ph_error" in error_report:
+                error_message.append(error_report["ph_error"])
+            if "bracket_error" in error_report:
+                error_message.append(error_report["bracket_error"])
+            error_message_text = "\n".join(error_message)
 
-                part_type = error_report.get("part")
-                identifier = error_report.get("num_or_ph")
-                if part_type == "sec":
-                    for i, sec in enumerate(secs):
-                        if identifier == sec["section"]:
-                            secs[i] = await self._translate_section(
-                                section=sec,
-                                error_message=error_message_text,
-                                session=session,
-                            )
-                            return
-                if part_type == "env":
-                    for i, env in enumerate(envs):
-                        if identifier == env["placeholder"]:
-                            envs[i] = await self._translate_env(
-                                env=env,
-                                error_message=error_message_text,
-                                session=session,
-                            )
-                            return
-                if part_type == "cap":
-                    for i, cap in enumerate(caps):
-                        if identifier == cap["placeholder"]:
-                            caps[i] = await self._translate_caption(
-                                caption=cap,
-                                error_message=error_message_text,
-                                session=session,
-                            )
-                            return
-
-            sem = asyncio.Semaphore(self.llm_error_max_concurrent_requests)
-
-            async def guarded_process(error_report):
-                async with sem:
-                    await process_error_part(error_report)
-
-            tasks = [guarded_process(error_report) for error_report in self.errors_report]
-            for future in asyncio.as_completed(tasks):
-                await future
-            return
+            part_type = error_report.get("part")
+            identifier = error_report.get("num_or_ph")
+            if part_type == "sec":
+                for i, sec in enumerate(secs):
+                    if identifier == sec["section"]:
+                        secs[i] = await self._translate_section(
+                            section=sec,
+                            error_message=error_message_text,
+                            session=session,
+                        )
+                        return
+            if part_type == "env":
+                for i, env in enumerate(envs):
+                    if identifier == env["placeholder"]:
+                        envs[i] = await self._translate_env(
+                            env=env,
+                            error_message=error_message_text,
+                            session=session,
+                        )
+                        return
+            if part_type == "cap":
+                for i, cap in enumerate(caps):
+                    if identifier == cap["placeholder"]:
+                        caps[i] = await self._translate_caption(
+                            caption=cap,
+                            error_message=error_message_text,
+                            session=session,
+                        )
+                        return
 
         sem = asyncio.Semaphore(self.llm_error_max_concurrent_requests)
-        completed = 0
-        total = len(self.errors_report)
-        self.structural_fallback_denominator = self._compute_structural_fallback_denominator(secs, caps, envs)
 
-        # Group errors by type for efficient processing
-        type_a_errors = []
-        type_b_errors = []
-        type_c1_errors = []  # C1: local/contained -- 1 LLM retry then deterministic fix
-        type_c2_errors = []  # C2: global/structural -- deterministic fix only, no LLM retry
-
-        for error_report in self.errors_report:
-            error_type = error_report.get("error_type", ERROR_TYPE_B)
-            if error_type == ERROR_TYPE_A:
-                type_a_errors.append(error_report)
-            elif error_type in (ERROR_TYPE_C1,):
-                type_c1_errors.append(error_report)
-            elif error_type in (ERROR_TYPE_C, ERROR_TYPE_C2):
-                # ERROR_TYPE_C is legacy (pre-subclassification) -- treat as C2
-                type_c2_errors.append(error_report)
-            else:
-                type_b_errors.append(error_report)
-
-        logger.info(
-            f"Error classification: A={len(type_a_errors)}, B={len(type_b_errors)}, "
-            f"C1={len(type_c1_errors)}, C2={len(type_c2_errors)}"
-        )
-
-        # Process Type A errors: Degradation (keep existing translation, log warning)
-        for error in type_a_errors:
-            logger.warning(f"Type A error (degradation): {error.get('num_or_ph')} - keeping existing translation")
-            completed += 1
-            progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Processed {completed}/{total} (A:degraded)")
-
-        # Process Type C2 errors: no speculative repair; direct compile-first fallback.
-        for error in type_c2_errors:
-            part = self._find_part_by_error(error, secs, caps, envs)
-            if part:
-                self._apply_compile_first_fallback(part, error, recheck_report=error)
-            completed += 1
-            progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Processed {completed}/{total} (C2:fallback)")
-
-        # Process Type C1 errors: 1 controlled LLM retry, then deterministic fix
-        async def process_type_c1_error(error_report):
-            """C1: try a single targeted LLM retry with restoration instructions, then fix."""
+        async def guarded_process(error_report):
             async with sem:
-                if self._is_level_a_related_error(error_report):
-                    part = self._find_part_by_error(error_report, secs, caps, envs)
-                    if part:
-                        self._apply_compile_first_fallback(part, error_report, recheck_report=error_report)
-                    return
-                part = self._find_part_by_error(error_report, secs, caps, envs)
-                if part and part.get("translation_status") == self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH:
-                    logger.info("Skipping C1 retry for payload-invariant passthrough part: %s", error_report.get("num_or_ph"))
-                    return
-                ph_error = error_report.get("ph_error", "")
-                math_error = error_report.get("math_error", "")
-                completeness_error = error_report.get("completeness_error", "")
-                restoration_hint = (
-                    "CRITICAL: Restore all LaTeX placeholders and math delimiters exactly as in the source. "
-                )
-                if ph_error:
-                    restoration_hint += f"Missing elements: {ph_error}. "
-                if math_error:
-                    restoration_hint += f"Math issue: {math_error}."
-                if completeness_error:
-                    restoration_hint += f" Completeness issue: {completeness_error}."
+                await process_error_part(error_report)
 
-                part_type = error_report["part"]
-                identifier = error_report["num_or_ph"]
-                part_key = self._part_retry_key(part_type, identifier)
-                attempted_llm_retry = False
-
-                # Enforce "max 1 LLM retry per part" for C1 end-to-end.
-                if part_key in self._c1_retried_parts:
-                    self.c1_retry_enforced_once = True
-                    logger.info("C1 retry already consumed for %s, skipping additional LLM retry", part_key)
-                else:
-                    # Reserve retry slot before awaiting to avoid duplicate retries under concurrency.
-                    self._c1_retried_parts.add(part_key)
-                    retried = False
-                    if part_type == "sec":
-                        for i, sec in enumerate(secs):
-                            if identifier == sec["section"]:
-                                secs[i] = await self._translate_section(
-                                    section=sec, error_message=restoration_hint, session=session
-                                )
-                                retried = True
-                                break
-                    elif part_type == "env":
-                        for i, env in enumerate(envs):
-                            if identifier == env["placeholder"]:
-                                envs[i] = await self._translate_env(
-                                    env=env, error_message=restoration_hint, session=session
-                                )
-                                retried = True
-                                break
-                    elif part_type == "cap":
-                        for i, cap in enumerate(caps):
-                            if identifier == cap["placeholder"]:
-                                caps[i] = await self._translate_caption(
-                                    caption=cap, error_message=restoration_hint, session=session
-                                )
-                                retried = True
-                                break
-
-                    if not retried:
-                        self._c1_retried_parts.discard(part_key)
-                        logger.warning("C1 retry: part not found: %s", identifier)
-                        return
-                    attempted_llm_retry = True
-
-                # After the LLM retry, route directly to compile-first fallback if still broken.
-                part = self._find_part_by_error(error_report, secs, caps, envs)
-                if part:
-                    recheck_report = self._validate_part_after_structural_fix(part)
-                    if recheck_report:
-                        self._apply_compile_first_fallback(part, error_report, recheck_report=recheck_report)
-                    else:
-                        if attempted_llm_retry:
-                            logger.info("C1 part resolved by LLM retry: %s", identifier)
-                        else:
-                            logger.info("C1 part resolved without additional LLM retry: %s", identifier)
-
-        tasks_c1 = [process_type_c1_error(error) for error in type_c1_errors]
-        for future in asyncio.as_completed(tasks_c1):
+        tasks = [guarded_process(error_report) for error_report in self.errors_report]
+        for future in asyncio.as_completed(tasks):
             await future
-            completed += 1
-            progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Processed {completed}/{total} (C1:retry+fallback)")
-
-        # Process Type B errors: Translation retry (existing logic)
-        async def process_type_b_error(error_report):
-            async with sem:
-                part = self._find_part_by_error(error_report, secs, caps, envs)
-                completeness_error = error_report.get("completeness_error", "")
-                if (
-                    part
-                    and part.get("translation_status") == self.STATUS_PAYLOAD_INVARIANT_PASSTHROUGH
-                    and not completeness_error
-                ):
-                    logger.info("Skipping Type B retry for payload-invariant passthrough part: %s", error_report.get("num_or_ph"))
-                    return False
-                error_message = []
-                if "command_error" in error_report:
-                    error_message.append(error_report["command_error"])
-                if "ph_error" in error_report:
-                    error_message.append(error_report["ph_error"])
-                if "bracket_error" in error_report:
-                    error_message.append(error_report["bracket_error"])
-                if "completeness_error" in error_report:
-                    error_message.append(error_report["completeness_error"])
-                if "global_ph_error" in error_report:
-                    error_message.append(error_report["global_ph_error"])
-                error_message = "\n".join(error_message)
-
-                part_type = error_report["part"]
-                identifier = error_report["num_or_ph"]
-
-                if part_type == "sec":
-                    for i, sec in enumerate(secs):
-                        if identifier == sec["section"]:
-                            secs[i] = await self._translate_section(
-                                section=sec, error_message=error_message, session=session
-                            )
-                            return True
-                elif part_type == "env":
-                    for i, env in enumerate(envs):
-                        if identifier == env["placeholder"]:
-                            envs[i] = await self._translate_env(
-                                env=env, error_message=error_message, session=session
-                            )
-                            return True
-                elif part_type == "cap":
-                    for i, cap in enumerate(caps):
-                        if identifier == cap["placeholder"]:
-                            caps[i] = await self._translate_caption(
-                                caption=cap, error_message=error_message, session=session
-                            )
-                            return True
-                return False
-
-        tasks_type_b = [process_type_b_error(error) for error in type_b_errors]
-        for future in asyncio.as_completed(tasks_type_b):
-            await future
-            completed += 1
-            progress_pct = int(100 * completed / total) if total > 0 else 100
-            self.update_progress(progress_pct, f"Retranslated {completed}/{total} (B:retry)")
-
-        self._finalize_structural_fallback_metrics()
-        logger.info(
-            "Completed retranslation of error parts (fallback_count=%d, ratio=%.4f, cap=%.4f, mode=%s)",
-            self.structural_fallback_count,
-            self.structural_fallback_ratio,
-            self.structural_fallback_cap,
-            self.structural_fallback_cap_mode,
-        )
     
     def _find_part_by_error(self, error: Dict, secs: List, caps: List, envs: List) -> Optional[Dict]:
         """Find the part (section/caption/env) referenced by an error report."""
@@ -4630,19 +4074,10 @@ class TranslatorAgent(BaseToolAgent):
             self._c1_retried_parts.add(list_retry_key)
 
         transed_env["trans_content"] = last_candidate or env.get("content", "")
-        fallback_error = {
-            "part": "env",
-            "num_or_ph": placeholder,
-            "error_type": ERROR_TYPE_C1,
-            "math_error": last_mismatch or "item_anchor_sequence_mismatch: unknown",
-        }
-        self._apply_compile_first_fallback(
-            transed_env,
-            fallback_error,
-            recheck_report=fallback_error,
-        )
         self._update_env_metadata(
             transed_env,
+            status=self.STATUS_FALLBACK_SOURCE_API_FAILURE,
+            fallback_reason=last_mismatch or "item_anchor_sequence_mismatch",
             fallback_subtype=self.FALLBACK_SUBTYPE_LIST_ENV,
             row_fallback_count=0,
         )
@@ -5506,8 +4941,6 @@ class TranslatorAgent(BaseToolAgent):
         self,
         mapping: Dict[str, str],
         fail_part: str,
-        *,
-        hard_freeze_entries: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         Task 12.5: Persist protection log entries to data/protection_log/<task_id>.json.
@@ -5515,7 +4948,7 @@ class TranslatorAgent(BaseToolAgent):
         Only writes when *mapping* is non-empty.  Entries are appended to an
         existing JSON array so the file accumulates across all translation calls.
         """
-        if (not mapping and not hard_freeze_entries) or not self.output_dir:
+        if not mapping or not self.output_dir:
             return
 
         try:
@@ -5544,20 +4977,6 @@ class TranslatorAgent(BaseToolAgent):
                     "original_command": original,
                     "type": "mask_mapping",
                 })
-
-            for item in hard_freeze_entries or []:
-                entries.append(
-                    {
-                        "fail_part": fail_part,
-                        "type": "hard_freeze",
-                        "token": item.get("token"),
-                        "original": item.get("original"),
-                        "kind": item.get("kind"),
-                        "ordinal": item.get("ordinal"),
-                        "request_nonce": item.get("request_nonce"),
-                        "digest": item.get("digest"),
-                    }
-                )
 
             with open(log_file, "w", encoding="utf-8") as fh:
                 json.dump(entries, fh, ensure_ascii=False, indent=2)

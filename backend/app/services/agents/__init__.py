@@ -8,15 +8,6 @@ from typing import Optional
 # ROLE: Infrastructure-level protection against system resource exhaustion.
 #       It must NEVER be used to make business scheduling decisions.
 #
-# STRICT PROHIBITION:
-#   - MUST NOT influence Phase 2 (ControlledRepairWorkflow) repair scheduling.
-#   - MUST NOT trigger Phase 3 downgrade decisions.
-#   - MUST NOT act as a token-scoped rate limiter.
-#   - MUST NOT consume or count repair opportunities.
-#
-# For Phase 2 business scheduling, use TokenRepairScheduler instead.
-# See: backend/app/services/translation/repair_scheduler.py
-#
 # The value is read from Settings lazily on first use.
 
 _global_llm_semaphore: Optional[asyncio.Semaphore] = None

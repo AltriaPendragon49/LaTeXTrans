@@ -15,22 +15,6 @@ MODERN_TRANSLATION_CORE_MODE = "modern"
 ORIGIN_CLI_PARITY_SECTION_LLM_MAX_CONCURRENT_REQUESTS = 10
 ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS = 20
 
-MODERN_SYSTEMS_DISABLED_FOR_ORIGIN_CLI_PARITY = [
-    "hard_freeze_transport",
-    "precompile_structure_guard",
-    "controlled_repair",
-    "ultimate_downgrade",
-    "post_compile_target_language_fallback",
-    "residual_english_fallback",
-    "compilation_diagnostics",
-    "backend_parallel_parser_environment_judgment",
-    "section_internal_parallelism",
-    "intelligent_compiler_fallback",
-    "rag_or_terminology_mutation",
-    "backend_quality_improvement_paths",
-]
-
-
 def is_origin_cli_parity_config(config: Optional[Mapping[str, Any]]) -> bool:
     if not config:
         return False
@@ -45,19 +29,9 @@ def normalize_origin_cli_parity_agent_config(config: Mapping[str, Any]) -> Dict[
     normalized["enable_legacy_translation_core"] = True
     normalized["mode"] = 0
     normalized["translation_mode"] = "full"
-    normalized["use_compilation_diagnostics"] = False
-    normalized["enable_compile_first_structural_fallback"] = False
-    normalized["enable_post_compile_target_language_fallback"] = False
-    normalized["enable_precompile_structure_guard"] = False
-    normalized["enable_hard_freeze_tokens"] = False
-    normalized["enable_section_internal_parallelism"] = False
-    normalized["enable_intelligent_compiler_fallback"] = False
     normalized["enable_parser_env_llm_judgment"] = True
     normalized["origin_cli_parity_legacy_parser_env_judgment"] = True
     normalized["origin_cli_parity_single_kernel_lineage"] = True
-    normalized["origin_cli_parity_modern_systems_not_invoked"] = list(
-        MODERN_SYSTEMS_DISABLED_FOR_ORIGIN_CLI_PARITY
-    )
     normalized["llm_max_concurrent_requests"] = ORIGIN_CLI_PARITY_SECTION_LLM_MAX_CONCURRENT_REQUESTS
     normalized["llm_error_max_concurrent_requests"] = (
         ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS

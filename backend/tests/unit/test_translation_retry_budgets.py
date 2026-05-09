@@ -72,26 +72,3 @@ def test_first_pass_calls_do_not_consume_task_level_remedial_budget() -> None:
     assert reserved is True
     assert agent._remedial_llm_call_count == 0
     assert agent._remedial_budget_exhausted_reason is None
-
-
-def test_hard_freeze_violation_budget_caps_at_eight_events() -> None:
-    agent = _make_agent()
-
-    exhaustion_markers = [
-        agent._record_hard_freeze_protocol_violation(
-            part_type="sec",
-            identifier=f"hard-freeze-{idx}",
-        )
-        for idx in range(8)
-    ]
-
-    assert exhaustion_markers == [False, False, False, False, False, False, False, True]
-    assert agent._hard_freeze_protocol_violation_count == 8
-    assert (
-        agent._remedial_budget_exhausted_reason
-        == "hard_freeze_protocol_violation_budget_exhausted"
-    )
-    assert (
-        agent._get_api_fallback_reason("sec", "hard-freeze-7")
-        == "hard_freeze_protocol_violation_budget_exhausted"
-    )

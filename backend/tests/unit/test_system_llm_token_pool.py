@@ -379,7 +379,7 @@ async def test_translator_agent_system_pool_uses_pool_helper(monkeypatch, tmp_pa
     monkeypatch.setattr(
         agent,
         "_prepare_llm_payload_text",
-        lambda text: (text, {"mask_mapping": {}, "hard_freeze_audit_entries": []}),
+        lambda text: (text, {"mask_mapping": {}}),
     )
     monkeypatch.setattr(agent, "_restore_llm_output_text", lambda text, _ctx: text)
     monkeypatch.setattr(agent, "_log_protection_actions", lambda *args, **kwargs: None)

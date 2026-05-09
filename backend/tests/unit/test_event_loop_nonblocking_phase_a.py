@@ -2,9 +2,6 @@ import asyncio
 import json
 import os
 import time
-from pathlib import Path
-
-import pytest
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
@@ -12,10 +9,6 @@ os.environ.setdefault("LLM_MODEL", "gpt-4o")
 
 
 async def _tick_probe(duration: float = 0.25, interval: float = 0.01) -> float:
-    """
-    Measure worst scheduler gap while a target coroutine is running.
-    Returns maximum observed interval between ticks.
-    """
     loop = asyncio.get_running_loop()
     end_at = loop.time() + duration
     last = loop.time()
@@ -29,15 +22,10 @@ async def _tick_probe(duration: float = 0.25, interval: float = 0.01) -> float:
 
 
 def test_parser_execute_does_not_pin_event_loop(monkeypatch, tmp_path):
-    """
-    Behavior gate:
-    parser phase includes a blocking parse() implementation, but event loop
-    should stay responsive while ParserAgent.execute() is running.
-    """
     from backend.app.services.agents import parser_agent as parser_mod
 
     class _SlowParser:
-        def __init__(self, project_dir, output_dir):
+        def __init__(self, project_dir, output_dir, **_kwargs):
             self.inputs_json = []
             self.envs_json = []
             self.captions_json = []
@@ -61,9 +49,9 @@ def test_parser_execute_does_not_pin_event_loop(monkeypatch, tmp_path):
     )
 
     async def _run():
-        t = asyncio.create_task(agent.execute())
+        task = asyncio.create_task(agent.execute())
         max_gap = await _tick_probe()
-        await t
+        await task
         return max_gap
 
     max_gap = asyncio.run(_run())
@@ -71,10 +59,6 @@ def test_parser_execute_does_not_pin_event_loop(monkeypatch, tmp_path):
 
 
 def test_validate_node_does_not_pin_event_loop(monkeypatch, tmp_path):
-    """
-    Behavior gate:
-    validator execute() may be CPU-heavy; orchestration node must keep loop healthy.
-    """
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     class _SlowValidator:
@@ -86,14 +70,8 @@ def test_validate_node_does_not_pin_event_loop(monkeypatch, tmp_path):
             return []
 
     class _NoopTranslator:
-        structural_fallback_count = 0
-        structural_fallback_ratio = 0.0
-        structural_fallback_cap = 0.38
-        structural_fallback_cap_mode = "soft"
-        structural_fallback_parts = []
         noop_sections = []
-        c1_retry_enforced_once = False
-        structural_fallback_warning = None
+        payload_invariant_sections = []
 
         async def execute(self, *args, **kwargs):
             return None
@@ -117,16 +95,16 @@ def test_validate_node_does_not_pin_event_loop(monkeypatch, tmp_path):
     }
 
     async def _run():
-        t = asyncio.create_task(orch.node_validate_and_retry(state))
+        task = asyncio.create_task(orch.node_validate_and_retry(state))
         max_gap = await _tick_probe()
-        await t
+        await task
         return max_gap
 
     max_gap = asyncio.run(_run())
     assert max_gap < 0.05, f"event loop stalled during validate node (max_gap={max_gap:.3f}s)"
 
 
-def test_validate_node_uses_full_two_retry_budget_before_stagnation_stop(monkeypatch, tmp_path):
+def test_validate_node_uses_full_retry_budget_before_stagnation_stop(monkeypatch, tmp_path):
     from backend.app.services.agents import langgraph_orchestrator as orch
 
     class _StaticValidator:
@@ -144,14 +122,8 @@ def test_validate_node_uses_full_two_retry_budget_before_stagnation_stop(monkeyp
             ]
 
     class _CountingTranslator:
-        structural_fallback_count = 0
-        structural_fallback_ratio = 0.0
-        structural_fallback_cap = 0.38
-        structural_fallback_cap_mode = "soft"
-        structural_fallback_parts = []
         noop_sections = []
-        c1_retry_enforced_once = False
-        structural_fallback_warning = None
+        payload_invariant_sections = []
 
         def __init__(self):
             self.calls = 0
@@ -181,92 +153,21 @@ def test_validate_node_uses_full_two_retry_budget_before_stagnation_stop(monkeyp
         "on_progress": None,
     }
 
-    result = asyncio.run(orch.node_validate_and_retry(state))
+    asyncio.run(orch.node_validate_and_retry(state))
 
-    assert translator.calls == 2
+    assert translator.calls == 3
     logs = json.loads((transed_project_dir / "task_log.json").read_text(encoding="utf-8"))
-    assert not any(entry["event"] == "validation_retry_short_circuited_no_progress" for entry in logs)
-    assert "fallback_reports" in result
-
-
-def test_validate_node_raises_when_residual_english_prose_survives_retries(monkeypatch, tmp_path):
-    from backend.app.services.agents import langgraph_orchestrator as orch
-
-    class _CompletenessValidator:
-        def __init__(self, *args, **kwargs):
-            self.code_like_filtered_bare_tokens = 0
-
-        def execute(self, *args, **kwargs):
-            return [
-                {
-                    "part": "sec",
-                    "num_or_ph": "1",
-                    "error_type": "B",
-                    "completeness_error": (
-                        "long_english_prose_span: remaining English prose detected. "
-                        "Translate the residual English prose."
-                    ),
-                }
-            ]
-
-    class _CountingTranslator:
-        structural_fallback_count = 0
-        structural_fallback_ratio = 0.0
-        structural_fallback_cap = 0.38
-        structural_fallback_cap_mode = "soft"
-        structural_fallback_parts = []
-        noop_sections = []
-        c1_retry_enforced_once = False
-        structural_fallback_warning = None
-
-        def __init__(self):
-            self.calls = 0
-            self.trans_mode = 0
-            self.errors_report = []
-
-        async def execute(self, *args, **kwargs):
-            self.calls += 1
-            return None
-
-    monkeypatch.setattr(orch, "ValidatorAgent", _CompletenessValidator)
-
-    transed_project_dir = tmp_path / "zh_proj"
-    transed_project_dir.mkdir(parents=True, exist_ok=True)
-    (transed_project_dir / "sections_map.json").write_text("[]", encoding="utf-8")
-    (transed_project_dir / "envs_map.json").write_text("[]", encoding="utf-8")
-
-    translator = _CountingTranslator()
-    state = {
-        "config": {
-            "target_language": "zh",
-            "enable_post_compile_target_language_fallback": False,
-        },
-        "project_dir": str(tmp_path / "proj"),
-        "transed_project_dir": str(transed_project_dir),
-        "mode": 0,
-        "translator_agent": translator,
-        "base_name": "proj",
-        "task_id": "task-1",
-        "on_progress": None,
-    }
-
-    with pytest.raises(RuntimeError, match="Residual English prose remains"):
-        asyncio.run(orch.node_validate_and_retry(state))
-
-    assert translator.calls == 2
-    logs = json.loads((transed_project_dir / "task_log.json").read_text(encoding="utf-8"))
-    assert any(entry["event"] == "validation_blocked_residual_english_prose" for entry in logs)
+    short_circuit = next(
+        entry for entry in logs if entry["event"] == "validation_retry_short_circuited_no_progress"
+    )
+    assert short_circuit["attempt"] == 3
 
 
 def test_parallel_tasks_not_serialized_by_parser_phase(monkeypatch, tmp_path):
-    """
-    Behavior gate:
-    two parser tasks with blocking parse() should complete close to parallel wall time.
-    """
     from backend.app.services.agents import parser_agent as parser_mod
 
     class _SlowParser:
-        def __init__(self, project_dir, output_dir):
+        def __init__(self, project_dir, output_dir, **_kwargs):
             self.inputs_json = []
             self.envs_json = []
             self.captions_json = []

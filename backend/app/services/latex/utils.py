@@ -1,4 +1,4 @@
-"""
+﻿"""
 LaTeX Utilities for Web Backend
 
 Complete adaptation from prototype system with:
@@ -18,9 +18,6 @@ import re
 import json
 import zipfile
 import tarfile
-from collections import Counter
-from hashlib import sha256
-import secrets
 from typing import Any, Dict, List, Optional, Tuple
 from tqdm import tqdm
 import regex
@@ -390,7 +387,7 @@ def process_latex_to_eva(latex_code):
 
 def delete_ph(text) -> str:
     """Delete placeholders from text"""
-    pattern = r'§(\.§){0,2}'
+    pattern = r'搂(\.搂){0,2}'
     text = re.sub(pattern, '', text)
     placeholder_pattern = r"<.*?PLACEHOLDER.*?>"
     text = re.sub(placeholder_pattern, "", text).strip()
@@ -510,7 +507,7 @@ def restore_display_math_shell_structure(original: str, translated: str) -> str:
 
     Previously this function would revert to the original (English) text when
     malformed shells were detected.  This caused silent translation loss.
-    Now we keep the translated content and only log a warning — a translated
+    Now we keep the translated content and only log a warning 鈥?a translated
     PDF with minor math-shell issues is preferable to untranslated content.
     """
     if not original or not translated:
@@ -521,7 +518,7 @@ def restore_display_math_shell_structure(original: str, translated: str) -> str:
             "Detected malformed display-math shell in translated content; "
             "keeping translated content to preserve target language output"
         )
-        # Do NOT revert to original — keep translated content
+        # Do NOT revert to original 鈥?keep translated content
         return translated
 
     return translated
@@ -983,7 +980,7 @@ def restore_twopartpiecewise_commands(original: str, translated: str) -> str:
     if not original_commands:
         return translated
     if not translated_matches:
-        # All commands dropped — append source commands at end instead of
+        # All commands dropped 鈥?append source commands at end instead of
         # reverting entire fragment to original.
         logger.warning(
             "Translated content dropped \\twopartpiecewise command(s); "
@@ -992,7 +989,7 @@ def restore_twopartpiecewise_commands(original: str, translated: str) -> str:
         suffix = "\n" + "\n".join(original_commands)
         return translated.rstrip() + suffix
     if len(original_commands) != len(translated_matches):
-        # Count mismatch — replace what we can, keep translated text.
+        # Count mismatch 鈥?replace what we can, keep translated text.
         logger.warning(
             f"\\twopartpiecewise count mismatch (source={len(original_commands)}, "
             f"translated={len(translated_matches)}); replacing matched commands only"
@@ -1006,7 +1003,7 @@ def restore_twopartpiecewise_commands(original: str, translated: str) -> str:
         if i < len(original_commands):
             parts.append(original_commands[i])
         else:
-            # Extra translated commands beyond source count — keep as-is.
+            # Extra translated commands beyond source count 鈥?keep as-is.
             parts.append(match.group(0))
         last = match.end()
     parts.append(translated[last:])
@@ -1223,7 +1220,7 @@ def _strip_unsafe_inner_environment_wrapper(body: str, outer_env: str) -> str:
 
     Example:
       outer: \\begin{definition} ... \\end{definition}
-      body : \\begin{定义} ... \\end{定义}
+      body : \\begin{瀹氫箟} ... \\end{瀹氫箟}
     """
     if not body:
         return body
@@ -1593,7 +1590,7 @@ def add_ctex_package(latex_code, tex_file_path: str = None):
         latex_code: The main .tex source code.
         tex_file_path: Optional path to the .tex file.  When provided, also
             scans sibling .cls / .sty files and neutralises pdfLaTeX-only
-            font packages (fontenc[T1], newtxtext, …) that would otherwise
+            font packages (fontenc[T1], newtxtext, 鈥? that would otherwise
             prevent CJK characters from rendering under xelatex+ctex.
     """
     if "\\usepackage[UTF8]{ctex}" not in latex_code:
@@ -2010,10 +2007,10 @@ def _fix_page_overflow_for_cjk(latex_code: str) -> str:
         # Split packages, remove a4wide, keep the rest
         pkgs = [p.strip() for p in pkg_list.split(',') if p.strip().lower() != 'a4wide']
         if pkgs:
-            # There are other packages remaining — keep them, remove a4wide
+            # There are other packages remaining 鈥?keep them, remove a4wide
             new_line = combo_m.group(1) + ', '.join(pkgs) + combo_m.group(3)
         else:
-            # a4wide was the only package — comment out the entire line
+            # a4wide was the only package 鈥?comment out the entire line
             new_line = '% ' + combo_m.group(0) + '  % Removed for CJK compat'
         latex_code = latex_code[:combo_m.start()] + new_line + latex_code[combo_m.end():]
         a4wide_removed = True
@@ -2038,7 +2035,7 @@ def _fix_page_overflow_for_cjk(latex_code: str) -> str:
             )
             latex_code = _inject_after_documentclass(latex_code, geometry_line)
         else:
-            # geometry exists — make sure it has a4paper
+            # geometry exists 鈥?make sure it has a4paper
             geo_m = re.search(
                 r'(\\usepackage\s*\[)([^\]]*)(\]\s*\{geometry\})', latex_code
             )
@@ -2209,9 +2206,9 @@ def compile_with_latexmk(tex_file: str, out_dir: str = "out", engine: str = "pdf
     
     try:
         subprocess.run(cmd, check=True)
-        logger.info("✅ Compilation successful")
+        logger.info("鉁?Compilation successful")
     except subprocess.CalledProcessError as e:
-        logger.error(f"❌ Compilation failed: {e}")
+        logger.error(f"鉂?Compilation failed: {e}")
 
 
 def collect_latex_errors_with_logpath(folder: str):
@@ -2263,7 +2260,7 @@ def collect_latex_errors_with_logpath(folder: str):
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     logger.info(f"Summary saved to: {output_path}")
-    logger.info(f"🔍 Total projects with LaTeX errors: {error_project_count}")
+    logger.info(f"馃攳 Total projects with LaTeX errors: {error_project_count}")
 
 
 # ============================================================================
@@ -2320,35 +2317,35 @@ def is_already_downloaded(arxiv_id: str, save_dir: str) -> bool:
 
 
 class DownloadProgressCallback:
-    """进度回调类，用于在下载过程中更新任务进度"""
+    """杩涘害鍥炶皟绫伙紝鐢ㄤ簬鍦ㄤ笅杞借繃绋嬩腑鏇存柊浠诲姟杩涘害"""
     
     def __init__(self, task_manager=None, task_id: str = None, stage: str = "downloading"):
         """
         Args:
-            task_manager: TaskManager 实例
-            task_id: 任务 ID
-            stage: 当前阶段名称 (downloading, extracting, downloading_pdf, validating)
+            task_manager: TaskManager 瀹炰緥
+            task_id: 浠诲姟 ID
+            stage: 褰撳墠闃舵鍚嶇О (downloading, extracting, downloading_pdf, validating)
         """
         self.task_manager = task_manager
         self.task_id = task_id
         self.stage = stage
-        # 定义各阶段的进度范围
+        # 瀹氫箟鍚勯樁娈电殑杩涘害鑼冨洿
         self.stage_ranges = {
-            "downloading": (0, 30),      # 下载 TeX 源码 0-30%
-            "extracting": (30, 60),       # 解压文件 30-60%
-            "downloading_pdf": (60, 80),  # 下载 PDF 60-80%
-            "validating": (80, 100)       # 验证文件 80-100%
+            "downloading": (0, 30),      # 涓嬭浇 TeX 婧愮爜 0-30%
+            "extracting": (30, 60),       # 瑙ｅ帇鏂囦欢 30-60%
+            "downloading_pdf": (60, 80),  # 涓嬭浇 PDF 60-80%
+            "validating": (80, 100)       # 楠岃瘉鏂囦欢 80-100%
         }
-        # 节流：记录上次上报的整数进度，避免对每个数据块都触发 Supabase 写入
+        # 鑺傛祦锛氳褰曚笂娆′笂鎶ョ殑鏁存暟杩涘害锛岄伩鍏嶅姣忎釜鏁版嵁鍧楅兘瑙﹀彂 Supabase 鍐欏叆
         self._last_reported_progress: int = -1
     
     def update(self, current: int, total: int):
         """
-        更新进度
+        鏇存柊杩涘害
         
         Args:
-            current: 当前进度
-            total: 总量
+            current: 褰撳墠杩涘害
+            total: 鎬婚噺
         """
         if not self.task_manager or not self.task_id:
             return
@@ -2357,19 +2354,19 @@ class DownloadProgressCallback:
         stage_progress = (current / total) if total > 0 else 0
         overall_progress = int(start + (end - start) * stage_progress)
 
-        # 节流：仅在整数进度发生变化或下载/解压完成时才上报，
-        # 避免对每个 8KB 数据块都触发一次同步 Supabase 写操作。
+        # 鑺傛祦锛氫粎鍦ㄦ暣鏁拌繘搴﹀彂鐢熷彉鍖栨垨涓嬭浇/瑙ｅ帇瀹屾垚鏃舵墠涓婃姤锛?
+        # 閬垮厤瀵规瘡涓?8KB 鏁版嵁鍧楅兘瑙﹀彂涓€娆″悓姝?Supabase 鍐欐搷浣溿€?
         is_complete = (current >= total)
         if overall_progress <= self._last_reported_progress and not is_complete:
             return
         self._last_reported_progress = overall_progress
 
-        # 获取阶段描述
+        # 鑾峰彇闃舵鎻忚堪
         stage_descriptions = {
-            "downloading": "正在下载 TeX 源码",
-            "extracting": "正在解压文件",
-            "downloading_pdf": "正在下载 PDF",
-            "validating": "正在验证文件"
+            "downloading": "姝ｅ湪涓嬭浇 TeX 婧愮爜",
+            "extracting": "姝ｅ湪瑙ｅ帇鏂囦欢",
+            "downloading_pdf": "姝ｅ湪涓嬭浇 PDF",
+            "validating": "姝ｅ湪楠岃瘉鏂囦欢"
         }
         stage_percent = int(stage_progress * 100)
         message = f"{stage_descriptions.get(self.stage, self.stage)}: {stage_percent}%"
@@ -2733,7 +2730,7 @@ def batch_download_arxiv_tex(
             id_errors[arxiv_id] = extract_error
             continue
 
-        # 更新进度到 PDF 下载阶段
+        # 鏇存柊杩涘害鍒?PDF 涓嬭浇闃舵
         if task_manager and task_id:
             pdf_callback = DownloadProgressCallback(
                 task_manager=task_manager,
@@ -2748,7 +2745,7 @@ def batch_download_arxiv_tex(
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
 
         try:
-            # 使用流式下载以支持进度更新
+            # 浣跨敤娴佸紡涓嬭浇浠ユ敮鎸佽繘搴︽洿鏂?
             with requests.get(pdf_url, headers=headers, stream=True, timeout=30) as response:
                 response.raise_for_status()
                 total_size = int(response.headers.get('Content-Length', 0))
@@ -2759,19 +2756,19 @@ def batch_download_arxiv_tex(
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
-                            # 更新 PDF 下载进度
+                            # 鏇存柊 PDF 涓嬭浇杩涘害
                             if task_manager and task_id and total_size > 0:
                                 pdf_callback.update(downloaded, total_size)
             
             logger.info(f"[SUCCESS] Downloaded PDF for {arxiv_id}")
             
-            # PDF 下载完成，确保进度到达 100%
+            # PDF 涓嬭浇瀹屾垚锛岀‘淇濊繘搴﹀埌杈?100%
             if task_manager and task_id:
                 pdf_callback.update(1, 1)
         except Exception as e:
             logger.error(f"[ERROR] Failed to download PDF for {arxiv_id}: {str(e)}")
         
-        # 验证阶段
+        # 楠岃瘉闃舵
         if task_manager and task_id:
             validating_callback = DownloadProgressCallback(
                 task_manager=task_manager,
@@ -2780,12 +2777,12 @@ def batch_download_arxiv_tex(
             )
             validating_callback.update(0, 1)
             
-            # 验证 .tex 文件是否存在
+            # 楠岃瘉 .tex 鏂囦欢鏄惁瀛樺湪
             tex_files = find_tex_files(dir) if dir else []
             if tex_files:
                 logger.info(f"[SUCCESS] Validated {len(tex_files)} .tex files for {arxiv_id}")
             
-            # 验证完成
+            # 楠岃瘉瀹屾垚
             validating_callback.update(1, 1)
 
     if not source_dirs and id_errors:
@@ -2864,7 +2861,7 @@ def extract_arxiv_ids(arxiv_input):
         >>> extract_arxiv_ids(["2508.18791", "https://arxiv.org/pdf/1234.56789.pdf"])
         ['2508.18791', '1234.56789']
     """
-    # 统一转换为列表处理
+    # 缁熶竴杞崲涓哄垪琛ㄥ鐞?
     if isinstance(arxiv_input, str):
         arxiv_input = [arxiv_input]
     
@@ -3034,14 +3031,14 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
     logger.info(f"apply_formatting_config: applying {config!r}")
 
     # -----------------------------------------------------------------------
-    # 1. Line spacing — inject setspace package + \setstretch{}
+    # 1. Line spacing 鈥?inject setspace package + \setstretch{}
     # -----------------------------------------------------------------------
     if line_spacing is not None:
-        # ── Validate line spacing range ─────────────────────────────────────
+        # 鈹€鈹€ Validate line spacing range 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         if line_spacing < 1.0 or line_spacing > 2.5:
             warn_msg = (
-                f"行间距 {line_spacing} 超出安全范围 [1.0, 2.5]，"
-                f"已跳过注入以避免排版异常"
+                f"Line spacing {line_spacing} is outside the safe range [1.0, 2.5]; "
+                "skipping injection to avoid layout breakage"
             )
             fmt_warnings.append(warn_msg)
             logger.warning(f"[apply_formatting_config] {warn_msg}")
@@ -3062,25 +3059,25 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug(f"Injected line_spacing={line_spacing}")
 
     # -----------------------------------------------------------------------
-    # 2. Font size — replace/add pt option in \documentclass[...]{...}
+    # 2. Font size 鈥?replace/add pt option in \documentclass[...]{...}
     # -----------------------------------------------------------------------
     if font_size is not None:
-        # ── Validate / auto-downgrade font size ──────────────────────────────
+        # 鈹€鈹€ Validate / auto-downgrade font size 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         docclass = _detect_docclass(latex_code)
         restricted = _RESTRICTED_DOCCLASSES.get(docclass)
         if restricted and int(font_size) not in restricted:
             safe = _nearest_allowed_size(font_size, restricted)
             warn_msg = (
-                f"字号 {font_size:g}pt 与文档类 '{docclass}' 不兼容（仅支持 "
-                f"{sorted(restricted)}pt），已自动调整为 {safe}pt"
+                f"瀛楀彿 {font_size:g}pt 涓庢枃妗ｇ被 '{docclass}' 涓嶅吋瀹癸紙浠呮敮鎸?"
+                f"{sorted(restricted)}pt锛夛紝宸茶嚜鍔ㄨ皟鏁翠负 {safe}pt"
             )
             fmt_warnings.append(warn_msg)
             logger.warning(f"[apply_formatting_config] {warn_msg}")
             font_size = float(safe)
         elif font_size < 8 or font_size > 14:
             warn_msg = (
-                f"字号 {font_size:g}pt 超出安全范围 [8, 14]pt，"
-                f"已跳过注入以避免编译错误"
+                f"Font size {font_size:g}pt is outside the safe range [8, 14]pt; "
+                "skipping injection to avoid compile errors"
             )
             fmt_warnings.append(warn_msg)
             logger.warning(f"[apply_formatting_config] {warn_msg}")
@@ -3121,7 +3118,7 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug(f"Injected font_size={font_size}pt")
 
     # -----------------------------------------------------------------------
-    # 3. CJK font — \setCJKmainfont / \setCJKsansfont / \setCJKmonofont
+    # 3. CJK font 鈥?\setCJKmainfont / \setCJKsansfont / \setCJKmonofont
     #    MUST be placed AFTER \usepackage{ctex} or \usepackage{xeCJK} so that
     #    the xeCJK commands are available. Injecting after \documentclass would
     #    put them BEFORE ctex, causing them to render as plain text.
@@ -3142,7 +3139,7 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug(f"Injected cjk_font={cjk_font}")
 
     # -----------------------------------------------------------------------
-    # 4. Column mode — single/double column switching
+    # 4. Column mode 鈥?single/double column switching
     # -----------------------------------------------------------------------
     if column_mode == "single":
         # Remove twocolumn from documentclass options
@@ -3178,7 +3175,7 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug("Injected column_mode=double")
 
     # -----------------------------------------------------------------------
-    # 5. Page margins — geometry package
+    # 5. Page margins 鈥?geometry package
     # -----------------------------------------------------------------------
     if margin is not None and margin in _MARGIN_PRESETS:
         geo_opts = _MARGIN_PRESETS[margin]
@@ -3193,7 +3190,7 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug(f"Injected margin={margin}")
 
     # -----------------------------------------------------------------------
-    # 6. Paragraph indent — \setlength{\parindent}{2em}
+    # 6. Paragraph indent 鈥?\setlength{\parindent}{2em}
     # -----------------------------------------------------------------------
     if paragraph_indent is True:
         indent_cmd = "\\setlength{\\parindent}{2em}"
@@ -3205,7 +3202,7 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug("Injected paragraph_indent=True")
 
     # -----------------------------------------------------------------------
-    # 7. Bibliography style — replace \bibliographystyle{...}
+    # 7. Bibliography style 鈥?replace \bibliographystyle{...}
     # -----------------------------------------------------------------------
     if bib_style is not None:
         # Map friendly names to actual BibTeX style names
@@ -3232,7 +3229,7 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug(f"Injected bib_style={bib_style}")
 
     # -----------------------------------------------------------------------
-    # 8. Citation style — natbib package
+    # 8. Citation style 鈥?natbib package
     # -----------------------------------------------------------------------
     if cite_style is not None:
         _CITE_STYLE_MAP = {
@@ -3252,16 +3249,16 @@ def apply_formatting_config(latex_code: str, config) -> tuple:
         logger.debug(f"Injected cite_style={cite_style}")
 
     # -----------------------------------------------------------------------
-    # 9. Localize captions — \renewcommand\figurename{图} etc.
+    # 9. Localize captions 鈥?\renewcommand\figurename{鍥緘 etc.
     # -----------------------------------------------------------------------
     if localize_captions is True:
         caption_block = (
-            "\\renewcommand{\\figurename}{图}\n"
-            "\\renewcommand{\\tablename}{表}\n"
-            "\\renewcommand{\\abstractname}{摘要}\n"
-            "\\renewcommand{\\contentsname}{目录}\n"
-            "\\renewcommand{\\refname}{参考文献}\n"
-            "\\renewcommand{\\appendixname}{附录}\n"
+            "\\renewcommand{\\figurename}{鍥緘\n"
+            "\\renewcommand{\\tablename}{琛▆\n"
+            "\\renewcommand{\\abstractname}{鎽樿}\n"
+            "\\renewcommand{\\contentsname}{鐩綍}\n"
+            "\\renewcommand{\\refname}{鍙傝€冩枃鐚畗\n"
+            "\\renewcommand{\\appendixname}{闄勫綍}\n"
         )
         # Inject after \begin{document}
         if "\\renewcommand{\\figurename}" not in latex_code:
@@ -3292,22 +3289,22 @@ PROTECTED_COMMANDS: List[re.Pattern] = [
         r'\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
         regex.DOTALL,
     ),
-    # \begin{CCSXML}...\end{CCSXML}  — ACM CCS XML block (multi-line)
+    # \begin{CCSXML}...\end{CCSXML}  鈥?ACM CCS XML block (multi-line)
     regex.compile(
         r'\\begin\{CCSXML\}.*?\\end\{CCSXML\}',
         regex.DOTALL,
     ),
-    # \ccsdesc[optional]{...}  — ACM CCS descriptor (nested braces allowed)
+    # \ccsdesc[optional]{...}  鈥?ACM CCS descriptor (nested braces allowed)
     regex.compile(
         r'\\ccsdesc(?:\[[^\[\]]*\])?\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
         regex.DOTALL,
     ),
-    # \received[optional]{...}  — ACM received date
+    # \received[optional]{...}  鈥?ACM received date
     regex.compile(
         r'\\received(?:\[[^\[\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}',
         regex.DOTALL,
     ),
-    # \keywords{...}  — ACM keywords block
+    # \keywords{...}  鈥?ACM keywords block
     regex.compile(
         r'\\keywords\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
         regex.DOTALL,
@@ -3456,7 +3453,7 @@ def unmask_sensitive_commands(
     if not translated_content or not mapping:
         return translated_content
 
-    # Build a lookup from index → (placeholder, original)
+    # Build a lookup from index 鈫?(placeholder, original)
     index_map: Dict[int, tuple] = {}
     for ph, original in mapping.items():
         m = _PLACEHOLDER_RE.match(ph)
@@ -3542,10 +3539,10 @@ def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
         escaped_parts = []
         for p in parts:
             # Allow optional spaces or common junk between characters in the name (e.g. PLACE HOLDER)
-            char_pattern = r'[_\$§#\* ]*'
+            char_pattern = r'[_\$搂#\* ]*'
             escaped_p = char_pattern.join([f'(?:{re.escape(c)}|\\\\{re.escape(c)})' for c in p])
             escaped_parts.append(escaped_p)
-        separator = r'(?:\\?[_\$§#\* ]|\s)+'
+        separator = r'(?:\\?[_\$搂#\* ]|\s)+'
         flexible_inner = separator.join(escaped_parts)
         
         # Prevent prefix matching (e.g., `ENV_1` matching `ENV_10` due to optional suffix)
@@ -3565,204 +3562,8 @@ def restore_mangled_placeholders(tex_content: str, expected_phs: list) -> str:
     return restored_tex
 
 
-_HARD_FREEZE_SOURCE_PATTERNS: List[Tuple[str, re.Pattern]] = [
-    ("PLACEHOLDER", re.compile(r"<PLACEHOLDER_[^>]+>")),
-    ("ENV", re.compile(r"<ENV(?:_BEGIN|_END)?_[^>]+>")),
-    ("ITEM", re.compile(r"<ITEM_[^>]+>")),
-    ("EQROW", re.compile(r"<EQROW_[^>]+>")),
-    ("EQCOMMENT", re.compile(r"<EQCOMMENT_[^>]+>")),
-    ("INLMATH", re.compile(r"<INLMATH_[^>]+>")),
-    ("PROTECTED", re.compile(r"<PROTECTED_CMD_\d+>")),
-]
-_HARD_FREEZE_TOKEN_RE = re.compile(r"@@HF:[A-Z]+:\d{4}:[0-9A-F]{8}:[0-9A-F]{8}@@")
-_HARD_FREEZE_KIND_MAP = {
-    "PLACEHOLDER_ENV": "ENVPH",
-    "PLACEHOLDER_CAP": "CAPPH",
-    "PLACEHOLDER_NEWCOMMAND": "NEWCMD",
-    "PLACEHOLDER": "PLACEHOLDER",
-    "ENV_BEGIN": "ENVBEGIN",
-    "ENV_END": "ENVEND",
-    "ENV": "ENV",
-    "ITEM": "ITEM",
-    "EQROW": "EQROW",
-    "EQCOMMENT": "EQCOMMENT",
-    "INLMATH": "INLMATH",
-    "PROTECTED_CMD": "CMD",
-}
-_HARD_FREEZE_REFERENCE_OR_LABEL_RE = re.compile(
-    r'^\\(?:label|ref|eqref|pageref|autoref|cref|Cref|cite|citet|citep|citealt|citealp|citenum|citeauthor|citeyear)\*?(?![A-Za-z])'
-)
-
-
-def _hard_freeze_kind_for_placeholder(value: str) -> str:
-    inner = (value or "").strip("<>")
-    for prefix, kind in _HARD_FREEZE_KIND_MAP.items():
-        if inner.startswith(prefix):
-            return kind
-    return "TOKEN"
-
-
-def freeze_protected_tokens(
-    content: str,
-    *,
-    request_nonce: Optional[str] = None,
-) -> Tuple[str, Dict[str, Any]]:
-    """
-    Replace all protected placeholder/sentinel families with request-local opaque tokens.
-    """
-    if not content:
-        return content, {
-            "request_nonce": request_nonce or "",
-            "token_map": {},
-            "token_sequence": [],
-            "audit_entries": [],
-        }
-
-    replacements: List[Tuple[int, int, str]] = []
-    for _label, pattern in _HARD_FREEZE_SOURCE_PATTERNS:
-        for match in pattern.finditer(content):
-            replacements.append((match.start(), match.end(), match.group(0)))
-
-    if not replacements:
-        return content, {
-            "request_nonce": request_nonce or "",
-            "token_map": {},
-            "token_sequence": [],
-            "audit_entries": [],
-        }
-
-    # Keep original order and avoid overlapping replacements.
-    replacements.sort(key=lambda item: item[0])
-    resolved_nonce = (request_nonce or secrets.token_hex(4)).upper()
-    out: List[str] = []
-    cursor = 0
-    token_map: Dict[str, str] = {}
-    token_sequence: List[str] = []
-    audit_entries: List[Dict[str, Any]] = []
-    ordinal = 0
-    for start, end, original in replacements:
-        if start < cursor:
-            continue
-        ordinal += 1
-        kind = _hard_freeze_kind_for_placeholder(original)
-        digest = sha256(
-            f"{resolved_nonce}:{ordinal}:{kind}:{original}".encode("utf-8")
-        ).hexdigest()[:8].upper()
-        token = f"@@HF:{kind}:{ordinal:04d}:{resolved_nonce}:{digest}@@"
-        out.append(content[cursor:start])
-        out.append(token)
-        cursor = end
-        token_map[token] = original
-        token_sequence.append(token)
-        audit_entries.append(
-            {
-                "token": token,
-                "original": original,
-                "kind": kind,
-                "ordinal": ordinal,
-                "request_nonce": resolved_nonce,
-                "digest": digest,
-            }
-        )
-    out.append(content[cursor:])
-    return "".join(out), {
-        "request_nonce": resolved_nonce,
-        "token_map": token_map,
-        "token_sequence": token_sequence,
-        "audit_entries": audit_entries,
-    }
-
-
-def _is_high_risk_hard_freeze_entry(entry: Dict[str, Any]) -> bool:
-    kind = str((entry or {}).get("kind") or "").strip().upper()
-    original = str((entry or {}).get("original") or "")
-    original_inner = original.strip("<>")
-
-    if kind in {"ENVPH", "CAPPH", "ENVBEGIN", "ENVEND", "ENV", "ITEM", "EQROW", "EQCOMMENT"}:
-        return True
-    if kind == "INLMATH":
-        return False
-    if kind == "PLACEHOLDER":
-        return True
-    if kind == "CMD":
-        if _HARD_FREEZE_REFERENCE_OR_LABEL_RE.match(original):
-            return True
-        if original.startswith(r"\begin{") or original.startswith(r"\end{") or original == "$":
-            return True
-        if "PLACEHOLDER_" in original_inner:
-            return True
-        return False
-    return True
-
-
-def _resolve_hard_freeze_original(entry: Dict[str, Any], mask_mapping: Optional[Dict[str, str]]) -> str:
-    original = str((entry or {}).get("original") or "")
-    if original.startswith("<PROTECTED_CMD_") and mask_mapping:
-        return str(mask_mapping.get(original) or original)
-    return original
-
-
-def verify_hard_freeze_token_stream(
-    text: str,
-    expected_tokens: List[str],
-    *,
-    audit_entries: Optional[List[Dict[str, Any]]] = None,
-    mask_mapping: Optional[Dict[str, str]] = None,
-    verification_mode: str = "strict",
-) -> None:
-    actual_tokens = _HARD_FREEZE_TOKEN_RE.findall(text or "")
-    expected = list(expected_tokens or [])
-    mode = str(verification_mode or "strict").strip().lower()
-    if mode == "strict":
-        if actual_tokens != expected:
-            raise ValueError(
-                f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
-            )
-        return
-
-    if mode != "section_relaxed":
-        raise ValueError(
-            f"hard_freeze_unknown_verification_mode: {verification_mode}"
-        )
-
-    if Counter(actual_tokens) != Counter(expected):
-        raise ValueError(
-            f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
-        )
-
-    risk_by_token = {
-        str((entry or {}).get("token") or ""): _is_high_risk_hard_freeze_entry(
-            {
-                **(entry or {}),
-                "original": _resolve_hard_freeze_original(entry or {}, mask_mapping),
-            }
-        )
-        for entry in (audit_entries or [])
-    }
-    high_risk_expected = [token for token in expected if risk_by_token.get(token, True)]
-    high_risk_actual = [token for token in actual_tokens if risk_by_token.get(token, True)]
-    if high_risk_actual != high_risk_expected:
-        raise ValueError(
-            f"hard_freeze_token_stream_mismatch: expected {expected}, found {actual_tokens}"
-        )
-
-
-def restore_hard_freeze_tokens(text: str, token_map: Dict[str, str]) -> str:
-    if not text or not token_map:
-        return text
-
-    def _restore(match: re.Match) -> str:
-        token = match.group(0)
-        original = token_map.get(token)
-        if original is None:
-            raise ValueError(f"hard_freeze_unknown_token: {token}")
-        return original
-
-    return _HARD_FREEZE_TOKEN_RE.sub(_restore, text)
-
-
 # ---------------------------------------------------------------------------
-# Phase 1 — Input-Layer Defense
+# Phase 1 鈥?Input-Layer Defense
 # Isolate inline math and pre-escape risky tokens before LLM translation.
 # ---------------------------------------------------------------------------
 
@@ -4231,7 +4032,7 @@ _BARE_UNDERSCORE_RE = re.compile(r'(?<!\\)_')
 
 def isolate_inline_math(text: str) -> tuple:
     """
-    Phase 1.1 — Replace inline math spans with immutable placeholders.
+    Phase 1.1 鈥?Replace inline math spans with immutable placeholders.
 
     Replaces:
       - ``$...$``  (single-line only, not ``$$...$$``)
@@ -4295,7 +4096,7 @@ def isolate_math_spans(text: str) -> tuple:
 
 def restore_inline_math(text: str, math_map: dict) -> str:
     """
-    Phase 1.1 — Restore inline math placeholders to their original spans.
+    Phase 1.1 鈥?Restore inline math placeholders to their original spans.
 
     Args:
         text:     Text containing ``<INLMATH_NN>`` placeholders.
@@ -4346,7 +4147,7 @@ def preprocess_risky_tokens(
     skip_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> str:
     """
-    Phase 1.2 — Pre-escape bare ``_`` outside math and placeholder regions.
+    Phase 1.2 鈥?Pre-escape bare ``_`` outside math and placeholder regions.
 
     After :func:`isolate_inline_math` has been called, any remaining bare ``_``
     in *text* is outside a math environment and is therefore a risky token that

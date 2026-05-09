@@ -96,13 +96,6 @@ def _assert_origin_cli_parity_config(config):
     assert config["translation_core_mode"] == ORIGIN_CLI_PARITY_MODE
     assert config["origin_cli_parity_single_kernel_lineage"] is True
     assert config["enable_legacy_translation_core"] is True
-    assert config["use_compilation_diagnostics"] is False
-    assert config["enable_compile_first_structural_fallback"] is False
-    assert config["enable_post_compile_target_language_fallback"] is False
-    assert config["enable_precompile_structure_guard"] is False
-    assert config["enable_hard_freeze_tokens"] is False
-    assert config["enable_section_internal_parallelism"] is False
-    assert config["enable_intelligent_compiler_fallback"] is False
     assert config["generate_terminology"] is False
     assert config["generate_terminology_table"] is False
 
@@ -231,6 +224,11 @@ def test_batch_download_and_enqueue_factory_reaches_coordinator_with_parity_conf
     monkeypatch.setattr(translate_route, "get_arxiv_category", lambda _ids: {"2501.00002": ["cs.CL"]})
     monkeypatch.setattr(translate_route, "capture_task_config", lambda **_kwargs: None)
     monkeypatch.setattr(translate_route, "CoordinatorAgent", _CoordinatorProbe)
+    monkeypatch.setattr(
+        translate_route.task_artifact_storage,
+        "persist_task_directory",
+        lambda local_dir, **_kwargs: str(local_dir),
+    )
 
     asyncio.run(
         translate_route._download_and_enqueue(
@@ -557,6 +555,11 @@ def test_content_pool_and_community_agent_entrypoints_reach_coordinator_with_par
     monkeypatch.setattr(translate_route, "get_arxiv_category", lambda _ids: {"2501.00004": ["cs.CL"]})
     monkeypatch.setattr(translate_route, "capture_task_config", lambda **_kwargs: None)
     monkeypatch.setattr(translate_route, "CoordinatorAgent", _CoordinatorProbe)
+    monkeypatch.setattr(
+        translate_route.task_artifact_storage,
+        "persist_task_directory",
+        lambda local_dir, **_kwargs: str(local_dir),
+    )
 
     if entrypoint == "content_pool":
         result = asyncio.run(community_content_pool_service._default_start_translation("paper-shared"))
@@ -599,15 +602,9 @@ def test_origin_cli_parity_production_path_has_single_kernel_lineage(monkeypatch
             return None
 
     class Translator:
-        structural_fallback_count = 0
-        structural_fallback_ratio = 0.0
-        structural_fallback_cap = 0.1
-        structural_fallback_cap_mode = "soft"
-        structural_fallback_parts = []
         noop_sections = []
         payload_invariant_sections = []
         c1_retry_enforced_once = False
-        structural_fallback_warning = None
 
         def __init__(self, *args, **kwargs):
             self.trans_mode = kwargs.get("trans_mode", 0)
@@ -663,11 +660,6 @@ def test_origin_cli_parity_production_path_has_single_kernel_lineage(monkeypatch
     assert len(selected_entries) == 1
     assert selected_entries[0]["payload"]["single_kernel_lineage"] is True
 
-    events = [entry["event"] for entry in audit_entries]
-    assert "node_enter:repair_translation" not in events
-    assert "node_enter:ultimate_downgrade" not in events
-    assert "node_enter:post_compile_target_language_fallback" not in events
-    assert "node_enter:compilation_diagnostic" not in events
     serialized_audit = json.dumps(audit_entries, sort_keys=True)
     assert "modern_kernel_selected" not in serialized_audit
     assert "shadow_kernel" not in serialized_audit

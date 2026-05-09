@@ -439,11 +439,6 @@ class Settings(BaseSettings):
         validation_alias="MAX_CONCURRENT_COMPILATIONS",
         description="Hard ceiling on concurrent LaTeX compilation subprocesses in a single worker."
     )
-    async_compiler_enabled: bool = Field(
-        default=True,
-        validation_alias="ASYNC_COMPILER_ENABLED",
-        description="Enable async subprocess-based compiler execution path."
-    )
     async_blocking_wrappers_enabled: bool = Field(
         default=True,
         validation_alias="ASYNC_BLOCKING_WRAPPERS_ENABLED",
@@ -453,33 +448,6 @@ class Settings(BaseSettings):
         default="per_call_client",
         validation_alias="DB_EXECUTION_MODE",
         description="DB threaded execution strategy: per_call_client|shared_client"
-    )
-
-    # Compile-first structural fallback controls (deprecated runtime semantics)
-    enable_compile_first_structural_fallback: bool = Field(
-        default=True,
-        validation_alias="ENABLE_COMPILE_FIRST_STRUCTURAL_FALLBACK",
-        description="Deprecated compatibility flag. Structural candidates are no longer rolled back during validation."
-    )
-    enable_post_compile_target_language_fallback: bool = Field(
-        default=True,
-        validation_alias="ENABLE_POST_COMPILE_TARGET_LANGUAGE_FALLBACK",
-        description="Enable deterministic target-language fallback after an initial compile failure."
-    )
-    enable_precompile_structure_guard: bool = Field(
-        default=True,
-        validation_alias="ENABLE_PRECOMPILE_STRUCTURE_GUARD",
-        description="Enable blocking precompile structure validation before LaTeX compilation."
-    )
-    structural_fallback_ratio_cap: float = Field(
-        default=0.38,
-        validation_alias="STRUCTURAL_FALLBACK_RATIO_CAP",
-        description="Preferred fallback ratio cap (soft/hard behavior controlled by STRUCTURAL_FALLBACK_CAP_MODE)"
-    )
-    structural_fallback_cap_mode: str = Field(
-        default="soft",
-        validation_alias="STRUCTURAL_FALLBACK_CAP_MODE",
-        description="Fallback ratio cap mode: soft or hard"
     )
 
     # Server Settings

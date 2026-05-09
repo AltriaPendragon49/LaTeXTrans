@@ -11,9 +11,8 @@ def test_advanced_config_defaults_to_origin_cli_parity():
     assert config.translation_core_mode == ORIGIN_CLI_PARITY_MODE
 
 
-def test_origin_cli_parity_normalizer_forces_legacy_core_and_disables_modern_systems():
+def test_origin_cli_parity_normalizer_forces_single_kernel_config():
     from backend.app.models.config_models import (
-        MODERN_SYSTEMS_DISABLED_FOR_ORIGIN_CLI_PARITY,
         ORIGIN_CLI_PARITY_MODE,
         normalize_origin_cli_parity_agent_config,
     )
@@ -22,47 +21,25 @@ def test_origin_cli_parity_normalizer_forces_legacy_core_and_disables_modern_sys
         {
             "translation_core_mode": "modern",
             "enable_legacy_translation_core": False,
-            "use_compilation_diagnostics": True,
-            "enable_compile_first_structural_fallback": True,
-            "enable_post_compile_target_language_fallback": True,
-            "enable_precompile_structure_guard": True,
-            "enable_hard_freeze_tokens": True,
+            "mode": 3,
+            "translation_mode": "quick_scan",
             "enable_parser_env_llm_judgment": True,
-            "enable_section_internal_parallelism": True,
-            "enable_intelligent_compiler_fallback": True,
+            "generate_terminology": True,
+            "generate_terminology_table": True,
         }
     )
 
     assert normalized["translation_core_mode"] == ORIGIN_CLI_PARITY_MODE
     assert normalized["enable_legacy_translation_core"] is True
-    assert normalized["use_compilation_diagnostics"] is False
-    assert normalized["enable_compile_first_structural_fallback"] is False
-    assert normalized["enable_post_compile_target_language_fallback"] is False
-    assert normalized["enable_precompile_structure_guard"] is False
-    assert normalized["enable_hard_freeze_tokens"] is False
-    assert normalized["enable_parser_env_llm_judgment"] is True
-    assert normalized["enable_section_internal_parallelism"] is False
-    assert normalized["enable_intelligent_compiler_fallback"] is False
-    assert normalized["generate_terminology"] is False
-    assert normalized["generate_terminology_table"] is False
-    assert normalized["origin_cli_parity_modern_systems_not_invoked"] == MODERN_SYSTEMS_DISABLED_FOR_ORIGIN_CLI_PARITY
-
-
-def test_origin_cli_parity_normalizer_forces_legacy_full_translation_mode():
-    from backend.app.models.config_models import normalize_origin_cli_parity_agent_config
-
-    normalized = normalize_origin_cli_parity_agent_config(
-        {
-            "mode": 3,
-            "translation_mode": "quick_scan",
-        }
-    )
-
     assert normalized["mode"] == 0
     assert normalized["translation_mode"] == "full"
+    assert normalized["enable_parser_env_llm_judgment"] is True
+    assert normalized["origin_cli_parity_single_kernel_lineage"] is True
+    assert normalized["generate_terminology"] is False
+    assert normalized["generate_terminology_table"] is False
 
 
-def test_origin_cli_parity_graph_contains_only_legacy_workflow_nodes():
+def test_origin_cli_parity_graph_contains_only_production_workflow_nodes():
     from backend.app.models.config_models import ORIGIN_CLI_PARITY_MODE
     from backend.app.services.agents.langgraph_orchestrator import build_pipeline_graph
 
@@ -71,7 +48,6 @@ def test_origin_cli_parity_graph_contains_only_legacy_workflow_nodes():
 
     assert {"parse", "translate", "validate_and_retry", "generate", "finalize"}.issubset(node_names)
     assert "repair_translation" not in node_names
-    assert "ultimate_downgrade" not in node_names
     assert "post_compile_target_language_fallback" not in node_names
     assert "compilation_diagnostic" not in node_names
 
@@ -109,7 +85,7 @@ def test_reconstructor_origin_cli_parity_keeps_translated_section_bytes(tmp_path
             {
                 "section": "1",
                 "content": "\\section{Results}\nOriginal English text.",
-                "trans_content": "译文正文，不含 section 命令。",
+                "trans_content": "Translated body without section command.",
             }
         ],
         captions=[],
@@ -121,7 +97,7 @@ def test_reconstructor_origin_cli_parity_keeps_translated_section_bytes(tmp_path
         origin_cli_parity=True,
     )
 
-    assert constructor._merge_sections() == "译文正文，不含 section 命令。\n"
+    assert constructor._merge_sections() == "Translated body without section command.\n"
 
 
 def test_compile_with_origin_cli_parity_stops_after_pdflatex_pdf(monkeypatch, tmp_path):
@@ -144,38 +120,10 @@ def test_compile_with_origin_cli_parity_stops_after_pdflatex_pdf(monkeypatch, tm
 
     result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path))
 
-    assert result["pdf_path"].endswith("build_pdflatex\\main.pdf") or result["pdf_path"].endswith("build_pdflatex/main.pdf")
-    assert result["engine"] == "pdflatex"
-    assert calls == [("main.tex", "build_pdflatex", "pdflatex", True, True, tmp_path.name)]
-
-
-def test_compile_with_origin_cli_parity_skips_health_branch_for_cjk_without_trigger(monkeypatch, tmp_path):
-    from backend.app.services.latex import compiler
-
-    tex_file = tmp_path / "main.tex"
-    tex_file.write_text(
-        "\\documentclass{article}\n"
-        "\\usepackage[UTF8]{ctex}\n"
-        "\\begin{document}中文正文 without health triggers.\\end{document}",
-        encoding="utf-8",
-    )
-    calls = []
-
-    def fake_run(cmd, check, capture_output, cwd):
-        engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
-        output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
-        calls.append((engine, output_dir.name))
-        output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "main.pdf").write_bytes(b"%PDF")
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(compiler.subprocess, "run", fake_run)
-
-    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path), target_language="zh")
-
     assert result["status"] == "completed"
     assert result["engine"] == "pdflatex"
-    assert calls == [("pdflatex", "build_pdflatex")]
+    assert result["pdf_path"].replace("\\", "/").endswith("build_pdflatex/main.pdf")
+    assert calls == [("main.tex", "build_pdflatex", "pdflatex", True, True, tmp_path.name)]
 
 
 def test_compile_with_origin_cli_parity_uses_bibliography_flag_for_latexmk(monkeypatch, tmp_path):
@@ -211,72 +159,23 @@ def test_compile_with_origin_cli_parity_uses_bibliography_flag_for_latexmk(monke
     assert "-bibtex" in real_bib_cmd
 
 
-def test_compile_with_origin_cli_parity_escapes_texttt_bare_percent_only_in_health_copy(monkeypatch, tmp_path):
+def test_compile_with_origin_cli_parity_health_branch_is_discardable(monkeypatch, tmp_path):
     from backend.app.services.latex import compiler
 
     tex_file = tmp_path / "main.tex"
     original_tex = (
         "\\documentclass{article}\n"
         "\\begin{document}\n"
-        "\\texttt{Estimated indoor area is 0.5% of ice-free land.}\n"
-        "% keep this real comment intact\n"
-        "\\texttt{Already escaped 15\\% remains safe.}\n"
-        "Outside text 20% remains a comment.\n"
-        "\\bibliography{biblio}\n"
-        "\\end{document}\n"
-    )
-    tex_file.write_text(original_tex, encoding="utf-8")
-    observed_runs = []
-
-    def fake_run(cmd, check, capture_output, cwd):
-        tex_path = Path(cmd[-1])
-        tex_content = tex_path.read_text(encoding="utf-8")
-        engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
-        output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
-        observed_runs.append((engine, output_dir.name, tex_path.parent, tex_content))
-        output_dir.mkdir(parents=True, exist_ok=True)
-        if "\\texttt{Estimated indoor area is 0.5\\% of ice-free land.}" in tex_content:
-            (output_dir / "main.pdf").write_bytes(b"%PDF")
-            return SimpleNamespace(returncode=0)
-        raise compiler.subprocess.CalledProcessError(1, cmd)
-
-    monkeypatch.setattr(compiler.subprocess, "run", fake_run)
-
-    result = compiler.compile_with_origin_cli_parity(str(tex_file), str(tmp_path), target_language="zh")
-
-    assert result["status"] == "completed"
-    assert result["pdf_path"].endswith("build_parity_health_selected\\main.pdf") or result["pdf_path"].endswith("build_parity_health_selected/main.pdf")
-    assert tex_file.read_text(encoding="utf-8") == original_tex
-    baseline_runs = [run for run in observed_runs if run[1] in {"build_pdflatex", "build_xelatex"}]
-    health_runs = [run for run in observed_runs if run[1].startswith("build_parity_health")]
-    assert baseline_runs
-    assert health_runs
-    assert "\\texttt{Estimated indoor area is 0.5% of ice-free land.}" in baseline_runs[0][3]
-    prepared_tex = health_runs[0][3]
-    assert "\\texttt{Estimated indoor area is 0.5\\% of ice-free land.}" in prepared_tex
-    assert "% keep this real comment intact" in prepared_tex
-    assert "\\texttt{Already escaped 15\\% remains safe.}" in prepared_tex
-    assert "Outside text 20% remains a comment." in prepared_tex
-    assert "\\bibliography{biblio}" in prepared_tex
-
-
-def test_compile_with_origin_cli_parity_returns_baseline_pdf_when_health_branch_fails(monkeypatch, tmp_path):
-    from backend.app.services.latex import compiler
-
-    tex_file = tmp_path / "main.tex"
-    original_tex = (
-        "\\documentclass{article}\n"
-        "\\begin{document}\n"
-        "\\texttt{Estimated indoor area is 0.5% of ice-free land.}\n"
+        "\\texttt{50% raw percent triggers health copy}\n"
         "\\end{document}\n"
     )
     tex_file.write_text(original_tex, encoding="utf-8")
     calls = []
 
     def fake_run(cmd, check, capture_output, cwd):
-        tex_path = Path(cmd[-1])
         engine = next(part[1:] for part in cmd if part in {"-pdflatex", "-xelatex"})
         output_dir = Path(next(part.split("=", 1)[1] for part in cmd if part.startswith("-outdir=")))
+        tex_path = Path(cmd[-1])
         calls.append((engine, output_dir.name, tex_path.parent))
         output_dir.mkdir(parents=True, exist_ok=True)
         if output_dir.name == "build_pdflatex":
@@ -290,17 +189,14 @@ def test_compile_with_origin_cli_parity_returns_baseline_pdf_when_health_branch_
 
     assert result["status"] == "completed"
     assert result["engine"] == "pdflatex"
-    assert result["pdf_path"].endswith("build_pdflatex\\main.pdf") or result["pdf_path"].endswith("build_pdflatex/main.pdf")
+    assert result["pdf_path"].replace("\\", "/").endswith("build_pdflatex/main.pdf")
     assert tex_file.read_text(encoding="utf-8") == original_tex
     assert any(call[1].startswith("build_parity_health") for call in calls)
 
 
-def test_run_pipeline_logs_parity_mode_and_not_invoked_systems(monkeypatch, tmp_path):
+def test_run_pipeline_logs_parity_mode_and_single_kernel_lineage(monkeypatch, tmp_path):
     import backend.app.services.agents.langgraph_orchestrator as orch_mod
-    from backend.app.models.config_models import (
-        MODERN_SYSTEMS_DISABLED_FOR_ORIGIN_CLI_PARITY,
-        ORIGIN_CLI_PARITY_MODE,
-    )
+    from backend.app.models.config_models import ORIGIN_CLI_PARITY_MODE
 
     project_dir = tmp_path / "paper"
     project_dir.mkdir()
@@ -319,15 +215,8 @@ def test_run_pipeline_logs_parity_mode_and_not_invoked_systems(monkeypatch, tmp_
             return None
 
     class Translator:
-        structural_fallback_count = 0
-        structural_fallback_ratio = 0.0
-        structural_fallback_cap = 0.1
-        structural_fallback_cap_mode = "soft"
-        structural_fallback_parts = []
         noop_sections = []
         payload_invariant_sections = []
-        c1_retry_enforced_once = False
-        structural_fallback_warning = None
 
         def __init__(self, *args, **kwargs):
             self.trans_mode = kwargs.get("trans_mode", 0)
@@ -359,7 +248,7 @@ def test_run_pipeline_logs_parity_mode_and_not_invoked_systems(monkeypatch, tmp_
 
     result = orch_mod.asyncio.run(
         orch_mod.run_pipeline(
-            config={"translation_core_mode": ORIGIN_CLI_PARITY_MODE, "target_language": "zh"},
+            config={"translation_core_mode": "modern", "target_language": "zh"},
             project_dir=str(project_dir),
             output_dir=str(output_root),
         )
@@ -369,4 +258,11 @@ def test_run_pipeline_logs_parity_mode_and_not_invoked_systems(monkeypatch, tmp_
     task_log = json.loads((output_root / "zh_paper" / "task_log.json").read_text(encoding="utf-8"))
     task_started = next(entry for entry in task_log if entry["event"] == "task_started")
     assert task_started["config"]["translation_core_mode"] == ORIGIN_CLI_PARITY_MODE
-    assert task_started["config"]["origin_cli_parity_modern_systems_not_invoked"] == MODERN_SYSTEMS_DISABLED_FOR_ORIGIN_CLI_PARITY
+    assert task_started["config"]["origin_cli_parity_single_kernel_lineage"] is True
+
+    audit = [
+        json.loads(line)
+        for line in (output_root / "zh_paper" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    kernel_event = next(entry for entry in audit if entry["event"] == "origin_cli_parity_kernel_selected")
+    assert kernel_event["payload"] == {"single_kernel_lineage": True}

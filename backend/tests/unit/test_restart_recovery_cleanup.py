@@ -1128,10 +1128,6 @@ def test_run_translation_terminal_failure_syncs_paper_status(
             llm_max_concurrent_requests=1,
             model_context_tokens=32000,
             prompt_reserve_tokens=4096,
-            enable_compile_first_structural_fallback=False,
-            enable_post_compile_target_language_fallback=False,
-            structural_fallback_ratio_cap=0.0,
-            structural_fallback_cap_mode="soft",
         ),
     )
     monkeypatch.setattr(translate_route, "find_main_tex_file", lambda _path: main_tex)
