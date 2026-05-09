@@ -619,15 +619,18 @@ async def _serve_pdf_thumbnail_response(
     file_path: Optional[str] = None,
     remote_url: Optional[str] = None,
 ) -> Response:
-    cache_path = await paper_thumbnail_service.ensure_pdf_thumbnail(
+    delivery = await paper_thumbnail_service.ensure_pdf_thumbnail_delivery(
         cache_seed=cache_seed,
         file_path=file_path,
         remote_url=remote_url,
     )
-    if not cache_path:
+    if not delivery:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF thumbnail not available")
+    signed_url = delivery.get("signed_url")
+    if signed_url:
+        return RedirectResponse(url=signed_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     return FileResponse(
-        path=cache_path,
+        path=delivery["file_path"],
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
     )
@@ -1087,10 +1090,9 @@ async def preview_translated_paper_pdf(paper_id: str, request: Request):
     asset = payload["asset"]
     filename = asset.get("file_name") or f"{paper_id}.pdf"
     if payload.get("signed_url"):
-        return await _proxy_remote_pdf_preview(
-            url=payload["signed_url"],
-            filename=str(filename),
-            request=request,
+        return RedirectResponse(
+            url=str(payload["signed_url"]),
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
     return await _serve_local_pdf_preview(
         file_path=Path(payload["file_path"]),
@@ -1121,12 +1123,9 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
 
     if payload.get("signed_url"):
-        asset = payload.get("asset") or {}
-        filename = str(payload.get("filename") or asset.get("file_name") or f"{paper_id}.pdf")
-        return await _proxy_remote_pdf_preview(
+        return RedirectResponse(
             url=str(payload["signed_url"]),
-            filename=filename,
-            request=request,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
 
     arxiv_id = str(payload.get("arxiv_id") or "").strip()
@@ -1156,16 +1155,15 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
 
 @router.get("/{paper_id}/source-download")
 async def download_source_paper_pdf(paper_id: str, request: Request):
-    payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
+    payload = await paper_service.resolve_paper_source_pdf_preview(
+        paper_id=paper_id,
+        content_disposition="attachment",
+    )
 
     if payload.get("signed_url"):
-        asset = payload.get("asset") or {}
-        filename = str(payload.get("filename") or asset.get("file_name") or f"{paper_id}.pdf")
-        return await _proxy_remote_pdf_preview(
+        return RedirectResponse(
             url=str(payload["signed_url"]),
-            filename=filename,
-            request=request,
-            content_disposition="attachment",
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
 
     arxiv_id = str(payload.get("arxiv_id") or "").strip()

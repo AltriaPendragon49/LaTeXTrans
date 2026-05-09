@@ -19,6 +19,7 @@ import shutil
 from typing import Optional
 from backend.app.services.task_manager import get_task_manager
 from backend.app.services import task_artifact_storage
+from backend.app.services import arxiv_raw_cache
 from backend.app.services.latex.compiler import compile_with_intelligent_fallback
 from backend.app.core.config import get_settings, TaskStatus
 
@@ -291,6 +292,14 @@ async def _proxy_arxiv_pdf(
     """
     Stream arXiv PDF through backend to avoid frontend CORS issues.
     """
+    raw_cache_url = arxiv_raw_cache.build_pdf_download_url(
+        arxiv_id,
+        filename=filename,
+        inline=content_disposition != "attachment",
+    )
+    if raw_cache_url:
+        return RedirectResponse(url=raw_cache_url, status_code=307)
+
     arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
     forward_headers = {"User-Agent": "LaTeXTrans-Preview/1.0"}
@@ -538,11 +547,7 @@ async def preview_pdf(task_id: str):
         )
         if not signed_url:
             raise HTTPException(status_code=404, detail="Translated PDF not found")
-        return await _proxy_remote_asset(
-            signed_url,
-            filename=f"preview_{task_id}.pdf",
-            media_type="application/pdf",
-        )
+        return RedirectResponse(url=signed_url, status_code=307)
 
     pdf_file: Optional[Path] = None
     for output_dir in _candidate_output_dirs(task_id, task):

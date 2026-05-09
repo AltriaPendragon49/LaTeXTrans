@@ -369,6 +369,12 @@ class Settings(BaseSettings):
     cos_secret_id: Optional[str] = Field(default=None, validation_alias="COS_SECRET_ID")
     cos_secret_key: Optional[str] = Field(default=None, validation_alias="COS_SECRET_KEY")
     cos_base_prefix: str = Field(default="latextrans-prod", validation_alias="COS_BASE_PREFIX")
+    arxiv_raw_cache_enabled: bool = Field(default=False, validation_alias="ARXIV_RAW_CACHE_ENABLED")
+    arxiv_raw_cache_prefix: str = Field(default="", validation_alias="ARXIV_RAW_CACHE_PREFIX")
+    arxiv_raw_cache_signed_url_expires_seconds: int = Field(
+        default=600,
+        validation_alias="ARXIV_RAW_CACHE_SIGNED_URL_EXPIRES_SECONDS",
+    )
     enable_task_config_capture: bool = Field(default=True, validation_alias="ENABLE_TASK_CONFIG_CAPTURE")
     
     # File Upload Settings

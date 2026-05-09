@@ -100,6 +100,7 @@ def test_create_download_session_recovers_missing_pdf_asset_from_completed_outpu
 
     monkeypatch.setattr(paper_service.settings, "base_dir", base_dir)
     monkeypatch.setattr(paper_service.settings, "community_papers_dir", base_dir / "data" / "community_papers")
+    monkeypatch.setattr(paper_service.settings, "storage_backend_mode", "local_disk")
     monkeypatch.setattr(
         paper_service,
         "_fetch_paper_by_id",

@@ -1,5 +1,14 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-09 COS 回源缓存与直连交付)
+
+- `backend/app/services/arxiv_raw_cache.py`: 新增 arXiv 原始资源 COS raw cache 帮助服务，集中生成 `pdf/<arxiv_id>.pdf` 与 `e-print/<arxiv_id>` 的对象 key 和签名 URL；在 COS 模式且显式启用 raw cache 时，供 arXiv source/PDF 下载、社区 source_pdf 资产和 arXiv PDF 回退路径优先走 COS 回源。
+- `backend/app/services/latex/utils.py`: arXiv 源码归档和原文 PDF 运行时下载现在会在 raw cache 启用时优先读取 COS 签名 URL，失败后仍保留原有 arXiv 端点回退。
+- `backend/app/api/routes/download.py`: 普通任务 COS 输出的 PDF 预览现在返回签名 COS URL 重定向；arXiv PDF 回退代理会在 raw cache 可用时优先重定向到 COS，减少后端流式中转。
+- `backend/app/api/routes/papers.py`: 社区论文 source/translated PDF 预览与下载在对象存储可用时返回签名 URL 重定向；缩略图路由改为复用缩略图服务的 COS 持久化交付结果。
+- `backend/app/services/paper_thumbnail_service.py`: 缩略图生成服务新增 COS 持久化交付能力，生成 PNG 后写入确定性对象 key，并为浏览器返回签名 URL。
+- `backend/app/services/paper_service.py`: arXiv 社区论文 `source_pdf` 在 raw cache 启用时可直接登记共享 raw-cache PDF 对象，避免发布/回填阶段强制由后端下载再上传原文 PDF。
+
 ## Recent Responsibility Updates (2026-05-09 parity kernel cleanup)
 
 - `backend/app/models/config_models.py`: 当前翻译任务统一归一到 `origin_cli_parity` 单内核，仅保留旧 CLI 等价执行所需的配置、并发和谱系标记；已移除未参与生产路径的增强开关写入。

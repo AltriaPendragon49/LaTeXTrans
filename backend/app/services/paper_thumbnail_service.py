@@ -13,6 +13,7 @@ import httpx
 
 from backend.app.core.config import get_settings
 from backend.app.services import paper_preview_service
+from backend.app.services.storage_backend import LocalDiskStorageBackend, build_storage_backend
 
 THUMBNAIL_CACHE_VERSION = "v3"
 
@@ -38,6 +39,22 @@ def _decode_png_data_uri(payload: Optional[str]) -> Optional[bytes]:
 def _thumbnail_cache_path(cache_seed: str) -> Path:
     digest = hashlib.sha256(f"{THUMBNAIL_CACHE_VERSION}:{cache_seed}".encode("utf-8")).hexdigest()
     return _thumbnail_cache_dir() / f"{digest}.png"
+
+
+def _thumbnail_digest(cache_seed: str) -> str:
+    return hashlib.sha256(f"{THUMBNAIL_CACHE_VERSION}:{cache_seed}".encode("utf-8")).hexdigest()
+
+
+def _thumbnail_object_key(cache_seed: str) -> str:
+    return f"data/paper_pdf_thumbnails/{_thumbnail_digest(cache_seed)}.png"
+
+
+def _get_storage_backend():
+    return build_storage_backend(get_settings())
+
+
+def _storage_backend_is_object_store(backend) -> bool:
+    return not isinstance(backend, LocalDiskStorageBackend)
 
 
 def _render_pdf_thumbnail_bytes_from_path(pdf_path: Path) -> Optional[bytes]:
@@ -130,3 +147,43 @@ async def ensure_pdf_thumbnail(
 
     cache_path.write_bytes(thumbnail_bytes)
     return cache_path
+
+
+async def ensure_pdf_thumbnail_delivery(
+    *,
+    cache_seed: str,
+    file_path: Optional[str] = None,
+    remote_url: Optional[str] = None,
+    expires_in: int = 600,
+) -> Optional[dict[str, str]]:
+    backend = _get_storage_backend()
+    if not _storage_backend_is_object_store(backend):
+        cache_path = await ensure_pdf_thumbnail(
+            cache_seed=cache_seed,
+            file_path=file_path,
+            remote_url=remote_url,
+        )
+        return {"file_path": str(cache_path)} if cache_path else None
+
+    object_key = _thumbnail_object_key(cache_seed)
+    if not backend.object_exists(object_key=object_key):
+        cache_path = await ensure_pdf_thumbnail(
+            cache_seed=cache_seed,
+            file_path=file_path,
+            remote_url=remote_url,
+        )
+        if not cache_path:
+            return None
+        backend.put_file(
+            local_path=cache_path,
+            object_key=object_key,
+            content_type="image/png",
+            delete_local=False,
+        )
+
+    signed_url = backend.build_download_url(
+        object_key=object_key,
+        expires_in=expires_in,
+        params={"response-content-type": "image/png"},
+    )
+    return {"signed_url": signed_url} if signed_url else None

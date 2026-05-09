@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 
 from fastapi import Request
-from fastapi.responses import Response
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
@@ -78,9 +77,10 @@ def test_resolve_source_pdf_prefers_object_storage_asset(monkeypatch):
     assert "arxiv_id" not in result
 
 
-def test_preview_source_pdf_streams_object_storage_pdf_inline(monkeypatch):
-    async def _fake_preview(*, paper_id: str):
+def test_preview_source_pdf_redirects_to_signed_object_storage_url(monkeypatch):
+    async def _fake_preview(*, paper_id: str, content_disposition: str = "inline"):
         assert paper_id == "paper-1"
+        assert content_disposition == "inline"
         return {
             "paper_id": paper_id,
             "asset": {
@@ -91,19 +91,7 @@ def test_preview_source_pdf_streams_object_storage_pdf_inline(monkeypatch):
             "signed_url": "https://cos.example.com/source.pdf?sign=abc",
         }
 
-    async def _fake_proxy(*, url: str, filename: str, request: Request, content_disposition: str = "inline"):
-        assert url == "https://cos.example.com/source.pdf?sign=abc"
-        assert filename == "source.pdf"
-        assert request.headers.get("range") == "bytes=0-1023"
-        assert content_disposition == "inline"
-        return Response(
-            content=b"%PDF-1.4\n%mock\n",
-            media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="source.pdf"'},
-        )
-
     monkeypatch.setattr(papers_route.paper_service, "resolve_paper_source_pdf_preview", _fake_preview)
-    monkeypatch.setattr(papers_route, "_proxy_remote_pdf_preview", _fake_proxy)
 
     response = asyncio.run(
         papers_route.preview_source_paper_pdf(
@@ -112,33 +100,65 @@ def test_preview_source_pdf_streams_object_storage_pdf_inline(monkeypatch):
         )
     )
 
-    assert response.status_code == 200
-    assert response.headers["content-disposition"] == 'inline; filename="source.pdf"'
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://cos.example.com/source.pdf?sign=abc"
 
 
-def test_download_source_pdf_streams_object_storage_pdf_as_attachment(monkeypatch):
-    async def _fake_preview(*, paper_id: str):
+def test_download_source_pdf_redirects_to_attachment_signed_url(monkeypatch):
+    async def _fake_preview(*, paper_id: str, content_disposition: str = "inline"):
+        assert content_disposition == "attachment"
         return {
             "paper_id": paper_id,
             "asset": {"id": "asset-source-pdf", "file_name": "source.pdf"},
-            "signed_url": "https://cos.example.com/source.pdf?sign=abc",
+            "signed_url": "https://cos.example.com/source.pdf?download=1&sign=abc",
         }
 
-    async def _fake_proxy(*, url: str, filename: str, request: Request, content_disposition: str = "inline"):
-        assert content_disposition == "attachment"
-        return Response(
-            content=b"%PDF-1.4\n%mock\n",
-            media_type="application/pdf",
-            headers={"Content-Disposition": 'attachment; filename="source.pdf"'},
-        )
-
     monkeypatch.setattr(papers_route.paper_service, "resolve_paper_source_pdf_preview", _fake_preview)
-    monkeypatch.setattr(papers_route, "_proxy_remote_pdf_preview", _fake_proxy)
 
     response = asyncio.run(papers_route.download_source_paper_pdf("paper-1", _request_with_headers()))
 
-    assert response.status_code == 200
-    assert response.headers["content-disposition"] == 'attachment; filename="source.pdf"'
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://cos.example.com/source.pdf?download=1&sign=abc"
+
+
+def test_persist_arxiv_source_pdf_registers_raw_cache_asset_without_download(monkeypatch):
+    captured = {}
+
+    async def _fake_asset_map(*, paper_id: str):
+        assert paper_id == "paper-1"
+        return {}
+
+    def _unexpected_download(_arxiv_id: str):
+        raise AssertionError("raw-cache-backed source_pdf should not download through backend")
+
+    def _fake_raw_key(arxiv_id: str):
+        assert arxiv_id == "2501.12345"
+        return "arxiv/raw/pdf/2501.12345.pdf"
+
+    def _fake_raw_enabled():
+        return True
+
+    async def _fake_upsert(**kwargs):
+        captured["upsert"] = kwargs
+        return {"id": "asset-source-pdf", **kwargs}
+
+    monkeypatch.setattr(paper_service, "_fetch_asset_map_for_paper", _fake_asset_map)
+    monkeypatch.setattr(paper_service, "_download_arxiv_source_pdf_to_temp", _unexpected_download)
+    monkeypatch.setattr(paper_service.arxiv_raw_cache, "is_enabled", _fake_raw_enabled)
+    monkeypatch.setattr(paper_service.arxiv_raw_cache, "raw_pdf_object_key", _fake_raw_key)
+    monkeypatch.setattr(paper_service, "_upsert_latest_asset", _fake_upsert)
+
+    result = asyncio.run(
+        paper_service.persist_arxiv_source_pdf_asset(
+            paper_id="paper-1",
+            task_id="task-1",
+            arxiv_id="2501.12345",
+        )
+    )
+
+    assert result["asset_type"] == "source_pdf"
+    assert captured["upsert"]["file_path"] == "arxiv/raw/pdf/2501.12345.pdf"
+    assert captured["upsert"]["storage_backend"] == "object_storage"
 
 
 def test_persist_arxiv_source_pdf_uploads_and_upserts(monkeypatch, tmp_path: Path):
@@ -199,7 +219,7 @@ def test_persist_arxiv_source_pdf_uploads_and_upserts(monkeypatch, tmp_path: Pat
     assert not downloaded_pdf.exists()
 
 
-def test_download_arxiv_source_pdf_uses_canonical_pdf_url(monkeypatch, tmp_path: Path):
+def test_download_arxiv_source_pdf_prefers_raw_cache_url(monkeypatch, tmp_path: Path):
     captured = {}
 
     class _FakeResponse:
@@ -222,11 +242,16 @@ def test_download_arxiv_source_pdf_uses_canonical_pdf_url(monkeypatch, tmp_path:
         return _FakeResponse()
 
     monkeypatch.setattr(paper_service, "_source_pdf_download_cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        paper_service.arxiv_raw_cache,
+        "build_pdf_download_url",
+        lambda arxiv_id, **_kwargs: "https://cos.example.com/arxiv/raw/pdf/2501.12345.pdf?sign=abc",
+    )
     monkeypatch.setattr(paper_service.requests, "get", _fake_get)
 
     downloaded_pdf = paper_service._download_arxiv_source_pdf_to_temp("2501.12345")
 
-    assert captured["url"] == "https://arxiv.org/pdf/2501.12345"
+    assert captured["url"] == "https://cos.example.com/arxiv/raw/pdf/2501.12345.pdf?sign=abc"
     assert captured["kwargs"]["stream"] is True
     assert downloaded_pdf.read_bytes().startswith(b"%PDF")
 

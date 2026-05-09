@@ -30,6 +30,8 @@ import logging
 import random
 from http.client import IncompleteRead
 
+from backend.app.services import arxiv_raw_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -2267,10 +2269,7 @@ def collect_latex_errors_with_logpath(folder: str):
 # arXiv Download Utilities (Web-adapted, Streamlit removed)
 # ============================================================================
 
-ARXIV_EPRINT_SOURCES = (
-    "https://export.arxiv.org/e-print/{arxiv_id}",
-    "https://arxiv.org/e-print/{arxiv_id}",
-)
+ARXIV_EPRINT_SOURCES = arxiv_raw_cache.ARXIV_EPRINT_FALLBACK_SOURCES
 
 
 class ArxivDownloadError(Exception):
@@ -2511,7 +2510,7 @@ def download_arxiv_source_archive(
     os.makedirs(save_dir, exist_ok=True)
     archive_path = os.path.join(save_dir, f"{arxiv_id}.tar.gz")
 
-    sources = [url_tpl.format(arxiv_id=arxiv_id) for url_tpl in ARXIV_EPRINT_SOURCES]
+    sources = arxiv_raw_cache.build_eprint_source_urls(arxiv_id)
     source_errors: List[str] = []
     no_source_count = 0
 
@@ -2740,7 +2739,14 @@ def batch_download_arxiv_tex(
             pdf_callback.update(0, 1)
         
         # Download PDF file
-        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        pdf_url = (
+            arxiv_raw_cache.build_pdf_download_url(
+                arxiv_id,
+                filename=f"{arxiv_id}.pdf",
+                inline=True,
+            )
+            or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        )
         pdf_path = os.path.join(save_dir, arxiv_id, f"{arxiv_id}.pdf")
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
 

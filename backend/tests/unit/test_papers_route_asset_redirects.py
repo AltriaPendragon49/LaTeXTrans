@@ -33,7 +33,7 @@ def _request_with_headers(headers: dict[str, str] | None = None) -> Request:
     )
 
 
-def test_preview_translated_pdf_streams_object_storage_pdf_inline(monkeypatch):
+def test_preview_translated_pdf_redirects_to_signed_object_storage_url(monkeypatch):
     async def _fake_preview(*, paper_id: str):
         assert paper_id == "paper-1"
         return {
@@ -46,25 +46,11 @@ def test_preview_translated_pdf_streams_object_storage_pdf_inline(monkeypatch):
             "signed_url": "https://cos.example.com/paper.pdf?sign=abc",
         }
 
-    async def _fake_proxy(*, url: str, filename: str, request: Request):
-        assert url == "https://cos.example.com/paper.pdf?sign=abc"
-        assert filename == "translated.pdf"
-        assert request.headers.get("range") == "bytes=0-1023"
-        return Response(
-            content=b"%PDF-1.4\n%mock\n",
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": 'inline; filename="translated.pdf"',
-                "Accept-Ranges": "bytes",
-            },
-        )
-
     monkeypatch.setattr(
         papers_route.paper_service,
         "resolve_paper_translated_pdf_preview",
         _fake_preview,
     )
-    monkeypatch.setattr(papers_route, "_proxy_remote_pdf_preview", _fake_proxy)
 
     response = asyncio.run(
         papers_route.preview_translated_paper_pdf(
@@ -73,9 +59,8 @@ def test_preview_translated_pdf_streams_object_storage_pdf_inline(monkeypatch):
         )
     )
 
-    assert response.status_code == 200
-    assert response.headers["content-disposition"] == 'inline; filename="translated.pdf"'
-    assert response.headers["accept-ranges"] == "bytes"
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://cos.example.com/paper.pdf?sign=abc"
 
 
 def test_proxy_remote_pdf_preview_streams_range_response(monkeypatch):

@@ -51,6 +51,7 @@ from backend.app.repositories.community_paper_repository import (
 )
 from backend.app.services.latex.utils import extract_abstract, extract_text_from_tex, extract_title
 from backend.app.services.latex_validator import find_main_tex_file
+from backend.app.services import arxiv_raw_cache
 from backend.app.services import paper_thumbnail_service
 from backend.app.services import paper_preview_service
 from backend.app.services import task_artifact_storage
@@ -3414,7 +3415,14 @@ def _download_arxiv_source_pdf_to_temp(arxiv_id: str) -> Path:
     ) as handle:
         temp_path = Path(handle.name)
 
-    url = f"https://arxiv.org/pdf/{normalized_arxiv_id}"
+    url = (
+        arxiv_raw_cache.build_pdf_download_url(
+            normalized_arxiv_id,
+            filename=_source_pdf_filename(normalized_arxiv_id),
+            inline=True,
+        )
+        or f"https://arxiv.org/pdf/{normalized_arxiv_id}"
+    )
     try:
         with requests.get(
             url,
@@ -3451,6 +3459,18 @@ async def persist_arxiv_source_pdf_asset(
     existing_asset = asset_map.get("source_pdf")
     if existing_asset and str(existing_asset.get("file_path") or "").strip():
         return existing_asset
+
+    if arxiv_raw_cache.is_enabled():
+        source_name = _source_pdf_filename(normalized_arxiv_id)
+        return await _upsert_latest_asset(
+            paper_id=normalized_paper_id,
+            task_id=task_id,
+            asset_type="source_pdf",
+            file_path=arxiv_raw_cache.raw_pdf_object_key(normalized_arxiv_id),
+            file_name=source_name,
+            mime_type="application/pdf",
+            storage_backend="object_storage",
+        )
 
     local_pdf = await asyncio.to_thread(_download_arxiv_source_pdf_to_temp, normalized_arxiv_id)
     try:
@@ -7961,7 +7981,11 @@ async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, An
     }
 
 
-async def resolve_paper_source_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
+async def resolve_paper_source_pdf_preview(
+    *,
+    paper_id: str,
+    content_disposition: str = "inline",
+) -> Dict[str, Any]:
     paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
     task_id = str(paper.get("community_selected_task_id") or paper.get("trans_latest_task_id") or "").strip()
@@ -7974,11 +7998,24 @@ async def resolve_paper_source_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
             filename = _source_pdf_filename(preferred_arxiv_id or paper_id)
         mime_type = str(source_pdf_asset.get("mime_type") or "application/pdf")
         if source_pdf_asset.get("storage_backend") == "object_storage":
-            signed_url = _resolve_object_storage_signed_url(
+            raw_cache_url = (
+                arxiv_raw_cache.build_pdf_download_url(
+                    preferred_arxiv_id,
+                    filename=filename,
+                    inline=content_disposition != "attachment",
+                )
+                if preferred_arxiv_id
+                and arxiv_raw_cache.is_raw_pdf_object_key(
+                    str(source_pdf_asset.get("file_path") or ""),
+                    preferred_arxiv_id,
+                )
+                else None
+            )
+            signed_url = raw_cache_url or _resolve_object_storage_signed_url(
                 source_pdf_asset,
                 expires_in=300,
                 response_params={
-                    "response-content-disposition": f'inline; filename="{filename}"',
+                    "response-content-disposition": f'{content_disposition}; filename="{filename}"',
                     "response-content-type": mime_type,
                 },
             )
@@ -8030,6 +8067,19 @@ async def resolve_paper_source_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
             }
 
     if preferred_arxiv_id:
+        filename = _source_pdf_filename(preferred_arxiv_id)
+        raw_cache_url = arxiv_raw_cache.build_pdf_download_url(
+            preferred_arxiv_id,
+            filename=filename,
+            inline=content_disposition != "attachment",
+        )
+        if raw_cache_url:
+            return {
+                "paper_id": paper_id,
+                "signed_url": raw_cache_url,
+                "filename": filename,
+                "arxiv_id": preferred_arxiv_id,
+            }
         return {
             "paper_id": paper_id,
             "arxiv_id": preferred_arxiv_id,

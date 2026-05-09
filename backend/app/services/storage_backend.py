@@ -57,6 +57,9 @@ class StorageBackend(ABC):
     ) -> Optional[str]:
         return None
 
+    def object_exists(self, *, object_key: str) -> bool:
+        return False
+
     @staticmethod
     def _normalize_object_key(object_key: str) -> Sequence[str]:
         normalized = PurePosixPath(object_key)
@@ -131,6 +134,9 @@ class LocalDiskStorageBackend(StorageBackend):
 
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
         return self.resolve_local_path(ref).read_text(encoding=encoding)
+
+    def object_exists(self, *, object_key: str) -> bool:
+        return self._build_target_path(object_key).is_file()
 
     def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
         target = self._build_target_path(prefix)
@@ -297,6 +303,16 @@ class CosStorageBackend(StorageBackend):
                     chunk = chunk.encode("utf-8")
                 target_handle.write(chunk)
         return local_path
+
+    def object_exists(self, *, object_key: str) -> bool:
+        try:
+            self._get_client().head_object(
+                Bucket=self.bucket,
+                Key=self._full_object_key(object_key),
+            )
+            return True
+        except Exception:
+            return False
 
     def _full_object_key(self, object_key: str) -> str:
         normalized = "/".join(self._normalize_object_key(object_key))
