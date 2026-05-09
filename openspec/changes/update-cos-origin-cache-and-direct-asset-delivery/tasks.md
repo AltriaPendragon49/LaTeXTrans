@@ -15,4 +15,4 @@
 - [x] 3.2 Add/update API tests for PDF preview redirects and source PDF delivery.
 - [x] 3.3 Add/update thumbnail tests for COS persisted delivery.
 - [x] 3.4 Run focused backend tests.
-- [ ] 3.5 Run real backend/browser-facing checks for representative PDF preview/download behavior.
+- [x] 3.5 Run real backend/browser-facing checks for representative PDF preview/download behavior.
