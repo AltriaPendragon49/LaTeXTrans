@@ -42,3 +42,11 @@ The system SHALL expose enough structured logging or metrics to verify that the 
 - **THEN** the system SHALL reject that request with an authentication-required response
 - **AND** operator readiness payloads SHALL only be returned in an authenticated operator context.
 
+### Requirement: Content Pool Prewarm Translation Uses Origin CLI Parity
+Content-pool prewarm translation SHALL start the same origin CLI parity task used by ordinary backend translation triggers.
+
+#### Scenario: Prewarm candidate starts parity translation
+- **WHEN** a content-pool prewarm candidate reaches the translation stage
+- **THEN** the created translation task SHALL use `origin_cli_parity`
+- **AND** discovery, promotion, ranking, or preview-generation metadata SHALL NOT change the translation kernel.
+

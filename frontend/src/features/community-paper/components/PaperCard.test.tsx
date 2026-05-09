@@ -152,6 +152,19 @@ describe("PaperCard", () => {
     )
   })
 
+  it("hides the unsupported comment metric while keeping supported engagement stats", () => {
+    render(
+      <MemoryRouter>
+        <PaperCard paper={{ ...paper, comment_count: 42 }} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("21")).toBeInTheDocument()
+    expect(screen.getByText("7")).toBeInTheDocument()
+    expect(screen.getByText("3")).toBeInTheDocument()
+    expect(screen.queryByText("42")).not.toBeInTheDocument()
+  })
+
   it("prefetches detail payload on intent signals", () => {
     render(
       <MemoryRouter>

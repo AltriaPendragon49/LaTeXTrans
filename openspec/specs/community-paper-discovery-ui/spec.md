@@ -25,31 +25,32 @@ The community homepage SHALL remain the primary application entry and SHALL evol
 - **AND** those actions SHALL reuse the shared `ui/` primitive layer instead of introducing card-local button patterns
 
 ### Requirement: Feed sort and browse shell
-The community homepage SHALL provide the browse controls needed to inspect public community content using the requested production sort semantics.
+The community homepage SHALL provide the browse controls needed to inspect published community papers using the production sort semantics, without communicating an official-vs-fallback hierarchy.
 
 #### Scenario: Switch feed views
 - **WHEN** a user changes between `latest`, `views`, and `likes`
 - **THEN** the system SHALL request the matching community paper list from the backend API
-- **AND** the feed SHALL render loading, empty, and error states without falling back to local mock data
+- **AND** the feed SHALL render loading, empty, and error states without falling back to local mock data.
 
 #### Scenario: Sort values fall back to the latest rule
 - **WHEN** multiple community papers share the same `view_count` or `like_count`
-- **THEN** the system SHALL break ties using original arXiv publication time descending
-- **AND** it SHALL continue falling back to creation time descending when publication time is unavailable
+- **THEN** the UI SHALL treat the backend order as canonical
+- **AND** that canonical order SHALL break ties using original arXiv publication time descending
+- **AND** it SHALL continue falling back to `official_published_at` and then `created_at` when original publication time is unavailable.
 
-#### Scenario: Surface official-first guidance
+#### Scenario: Public feed copy treats published papers as peer entries
 - **WHEN** the feed homepage renders
-- **THEN** the page SHALL communicate that official community content is prioritized
-- **AND** fallback user content SHALL appear as a lower-priority community state rather than a peer official source
-- **AND** the page SHALL rely on spacing, grouping, and restrained status emphasis rather than broad accent-colored panels
+- **THEN** the page SHALL present the community library as one published-paper surface
+- **AND** it SHALL NOT communicate that official papers are prioritized over fallback papers
+- **AND** it SHALL NOT explain feed ranking through `community_status` tiers.
 
 ### Requirement: Paper card content contract
-Each Feed result SHALL render as a dense paper discovery card that helps the viewer decide whether to inspect the paper in detail.
+Each feed result SHALL render as a dense paper discovery card that helps the viewer decide whether to inspect the paper in detail without relying on public status-tier badges.
 
 #### Scenario: Render a paper card
-- **WHEN** the Feed receives a community paper item
-- **THEN** the card SHALL show community status, translation status, title, author summary, category summary, timing, counters, and selected asset summary
-- **AND** official papers SHALL be visually distinguishable from user fallback papers.
+- **WHEN** the feed receives a community paper item
+- **THEN** the card SHALL show translation status, title, author summary, category summary, publication timing, counters, engagement affordances, and selected asset summary
+- **AND** it SHALL NOT require an official-vs-fallback badge or priority styling to explain why the paper appears where it does.
 
 ### Requirement: Paper detail shell contract
 The community paper detail page SHALL keep reading dominant while providing a persistent right-side reading-support workspace that behaves as a coordinated dual-pane study surface.
@@ -131,4 +132,17 @@ The community paper detail page SHALL expose the active favorite interaction req
 - **WHEN** the paper detail page renders in this rollout
 - **THEN** non-scoped future interactions such as comments or reports MAY remain hidden, reserved, or inactive
 - **AND** the page SHALL not imply that those non-scoped interactions are already fully implemented by this change
+
+### Requirement: Community discovery controls remain conflict-free on mobile
+The community discovery surface SHALL provide a narrow-screen layout that preserves browse capability without relying on the desktop sidebar or cramped control rows.
+
+#### Scenario: Mobile homepage uses single-column discovery framing
+- **WHEN** a user opens the community homepage on a narrow/mobile viewport
+- **THEN** the page SHALL render its hero, search, sort, and feed content in a single-column flow
+- **AND** the browse controls SHALL not overlap, clip, or compete for the same horizontal space
+
+#### Scenario: Mobile discovery shell uses shared bottom navigation
+- **WHEN** the community discovery routes render on a narrow/mobile viewport
+- **THEN** navigation to first-level destinations SHALL use the shared four-item bottom navigation
+- **AND** the previous left-rail shell SHALL not consume persistent reading width on those screens
 

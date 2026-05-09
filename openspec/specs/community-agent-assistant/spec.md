@@ -243,11 +243,28 @@ The community agent SHALL normalize persisted conversation, run, and event times
 - **AND** saved conversations and runs SHALL remain readable through the authenticated community workspace after the write completes
 
 ### Requirement: Community agent runtime can stay retained while product UI entry points are hidden
-The community agent runtime SHALL remain restorable from retained code assets even when the product hides its public homepage, sidebar, and paper-detail entry points and disables direct product access to those agent flows.
+The community agent runtime SHALL remain restorable from retained code assets even when the product hides its public homepage, paper-detail, and ordinary-user sidebar entry points, while still allowing authenticated admins to access the retained conversation workspace through an admin-scoped product entry.
 
-#### Scenario: Product hides public agent UI entry points
-- **WHEN** the current product configuration hides the homepage agent composer, sidebar agent affordances, and paper-detail public copilot pane
+#### Scenario: Product hides public agent UI entry points from non-admin users
+- **WHEN** the current product configuration hides the homepage agent composer, paper-detail public copilot pane, and ordinary-user shared-shell affordances
 - **THEN** the retained backend runtime code and underlying tool-calling services SHALL remain present in the codebase
-- **AND** ordinary users and admins SHALL NOT be able to use those product agent flows directly in the current hidden mode
-- **AND** later recovery of those UI entry points SHALL not require reintroducing deleted runtime code.
+- **AND** guests and authenticated non-admin users SHALL NOT be able to use those product agent flows directly in the current hidden mode.
+
+#### Scenario: Authenticated admin restores the retained workspace through the shell
+- **WHEN** an authenticated user with an admin role opens the shared shell
+- **THEN** the product SHALL expose a dedicated admin-scoped entry into the retained agent conversation workspace
+- **AND** later recovery of that UI entry SHALL not require reintroducing deleted runtime code.
+
+### Requirement: Agent-Triggered Translation Uses Origin CLI Parity
+Community-agent initiated translation SHALL delegate to the same origin CLI parity translation task entry as other backend triggers.
+
+#### Scenario: Agent starts a translation tool task
+- **WHEN** the community agent executes `start_translation_kernel`
+- **THEN** the created backend translation task SHALL use `origin_cli_parity`
+- **AND** the agent layer SHALL NOT introduce a separate translation core or modern fallback path.
+
+#### Scenario: Agent auto-start translation uses the same route
+- **WHEN** the community agent auto-starts translation after paper import or lookup
+- **THEN** the translation SHALL be started through the shared parity task entry
+- **AND** its result SHALL come from the legacy CLI translation core behavior.
 

@@ -76,3 +76,79 @@ The system SHALL provide an operator backfill path that upgrades existing commun
 - **THEN** the system SHALL leave the current paper record unchanged
 - **AND** it SHALL report the paper as skipped instead of requiring an immediate full re-curation.
 
+### Requirement: Community papers retain original source PDFs in object storage
+The system SHALL persist original arXiv PDFs as canonical community paper assets when publishing curated arXiv papers in object-storage-backed production.
+
+#### Scenario: Admin curation stores original PDF in COS
+- **WHEN** an admin curation run successfully publishes an arXiv paper
+- **AND** object storage is configured as the durable backend
+- **THEN** the system SHALL store the original arXiv PDF as a latest `source_pdf` asset under the community paper namespace
+- **AND** the `paper_assets` row SHALL record `storage_backend=object_storage`, `mime_type=application/pdf`, and a COS-resolvable `file_path`.
+
+#### Scenario: Source PDF persistence failure does not corrupt translated publish
+- **WHEN** translated community assets publish successfully
+- **AND** downloading or storing the original arXiv PDF fails
+- **THEN** the system SHALL keep the translated paper publish result intact
+- **AND** it SHALL record enough warning information for a later `source_pdf` backfill.
+
+#### Scenario: Existing source archive remains distinct from original PDF
+- **WHEN** a community paper has both `source_archive` and `source_pdf`
+- **THEN** the system SHALL treat `source_archive` as the LaTeX source artifact
+- **AND** it SHALL treat `source_pdf` as the original readable PDF artifact.
+
+### Requirement: Existing community papers can backfill original source PDFs
+The system SHALL provide an operator path to backfill `source_pdf` assets for existing published arXiv community papers.
+
+#### Scenario: Backfill stores missing source PDF
+- **WHEN** an operator runs the source-PDF backfill with execute mode
+- **AND** a published arXiv community paper has no latest `source_pdf`
+- **THEN** the script SHALL download the original arXiv PDF, persist it to object storage, and upsert the `source_pdf` asset row.
+
+#### Scenario: Backfill dry-run does not write
+- **WHEN** an operator runs the source-PDF backfill without execute mode
+- **THEN** the script SHALL report candidate papers and target object keys
+- **AND** it SHALL NOT write COS objects or update database rows.
+
+### Requirement: Existing Community Assets Migrate To Object Storage
+The system SHALL support migrating existing local-disk community paper assets into the canonical object-storage namespace while preserving existing paper and asset identities.
+
+#### Scenario: Local-disk paper assets are migrated in place
+- **WHEN** a community paper has latest `preview_html`, `source_archive`, or `translated_pdf` assets recorded with `storage_backend=local_disk`
+- **THEN** the migration SHALL upload each referenced local file to COS under the canonical community asset key
+- **AND** the corresponding `paper_assets` row SHALL be updated to `storage_backend=object_storage` with a COS-resolvable `file_path`
+- **AND** paper-level latest asset pointers SHALL continue to identify the same latest asset rows.
+
+#### Scenario: Missing local asset blocks row migration
+- **WHEN** a local-disk community asset row points to a file that does not exist
+- **THEN** the migration SHALL report the row as blocked
+- **AND** it SHALL not update that row to object storage until the asset is recovered or explicitly excluded.
+
+#### Scenario: COS orphan community assets are excluded from current papers
+- **WHEN** COS contains `data/community_papers/...` objects that are not referenced by the current asset manifest
+- **THEN** those objects SHALL be reported as orphan candidates
+- **AND** they SHALL only be deleted through the guarded COS cleanup phase.
+
+### Requirement: Core-pool complete assets can sync into local arXiv-ID reading directories
+The system SHALL provide an operator script that treats backend asset records as the source of truth for completed core-pool assets, syncs recorded assets into a local arXiv-ID-based reading directory layout, and updates `backend/arxiv_id/core_pool/complete.md` as a human-readable completion report.
+
+#### Scenario: Sync completed arXiv papers discovered from backend records
+- **WHEN** an operator runs the sync script without explicit arXiv filters
+- **THEN** the script SHALL query backend paper and asset records for latest object-storage assets
+- **AND** it SHALL download each non-conflicting asset set that contains `source_archive`, `preview_html`, and `translated_pdf` assets into `data/community_papers/<arxiv_id>/...`.
+
+#### Scenario: Sync updates the completion report from backend records
+- **WHEN** a non-dry-run sync discovers complete arXiv IDs from backend asset records
+- **THEN** the script SHALL write those discovered IDs to `backend/arxiv_id/core_pool/complete.md`
+- **AND** the markdown file SHALL represent completed assets observed in backend records rather than a prerequisite input list.
+
+#### Scenario: Sync finds multiple conflicting recorded asset sets for one arXiv ID
+- **WHEN** the sync script finds more than one complete recorded asset set for the same `arXiv ID`
+- **THEN** the script SHALL mark that paper as conflicted
+- **AND** it SHALL skip downloading that paper until an operator resolves the ambiguity.
+
+#### Scenario: Local operator pulls completed server assets and cleans remote copies
+- **WHEN** an operator runs the sync script in remote pull-and-clean mode
+- **THEN** the script SHALL SSH to the production server and run the same backend-record sync inside the backend runtime
+- **AND** it SHALL archive the synced `data/community_papers/<arxiv_id>/...` directories, download and safely extract them into the local destination root, and update local `complete.md`
+- **AND** after a successful local extraction it SHALL delete only the remote arXiv-ID output directories included in that archive plus the temporary archive file.
+

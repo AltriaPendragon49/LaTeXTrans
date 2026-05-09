@@ -134,3 +134,64 @@ Production runtime artifacts SHALL use object storage as the canonical durable s
 - **THEN** the backend SHALL continue using the existing local-disk storage layout
 - **AND** developers SHALL not be required to provision COS for normal local iteration.
 
+### Requirement: Production COS deployments keep local asset residue bounded
+Production COS deployments SHALL have an operator-verified cleanup/audit path so local runtime cache residue does not grow into durable-asset storage again.
+
+#### Scenario: Cleanup audit runs after COS deployment
+- **WHEN** production runs with `STORAGE_BACKEND_MODE=cos`
+- **THEN** operators SHALL be able to run a cleanup audit that reports local residue under COS-managed upload, output, community paper, failed-task, and temp storage roots
+- **AND** the audit SHALL include counts, sizes, ages, skipped paths, and errors.
+
+#### Scenario: Destructive cleanup follows verification
+- **WHEN** a cleanup execute run is enabled in production
+- **THEN** it SHALL use the same guarded candidate rules as dry-run
+- **AND** production verification SHALL confirm public asset routes still work after cleanup.
+
+### Requirement: Production COS Asset Cutover
+Production operations SHALL provide a guarded migration path that converts local-disk production assets to COS-backed durable storage without losing current public asset delivery.
+
+#### Scenario: Dry-run manifest precedes destructive operations
+- **WHEN** an operator prepares the production asset migration
+- **THEN** the system SHALL produce a dry-run manifest listing COS orphan deletion candidates, local files to upload, database rows to update, same-key conflicts, and local cleanup candidates
+- **AND** the operator SHALL be able to review this manifest before COS deletion, database updates, or local cleanup execute.
+
+#### Scenario: Writes are paused during cutover
+- **WHEN** production asset storage is being cut over from local disk to COS
+- **THEN** production write paths SHALL be paused or placed into a maintenance window
+- **AND** the migration SHALL not run while new translation outputs or community paper assets can be written to local disk.
+
+#### Scenario: COS mode is verified before local cleanup
+- **WHEN** local assets have been uploaded and database pointers have been switched to COS
+- **THEN** backend and public API health checks SHALL pass in COS mode
+- **AND** representative preview and download routes SHALL resolve assets from COS before migrated local asset directories are deleted.
+
+#### Scenario: Final state reports storage authority
+- **WHEN** the migration is complete
+- **THEN** the operator report SHALL include final disk usage, COS object totals, MySQL storage-backend counts, and public health-check evidence.
+
+### Requirement: Shared Redis service backs public community-paper discovery state
+Production deployment SHALL provide a shared Redis service for public community-paper feed cache and ranking state.
+
+#### Scenario: Multiple backend instances serve one public feed state
+- **WHEN** multiple backend processes or hosts serve public `GET /api/papers` requests
+- **THEN** they SHALL read and write the same Redis-backed public feed cache and ranking indexes
+- **AND** steady-state correctness SHALL NOT depend on process-local public feed memory.
+
+#### Scenario: Redis outage falls back to canonical reads
+- **WHEN** the shared Redis service is unavailable or unhealthy
+- **THEN** the backend SHALL fall back to the canonical database-backed public read path
+- **AND** it SHALL NOT reintroduce divergent process-local feed caches as the production durability mechanism.
+
+### Requirement: Public feed index maintenance is singleton-safe
+Any scheduled rebuild, repair, or backfill path for Redis-backed public community-paper indexes SHALL run under singleton-safe execution.
+
+#### Scenario: Scheduled index maintenance runs in production
+- **WHEN** the system rebuilds or repairs the Redis-backed `latest`, `views`, or `likes` indexes
+- **THEN** that work SHALL run in a dedicated worker role or under a distributed singleton lock
+- **AND** multiple web instances SHALL NOT race to rebuild the same public index set concurrently.
+
+#### Scenario: Scheduled rebuild swaps indexes atomically
+- **WHEN** the system performs a full scheduled rebuild of a Redis-backed public feed index
+- **THEN** it SHALL populate a temporary Redis key first
+- **AND** it SHALL atomically promote the completed temporary key into the live index key rather than exposing a delete-then-rebuild gap to readers.
+

@@ -236,3 +236,46 @@ When ordinary-task object storage mode is enabled, the system SHALL persist tran
 - **THEN** the backend SHALL materialize the source tree from COS into a temporary local runtime directory
 - **AND** the translation runtime SHALL use that hydrated local directory without changing the durable `source_path`
 
+### Requirement: COS-mode local residue cleanup is guarded and auditable
+The system SHALL provide a dry-run-first cleanup path for local runtime residue created while durable artifacts are stored in COS.
+
+#### Scenario: Cleanup dry-run reports candidates
+- **WHEN** an operator runs the cleanup task without execute mode
+- **AND** `STORAGE_BACKEND_MODE=cos`
+- **THEN** the task SHALL report stale local candidates under approved runtime cache roots
+- **AND** it SHALL NOT delete any files or directories.
+
+#### Scenario: Cleanup execute deletes only guarded stale residue
+- **WHEN** an operator runs cleanup with execute mode
+- **AND** a candidate is under an approved root and older than the configured age threshold
+- **THEN** the task SHALL delete that candidate
+- **AND** it SHALL record the deletion in a machine-readable report.
+
+#### Scenario: Cleanup refuses unsafe paths or modes
+- **WHEN** cleanup is run outside COS mode or is pointed at a path outside approved backend data roots
+- **THEN** the task SHALL refuse destructive cleanup
+- **AND** it SHALL report the refusal instead of deleting data.
+
+### Requirement: Historical Ordinary Task Assets Backfill To COS
+The system SHALL support backfilling historical ordinary-task sources and outputs from local disk to COS so completed tasks remain downloadable after local cleanup.
+
+#### Scenario: Historical task sources migrate to COS
+- **WHEN** an existing task has a local `source_path` under `data/uploads`
+- **THEN** the migration SHALL upload that source tree to COS under the matching logical `data/uploads/...` prefix
+- **AND** the task `source_path` SHALL be updated to the backend-relative logical path used for COS materialization.
+
+#### Scenario: Historical task outputs migrate with manifests
+- **WHEN** an existing task has a local `output_path` under `data/outputs`
+- **THEN** the migration SHALL upload that output tree to COS under the matching logical `data/outputs/<task_id>` prefix
+- **AND** it SHALL write a `storage_manifest.json` that lets COS-mode download and preview routes locate translated PDF, translated-source archive, terminology CSV, and logs.
+
+#### Scenario: Retained failed artifacts migrate to COS
+- **WHEN** a retained failed curation job has a local failed artifact reference
+- **THEN** the migration SHALL upload that retained artifact to COS under the failed-task namespace
+- **AND** the curation job SHALL record `artifact_storage_backend=object_storage` with a COS-resolvable failed artifact path.
+
+#### Scenario: Local cleanup only deletes manifest-covered assets
+- **WHEN** COS-mode verification has passed after migration
+- **THEN** local cleanup SHALL delete only migrated paths covered by the final migration manifest
+- **AND** it SHALL not delete unrelated caches or operator files as part of asset cleanup.
+

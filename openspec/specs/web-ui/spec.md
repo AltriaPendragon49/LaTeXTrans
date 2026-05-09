@@ -710,3 +710,101 @@ The web UI SHALL let admins select multiple currently listed curation history re
 - **AND** successful deletions SHALL be removed from the current selection and refreshed result list
 - **AND** failed deletions SHALL remain visible with an error message so the admin can retry or inspect them.
 
+### Requirement: Account Block Shows Translation Quotas
+The lower-left account/settings/logo block SHALL display both the local LaTeX translation quota and NiuTrans PDF direct-translation credits without confusing the two quota sources.
+
+#### Scenario: Expanded account block displays both quotas
+- **WHEN** an authenticated user views the expanded desktop account/settings/logo area
+- **THEN** the block SHALL be tall enough to display two quota cells without overlap
+- **AND** the left cell SHALL show `LaTeX 翻译：remaining/limit`, such as `LaTeX 翻译：3/3`
+- **AND** the right cell SHALL show `PDF 直译：unusedNumIntegral积分`, such as `PDF 直译：60积分`
+- **AND** the PDF direct-translation value SHALL come from the backend's NiuTrans `unusedNumIntegral` snapshot.
+
+#### Scenario: Quotas are independent in UI copy
+- **WHEN** the quota block renders
+- **THEN** the UI SHALL present LaTeX translation as a daily `remaining/limit` allowance
+- **AND** it SHALL present PDF direct translation as a积分 balance
+- **AND** it SHALL NOT display PDF direct translation as `3/3` or imply that the two quota sources offset each other.
+
+#### Scenario: Quota snapshot is loading or unavailable
+- **WHEN** local quota or NiuTrans credit data is still loading, unavailable, or stale
+- **THEN** the account block SHALL keep a stable layout
+- **AND** it SHALL show an i18n-managed loading, unavailable, or stale state for the affected cell
+- **AND** it SHALL avoid blocking unrelated account/settings actions.
+
+#### Scenario: Collapsed or mobile shell remains usable
+- **WHEN** the sidebar is collapsed or the app uses a narrow/mobile shell
+- **THEN** the quota display SHALL degrade into a compact, tooltip, or sheet presentation
+- **AND** account actions, settings access, and navigation SHALL remain discoverable and non-overlapping.
+
+#### Scenario: New quota copy uses i18n resources
+- **WHEN** quota labels, fallback states, tooltips, or quota-exceeded messages are rendered in the frontend
+- **THEN** all user-visible copy SHALL resolve through centralized i18n resources
+- **AND** no new hardcoded user-visible quota strings SHALL be introduced in frontend source files.
+
+### Requirement: Shared shell exposes Paper Copilot only to admins
+The shared shell SHALL show a dedicated `Paper Copilot` navigation entry only for authenticated admin users, and it SHALL place that entry directly below `Paper Tool`.
+
+#### Scenario: Authenticated admin sees the Paper Copilot entry
+- **WHEN** an authenticated user with an admin role renders the shared desktop shell
+- **THEN** the main sidebar SHALL show a `Paper Copilot` navigation item below `Paper Tool`
+- **AND** activating that item SHALL navigate to the retained conversation workspace.
+
+#### Scenario: Guest or non-admin user renders the shared shell
+- **WHEN** the shell renders for a guest or an authenticated user without an admin role
+- **THEN** the `Paper Copilot` navigation item SHALL remain hidden
+- **AND** public community, favorites, and paper-tool navigation behavior SHALL remain unchanged.
+
+### Requirement: Community conversation route enforces admin access
+The web UI SHALL protect `/agent` conversation routes so only authenticated admin users can access the retained Paper Copilot workspace.
+
+#### Scenario: Guest opens an agent route
+- **WHEN** an unauthenticated user opens `/agent` or `/agent/:conversationId`
+- **THEN** the frontend SHALL redirect that user to `/login`
+- **AND** it SHALL not render the retained conversation workspace before login.
+
+#### Scenario: Authenticated non-admin user opens an agent route
+- **WHEN** an authenticated user without an admin role opens `/agent` or `/agent/:conversationId`
+- **THEN** the frontend SHALL redirect that user to `/tools`
+- **AND** it SHALL not render the retained conversation workspace for that session.
+
+### Requirement: Admin Paper Copilot workspace keeps the current structure while improving polish
+The community conversation workspace SHALL keep its current rail-plus-main-panel structure while presenting a more refined admin-facing Paper Copilot visual treatment.
+
+#### Scenario: Admin opens the Paper Copilot workspace
+- **WHEN** an authenticated admin user opens the retained conversation workspace
+- **THEN** the layout SHALL preserve the existing conversation rail, header, message thread, and composer structure
+- **AND** the header, chat bubbles, metadata surfaces, and composer SHALL use a more polished visual hierarchy than the current baseline presentation.
+
+### Requirement: Shared shell provides a mobile bottom-navigation layout
+The frontend shared shell SHALL provide an explicit narrow-screen navigation model instead of compressing the desktop sidebar into the mobile viewport.
+
+#### Scenario: Narrow screen enters the shared shell
+- **WHEN** a user opens a shared-shell route on a narrow/mobile viewport
+- **THEN** the UI SHALL replace the desktop sidebar-first layout with a mobile shell that uses a top action region and a fixed bottom navigation
+- **AND** that bottom navigation SHALL expose exactly four primary destinations
+- **AND** the page content SHALL reserve safe-area-aware space so bottom navigation does not overlap interactive content
+
+#### Scenario: Desktop shell remains unchanged in principle
+- **WHEN** a user opens a shared-shell route on a desktop-width viewport
+- **THEN** the UI SHALL continue using the desktop navigation model
+- **AND** the mobile bottom-navigation pattern SHALL not displace the desktop reading and workspace layout
+
+### Requirement: Route families use explicit mobile degradation patterns
+The frontend SHALL apply consistent responsive layout rules across public, workflow, workspace, and admin route families instead of squeezing desktop compositions onto narrow screens.
+
+#### Scenario: Public browse routes render on narrow screens
+- **WHEN** a user opens public browse routes such as `/`, `/tools`, `/favorites`, `/profile`, or `/login` on a narrow/mobile viewport
+- **THEN** those pages SHALL render as single-column mobile-safe compositions
+- **AND** search, filters, and primary actions SHALL stack or wrap without overlapping
+
+#### Scenario: Workflow and workspace routes render on narrow screens
+- **WHEN** a user opens workflow or workspace routes such as `/translate`, `/processing`, `/workspace/history`, `/workspace/settings`, or `/workspace/glossary` on a narrow/mobile viewport
+- **THEN** the UI SHALL prioritize the primary task or record content in a stacked layout
+- **AND** secondary controls, logs, or configuration panels SHALL move into collapsible, tabbed, or subsequent stacked sections rather than stay in competing side-by-side regions
+
+#### Scenario: Admin routes render on narrow screens
+- **WHEN** an admin user opens `/admin/curation`, `/admin/curation/tasks`, or `/agent` on a narrow/mobile viewport
+- **THEN** the UI SHALL preserve route capability with mobile-safe stacked layouts
+- **AND** desktop tables, rails, or multi-column controls SHALL degrade into cards, expansions, drawers, or stacked action groups instead of remaining horizontally compressed
+

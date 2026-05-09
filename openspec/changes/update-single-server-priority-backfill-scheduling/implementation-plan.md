@@ -219,14 +219,11 @@ Run: `pytest backend/tests/unit/test_system_llm_token_pool.py -k "fails_over_to_
 
 Expected: PASS for the pool failover and sticky-retry tests.
 
-### Task 3: Integrate the shared helper into backend translation LLM calls
+### Task 3: Integrate the shared helper into active backend LLM calls
 
 **Files:**
 - Modify: `backend/app/services/agents/translator_agent.py`
 - Modify: `backend/app/services/agents/parser_agent.py`
-- Modify: `backend/app/services/agents/controlled_repair_agent.py`
-- Modify: `backend/app/services/agents/translation_repair_agent.py`
-- Modify: `backend/app/services/agents/compilation_diagnostic_node.py`
 - Test: `backend/tests/unit/test_system_llm_token_pool.py`
 
 - [ ] **Step 1: Write the failing integration tests**

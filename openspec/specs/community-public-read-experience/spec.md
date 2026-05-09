@@ -30,7 +30,7 @@ The system SHALL provide a first-read contract that keeps paper detail bootstrap
 - **AND** the non-reader metadata SHALL still render without pretending that full reading is immediately ready.
 
 ### Requirement: Public HTML reading prioritizes a paper-like reading surface
-The public reading experience SHALL prefer a sanitized local reader presentation for English arXiv HTML before falling back to PDF or external source links. This layout will be governed directly by the Stitch Maximized Reader design paradigm.
+The system SHALL prefer a sanitized local reader presentation for English arXiv HTML before falling back to PDF or external source links. This layout will be governed directly by the Stitch Maximized Reader design paradigm.
 
 #### Scenario: arXiv HTML is available
 - **WHEN** the paper has an arXiv HTML source
@@ -39,8 +39,13 @@ The public reading experience SHALL prefer a sanitized local reader presentation
 
 #### Scenario: English HTML is unavailable
 - **WHEN** the paper does not have usable English HTML content
-- **THEN** the detail page SHALL fall back to English source PDF before presenting an empty HTML-like state
+- **THEN** the detail page SHALL fall back to a stored `source_pdf` asset before live arXiv PDF retrieval
 - **AND** the reader SHALL keep the paper readable inside the community flow.
+
+#### Scenario: Stored source PDF is available
+- **WHEN** a public community paper has a latest `source_pdf` asset
+- **THEN** source PDF preview and download routes SHALL resolve that asset through the configured storage backend
+- **AND** normal reader access SHALL NOT depend on live arXiv PDF download for that paper.
 
 ### Requirement: Public math and caption rendering avoids duplicate or malformed formula output
 The system SHALL prefer a single readable math presentation and SHALL not leak broken inline-math fragments or raw LaTeX source commands into prose, captions, tables, or fallback blocks.
@@ -176,4 +181,32 @@ The public paper detail route SHALL present a thin single-row toolbar that prese
 - **WHEN** the user activates the share action
 - **THEN** the page SHALL copy the current paper detail URL to the clipboard
 - **AND** it SHALL provide lightweight feedback without navigating away from the paper.
+
+### Requirement: Narrow-screen reading defaults to translated single-column mode
+The public paper-reading experience SHALL default narrow/mobile viewports to a translated-first single-column reading presentation whenever translated reading assets are available.
+
+#### Scenario: Mobile paper detail opens with translated reading available
+- **WHEN** a user opens a paper detail page on a narrow/mobile viewport
+- **AND** translated reading content is available
+- **THEN** the reader SHALL default to a single-column translated presentation
+- **AND** the UI SHALL not default to a side-by-side bilingual or dual-pane reading layout
+
+#### Scenario: Mobile paper detail falls back when translated reading is unavailable
+- **WHEN** a user opens a paper detail page on a narrow/mobile viewport
+- **AND** translated reading content is not available
+- **THEN** the page SHALL fall back to the best available readable source mode
+- **AND** it SHALL keep the single-column mobile reading structure
+
+### Requirement: Narrow-screen reading support uses explicit secondary surfaces
+The public paper-reading experience SHALL move mobile secondary reading-support content into explicit toggles instead of keeping desktop-persistent support panes visible beside the reader.
+
+#### Scenario: Mobile paper detail exposes support content
+- **WHEN** a user needs insights, similar papers, paper metadata, or other reading-support content on a narrow/mobile viewport
+- **THEN** the page SHALL expose that support content through explicit tabs, drawers, sheets, or collapsible regions
+- **AND** those secondary surfaces SHALL not crowd the default single-column reader
+
+#### Scenario: Mobile preview route opens on a narrow screen
+- **WHEN** a user opens the preview route on a narrow/mobile viewport
+- **THEN** the preview SHALL default to a single-document translated reading view
+- **AND** alternate source or comparison views SHALL remain available through explicit user switching rather than simultaneous side-by-side rendering
 

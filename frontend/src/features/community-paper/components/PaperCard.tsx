@@ -8,7 +8,6 @@ import {
   Heart,
   Languages,
   LoaderCircle,
-  MessageSquareText,
   Trash2,
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
@@ -591,10 +590,6 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
             <span className="flex items-center gap-1.5">
               <Bookmark className={`h-4 w-4 ${favoriteState.favorited ? "fill-[color:var(--px-shell-accent)] text-[color:var(--px-shell-accent)]" : ""}`} />
               {favoriteCount}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <MessageSquareText className="h-4 w-4" />
-              {paper.comment_count || 0}
             </span>
           </div>
         </div>

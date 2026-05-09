@@ -162,6 +162,11 @@ The admin curation task records page SHALL show retained curation jobs across qu
 - **THEN** the page SHALL show curation jobs with status, task identifiers, batch identifiers, timestamps, and error context
 - **AND** it SHALL support simple filtering by status plus search by `arXiv ID` or `batch_id`.
 
+#### Scenario: Admin opens a completed curated paper directly from task history
+- **WHEN** an admin reviews a completed curation history record that has a published paper target
+- **THEN** the task records page SHALL expose a direct read action for that record
+- **AND** activating that action SHALL navigate into the normal paper detail reading route for the published paper.
+
 ### Requirement: Admin curation task records page supports permanent delete management
 The admin curation task records page SHALL allow admins to permanently delete failed or completed curation records.
 
@@ -173,4 +178,17 @@ The admin curation task records page SHALL allow admins to permanently delete fa
 - **WHEN** an admin confirms deletion for a completed curation job that published a paper
 - **THEN** the system SHALL reuse the existing admin hard-delete flow for the published paper and its assets
 - **AND** it SHALL also remove the linked curation-job history row.
+
+### Requirement: Admin Curation Translation Uses Origin CLI Parity
+Admin and community curation translation tasks SHALL use the same origin CLI parity kernel as ordinary backend translation tasks.
+
+#### Scenario: Admin arXiv curation starts parity translation
+- **WHEN** an admin curation job starts translation from an arXiv id
+- **THEN** the translation task SHALL use `origin_cli_parity`
+- **AND** curation-specific timeout, retention, and publishing metadata SHALL NOT change the translation kernel.
+
+#### Scenario: Admin archive curation starts parity translation
+- **WHEN** an admin curation job starts translation from an uploaded archive
+- **THEN** the translation task SHALL use `origin_cli_parity`
+- **AND** curation-specific cost settings such as disabling terminology output SHALL NOT enable modern translation-kernel behavior.
 
