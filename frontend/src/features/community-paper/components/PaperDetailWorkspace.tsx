@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
-import { API_BASE_URL } from "@/api-base"
+import { PAPER_PREVIEW_API_BASE_URL } from "@/api-base"
 import { getCommunityPaperSimilar } from "@/features/community-paper/services/community-paper-api"
 import { stripLeadingDuplicatePaperHeaderHtml } from "@/lib/paper-reader-html"
 import { cn } from "@/lib/utils"
@@ -25,8 +25,8 @@ import type {
   StructuredInsightsPayload,
 } from "@/types/community"
 
-const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v2"
-const DEFAULT_SPLIT_RATIO = 0.8
+const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v3"
+const DEFAULT_SPLIT_RATIO = 0.74
 const MIN_READER_WIDTH = 720
 const MIN_SIDEBAR_WIDTH = 260
 const GUIDE_SECTION_ORDER = [
@@ -61,6 +61,41 @@ function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
 
 type PdfViewerMode = "single" | "bilingual"
 
+interface PdfPreviewFrameProps {
+  testId: string
+  title: string
+  src: string
+  className?: string
+}
+
+function PdfPreviewFrame({ testId, title, src, className }: PdfPreviewFrameProps) {
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    setLoaded(false)
+  }, [src])
+
+  return (
+    <div className={cn("relative min-h-0 overflow-hidden bg-white", className)}>
+      {!loaded ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-10 bg-white"
+        >
+          <div className="mx-auto h-full w-[74%] animate-pulse bg-[linear-gradient(90deg,rgba(241,245,249,0.92),rgba(255,255,255,0.98),rgba(241,245,249,0.92))]" />
+        </div>
+      ) : null}
+      <iframe
+        data-testid={testId}
+        title={title}
+        src={src}
+        onLoad={() => setLoaded(true)}
+        className="h-full w-full border-0 bg-white"
+      />
+    </div>
+  )
+}
+
 function buildPdfViewerUrl(url: string, mode: PdfViewerMode = "single") {
   const view = mode === "bilingual" ? "FitH" : "FitH"
   const viewerParams = `page=1&view=${view}&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`
@@ -80,7 +115,7 @@ function resolvePdfDocumentUrl(
     return candidateUrl
   }
   if (candidateUrl.startsWith("/")) {
-    return `${API_BASE_URL}${candidateUrl}`
+    return `${PAPER_PREVIEW_API_BASE_URL}${candidateUrl}`
   }
   return fallbackUrl
 }
@@ -543,12 +578,12 @@ export function PaperDetailWorkspace({
       ? (reader.source.html_content ?? null)
       : null
   const sourceDocumentUrl = resolvePdfDocumentUrl(
-    `${API_BASE_URL}/api/papers/${paper.id}/source-pdf`,
+    `${PAPER_PREVIEW_API_BASE_URL}/api/papers/${paper.id}/source-pdf`,
     reader?.source,
     "source_pdf",
   )
   const translatedPdfUrl = resolvePdfDocumentUrl(
-    `${API_BASE_URL}/api/papers/${paper.id}/translated-pdf`,
+    `${PAPER_PREVIEW_API_BASE_URL}/api/papers/${paper.id}/translated-pdf`,
     reader?.translated,
     "translated_pdf",
   )
@@ -631,12 +666,12 @@ export function PaperDetailWorkspace({
         >
           {preferredMode === "source" ? (
             sourceDocumentUrl ? (
-              <iframe
-                data-testid="paper-source-pdf-reader"
+              <PdfPreviewFrame
+                testId="paper-source-pdf-reader"
                 title={`${paper.title} PDF`}
                 src={sourcePdfViewerUrl}
                 className={cn(
-                  "h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]",
+                  "h-full mx-auto w-[60%] bg-white",
                   !isDesktop && "mx-0 w-full bg-white",
                 )}
               />
@@ -668,12 +703,12 @@ export function PaperDetailWorkspace({
               </article>
             )
           ) : isTranslatedPdfMode(preferredMode) && canDownload ? (
-            <iframe
-              data-testid="paper-translated-pdf-reader"
+            <PdfPreviewFrame
+              testId="paper-translated-pdf-reader"
               title={`${paper.title} Translated PDF`}
               src={translatedPdfViewerUrl}
               className={cn(
-                "h-full border-0 mx-auto w-[60%] bg-[color:var(--px-shell-panel-strong)]",
+                "h-full mx-auto w-[60%] bg-white",
                 !isDesktop && "mx-0 w-full bg-white",
               )}
             />
@@ -684,17 +719,17 @@ export function PaperDetailWorkspace({
                 !isDesktop && "gap-0 bg-white p-0",
               )}
             >
-              <iframe
-                data-testid="paper-bilingual-source-pdf-reader"
+              <PdfPreviewFrame
+                testId="paper-bilingual-source-pdf-reader"
                 title={`${paper.title} Source PDF`}
                 src={bilingualSourcePdfViewerUrl}
-                className={cn("h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]", !isDesktop && "bg-white")}
+                className="h-full w-full bg-white"
               />
-              <iframe
-                data-testid="paper-bilingual-translated-pdf-reader"
+              <PdfPreviewFrame
+                testId="paper-bilingual-translated-pdf-reader"
                 title={`${paper.title} Translated PDF Compare`}
                 src={bilingualTranslatedPdfViewerUrl}
-                className={cn("h-full w-full border-0 bg-[color:var(--px-shell-panel-strong)]", !isDesktop && "bg-white")}
+                className="h-full w-full bg-white"
               />
             </div>
           ) : (
