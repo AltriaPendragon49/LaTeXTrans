@@ -33,7 +33,7 @@ def _request_with_headers(headers: dict[str, str] | None = None) -> Request:
     )
 
 
-def test_preview_translated_pdf_redirects_to_signed_object_storage_url(monkeypatch):
+def test_preview_translated_pdf_proxies_signed_object_storage_url(monkeypatch):
     async def _fake_preview(*, paper_id: str):
         assert paper_id == "paper-1"
         return {
@@ -46,11 +46,28 @@ def test_preview_translated_pdf_redirects_to_signed_object_storage_url(monkeypat
             "signed_url": "https://cos.example.com/paper.pdf?sign=abc",
         }
 
+    async def _fake_proxy(*, url: str, filename: str, request: Request, content_disposition: str = "inline"):
+        assert url == "https://cos.example.com/paper.pdf?sign=abc"
+        assert filename == "translated.pdf"
+        assert request.headers.get("range") == "bytes=0-1023"
+        assert content_disposition == "inline"
+        return Response(
+            content=b"%PDF-proxy",
+            status_code=206,
+            media_type="application/pdf",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": "bytes 0-1023/2048",
+                "Content-Disposition": 'inline; filename="translated.pdf"',
+            },
+        )
+
     monkeypatch.setattr(
         papers_route.paper_service,
         "resolve_paper_translated_pdf_preview",
         _fake_preview,
     )
+    monkeypatch.setattr(papers_route, "_proxy_remote_pdf_preview", _fake_proxy)
 
     response = asyncio.run(
         papers_route.preview_translated_paper_pdf(
@@ -59,8 +76,9 @@ def test_preview_translated_pdf_redirects_to_signed_object_storage_url(monkeypat
         )
     )
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "https://cos.example.com/paper.pdf?sign=abc"
+    assert response.status_code == 206
+    assert response.headers["content-disposition"] == 'inline; filename="translated.pdf"'
+    assert response.headers["accept-ranges"] == "bytes"
 
 
 def test_proxy_remote_pdf_preview_streams_range_response(monkeypatch):

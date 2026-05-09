@@ -297,10 +297,10 @@ async def _proxy_arxiv_pdf(
         filename=filename,
         inline=content_disposition != "attachment",
     )
-    if raw_cache_url:
+    if raw_cache_url and content_disposition == "attachment":
         return RedirectResponse(url=raw_cache_url, status_code=307)
 
-    arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+    arxiv_pdf_url = raw_cache_url or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
     forward_headers = {"User-Agent": "LaTeXTrans-Preview/1.0"}
     range_header = request.headers.get("range") if request else None
@@ -514,7 +514,7 @@ async def download_pdf(task_id: str):
 
 
 @router.get("/preview/{task_id}/pdf")
-async def preview_pdf(task_id: str):
+async def preview_pdf(task_id: str, request: Request):
     """
     Preview translated PDF (inline display for iframe)
     
@@ -547,7 +547,12 @@ async def preview_pdf(task_id: str):
         )
         if not signed_url:
             raise HTTPException(status_code=404, detail="Translated PDF not found")
-        return RedirectResponse(url=signed_url, status_code=307)
+        return await _proxy_remote_asset(
+            signed_url,
+            filename=f"preview_{task_id}.pdf",
+            media_type="application/pdf",
+            request=request,
+        )
 
     pdf_file: Optional[Path] = None
     for output_dir in _candidate_output_dirs(task_id, task):

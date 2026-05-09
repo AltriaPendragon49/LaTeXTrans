@@ -6,11 +6,12 @@ Production arXiv intake and public PDF reading can still spend backend bandwidth
 ## What Changes
 - Add a COS-backed arXiv raw cache for source archives and original PDFs.
 - Prefer COS raw-cache URLs over direct arXiv URLs for backend source/PDF materialization.
-- Deliver object-storage-backed paper PDFs and task preview PDFs by redirecting to signed COS URLs instead of proxying bytes through FastAPI.
+- Serve object-storage-backed paper PDF and task PDF iframe previews through first-party Range-capable inline proxy responses to preserve the existing native browser reader experience.
+- Keep explicit PDF downloads on signed COS redirects when available, so download traffic does not stream through FastAPI.
 - Persist generated paper thumbnail PNGs to COS and redirect browsers to signed COS URLs after the thumbnail exists.
 - Keep local files as temporary runtime materialization only; generated artifacts still upload to the existing durable COS locations.
 
 ## Impact
 - Affected specs: `file-management`, `community-paper-library-storage`, `community-public-read-experience`
 - Affected code: backend storage abstraction, arXiv download utilities, paper service, paper/download routes, thumbnail service, source-PDF backfill path, focused backend tests
-- Operational impact: production COS bucket needs mirror-origin rules for the configured arXiv raw-cache prefixes and CORS/response-header exposure suitable for browser PDF reads.
+- Operational impact: production COS bucket needs mirror-origin rules for the configured arXiv raw-cache prefixes; no custom COS read domain is required for stable iframe preview.

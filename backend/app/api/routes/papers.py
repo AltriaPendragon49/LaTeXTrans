@@ -1090,9 +1090,11 @@ async def preview_translated_paper_pdf(paper_id: str, request: Request):
     asset = payload["asset"]
     filename = asset.get("file_name") or f"{paper_id}.pdf"
     if payload.get("signed_url"):
-        return RedirectResponse(
+        return await _proxy_remote_pdf_preview(
             url=str(payload["signed_url"]),
-            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            filename=str(filename),
+            request=request,
+            content_disposition="inline",
         )
     return await _serve_local_pdf_preview(
         file_path=Path(payload["file_path"]),
@@ -1123,9 +1125,17 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
 
     if payload.get("signed_url"):
-        return RedirectResponse(
+        asset = payload.get("asset") or {}
+        filename = str(
+            payload.get("filename")
+            or asset.get("file_name")
+            or f"{paper_id}.pdf"
+        )
+        return await _proxy_remote_pdf_preview(
             url=str(payload["signed_url"]),
-            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            filename=filename,
+            request=request,
+            content_disposition="inline",
         )
 
     arxiv_id = str(payload.get("arxiv_id") or "").strip()

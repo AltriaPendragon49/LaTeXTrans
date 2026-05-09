@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import httpx
+from fastapi import Request, Response
 from backend.app.main import app
 
 
@@ -13,7 +14,7 @@ def _make_client() -> httpx.AsyncClient:
     )
 
 
-def test_preview_pdf_redirects_to_signed_url_in_object_storage_mode(monkeypatch):
+def test_preview_pdf_proxies_signed_url_in_object_storage_mode(monkeypatch):
     from backend.app.api.routes import download as download_route
 
     class _FakeTaskManager:
@@ -35,11 +36,34 @@ def test_preview_pdf_redirects_to_signed_url_in_object_storage_mode(monkeypatch)
         else None,
     )
 
+    async def _fake_proxy(url: str, *, filename: str, media_type: str, request: Request | None = None):
+        assert url == "https://cos.example.com/preview.pdf?sign=abc"
+        assert filename == "preview_task-cos-preview.pdf"
+        assert media_type == "application/pdf"
+        assert request is not None
+        assert request.headers.get("range") == "bytes=0-1023"
+        return Response(
+            content=b"%PDF-preview",
+            status_code=206,
+            media_type="application/pdf",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": "bytes 0-1023/2048",
+                "Content-Disposition": 'inline; filename="preview_task-cos-preview.pdf"',
+            },
+        )
+
+    monkeypatch.setattr(download_route, "_proxy_remote_asset", _fake_proxy)
+
     async def _call():
         async with _make_client() as client:
-            return await client.get("/api/preview/task-cos-preview/pdf")
+            return await client.get(
+                "/api/preview/task-cos-preview/pdf",
+                headers={"Range": "bytes=0-1023"},
+            )
 
     response = asyncio.run(_call())
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "https://cos.example.com/preview.pdf?sign=abc"
+    assert response.status_code == 206
+    assert response.headers["content-disposition"] == 'inline; filename="preview_task-cos-preview.pdf"'
+    assert response.headers["accept-ranges"] == "bytes"

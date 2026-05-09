@@ -2,7 +2,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from fastapi import Request
+from fastapi import Request, Response
 
 os.environ.setdefault("LLM_API_KEY", "dummy-key")
 os.environ.setdefault("LLM_BASE_URL", "http://dummy")
@@ -77,7 +77,7 @@ def test_resolve_source_pdf_prefers_object_storage_asset(monkeypatch):
     assert "arxiv_id" not in result
 
 
-def test_preview_source_pdf_redirects_to_signed_object_storage_url(monkeypatch):
+def test_preview_source_pdf_proxies_signed_object_storage_url(monkeypatch):
     async def _fake_preview(*, paper_id: str, content_disposition: str = "inline"):
         assert paper_id == "paper-1"
         assert content_disposition == "inline"
@@ -91,7 +91,24 @@ def test_preview_source_pdf_redirects_to_signed_object_storage_url(monkeypatch):
             "signed_url": "https://cos.example.com/source.pdf?sign=abc",
         }
 
+    async def _fake_proxy(*, url: str, filename: str, request: Request, content_disposition: str = "inline"):
+        assert url == "https://cos.example.com/source.pdf?sign=abc"
+        assert filename == "source.pdf"
+        assert request.headers.get("range") == "bytes=0-1023"
+        assert content_disposition == "inline"
+        return Response(
+            content=b"%PDF-source",
+            status_code=206,
+            media_type="application/pdf",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": "bytes 0-1023/2048",
+                "Content-Disposition": 'inline; filename="source.pdf"',
+            },
+        )
+
     monkeypatch.setattr(papers_route.paper_service, "resolve_paper_source_pdf_preview", _fake_preview)
+    monkeypatch.setattr(papers_route, "_proxy_remote_pdf_preview", _fake_proxy)
 
     response = asyncio.run(
         papers_route.preview_source_paper_pdf(
@@ -100,8 +117,9 @@ def test_preview_source_pdf_redirects_to_signed_object_storage_url(monkeypatch):
         )
     )
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "https://cos.example.com/source.pdf?sign=abc"
+    assert response.status_code == 206
+    assert response.headers["content-disposition"] == 'inline; filename="source.pdf"'
+    assert response.headers["accept-ranges"] == "bytes"
 
 
 def test_download_source_pdf_redirects_to_attachment_signed_url(monkeypatch):
