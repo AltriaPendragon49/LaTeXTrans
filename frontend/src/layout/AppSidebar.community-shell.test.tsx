@@ -120,7 +120,7 @@ describe("AppSidebar community shell", () => {
     const expandButton = screen.getByRole("button", { name: /expand sidebar/i })
     const shell = container.querySelector("aside")
 
-    expect(expandButton).toHaveTextContent("PX")
+    expect(within(expandButton).getByAltText("PaperX")).toBeInTheDocument()
     await user.click(expandButton)
     expect(shell).toHaveAttribute("data-collapsed", "false")
   })
@@ -137,7 +137,7 @@ describe("AppSidebar community shell", () => {
 
     const shell = container.querySelector("aside")
     const expandButton = screen.getByRole("button", { name: /expand sidebar/i })
-    const collapsedMark = within(expandButton).getByText("PX")
+    const collapsedMark = within(expandButton).getByAltText("PaperX").parentElement!
     const expandCue = expandButton.querySelector('[data-sidebar-expand-cue="true"]')
 
     expect(shell).not.toBeNull()

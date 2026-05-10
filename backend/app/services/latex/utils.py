@@ -16,6 +16,7 @@ from pylatexenc.latex2text import LatexNodes2Text
 import os
 import re
 import json
+import threading
 import zipfile
 import tarfile
 from typing import Any, Dict, List, Optional, Tuple
@@ -34,6 +35,8 @@ from backend.app.services import arxiv_raw_cache
 
 logger = logging.getLogger(__name__)
 
+# Semaphore to cap concurrent arXiv source downloads (COS + fallback combined)
+_DOWNLOAD_SEMAPHORE = threading.Semaphore(10)
 
 _SECTIONING_COMMAND_PATTERN = re.compile(
     r"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?(?=\s*(?:\[|\{))"
@@ -2640,6 +2643,34 @@ def download_arxiv_source_archive(
         f"All download attempts failed for arXiv {arxiv_id} "
         f"({all_sources_checked} attempts): {'; '.join(source_errors[-6:])}"
     )
+
+
+# Semaphore-guarded wrapper: limits concurrent arXiv downloads (COS + fallback)
+_download_arxiv_source_archive_orig = download_arxiv_source_archive
+
+
+def download_arxiv_source_archive(  # type: ignore[redefinition]
+    arxiv_id: str,
+    save_dir: str,
+    headers: dict,
+    *,
+    max_retries_per_source: int = 3,
+    retry_delay_range: tuple[float, float] = (2.0, 5.0),
+    timeout: tuple[float, float] = (10.0, 120.0),
+    chunk_size: int = 128 * 1024,
+    progress_callback=None,
+) -> str:
+    with _DOWNLOAD_SEMAPHORE:
+        return _download_arxiv_source_archive_orig(
+            arxiv_id=arxiv_id,
+            save_dir=save_dir,
+            headers=headers,
+            max_retries_per_source=max_retries_per_source,
+            retry_delay_range=retry_delay_range,
+            timeout=timeout,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback,
+        )
 
 
 def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict, progress_callback=None):

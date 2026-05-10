@@ -11,7 +11,6 @@ export function HomeFeedSection({ children }: { children: ReactNode }) {
       <SectionHeading
         eyebrow={t("community.feed.sort.latest")}
         title={t("community.feed.title")}
-        description={t("community.feed.officialPriorityHint")}
       />
       {children}
     </section>

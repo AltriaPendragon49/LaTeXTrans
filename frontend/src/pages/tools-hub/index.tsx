@@ -56,7 +56,6 @@ export default function ToolsHubPage() {
         <PageIntro
           eyebrow={t("community.nav.paperTool", "Paper Tool")}
           title={t("community.nav.paperTool", "Paper Tool")}
-          description={t("community.feed.officialPriorityHint")}
           icon={<PenTool className="h-5 w-5" />}
         />
 

@@ -68,7 +68,7 @@ test_output.txt
 openspec/daily_report
 arxiv-trans/
 
-
+.claude/
 backend_data_backup.tar.gz
 deployment_data/
 tmp/

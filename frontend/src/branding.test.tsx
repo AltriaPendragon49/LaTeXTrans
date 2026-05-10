@@ -34,8 +34,7 @@ describe("brand surfaces", () => {
     )
 
     expect(screen.getByRole("button", { name: "PaperX" })).toBeInTheDocument()
-    expect(screen.getByText("PaperX")).toBeInTheDocument()
-    expect(screen.getByText(/powered by niutrans/i)).toBeInTheDocument()
-    expect(screen.queryByRole("img", { name: "PaperX" })).not.toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "PaperX" })).toBeInTheDocument()
+    expect(screen.queryByText(/Powered By Niutrans/i)).not.toBeInTheDocument()
   })
 })
