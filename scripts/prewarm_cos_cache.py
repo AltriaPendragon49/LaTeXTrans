@@ -22,7 +22,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("prewarm")
 
-sys.path.insert(0, "/app")
+# Project root detection: works locally (scripts/ → repo root) and inside Docker (/app)
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent if _SCRIPT_DIR.name == "scripts" else Path("/app")
+sys.path.insert(0, str(_PROJECT_ROOT))
 
 from backend.app.core.config import get_settings
 from backend.app.services.arxiv_raw_cache import (
@@ -64,7 +67,7 @@ def prewarm_one(arxiv_id: str, settings, backend, session: requests.Session) -> 
 
 
 def main():
-    id_file = "/app/backend/arxiv_id/core_pool/id.md"
+    id_file = str(_PROJECT_ROOT / "backend" / "arxiv_id" / "core_pool" / "id.md")
     ids = load_arxiv_ids(id_file)
     if not ids:
         logger.error("No arXiv IDs found in %s", id_file)
