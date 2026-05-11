@@ -8,10 +8,12 @@ import json
 import logging
 import math
 import mimetypes
+import random
 import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import zipfile
 import xml.etree.ElementTree as ET
@@ -698,11 +700,31 @@ def _should_replace_translated_abstract(
     return False
 
 
+_ARXIV_API_LOCK = threading.Lock()
+_ARXIV_API_LAST_CALL = 0.0
+_ARXIV_API_MIN_GAP = 5.0  # arXiv API: official limit is 1 req/3s, use 5s to be safe
+_ARXIV_API_JITTER = 1.0  # ±1s random jitter to avoid thundering herd
+
+
+def _throttle_arxiv_api():
+    """Enforce a minimum gap between arXiv API requests to avoid 429 rate limiting."""
+    with _ARXIV_API_LOCK:
+        global _ARXIV_API_LAST_CALL
+        now = time.monotonic()
+        gap = now - _ARXIV_API_LAST_CALL
+        if gap < _ARXIV_API_MIN_GAP:
+            sleep_time = _ARXIV_API_MIN_GAP - gap + random.uniform(0, _ARXIV_API_JITTER)
+            time.sleep(sleep_time)
+        _ARXIV_API_LAST_CALL = time.monotonic()
+
+
 def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
+    max_retries = 5
     response_text = ""
     last_error: Optional[BaseException] = None
-    for attempt in range(3):
+    for attempt in range(max_retries):
         try:
+            _throttle_arxiv_api()
             response = requests.get(
                 "https://export.arxiv.org/api/query",
                 params={"id_list": arxiv_id},
@@ -714,9 +736,18 @@ def _fetch_arxiv_metadata_sync(arxiv_id: str) -> Dict[str, Any]:
             break
         except requests.RequestException as exc:
             last_error = exc
-            if attempt >= 2:
+            status_code = getattr(exc.response, "status_code", None) if hasattr(exc, "response") and exc.response else None
+            if status_code in (429, 503):
+                backoff = 5.0 * (2 ** attempt)
+                logger.warning(
+                    "arXiv API %d for %s, waiting %.1fs before retry %d/%d",
+                    status_code, arxiv_id, backoff, attempt + 1, max_retries,
+                )
+                time.sleep(backoff)
+                continue
+            if attempt >= max_retries - 1:
                 raise
-            time.sleep(0.5 * (attempt + 1))
+            time.sleep(1.0 * (attempt + 1))
     if not response_text and last_error:
         raise last_error
 
