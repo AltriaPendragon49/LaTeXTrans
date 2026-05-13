@@ -167,11 +167,8 @@ class VectorRetriever:
                 self._embedding_dim,
             )
 
-        # Load collection into memory for search readiness
-        try:
+            # Load collection into memory for search readiness
             self._collection.load()
-        except Exception as exc:
-            logger.warning("Failed to load Milvus collection: %s", exc)
         return True
         except Exception as exc:
             logger.warning("Failed to create Milvus collection: %s", exc)
