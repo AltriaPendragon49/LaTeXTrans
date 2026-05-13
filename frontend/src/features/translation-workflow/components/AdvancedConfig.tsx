@@ -193,6 +193,19 @@ export function AdvancedConfig() {
             />
           ) : null}
 
+          <InfoTile
+            icon={<BookText className="h-4 w-4" />}
+            title={t("ragTerminology.enableRagTerminology")}
+            description={t("ragTerminology.enableRagTerminologyDescription")}
+            trailing={(
+              <ToggleSwitch
+                id="enable-rag-terminology"
+                checked={advanced_config.enable_rag_terminology ?? false}
+                onCheckedChange={(checked) => updateConfig("enable_rag_terminology", checked)}
+              />
+            )}
+          />
+
           {!advanced_config.use_author_api ? (
             <div className="animate-in slide-in-from-top-2 space-y-4 duration-200">
               <NoticeBanner

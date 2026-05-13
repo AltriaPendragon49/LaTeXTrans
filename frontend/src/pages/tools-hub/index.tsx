@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpenText, PenTool, ScrollText } from "lucide-react"
+import { ArrowRight, BookOpenText, BookText, PenTool, ScrollText } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -41,6 +41,13 @@ const ADMIN_LINKS = [
     icon: ScrollText,
     titleKey: "community.admin.nav.tasks",
     descriptionKey: "community.admin.tasks.description",
+  },
+  {
+    key: "rag-terminology",
+    to: "/admin/rag-terminology",
+    icon: BookText,
+    titleKey: "ragTerminology.nav.adminPanel",
+    descriptionKey: "ragTerminology.description",
   },
 ] as const
 

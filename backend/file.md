@@ -1,5 +1,19 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-13 RAG terminology management)
+
+- `backend/app/core/config.py`: 新增 RAG 术语管理配置项，包括 `RAG_TERMINOLOGY_ENABLED`、`RAG_TERMINOLOGY_MILVUS_URI`、`RAG_TERMINOLOGY_EMBEDDING_MODEL`、`RAG_TERMINOLOGY_RERANK_MODEL`、`RAG_TERMINOLOGY_BM25_REFRESH_INTERVAL` 等环境变量。
+- `backend/app/models/config_models.py`: `AdvancedConfig` 新增 `enable_rag_terminology` 字段，用户可在翻译工具中显式开启 RAG 术语增强。
+- `backend/app/repositories/terminology_repository.py`: 新增术语管理仓储，支持术语 CRUD、BM25 检索、审核工作流（approve/reject）、匹配日志记录和批量导入。
+- `backend/app/services/rag/`: 新增 RAG 核心服务包，包含 BM25 检索器、Milvus 向量检索器、Embedding 客户端、Cross-Encoder 重排器、Glossary 格式化和多阶段流水线编排。
+- `backend/app/services/rag/knowledge_base/`: 新增多源知识库摄入，支持 CSV 批量导入、BibTeX 引用解析和翻译后自动术语抽取。
+- `backend/app/services/terminology_service.py`: 新增术语服务门面，协调仓储与 RAG 流水线，提供导入、检索、审核和匹配日志功能。
+- `backend/app/api/routes/terminology.py`: 新增术语管理 API 路由，提供术语列表、CSV/BibTeX 上传、待审核列表、管理员审核和命中日志查询接口。
+- `backend/app/services/rag/translation_hook.py`: 新增翻译流水线集成钩子，支持 RAG 术语条件判断、Glossary 注入和后置术语抽取。
+- `backend/migrations_mysql/20260513_0012_rag_terminology.sql`: MySQL 迁移脚本，新增 `terminology_terms`、`terminology_evaluation_runs`、`terminology_match_log` 三张表。
+- `backend/evaluation/`: 新增评估套件，包含 BLEU/ROUGE 评分、术语一致性度量和评估报告生成脚本。
+- `backend/evaluation/default_key_terms.json`: 默认关键术语集，覆盖计算机科学和物理等领域。
+
 ## Recent Responsibility Updates (2026-05-09 COS PDF stable preview and fast download)
 
 - `backend/app/api/routes/papers.py`: 社区论文 `translated-pdf` 与 `source-pdf` 预览在拿到对象存储签名 URL 时由后端代理交付并覆盖 `inline` 响应头，避免 COS 默认域名触发打开即下载；显式 PDF 下载仍保留签名 COS URL 重定向以维持下载速度。

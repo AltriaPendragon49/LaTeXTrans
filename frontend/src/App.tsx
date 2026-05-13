@@ -12,6 +12,7 @@ const Layout = lazy(() => import("./layout"))
 const HomePage = lazy(() => import("./pages/home"))
 const CommunityAdminCurationPage = lazy(() => import("./pages/community-admin-curation"))
 const CommunityAdminCurationTasksPage = lazy(() => import("./pages/community-admin-curation-tasks"))
+const RagTerminologyAdminPage = lazy(() => import("./pages/rag-terminology-admin"))
 const CommunityConversationPage = lazy(() => import("./pages/community-conversation"))
 const ProcessingPage = lazy(() => import("./pages/processing"))
 const Login = lazy(() => import("./pages/login"))
@@ -102,6 +103,14 @@ function App() {
                 element={
                   <AdminRoute>
                     {withSuspense(<CommunityAdminCurationTasksPage />)}
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="admin/rag-terminology"
+                element={
+                  <AdminRoute>
+                    {withSuspense(<RagTerminologyAdminPage />)}
                   </AdminRoute>
                 }
               />

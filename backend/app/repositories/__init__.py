@@ -20,6 +20,10 @@ from backend.app.repositories.community_paper_repository import (
     PAPER_COLUMNS,
     PAPER_ASSET_COLUMNS,
 )
+from backend.app.repositories.terminology_repository import (
+    TerminologyRepository,
+    TERMINOLOGY_TERM_COLUMNS,
+)
 
 __all__ = [
     "AuthRepository",
@@ -32,4 +36,6 @@ __all__ = [
     "CommunityPaperRepository",
     "PAPER_COLUMNS",
     "PAPER_ASSET_COLUMNS",
+    "TerminologyRepository",
+    "TERMINOLOGY_TERM_COLUMNS",
 ]

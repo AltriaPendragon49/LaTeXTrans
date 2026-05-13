@@ -1,0 +1,25 @@
+{
+  "computer_science": [
+    {"source": "self-attention", "target": "自注意力"},
+    {"source": "backpropagation", "target": "反向传播"},
+    {"source": "convolutional neural network", "target": "卷积神经网络"},
+    {"source": "reinforcement learning", "target": "强化学习"},
+    {"source": "natural language processing", "target": "自然语言处理"},
+    {"source": "deep learning", "target": "深度学习"},
+    {"source": "transfer learning", "target": "迁移学习"},
+    {"source": "generative adversarial network", "target": "生成对抗网络"},
+    {"source": "gradient descent", "target": "梯度下降"},
+    {"source": "stochastic", "target": "随机"},
+    {"source": "embedding", "target": "嵌入"},
+    {"source": "token", "target": "词元"},
+    {"source": "encoder", "target": "编码器"},
+    {"source": "decoder", "target": "解码器"},
+    {"source": "attention mechanism", "target": "注意力机制"}
+  ],
+  "physics": [
+    {"source": "quantum entanglement", "target": "量子纠缠"},
+    {"source": "wave function", "target": "波函数"},
+    {"source": "superconductivity", "target": "超导"},
+    {"source": "dark matter", "target": "暗物质"}
+  ]
+}

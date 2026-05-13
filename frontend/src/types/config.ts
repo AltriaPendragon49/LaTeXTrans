@@ -61,6 +61,8 @@ export interface AdvancedConfig {
     formatting?: FormattingConfig
     /** Send email notification when task completes or fails */
     email_notification?: boolean
+    /** Enable RAG-based terminology injection during translation */
+    enable_rag_terminology?: boolean
 }
 
 /**
@@ -88,6 +90,7 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
     custom_base_url: undefined,
     custom_api_key: undefined,
     email_notification: undefined,
+    enable_rag_terminology: undefined,
 }
 
 /**

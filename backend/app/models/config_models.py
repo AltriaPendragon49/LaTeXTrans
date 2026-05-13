@@ -140,7 +140,11 @@ class AdvancedConfig(BaseModel):
         default=ORIGIN_CLI_PARITY_MODE,
         description="Internal translation core mode for backend execution."
     )
-    
+    enable_rag_terminology: bool = Field(
+        default=False,
+        description="Enable RAG terminology enhancement for this task. Requires server-side RAG_TERMINOLOGY_ENABLED."
+    )
+
     # API configuration
     use_author_api: bool = Field(
         default=True, 

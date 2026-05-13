@@ -457,6 +457,48 @@ class Settings(BaseSettings):
         description="DB threaded execution strategy: per_call_client|shared_client"
     )
 
+    # RAG Terminology Settings
+    rag_terminology_enabled: bool = Field(
+        default=False,
+        validation_alias="RAG_TERMINOLOGY_ENABLED",
+        description="Enable the RAG terminology pipeline globally. When disabled, user opt-in is ignored."
+    )
+    rag_terminology_top_n: int = Field(
+        default=10,
+        validation_alias="RAG_TERMINOLOGY_TOP_N",
+        description="Maximum number of glossary terms to inject per chunk."
+    )
+    rag_terminology_milvus_uri: str | None = Field(
+        default=None,
+        validation_alias="RAG_TERMINOLOGY_MILVUS_URI",
+        description="Milvus server URI (e.g. http://localhost:19530). Required for vector retrieval."
+    )
+    rag_terminology_milvus_collection: str = Field(
+        default="terminology_terms",
+        validation_alias="RAG_TERMINOLOGY_MILVUS_COLLECTION",
+        description="Milvus collection name for approved term embeddings."
+    )
+    rag_terminology_embedding_model: str = Field(
+        default="sentence-transformers/all-MiniLM-L6-v2",
+        validation_alias="RAG_TERMINOLOGY_EMBEDDING_MODEL",
+        description="Embedding model for generating term and query vectors."
+    )
+    rag_terminology_rerank_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        validation_alias="RAG_TERMINOLOGY_RERANK_MODEL",
+        description="Cross-Encoder model for reranking retrieved terms."
+    )
+    rag_terminology_bm25_refresh_interval: int = Field(
+        default=60,
+        validation_alias="RAG_TERMINOLOGY_BM25_REFRESH_INTERVAL",
+        description="BM25 index refresh interval in seconds."
+    )
+    rag_terminology_max_upload_size_mb: int = Field(
+        default=5,
+        validation_alias="RAG_TERMINOLOGY_MAX_UPLOAD_SIZE_MB",
+        description="Maximum upload file size in MB for CSV/BibTeX terminology files."
+    )
+
     # Server Settings
     host: str = "0.0.0.0"
     port: int = 8000
