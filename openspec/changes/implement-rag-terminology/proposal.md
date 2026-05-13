@@ -1,25 +1,39 @@
-# Proposal: Adaptive Advanced RAG for Terminology Consistency
+# Change: Optional RAG Terminology Tooling
 
-## Problem Statement
-The current translation system generates terminology tables post-translation (mode 2 only) and injects terms from static CSV files. This approach suffers from:
-1. **Low recall**: Static CSV glossaries miss domain-specific terms not explicitly listed.
-2. **Noise interference**: No relevance ranking means all matched terms are injected regardless of context relevance.
-3. **Mode limitation**: Terminology enhancement is restricted to `trans_mode == 2`; modes 0, 1, 3 lack terminology support entirely.
+## Why
+The graduation-design direction requires a RAG terminology module to improve academic terminology consistency, but the existing change proposal is stale: it depends on Supabase/pgvector, while the current project has moved to MySQL-backed runtime persistence and the production translation path is intentionally preserved as `origin_cli_parity`.
 
-## Proposed Solution
-Implement a **three-stage RAG pipeline** ("Query → Hybrid Retrieval → Re-ranking") as specified in the initial task plan §3.1:
+This change restarts the RAG terminology work as an opt-in translation-tool capability. It reuses the graduation-design architecture of "query transformation -> hybrid retrieval -> reranking -> prompt injection" while keeping the default production translation path unchanged.
 
-1. **Multi-source Knowledge Base**: Store terminology in Supabase PostgreSQL with pgvector for embeddings and tsvector for full-text search. Support ingestion of CSV terminology files and user-defined custom glossaries.
-2. **Query Transformation & Hybrid Retrieval**:
-   - **Query Transformation**: Use `_extract_text_from_tex` to convert LaTeX to plain text, then extract core terminology keywords via LLM.
-   - **Dual-path Retrieval**: Execute **vector search** (Supabase pgvector via NVIDIA NIM embeddings) and **keyword search** (PostgreSQL full-text search / tsvector + BM25-like ranking) in parallel.
-3. **Cross-Encoder Re-ranking & Injection**: Use NVIDIA NIM Reranking API to re-rank hybrid retrieval results, select Top-N "golden context" terms, and dynamically inject them into translation prompts as `<Glossary>` blocks.
-4. **Universal Mode Enhancement**: Apply RAG terminology retrieval **across all translation modes** (0, 1, 2, 3), replacing the current mode-2-only restriction.
-5. **Terminology Auto-Extraction**: After translation, extract new source→target term pairs and save to a pending review table in Supabase.
+## What Changes
+- Replace all Supabase/pgvector/RPC terminology storage assumptions with MySQL as the review and metadata source of truth.
+- Add Milvus as the optional vector retrieval database on the server for approved terminology embeddings.
+- Add an explicit `enable_rag_terminology` style option for the translation tool; the feature is disabled by default and MUST NOT affect default `origin_cli_parity` tasks.
+- Implement **multi-source knowledge base ingestion**:
+  - CSV terminology table batch import (source type `imported`).
+  - BibTeX citation parsing to extract keyphrase-term candidates (source type `auto_extracted` with citation provenance).
+  - Auto-extraction from opted-in translation outputs (source type `auto_extracted`).
+  - All sources funnel into the MySQL review workflow before entering retrieval.
+- Implement a three-stage terminology RAG pipeline:
+  - query transformation from LaTeX chunk text to terminology queries,
+  - hybrid retrieval combining **BM25 keyword search** and Milvus vector search,
+  - **Cross-Encoder reranking** and Top-N glossary injection.
+- Persist auto-extracted and imported terminology candidates to MySQL with `pending_review` status, then expose admin approval and rejection flows.
+- Keep graceful degradation: if embedding, Milvus, BM25 indexing, Cross-Encoder reranking, or retrieval fails, translation continues without RAG terminology enhancement.
+- Record matched/injected terminology so the UI and graduation-design evaluation can compare RAG-enabled and baseline translation results.
+- Provide **evaluation methodology** including BLEU/ROUGE scoring and terminology consistency metrics for graduation-design reporting.
 
-## Scope
-- **Backend**: New `rag/` service module for embedding, retrieval, reranking. Modify `TranslatorAgent` to integrate RAG across all modes.
-- **Database**: Supabase PostgreSQL with pgvector extension for terminology storage and vector search. Supabase MCP for schema management.
-- **Embedding**: NVIDIA NIM Embedding API (`integrate.api.nvidia.com/v1/embeddings`) — same infrastructure as existing LLM API.
-- **Reranking**: NVIDIA NIM Reranking API for Cross-Encoder based re-ranking.
-- **Frontend**: Emit matched terms via existing WebSocket progress updates for display in terminology UI.
+## Impact
+- Affected specs: `rag-terminology`
+- Affected code:
+  - `backend/migrations_mysql/` for terminology tables and indexes
+  - `backend/app/repositories/` for MySQL terminology persistence
+  - `backend/app/services/rag/` for embedding, retrieval (BM25 + vector), Cross-Encoder reranking, and prompt formatting
+  - `backend/app/services/rag/knowledge_base/` for multi-source ingestion (CSV import, BibTeX parsing)
+  - `backend/app/api/routes/` for terminology upload/review/admin endpoints
+  - translation-tool configuration and execution paths that explicitly opt in to RAG terminology
+  - frontend translation settings/admin terminology review UI, if implemented in this change
+- Not affected:
+  - default `origin_cli_parity` behavior
+  - community/admin automated translation paths unless they explicitly opt in later through a separate approved change
+  - Supabase, which is no longer part of this design

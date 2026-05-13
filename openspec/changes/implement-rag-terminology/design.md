@@ -1,358 +1,238 @@
-# Design: Adaptive Advanced RAG Terminology Architecture
+# Design: Optional RAG Terminology Tooling
 
-## Architecture Overview
+## Context
+The graduation-design materials define the RAG module as a three-stage process: query transformation, hybrid retrieval, reranking, and prompt injection. They also allow a dedicated vector database such as Milvus or pgvector and a keyword retrieval path such as BM25.
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Translation Request                        │
-│                  (LaTeX section/env/caption)                  │
-└──────────────────┬───────────────────────────────────────────┘
-                   │
-          ┌────────▼────────┐
-          │ Stage 1: Query   │
-          │ Transformation   │
-          │ (extract plain   │
-          │  text + keywords)│
-          └────────┬─────────┘
-                   │
-       ┌───────────┼───────────┐
-       │                       │
-┌──────▼──────┐         ┌──────▼──────┐
-│ Vector      │         │ Keyword     │
-│ Search      │         │ Search      │
-│ (pgvector + │         │ (tsvector + │
-│  NVIDIA     │         │  ts_rank)   │
-│  Embeddings)│         │             │
-└──────┬──────┘         └──────┬──────┘
-       │                       │
-       └───────────┬───────────┘
-                   │
-          ┌────────▼────────┐
-          │ Stage 2: Merge  │
-          │ Candidate Pool  │
-          └────────┬────────┘
-                   │
-          ┌────────▼─────────┐
-          │ Stage 3: Cross-  │
-          │ Encoder Reranking│
-          │ (NVIDIA NIM      │
-          │  Rerank API)     │
-          └────────┬─────────┘
-                   │
-          ┌────────▼─────────┐
-          │ Top-N Golden     │
-          │ Context Injection│
-          │ <Glossary> block │
-          └────────┬─────────┘
-                   │
-          ┌────────▼─────────┐
-          │ LLM Translation  │
-          │ with constrained │
-          │ terminology      │
-          └──────────────────┘
-```
+The current project context has changed since the original proposal:
+- Supabase has been fully abandoned.
+- Runtime persistence is MySQL/SQLite oriented, with MySQL as the server deployment target.
+- The default production translation path is intentionally normalized to `origin_cli_parity`.
+- Terminology generation is currently disabled by parity normalization for default tasks.
 
-## 1. Storage Backend (Supabase pgvector)
+This design keeps the thesis RAG idea but moves it behind an explicit translation-tool option. It does not redefine the default production translation kernel.
 
-### Terminology Table Schema
-```sql
-CREATE TABLE glossary_terms (
-  id SERIAL PRIMARY KEY,
-  source_term TEXT NOT NULL,         -- English term
-  target_term TEXT NOT NULL,         -- Translated term (e.g. Chinese)
-  domain TEXT DEFAULT 'general',     -- e.g. 'cs.AI', 'physics', 'math'
-  source TEXT DEFAULT 'system',      -- 'system' | 'user' | 'auto_extracted'
-  user_id UUID REFERENCES auth.users(id),  -- NULL for system terms
-  embedding VECTOR(1024),           -- NVIDIA NIM embedding dimension
-  status TEXT DEFAULT 'approved',   -- 'approved' | 'pending_review'
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  
-  -- Full-text search index column
-  source_term_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', source_term)) STORED
-);
+## Goals
+- Reuse the graduation-design "query -> hybrid retrieval -> rerank -> inject" architecture.
+- Use MySQL as the source of truth for terminology metadata, review status, ownership, and audit fields.
+- Use Milvus as the server-side vector database for approved terminology embeddings.
+- Provide an administrator review flow for auto-extracted terminology.
+- Keep default translation behavior unchanged unless the user explicitly enables RAG terminology.
+- Provide enough matched-term evidence for UI display and graduation-design evaluation.
 
--- Vector similarity index (HNSW for fast ANN)
-CREATE INDEX idx_glossary_embedding ON glossary_terms 
-  USING hnsw (embedding vector_cosine_ops);
+## Non-Goals
+- Do not restore Supabase, pgvector RPC functions, or Supabase RLS policies.
+- Do not force RAG terminology into every translation mode.
+- Do not alter community/admin automated translation paths by default.
+- Do not require Elasticsearch; BM25 is implemented via the `rank_bm25` Python library operating on in-memory indices built from MySQL approved terms.
+- Do not require local GPU reranking service. Cross-Encoder reranking uses a CPU-friendly model (e.g. `cross-encoder/ms-marco-MiniLM-L-6-v2`).
+- Full PDF content ingestion is marked as post-graduation; BibTeX citation parsing is limited to extracting keyphrase-term candidates from `.bib` files, not full-text PDF RAG.
 
--- Full-text search index
-CREATE INDEX idx_glossary_tsv ON glossary_terms 
-  USING gin (source_term_tsv);
+## Architecture
 
--- Priority lookup index
-CREATE INDEX idx_glossary_source_user ON glossary_terms (source, user_id);
-```
+### Data Stores
 
-### Prioritization Logic
-- **User-defined terms** (`source = 'user'` AND `user_id` matches) → highest priority
-- **System default terms** (`source = 'system'`) → baseline
-- **Auto-extracted terms** (`source = 'auto_extracted'`, `status = 'pending_review'`) → excluded from retrieval until approved
+MySQL is authoritative for terminology state:
+- approved system terms
+- user/imported terms
+- auto-extracted pending terms
+- review decisions
+- vector sync metadata
 
-## 2. Embedding Service (NVIDIA NIM)
-
-- **API Endpoint**: `https://integrate.api.nvidia.com/v1/embeddings`
-- **Model**: `nvidia/nv-embedqa-1b-v2` (1024 dimensions, multilingual, optimized for retrieval QA)
-- **Authentication**: Same `nvapi-*` API key as existing LLM service
-- **Integration**: Direct HTTP call via `aiohttp` (consistent with existing `_request_llm_for_trans`)
-
-```python
-# Embedding request format (OpenAI-compatible)
-payload = {
-    "model": "nvidia/nv-embedqa-1b-v2",
-    "input": ["transformer architecture", "attention mechanism"],
-    "input_type": "query",  # or "passage" for stored terms
-    "encoding_format": "float"
-}
-```
-
-## 3. Three-Stage RAG Retrieval Pipeline
-
-### Stage 1: Query Transformation
-- Input: Raw LaTeX content from section/env/caption
-- Process: `_extract_text_from_tex()` → plain text → LLM extracts key terminology phrases
-- Output: List of query terms (e.g., `["attention mechanism", "transformer", "self-supervised learning"]`)
-
-### Stage 2: Hybrid Retrieval (Dual-Path)
-
-**Path A – Vector Search (Semantic)**:
-```sql
--- Supabase RPC function
-CREATE FUNCTION match_terms(
-  query_embedding VECTOR(1024),
-  match_threshold FLOAT DEFAULT 0.7,
-  match_count INT DEFAULT 20,
-  p_user_id UUID DEFAULT NULL
-)
-RETURNS TABLE (id INT, source_term TEXT, target_term TEXT, similarity FLOAT, source TEXT)
-AS $$
-  SELECT id, source_term, target_term, 
-         1 - (embedding <=> query_embedding) AS similarity,
-         source
-  FROM glossary_terms
-  WHERE embedding <=> query_embedding < 1 - match_threshold
-    AND status = 'approved'
-    AND (user_id IS NULL OR user_id = p_user_id)
-  ORDER BY embedding <=> query_embedding ASC
-  LIMIT match_count;
-$$ LANGUAGE sql;
-```
-
-**Path B – Keyword Search (Exact/Phrase)**:
-```sql
-CREATE FUNCTION search_terms_keyword(
-  query TEXT,
-  match_count INT DEFAULT 20,
-  p_user_id UUID DEFAULT NULL
-)
-RETURNS TABLE (id INT, source_term TEXT, target_term TEXT, rank FLOAT, source TEXT)
-AS $$
-  SELECT id, source_term, target_term,
-         ts_rank(source_term_tsv, plainto_tsquery('english', query)) AS rank,
-         source
-  FROM glossary_terms
-  WHERE source_term_tsv @@ plainto_tsquery('english', query)
-    AND status = 'approved'
-    AND (user_id IS NULL OR user_id = p_user_id)
-  ORDER BY rank DESC
-  LIMIT match_count;
-$$ LANGUAGE sql;
-```
-
-**Merge**: Union results from both paths, deduplicate by `id`, combine scores.
-
-### Stage 3: Cross-Encoder Re-ranking
-
-- **API**: NVIDIA NIM Reranking (`https://integrate.api.nvidia.com/v1/ranking`)
-- **Model**: `nvidia/nv-rerankqa-mistral-4b-v3`
-- **Input**: Query text + candidate term pairs
-- **Output**: Re-ranked list with relevance scores
-- Select **Top-N** (default N=10) terms for injection
-
-```python
-# Reranking request format
-payload = {
-    "model": "nvidia/nv-rerankqa-mistral-4b-v3",
-    "query": {"text": "the transformer architecture uses multi-head attention"},
-    "passages": [
-        {"text": "transformer → 变换器"},
-        {"text": "attention mechanism → 注意力机制"},
-        ...
-    ]
-}
-```
-
-## 4. Prompt Injection
-
-Retrieved and re-ranked terms are injected into the system prompt:
-```
-<Glossary>
-When translating, you MUST strictly use the following glossary.
-User-defined terms (highest priority):
-  - "field" → "域"
-System terms:
-  - "attention mechanism" → "注意力机制"
-  - "transformer" → "Transformer"
-  - "self-supervised learning" → "自监督学习"
-</Glossary>
-```
-
-## 5. Terminology Auto-Extraction & Approval Workflow
-
-### 5.1 Extraction Phase (During Translation)
-
-After each section translates, `_extract_terminology_from_translation()` produces new `{source_term, target_term}` pairs. These are **appended** to a local JSON file:
-
-**File**: `backend/data/pending_terms.json`
-```json
-[
-  {
-    "source_term": "attention mechanism",
-    "target_term": "注意力机制",
-    "domain": "cs.AI",
-    "extracted_from_task": "task-abc123",
-    "extracted_at": "2026-02-24T21:00:00+08:00",
-    "status": "pending"
-  },
-  {
-    "source_term": "wrong term",
-    "target_term": "错误翻译",
-    "domain": "general",
-    "extracted_from_task": "task-def456",
-    "extracted_at": "2026-02-24T20:30:00+08:00",
-    "status": "rejected"
-  }
-]
-```
-
-### 5.2 Admin Review Phase (Via API)
-
-Endpoints in `backend/app/api/routes/terminology.py`:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/terminology/pending` | GET | List all entries in `pending_terms.json` with `status == "pending"` |
-| `/api/terminology/approve` | POST | Set `status = "approved"` for specified term entries |
-| `/api/terminology/reject` | POST | Set `status = "rejected"` for specified term entries |
-
-These endpoints only modify the `status` field in `pending_terms.json`. **No database writes happen at review time** — this keeps the review fast and offline-safe.
-
-### 5.3 Startup Processing Phase (Backend Restart)
-
-On **every backend restart**, after orphaned-task cleanup completes, a new `_process_pending_terms()` function runs as part of `startup_event()` in `main.py`:
+Milvus stores embeddings for approved terms only. Pending and rejected terms MUST NOT participate in vector retrieval.
 
 ```
-startup_event()
-  ├─ Initialize TaskQueue
-  ├─ Start cleanup_loop (orphaned tasks)
-  └─ _process_pending_terms()     ← NEW
-       ├─ Read pending_terms.json
-       ├─ If empty or no decided entries → skip (log info)
-       ├─ For each entry with status == "approved":
-       │   ├─ Generate embedding via NVIDIA NIM API
-       │   ├─ Insert into Supabase glossary_terms (status='approved', source='auto_extracted')
-       │   └─ Remove from JSON
-       ├─ For each entry with status == "rejected":
-       │   └─ Remove from JSON
-       ├─ Entries with status == "pending" → remain in JSON
-       └─ Write updated JSON back to file
+Translation Tool Request
+  -> optional enable_rag_terminology
+  -> Query Transformer
+  -> MySQL Keyword Retriever
+  -> Milvus Vector Retriever
+  -> Candidate Merge
+  -> Reranker
+  -> <Glossary> Injection
+  -> Translation Call
+  -> Auto Term Extraction
+  -> MySQL pending_review
+  -> Admin Approval
+  -> Embedding + Milvus Upsert
 ```
 
-**Pseudocode**:
-```python
-async def _process_pending_terms():
-    """Process approved/rejected terms on startup."""
-    json_path = Path(settings.data_dir) / "pending_terms.json"
-    
-    if not json_path.exists():
-        logger.info("[TermSync] No pending_terms.json found, skipping.")
-        return
-    
-    with open(json_path, "r", encoding="utf-8") as f:
-        terms = json.load(f)
-    
-    if not terms:
-        logger.info("[TermSync] pending_terms.json is empty, skipping.")
-        return
-    
-    approved = [t for t in terms if t["status"] == "approved"]
-    rejected = [t for t in terms if t["status"] == "rejected"]
-    pending  = [t for t in terms if t["status"] == "pending"]
-    
-    if not approved and not rejected:
-        logger.info(f"[TermSync] {len(pending)} pending terms, none decided yet. Skipping.")
-        return
-    
-    # Process approved terms → generate embeddings and insert to Supabase
-    if approved:
-        from backend.app.services.rag.embedding_service import NvidiaEmbeddingService
-        embedding_svc = NvidiaEmbeddingService()
-        
-        source_texts = [t["source_term"] for t in approved]
-        embeddings = await embedding_svc.embed_batch(source_texts, input_type="passage")
-        
-        client = get_glossary_store_client()
-        for term, emb in zip(approved, embeddings):
-            client.table("glossary_terms").insert({
-                "source_term": term["source_term"],
-                "target_term": term["target_term"],
-                "domain": term.get("domain", "general"),
-                "source": "auto_extracted",
-                "embedding": emb,
-                "status": "approved"
-            }).execute()
-        
-        logger.info(f"[TermSync] Inserted {len(approved)} approved term(s) into glossary.")
-    
-    # Rejected terms → just log
-    if rejected:
-        logger.info(f"[TermSync] Removed {len(rejected)} rejected term(s).")
-    
-    # Write back only pending terms
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(pending, f, ensure_ascii=False, indent=2)
-    
-    logger.info(f"[TermSync] {len(pending)} term(s) still pending review.")
-```
+### MySQL Schema Shape
 
-### 5.4 Workflow Diagram
+Use a MySQL migration under `backend/migrations_mysql/`.
 
-```
-Translation completes
-       │
-       ▼
-  Extract terms
-  (LLM-based)
-       │
-       ▼
-  Append to pending_terms.json
-  (status: "pending")
-       │
-       ▼
-  Admin reviews via API ──────────────┬─────────────────┐
-  (GET /api/terminology/pending)      │                 │
-       │                              │                 │
-  POST /approve                 POST /reject       (no action)
-  (status→"approved")          (status→"rejected")  (stays "pending")
-       │                              │                 │
-       ▼                              ▼                 ▼
-  ─── Backend Restart ───────────────────────────────────────
-       │
-       ▼
-  _process_pending_terms()
-       │
-       ├─ approved → embed + insert Supabase → remove from JSON
-       ├─ rejected → remove from JSON
-       └─ pending → keep in JSON for next review
-```
+`terminology_terms` should include at least:
+- `id`
+- `source_term`
+- `target_term`
+- `source_lang`
+- `target_lang`
+- `domain`
+- `source_type`: `system`, `user`, `imported`, `auto_extracted`
+- `status`: `pending_review`, `approved`, `rejected`
+- `owner_user_id` nullable
+- `created_by_user_id` nullable
+- `reviewed_by_user_id` nullable
+- `reviewed_at` nullable
+- `rejection_reason` nullable
+- `extracted_from_task_id` nullable
+- `provenance` nullable — JSON field for source provenance metadata (e.g. `{"source": "bibtex", "citation_key": "brown2020", "entry_type": "article"}`, or `{"source": "csv_import", "file_name": "physics_terms.csv", "row": 42}`)
+- `embedding_model` nullable
+- `embedding_status`: `none`, `pending`, `ready`, `failed`
+- `vector_collection` nullable
+- `vector_term_id` nullable
+- `created_at`
+- `updated_at`
 
-## 6. Graceful Degradation
+Indexes:
+- status/language/domain filters for retrieval
+- owner/status filters for user-specific terms
+- keyword index for `source_term` and optionally `target_term`
+- review queue index for `status`, `created_at`
 
-If RAG retrieval fails (network error, API timeout, empty results):
-- **Fallback to existing CSV-based term dictionary** (`build_term_dict()`)
-- Log warning but do not block translation
-- Ensure zero negative impact on existing translation quality
+The first implementation may store embeddings only in Milvus. MySQL stores vector sync metadata, not the vector payload, unless a later migration needs embedding backup.
 
-If startup term processing fails (NVIDIA/Supabase unavailable):
-- Log error, keep `pending_terms.json` unchanged
-- Terms remain pending until next successful restart
+### Retrieval Pipeline
+
+Stage 1: Query Transformation
+- Extract plain text from LaTeX content using existing safe text extraction helpers.
+- Build terminology queries from the current chunk, with a deterministic fallback that uses noun/phrase heuristics or the raw chunk when LLM query extraction fails.
+
+Stage 2: Hybrid Retrieval (BM25 + Vector)
+- **BM25 keyword path**: Build an in-memory BM25 index from approved terms (source_term text). Tokenize the query and score against the BM25 index on every retrieval call. The index is rebuilt when terms are approved/rejected or on a configurable refresh interval. This provides proper TF-IDF scoring without Elasticsearch.
+- **MySQL exact path**: Retrieve approved terms by exact phrase and prefix matching as a complement to BM25.
+- **Milvus vector path**: Retrieve semantically related approved terms by embedding similarity.
+- Results from all three paths are merged and deduplicated by MySQL term id.
+- User/imported terms outrank system terms when conflicts exist.
+
+Stage 3: Cross-Encoder Reranking
+- Rerank merged candidates against the current chunk using a Cross-Encoder model (e.g. `cross-encoder/ms-marco-MiniLM-L-6-v2` via `sentence-transformers`).
+- The Cross-Encoder scores each (chunk_text, candidate_source_term) pair with a relevance score.
+- Keep Top-N terms, bounded by configuration.
+- If Cross-Encoder reranking fails or is unavailable, fall back to a configurable lightweight reranker (LLM scoring) or merged retrieval score with priority ordering.
+
+Stage 4: Prompt Injection
+- Format selected terms as a compact `<Glossary>` block.
+- Inject only for `enable_rag_terminology=true`.
+- Keep the block bounded so it cannot dominate the model context.
+
+### Multi-Source Knowledge Base Ingestion
+
+The system ingests terminology from three external sources (in addition to manual system entry):
+
+1. **CSV Import** (`source_type=imported`):
+   - Accept CSV files with columns: `source_term`, `target_term`, `source_lang`, `target_lang`, `domain` (optional).
+   - Validate row format, detect duplicates by (source_term, target_term, language pair).
+   - All imported rows enter MySQL with `status=pending_review`.
+   - API endpoint: `POST /api/terminology/upload` with file size and content type validation.
+
+2. **BibTeX Citation Parsing** (`source_type=auto_extracted` with provenance):
+   - Parse `.bib` files to extract citation keys and entry metadata.
+   - Use LLM to suggest source-term/target-term candidates from citation title and abstract context (when available via arXiv API).
+   - Store extracted candidates with `provenance={"source":"bibtex","citation_key":"...","entry_type":"..."}`.
+   - These candidates enter the same `pending_review` workflow.
+
+3. **Post-Translation Auto-Extraction** (`source_type=auto_extracted`):
+   - After opted-in translation chunks complete, compare source/target segments to extract terminology pairs.
+   - Store with `extracted_from_task_id` linking back to the translation task.
+   - Enter `pending_review` workflow.
+
+All ingested terms converge into the same MySQL review workflow (approve → embed → upsert to Milvus).
+
+### Admin Review
+
+Auto-extracted terminology is stored directly in MySQL as `pending_review`.
+
+Admin actions:
+- approve: mark approved, generate embedding, upsert into Milvus
+- reject: mark rejected and exclude from retrieval
+- inspect/list: filter by status, language pair, domain, source type, and task id
+
+Approval must be idempotent. If embedding or Milvus upsert fails after approval, the term remains approved with `embedding_status='failed'` or `pending`, and keyword retrieval may still use it.
+
+### API Boundaries
+
+Routes should stay thin and delegate business logic to services/repositories.
+
+Candidate API surface:
+- `GET /api/terminology/terms`
+- `POST /api/terminology/upload`
+- `GET /api/terminology/pending`
+- `POST /api/terminology/{term_id}/approve`
+- `POST /api/terminology/{term_id}/reject`
+- `GET /api/terminology/tasks/{task_id}/matches`
+
+Admin review endpoints MUST require admin authentication. User-uploaded term endpoints MUST validate ownership and file size/content type.
+
+### Configuration
+
+Add explicit configuration, all disabled or conservative by default:
+- `RAG_TERMINOLOGY_ENABLED=false`
+- `RAG_TERMINOLOGY_TOP_N=10`
+- `RAG_TERMINOLOGY_MILVUS_URI`
+- `RAG_TERMINOLOGY_COLLECTION=terminology_terms`
+- `RAG_TERMINOLOGY_EMBEDDING_MODEL`
+- `RAG_TERMINOLOGY_RERANK_MODEL`
+
+The translation tool flag is separate from server capability. If the server capability is disabled, user opt-in should be ignored gracefully with a visible but non-fatal status.
+
+## Error Handling
+- If query transformation fails, use deterministic plain-text fallback.
+- If Milvus is unavailable, use MySQL keyword retrieval only.
+- If MySQL retrieval fails, skip RAG for that chunk and continue translation.
+- If reranking fails, use merged retrieval scores.
+- If glossary injection would exceed context budget, reduce Top-N.
+- If auto-extraction fails, log and continue; the translation result remains valid.
+
+## Security
+- Admin review endpoints require admin authorization.
+- User uploads are size-limited and parsed as CSV/JSON only.
+- Term text is treated as user input and must not be logged with secrets or injected into SQL through string concatenation.
+- Query and insert/update operations must use parameterized repository methods.
+- Matched-term logs should include term ids and safe text snippets only.
+
+## Testing
+- Repository tests for create/list/approve/reject transitions.
+- BM25 index build/refresh/score unit tests.
+- Retrieval tests for BM25/vector/keyword merge and user priority.
+- Fallback tests for Milvus, embedding, Cross-Encoder rerank, and extraction failures.
+- Route tests for admin-only review actions.
+- Integration test for an opted-in translation-tool execution that records matched terms.
+- Evaluation script or fixture comparing baseline vs RAG-enabled terminology consistency for graduation-design reporting.
+
+## Evaluation Methodology
+The graduation-design evaluation requires quantitative comparison between baseline and RAG-enabled translation.
+
+### BLEU / ROUGE
+- BLEU (BiLingual Evaluation Understudy): n-gram precision-based metric for translation quality.
+- ROUGE (Recall-Oriented Understudy for Gisting Evaluation): recall-oriented metric.
+- Compute both at sentence and document level for baseline and RAG outputs on the same source paper.
+- Report delta = RAG_score - baseline_score.
+
+### Terminology Consistency Metric
+- Define a set of N key terms for the test domain (e.g. computer science: "self-attention", "convolutional layer", "backpropagation").
+- For each key term, count how many times it appears in the RAG-enabled translation output as an exact target-language match to its canonical translation.
+- Per-term consistency = (correct occurrences) / (total occurrences).
+- Aggregate consistency = mean of per-term consistency across all N key terms.
+- Compare against the same metric computed on the baseline output.
+
+### Evaluation Artifacts
+- Structured JSON/CSV report with all scores.
+- Matched-term injection logs from RAG runs for qualitative analysis.
+- Per-chunk comparison of glossary presence and term usage.
+
+## Migration Plan
+1. Update OpenSpec to remove stale Supabase design.
+2. Add MySQL schema and repository.
+3. Add Milvus and embedding wrappers behind config.
+4. Add multi-source ingestion (CSV import, BibTeX parsing).
+5. Add BM25 keyword retrieval, Cross-Encoder reranking, and retrieval/reranking/prompt formatting services.
+6. Add opt-in translation-tool integration.
+7. Add auto-extraction and admin review.
+8. Add evaluation scripts and artifacts.
+9. Add UI and graduation-design evaluation deliverables.
+
+## Risks And Trade-offs
+- Milvus adds one more server component. This is acceptable because the graduation-design方案 already allowed a vector database and MySQL alone is not a strong vector retrieval engine.
+- Reranking can add latency. Keep Top-N and candidate counts bounded and allow reranking fallback.
+- Optional RAG can drift from default parity output. This is intentional only for explicit opt-in tasks and must be measurable through matched-term logs.
+- PDF/BibTeX RAG would expand scope. Keep first implementation focused on terminology entries and review workflow.
