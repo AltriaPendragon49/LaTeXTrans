@@ -14,7 +14,6 @@ from typing import Any, Callable, Optional
 
 from backend.app.core.config import get_settings
 from backend.app.services.rag.glossary_formatter import format_glossary_block
-from backend.app.services.terminology_service import TerminologyService
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +97,7 @@ def build_glossary_for_chunk(
         else getattr(settings, "rag_terminology_top_n", 10)
     )
 
+    from backend.app.services.terminology_service import TerminologyService  # lazy: avoid circular import
     service = TerminologyService()
     result = service.get_rag_glossary(
         chunk_text,
@@ -156,6 +156,7 @@ def run_post_translation_extraction(
     Returns:
         List of inserted term IDs (may be empty if no terms extracted).
     """
+    from backend.app.services.terminology_service import TerminologyService  # lazy: avoid circular import
     service = TerminologyService()
     all_ids: list[str] = []
 
