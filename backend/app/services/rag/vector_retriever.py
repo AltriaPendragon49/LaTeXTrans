@@ -169,7 +169,7 @@ class VectorRetriever:
 
             # Load collection into memory for search readiness
             self._collection.load()
-        return True
+            return True
         except Exception as exc:
             logger.warning("Failed to create Milvus collection: %s", exc)
             return False
