@@ -34,6 +34,13 @@ requests-toolbelt>=1.0.0
 httpx>=0.28.0
 urllib3>=1.26.18,<3
 
+# RAG 术语表
+pymilvus>=2.3.0
+sentence-transformers>=2.2.0
+rank-bm25>=0.2.2
+nltk>=3.8.0
+rouge-score>=0.1.2
+
 # 工具与加密
 tqdm==4.66.1
 loguru==0.7.3

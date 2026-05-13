@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
   CheckCircle2,
-  FileText,
   Loader2,
   Search,
   Upload,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/ui/button/Button"
-import { Input } from "@/ui/input/Input"
 import { NoticeBanner } from "@/ui/notice-banner/NoticeBanner"
 import { PanelShell } from "@/ui/panel-shell/PanelShell"
 import { StatusBadge } from "@/ui/status-badge/StatusBadge"
@@ -27,7 +25,6 @@ import {
   DataTableRow,
 } from "@/ui/data-table/DataTable"
 import { Label } from "@/ui/primitives/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitives/select"
 
 import type { TerminologyTerm } from "@/features/rag-terminology/types"
 import {
