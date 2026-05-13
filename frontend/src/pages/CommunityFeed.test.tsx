@@ -62,14 +62,14 @@ describe("CommunityFeedSurface", () => {
     vi.stubGlobal("confirm", vi.fn(() => true))
   })
 
-  it("renders the search-first feed shell and defaults to the latest sort", () => {
+  it("renders the search-first feed shell and defaults to the hot sort", () => {
     render(
       <MemoryRouter>
         <CommunityFeedSurface />
       </MemoryRouter>,
     )
 
-    expect(useCommunityPapersMock).toHaveBeenCalledWith("latest", "")
+    expect(useCommunityPapersMock).toHaveBeenCalledWith("hot", "")
     expect(screen.getByRole("textbox", { name: "Search community papers" })).toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "Ask the paper agent" })).not.toBeInTheDocument()
   })
@@ -81,6 +81,7 @@ describe("CommunityFeedSurface", () => {
       </MemoryRouter>,
     )
 
+    expect(screen.getByText("Hot")).toBeInTheDocument()
     expect(screen.getByText("Latest")).toBeInTheDocument()
     expect(screen.getByText("Views")).toBeInTheDocument()
     expect(screen.getByText("Likes")).toBeInTheDocument()
@@ -116,7 +117,7 @@ describe("CommunityFeedSurface", () => {
     await user.type(screen.getByRole("textbox", { name: "Search community papers" }), "transformers")
     await user.click(screen.getByRole("button", { name: "Community search" }))
 
-    expect(useCommunityPapersMock).toHaveBeenLastCalledWith("latest", "transformers")
+    expect(useCommunityPapersMock).toHaveBeenLastCalledWith("hot", "transformers")
   })
 
   it("hides the default public results pill before a search is active", () => {

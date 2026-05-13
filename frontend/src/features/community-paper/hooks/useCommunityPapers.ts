@@ -25,7 +25,7 @@ function resolvePrimaryTimestamp(paper: CommunityPaper): number {
 
 function sortFeedItems(items: CommunityPaper[], sort: CommunityFeedSort) {
   return [...items].sort((left, right) => {
-    if (sort === "views") {
+    if (sort === "views" || sort === "hot") {
       const viewDelta = Number(right.view_count ?? 0) - Number(left.view_count ?? 0)
       if (viewDelta !== 0) {
         return viewDelta

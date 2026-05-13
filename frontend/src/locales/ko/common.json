@@ -324,6 +324,7 @@
   "community.nav.community": "커뮤니티",
   "community.nav.paperTool": "논문 도구",
   "community.feed.title": "커뮤니티 피드",
+  "community.feed.sort.hot": "인기",
   "community.feed.sort.latest": "최신",
   "community.feed.searchPlaceholder": "제목 또는 arXiv ID 검색",
   "community.feed.searchAriaLabel": "커뮤니티 논문 검색",

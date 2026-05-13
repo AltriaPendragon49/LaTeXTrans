@@ -23,7 +23,6 @@ import {
 } from "@/features/community-paper/services/community-paper-api"
 import type { CommunityPaper, FavoriteFolder } from "@/types/community"
 import { Button } from "@/ui/button/Button"
-import { PanelShell } from "@/ui/panel-shell/PanelShell"
 import { PageIntro } from "@/ui/page-intro/PageIntro"
 
 function extractActionErrorMessage(error: unknown): string | null {
@@ -253,8 +252,8 @@ export default function FavoritesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-5 md:px-6">
-      <PanelShell tone="glass" className="space-y-5">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+      <div className="space-y-8 animate-in fade-in duration-500">
         <PageIntro
           eyebrow={t("community.nav.favorites")}
           title={t("community.favorites.page.title")}
@@ -262,8 +261,8 @@ export default function FavoritesPage() {
           icon={<Bookmark className="h-5 w-5" />}
         />
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
-          <section className="space-y-4 rounded-[24px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-4">
+        <div className="grid gap-8 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] items-start">
+          <section className="space-y-5">
             <div className="space-y-1">
               <h2 className="text-base font-semibold text-[color:var(--px-shell-ink)]">
                 {t("community.favorites.page.foldersTitle")}
@@ -397,10 +396,10 @@ export default function FavoritesPage() {
             </div>
           </section>
 
-          <section className="rounded-[24px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-4">
+          <section className="space-y-5">
             {selectedFolder ? (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-4 py-4">
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-end justify-between gap-4 pb-4 border-b border-[color:var(--px-shell-line)]/50">
                   <div className="space-y-1">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--px-shell-muted)]">
                       {t("community.favorites.page.folderDetailEyebrow")}
@@ -496,7 +495,7 @@ export default function FavoritesPage() {
             )}
           </section>
         </div>
-      </PanelShell>
+      </div>
     </div>
   )
 }

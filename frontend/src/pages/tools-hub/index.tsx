@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { hasAdminRole } from "@/features/admin-curation/utils/admin-access"
-import { PanelShell } from "@/ui/panel-shell/PanelShell"
 import { PageIntro } from "@/ui/page-intro/PageIntro"
 
 const TOOL_LINKS = [
@@ -51,8 +50,8 @@ export default function ToolsHubPage() {
   const isAdmin = hasAdminRole(user?.roles)
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-5 md:px-6">
-      <PanelShell tone="glass" className="space-y-5">
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
+      <div className="space-y-8 animate-in fade-in duration-500">
         <PageIntro
           eyebrow={t("community.nav.paperTool", "Paper Tool")}
           title={t("community.nav.paperTool", "Paper Tool")}
@@ -127,7 +126,7 @@ export default function ToolsHubPage() {
             </div>
           </div>
         ) : null}
-      </PanelShell>
+      </div>
     </div>
   )
 }

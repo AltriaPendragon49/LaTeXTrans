@@ -1,4 +1,4 @@
-import { Clock3, Eye, Heart, Search, X, type LucideIcon } from "lucide-react"
+import { Clock3, Eye, Flame, Heart, Search, X, type LucideIcon } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -26,7 +26,7 @@ export default function CommunityFeedSurface() {
   const { user } = useAuth()
   const [searchInput, setSearchInput] = useState("")
   const [query, setQuery] = useState("")
-  const [activeTab, setActiveTab] = useState<CommunityFeedSort>("latest")
+  const [activeTab, setActiveTab] = useState<CommunityFeedSort>("hot")
   const [deletingPaperId, setDeletingPaperId] = useState<string | null>(null)
   const isAdmin = hasAdminRole(user?.roles)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -39,6 +39,11 @@ export default function CommunityFeedSurface() {
   }, [])
 
   const feedSortOptions: FeedSortOption[] = [
+    {
+      value: "hot",
+      label: t("community.feed.sort.hot"),
+      icon: Flame,
+    },
     {
       value: "latest",
       label: t("community.feed.sort.latest"),

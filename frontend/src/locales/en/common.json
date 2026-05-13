@@ -346,6 +346,7 @@
   "community.agent.intent.answer": "Paper answer",
   "community.agent.intent.translate": "Translation request",
   "community.agent.error": "Unable to run the community agent right now.",
+  "community.feed.sort.hot": "Hot",
   "community.feed.sort.latest": "Latest",
   "community.feed.searchPlaceholder": "Search titles or arXiv IDs (placeholder)",
   "community.feed.searchAriaLabel": "Search community papers",

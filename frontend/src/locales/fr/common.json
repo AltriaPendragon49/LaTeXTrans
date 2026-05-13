@@ -324,6 +324,7 @@
   "community.nav.community": "Communauté",
   "community.nav.paperTool": "Outils article",
   "community.feed.title": "Flux communautaire",
+  "community.feed.sort.hot": "Tendances",
   "community.feed.sort.latest": "Récents",
   "community.feed.searchPlaceholder": "Rechercher des titres ou des identifiants arXiv",
   "community.feed.searchAriaLabel": "Rechercher des papiers communautaires",

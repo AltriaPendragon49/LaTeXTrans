@@ -324,6 +324,7 @@
   "community.nav.community": "Community",
   "community.nav.paperTool": "Paper-Tools",
   "community.feed.title": "Community-Feed",
+  "community.feed.sort.hot": "Trends",
   "community.feed.sort.latest": "Neueste",
   "community.feed.searchPlaceholder": "Titel oder arXiv-IDs suchen",
   "community.feed.searchAriaLabel": "Community-Paper suchen",

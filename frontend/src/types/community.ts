@@ -473,4 +473,4 @@ export interface CommunityPaperImportResponse {
   reader_state: CommunityPaperReaderState
 }
 
-export type CommunityFeedSort = "latest" | "views" | "likes"
+export type CommunityFeedSort = "latest" | "hot" | "views" | "likes"

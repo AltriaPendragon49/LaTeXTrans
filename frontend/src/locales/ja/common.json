@@ -324,6 +324,7 @@
   "community.nav.community": "コミュニティ",
   "community.nav.paperTool": "論文ツール",
   "community.feed.title": "コミュニティフィード",
+  "community.feed.sort.hot": "人気",
   "community.feed.sort.latest": "最新",
   "community.feed.searchPlaceholder": "タイトルまたは arXiv ID を検索",
   "community.feed.searchAriaLabel": "コミュニティ論文を検索",

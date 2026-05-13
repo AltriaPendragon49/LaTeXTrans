@@ -425,7 +425,7 @@ class _PublicFeedRedisStore:
         if not self._client:
             return
         pipeline = self._client.pipeline()
-        for sort in ("latest", "views", "likes"):
+        for sort in ("latest", "hot", "views", "likes"):
             pipeline.zrem(self.index_key(sort), paper_id)
         pipeline.execute()
 
@@ -2317,7 +2317,7 @@ def _public_feed_cache_key(*, sort: str, query: Optional[str], limit: Optional[i
 
 def _should_cache_public_feed(*, sort: str, query: Optional[str], limit: Optional[int], offset: int) -> bool:
     return (
-        str(sort or "latest").strip().lower() in {"latest", "views", "likes"}
+        str(sort or "latest").strip().lower() in {"latest", "hot", "views", "likes"}
         and not _normalize_search_text(query)
         and limit is not None
         and int(limit) > 0
@@ -4684,7 +4684,7 @@ def _count_rank_score(*, count: Any, paper: Dict[str, Any]) -> float:
 
 def _paper_rank_score(paper: Dict[str, Any], sort: str) -> float:
     normalized_sort = str(sort or "latest").strip().lower()
-    if normalized_sort == "views":
+    if normalized_sort in ("views", "hot"):
         return _count_rank_score(count=paper.get("view_count"), paper=paper)
     if normalized_sort == "likes":
         return _count_rank_score(count=paper.get("like_count"), paper=paper)
@@ -4725,7 +4725,7 @@ async def _rebuild_public_feed_indexes_from_db() -> bool:
         logger.warning("Failed to rebuild shared public feed indexes: %s", exc)
         return False
     public_papers = [_apply_runtime_paper_override(paper) or paper for paper in papers if _is_public_community_paper(paper)]
-    for sort in ("latest", "views", "likes"):
+    for sort in ("latest", "hot", "views", "likes"):
         store.replace_index(
             sort=sort,
             mapping={
@@ -4819,7 +4819,7 @@ async def _refresh_public_feed_rankings_for_paper(
         store.remove_ranked_paper(paper_id=normalized_paper_id)
         store.clear_cached_payloads()
         return
-    for sort in ("latest", "views", "likes"):
+    for sort in ("latest", "hot", "views", "likes"):
         score = _paper_rank_score(paper, sort)
         if sort == "likes" and like_delta is not None:
             # Keep the hot path narrow while still correcting drift with the canonical score write.
@@ -4831,6 +4831,7 @@ async def _refresh_public_feed_rankings_for_paper(
 def _sort_papers(papers: List[Dict[str, Any]], sort: str) -> List[Dict[str, Any]]:
     key_map = {
         "latest": _latest_tuple,
+        "hot": _views_tuple,
         "views": _views_tuple,
         "likes": _likes_tuple,
     }

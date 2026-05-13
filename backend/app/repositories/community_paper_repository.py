@@ -582,7 +582,7 @@ class CommunityPaperRepository:
             " order by coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
             "coalesce(created_at, '') desc"
         )
-        if normalized_sort == "views":
+        if normalized_sort in ("views", "hot"):
             order_by = (
                 " order by coalesce(view_count, 0) desc, "
                 "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "

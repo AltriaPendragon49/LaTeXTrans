@@ -17,7 +17,7 @@ vi.mock(import("@/lib/community-api"), async (importOriginal) => {
   }
 })
 
-function HookProbe({ sort, query }: { sort: "latest" | "views" | "likes"; query: string }) {
+function HookProbe({ sort, query }: { sort: "latest" | "hot" | "views" | "likes"; query: string }) {
   const { items, total, loading, hasMore, loadMore, loadingMore } = useCommunityPapers(sort, query)
 
   return (

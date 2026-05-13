@@ -15,7 +15,7 @@ class _FakeSharedFeedStore:
     def __init__(self):
         self.available = True
         self.cached_payloads = {}
-        self.indexes = {"latest": {}, "views": {}, "likes": {}}
+        self.indexes = {"latest": {}, "hot": {}, "views": {}, "likes": {}}
         self.registry_cleared = 0
         self.rebuild_lock_acquired = True
         self.replace_calls = []
@@ -54,7 +54,7 @@ class _FakeSharedFeedStore:
         self.indexes.setdefault(sort, {})[paper_id] = self.indexes.setdefault(sort, {}).get(paper_id, 0.0) + delta
 
     def remove_ranked_paper(self, *, paper_id: str):
-        for sort in ("latest", "views", "likes"):
+        for sort in ("latest", "hot", "views", "likes"):
             self.indexes.setdefault(sort, {}).pop(paper_id, None)
 
     def acquire_rebuild_lock(self) -> bool:
@@ -100,7 +100,7 @@ def test_rebuild_public_feed_indexes_replaces_indexes_and_clears_response_cache(
     rebuilt = asyncio.run(paper_service._rebuild_public_feed_indexes_from_db())
 
     assert rebuilt is True
-    assert [sort for sort, _mapping in store.replace_calls] == ["latest", "views", "likes"]
+    assert [sort for sort, _mapping in store.replace_calls] == ["latest", "hot", "views", "likes"]
     assert store.registry_cleared == 1
     assert store.cached_payloads == {}
     assert store.indexes["likes"]["paper-a"] > store.indexes["likes"]["paper-b"]
