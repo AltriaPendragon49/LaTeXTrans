@@ -222,6 +222,30 @@ async def node_translate(state: PipelineState) -> PipelineState:
             if p == -1
             else _update_progress(state, 10 + int(p * 0.6), m),
         )
+
+        # RAG Terminology injection: load approved terms if RAG is enabled
+        enable_rag = config.get("enable_rag_terminology", False)
+        if enable_rag:
+            try:
+                from backend.app.services.terminology_service import TerminologyService
+                rag_service = TerminologyService()
+                if rag_service.is_enabled:
+                    rag_domain = config.get("rag_terminology_domain") or None
+                    term_dict = rag_service.get_all_approved_terms_dict(domain=rag_domain)
+                    if term_dict:
+                        translator_agent.term_dict = term_dict
+                        translator_agent.trans_mode = 2
+                        logger.info(
+                            "RAG terminology injected: %d terms loaded into translator agent.",
+                            len(term_dict),
+                        )
+                    else:
+                        logger.info("RAG terminology enabled but no approved terms found.")
+                else:
+                    logger.info("RAG terminology not enabled at server level; skipping injection.")
+            except Exception:
+                logger.warning("Failed to inject RAG terminology (non-fatal)", exc_info=True)
+
         await translator_agent.execute()
         _write_task_log(transed_project_dir, "translation_completed")
         _update_progress(state, 70, "Translation completed")
@@ -543,6 +567,7 @@ async def node_finalize(state: PipelineState) -> PipelineState:
             "node_exit:finalize",
             {"status": "ok", "elapsed_ms": (time.monotonic() - started) * 1000},
         )
+        _run_post_translation_rag(state, config, task_id)
         return {**state, "final_result": final_result}
 
     error_summary = generation_result.get("error_summary") or "No PDF path returned"
@@ -570,7 +595,39 @@ async def node_finalize(state: PipelineState) -> PipelineState:
         "node_exit:finalize",
         {"status": "ok", "elapsed_ms": (time.monotonic() - started) * 1000},
     )
+    _run_post_translation_rag(state, config, task_id)
     return {**state, "final_result": final_result}
+
+
+def _run_post_translation_rag(state: PipelineState, config: dict, task_id: str) -> None:
+    """Run RAG post-translation extraction if RAG terminology was enabled."""
+    enable_rag = config.get("enable_rag_terminology", False)
+    if not enable_rag:
+        return
+    try:
+        from backend.app.services.rag.translation_hook import run_post_translation_extraction
+        translator_agent = state.get("translator_agent")
+        if translator_agent is None:
+            return
+        # Collect source and target chunks from the translator agent's sections
+        sections = getattr(translator_agent, "translated_sections", None) or getattr(translator_agent, "sections", [])
+        source_chunks: list[str] = []
+        target_chunks: list[str] = []
+        for sec in sections:
+            src = sec.get("content", "") or sec.get("source", "")
+            tgt = sec.get("trans_content", "") or sec.get("translation", "")
+            if src and tgt:
+                source_chunks.append(src)
+                target_chunks.append(tgt)
+        if source_chunks and target_chunks:
+            run_post_translation_extraction(
+                task_id=task_id,
+                source_chunks=source_chunks,
+                target_chunks=target_chunks,
+                user_id=config.get("user_id"),
+            )
+    except Exception:
+        logger.warning("Post-translation RAG extraction failed (non-fatal)", exc_info=True)
 
 
 def build_pipeline_graph(

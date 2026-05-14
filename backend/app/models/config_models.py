@@ -144,6 +144,10 @@ class AdvancedConfig(BaseModel):
         default=False,
         description="Enable RAG terminology enhancement for this task. Requires server-side RAG_TERMINOLOGY_ENABLED."
     )
+    rag_terminology_domain: Optional[str] = Field(
+        default=None,
+        description="Optional domain filter for RAG terminology (e.g. 'machine_learning', 'physics'). When set, only terms from this domain are injected."
+    )
 
     # API configuration
     use_author_api: bool = Field(

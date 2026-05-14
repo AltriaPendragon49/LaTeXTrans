@@ -91,6 +91,25 @@ def _dedupe_non_empty(values: List[str]) -> List[str]:
     return ordered
 
 
+async def _seed_rag_terminology():
+    """Seed official RAG terminology terms on first startup."""
+    try:
+        seed_enabled = os.getenv("RAG_TERMINOLOGY_SEED_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes"}
+        if not seed_enabled:
+            logger.info("[RAGSeed] Seeding disabled (set RAG_TERMINOLOGY_SEED_ON_STARTUP=false to confirm).")
+            return
+
+        from backend.app.services.terminology_service import TerminologyService
+        service = TerminologyService()
+        count = service.seed_official_terms()
+        if count > 0:
+            logger.info("[RAGSeed] Seeded %d official terminology terms.", count)
+        else:
+            logger.info("[RAGSeed] No new terms to seed (already present or empty seed file).")
+    except Exception:
+        logger.warning("[RAGSeed] Failed to seed terminology (non-fatal):", exc_info=True)
+
+
 def get_translation_task_repository() -> TranslationTaskRepository:
     return TranslationTaskRepository()
 
@@ -394,6 +413,8 @@ async def startup_event():
             )
 
     if runtime_role != "all":
+        # Seed RAG terminology for all runtime roles
+        await _seed_rag_terminology()
         return
 
     # Orphaned task cleanup runs on startup and then periodically.
@@ -504,6 +525,9 @@ async def startup_event():
 
     app.state.cleanup_task = asyncio.create_task(cleanup_loop())
     logger.info("[Startup] Orphaned-task cleanup started (runs on startup + every 30 min)")
+
+    # Seed RAG terminology for "all" runtime role
+    await _seed_rag_terminology()
 
 
 

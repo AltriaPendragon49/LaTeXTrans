@@ -454,36 +454,20 @@ class TerminologyService:
         page: int = 1,
         page_size: int = 20,
         status: Optional[str] = None,
+        source_type: Optional[str] = None,
     ) -> dict[str, Any]:
         """List all terms with optional status filter and pagination.
 
         Uses SQL-level pagination via ``search_terms`` for efficient
         database access.
         """
-        if status == "pending_review":
+        if status == "pending_review" and not source_type:
             return self.list_pending(page=page, page_size=page_size)
 
-        if status == "approved":
-            try:
-                rows, total = self._repository.search_terms(
-                    status="approved",
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception:
-                logger.exception("Failed to list approved terms")
-                return {"terms": [], "total": 0, "page": page, "page_size": page_size}
-
-            return {
-                "terms": rows,
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-            }
-
-        # No filter — use SQL-level pagination across all statuses
         try:
             rows, total = self._repository.search_terms(
+                status=status,
+                source_type=source_type,
                 page=page,
                 page_size=page_size,
             )
@@ -497,6 +481,126 @@ class TerminologyService:
             "page": page,
             "page_size": page_size,
         }
+
+    # ---- Seed Official Terms ----
+
+    def seed_official_terms(self) -> int:
+        """Seed the terminology database with official pre-defined terms.
+
+        Reads ``seed_terminology.json`` and inserts terms that do not
+        already exist in the database (matched by ``source_term``).
+        Only runs when the ``terminology_terms`` table is empty or
+        contains no ``source_type = 'system'`` terms.
+
+        Returns:
+            Number of newly inserted terms.
+        """
+        if not self.is_enabled:
+            logger.info("RAG terminology disabled; skipping seed.")
+            return 0
+
+        try:
+            existing = self._repository.search_terms(source_type="system", page=1, page_size=1)
+            if existing[1] > 0:
+                logger.info("System terms already seeded (%d found); skipping.", existing[1])
+                return 0
+        except Exception:
+            logger.info("Could not check existing system terms; proceeding with seed anyway.")
+
+        import json
+        import os
+
+        seed_path = os.path.join(
+            os.path.dirname(__file__),
+            "rag",
+            "seed_terminology.json",
+        )
+        if not os.path.exists(seed_path):
+            logger.warning("Seed file not found at %s; skipping.", seed_path)
+            return 0
+
+        with open(seed_path, "r", encoding="utf-8") as f:
+            entries = json.load(f)
+
+        if not entries:
+            return 0
+
+        inserted = 0
+        for entry in entries:
+            try:
+                existing_terms, _ = self._repository.search_terms(
+                    source_lang=entry.get("source_lang", "en"),
+                    query=entry.get("source_term", ""),
+                    page=1,
+                    page_size=1,
+                )
+                if existing_terms:
+                    continue
+                self._repository.insert_term({
+                    "source_term": entry["source_term"],
+                    "target_term": entry.get("target_term", ""),
+                    "source_lang": entry.get("source_lang", "en"),
+                    "target_lang": entry.get("target_lang", "zh"),
+                    "domain": entry.get("domain", ""),
+                    "source_type": "system",
+                    "status": "approved",
+                    "owner_user_id": "system",
+                    "created_by_user_id": "system",
+                })
+                inserted += 1
+            except Exception:
+                logger.warning("Failed to insert seed term '%s'", entry.get("source_term"), exc_info=True)
+
+        logger.info("Seeded %d official terminology terms.", inserted)
+        return inserted
+
+    def get_all_approved_terms_dict(self, *, domain: Optional[str] = None) -> dict[str, str]:
+        """Get all approved terms as a flat dict mapping source→target.
+
+        Used by the translator agent for glossary injection into LLM prompts.
+
+        Args:
+            domain: Optional domain filter. When set, only terms matching this
+                    domain are returned. Pass ``"*"`` to return all domains.
+
+        Returns:
+            Dict mapping source_term -> target_term.
+        """
+        try:
+            if domain and domain != "*":
+                terms = self._repository.search_approved_terms(source_lang="en", domain=domain)
+            else:
+                terms = self._repository.get_all_approved_terms(source_lang="en")
+        except Exception:
+            logger.exception("Failed to load approved terms")
+            return {}
+        return {t["source_term"]: t["target_term"] for t in terms if t.get("source_term") and t.get("target_term")}
+
+    # ---- CRUD ----
+
+    def create_term(self, payload: dict) -> Optional[dict]:
+        """Create a new terminology term."""
+        try:
+            return self._repository.insert_term(payload)
+        except Exception:
+            logger.exception("Failed to create term")
+            return None
+
+    def update_term(self, term_id: str, updates: dict) -> bool:
+        """Update an existing terminology term."""
+        try:
+            return self._repository.update_term(term_id, updates)
+        except Exception:
+            logger.exception("Failed to update term %s", term_id)
+            return False
+
+    def delete_term(self, term_id: str) -> bool:
+        """Delete a terminology term."""
+        try:
+            return self._repository.delete_term(term_id)
+        except Exception:
+            logger.exception("Failed to delete term %s", term_id)
+            return False
 
     # ---- Evaluation / Match Logs ----
 

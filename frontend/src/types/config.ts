@@ -63,6 +63,8 @@ export interface AdvancedConfig {
     email_notification?: boolean
     /** Enable RAG-based terminology injection during translation */
     enable_rag_terminology?: boolean
+    /** Optional domain filter for RAG terminology (e.g. 'machine_learning', 'physics') */
+    rag_terminology_domain?: string
 }
 
 /**

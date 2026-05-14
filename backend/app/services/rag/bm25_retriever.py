@@ -70,7 +70,7 @@ class Bm25Retriever:
         self._terms = list(terms) if terms else []
 
         if not self._terms:
-            self._bm25 = BM25Okapi([])
+            self._bm25 = None
             self._ready = True
             logger.info("BM25 index built (empty corpus)")
             return

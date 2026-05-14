@@ -206,6 +206,33 @@ export function AdvancedConfig() {
             )}
           />
 
+          {advanced_config.enable_rag_terminology ? (
+            <div className="animate-in slide-in-from-top-2 space-y-2 duration-200">
+              <Label className="text-sm">{t("ragTerminology.domainFilter")}</Label>
+              <Select
+                value={advanced_config.rag_terminology_domain ?? ""}
+                onValueChange={(v) => updateConfig("rag_terminology_domain", v || undefined)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("ragTerminology.allDomains")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t("ragTerminology.allDomains")}</SelectItem>
+                  <SelectItem value="machine_learning">Machine Learning</SelectItem>
+                  <SelectItem value="natural_language_processing">NLP</SelectItem>
+                  <SelectItem value="computer_vision">Computer Vision</SelectItem>
+                  <SelectItem value="systems">Systems</SelectItem>
+                  <SelectItem value="security">Security</SelectItem>
+                  <SelectItem value="mathematics">Mathematics</SelectItem>
+                  <SelectItem value="physics">Physics</SelectItem>
+                  <SelectItem value="biology">Biology</SelectItem>
+                  <SelectItem value="medicine">Medicine</SelectItem>
+                  <SelectItem value="engineering">Engineering</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
           {!advanced_config.use_author_api ? (
             <div className="animate-in slide-in-from-top-2 space-y-4 duration-200">
               <NoticeBanner

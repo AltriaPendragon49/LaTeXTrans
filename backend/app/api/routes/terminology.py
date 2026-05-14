@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.auth import optional_current_user, require_admin_user, resolve_current_user_id
 from backend.app.core.config import get_settings
+from backend.app.services.rag.domain_constants import DOMAIN_LABELS_ZH, DOMAIN_GROUPS, TermDomain
 from backend.app.services.terminology_service import TerminologyService
 
 logger = logging.getLogger(__name__)
@@ -113,11 +114,253 @@ def _error_detail(code: str, message: str) -> dict:
 # ---- Endpoints ----
 
 
+# ---- Domain listing ----
+
+@router.get("/domains")
+async def list_domains():
+    """List all available terminology domains with labels and groups."""
+    domains = []
+    for domain in TermDomain:
+        domains.append({
+            "value": domain.value,
+            "label_zh": DOMAIN_LABELS_ZH.get(domain.value, domain.value),
+            "group": next((g for g, members in DOMAIN_GROUPS.items() if domain.value in members), None),
+        })
+    return {
+        "domains": domains,
+        "groups": {g: {"label_zh": g, "members": members} for g, members in DOMAIN_GROUPS.items()},
+    }
+
+
+# ---- CRUD endpoints (admin) ----
+
+
+class CreateTermRequest(BaseModel):
+    """Request body for creating a new term."""
+    source_term: str = Field(..., min_length=1, description="Source-language term")
+    target_term: str = Field(..., min_length=1, description="Target-language translation")
+    source_lang: str = Field(default="en", description="Source language code")
+    target_lang: str = Field(default="zh", description="Target language code")
+    domain: Optional[str] = Field(default=None, description="Domain category")
+    source_type: str = Field(default="manual", description="Source type")
+    status: str = Field(default="pending_review", description="Initial status")
+
+
+class UpdateTermRequest(BaseModel):
+    """Request body for updating an existing term (all fields optional)."""
+    source_term: Optional[str] = Field(default=None, min_length=1)
+    target_term: Optional[str] = Field(default=None, min_length=1)
+    source_lang: Optional[str] = None
+    target_lang: Optional[str] = None
+    domain: Optional[str] = None
+    status: Optional[str] = None
+
+
+class BatchOperationRequest(BaseModel):
+    """Request body for batch operations on terms."""
+    term_ids: list[str] = Field(..., min_length=1)
+    operation: str = Field(..., pattern="^(approve|reject|delete)$")
+    reason: Optional[str] = None
+
+
+@router.post("/terms", response_model=TermItem)
+async def create_term(
+    body: CreateTermRequest,
+    _admin: dict = Depends(require_admin_user),
+):
+    """Create a new terminology term (admin only)."""
+    if not settings.rag_terminology_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERMINOLOGY_DISABLED", "RAG terminology is not enabled on this server."),
+        )
+
+    service = _get_terminology_service()
+    reviewer_id = str(_admin.get("id", "admin"))
+    result = service.create_term({
+        "source_term": body.source_term,
+        "target_term": body.target_term,
+        "source_lang": body.source_lang,
+        "target_lang": body.target_lang,
+        "domain": body.domain,
+        "source_type": body.source_type,
+        "status": body.status,
+        "owner_user_id": reviewer_id,
+        "created_by_user_id": reviewer_id,
+    })
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_error_detail("CREATE_FAILED", "Failed to create term."),
+        )
+    return result
+
+
+@router.put("/terms/{term_id}", response_model=dict)
+async def update_term(
+    term_id: str,
+    body: UpdateTermRequest,
+    _admin: dict = Depends(require_admin_user),
+):
+    """Update an existing terminology term (admin only)."""
+    if not settings.rag_terminology_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERMINOLOGY_DISABLED", "RAG terminology is not enabled on this server."),
+        )
+
+    updates = {k: v for k, v in body.model_dump(exclude_none=True).items() if v is not None}
+    if not updates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_error_detail("NO_UPDATES", "No fields to update."),
+        )
+
+    service = _get_terminology_service()
+    success = service.update_term(term_id, updates)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERM_NOT_FOUND", f"Term '{term_id}' not found."),
+        )
+    return {"ok": True, "term_id": term_id}
+
+
+@router.delete("/terms/{term_id}", response_model=dict)
+async def delete_term(
+    term_id: str,
+    _admin: dict = Depends(require_admin_user),
+):
+    """Delete a terminology term (admin only)."""
+    if not settings.rag_terminology_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERMINOLOGY_DISABLED", "RAG terminology is not enabled on this server."),
+        )
+
+    service = _get_terminology_service()
+    success = service.delete_term(term_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERM_NOT_FOUND", f"Term '{term_id}' not found."),
+        )
+    return {"ok": True, "term_id": term_id}
+
+
+@router.post("/terms/{term_id}/share", response_model=dict)
+async def share_term(
+    term_id: str,
+    current_user: dict[str, Any] | None = Depends(optional_current_user),
+):
+    """Share a personal term to admin for review (creates a copy as pending_review)."""
+    if not settings.rag_terminology_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERMINOLOGY_DISABLED", "RAG terminology is not enabled on this server."),
+        )
+
+    user_id = resolve_current_user_id(current_user) or "anonymous"
+    service = _get_terminology_service()
+
+    # Verify the term exists and belongs to this user
+    term = service._repository.get_term(term_id)
+    if not term:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERM_NOT_FOUND", f"Term '{term_id}' not found."),
+        )
+    if term.get("owner_user_id") != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_error_detail("NOT_OWNER", "You can only share your own terms."),
+        )
+
+    # Create a shared copy for admin review
+    shared = service._repository.insert_term({
+        "source_term": term["source_term"],
+        "target_term": term["target_term"],
+        "source_lang": term.get("source_lang", "en"),
+        "target_lang": term.get("target_lang", "zh"),
+        "domain": term.get("domain"),
+        "source_type": "shared_by_user",
+        "status": "pending_review",
+        "owner_user_id": user_id,
+        "created_by_user_id": user_id,
+    })
+    return {"ok": True, "shared_term_id": shared["id"]}
+async def batch_operate_terms(
+    body: BatchOperationRequest,
+    _admin: dict = Depends(require_admin_user),
+):
+    """Batch approve, reject, or delete terms (admin only)."""
+    if not settings.rag_terminology_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERMINOLOGY_DISABLED", "RAG terminology is not enabled on this server."),
+        )
+
+    service = _get_terminology_service()
+    reviewer_id = str(_admin.get("id", "admin"))
+    succeeded = 0
+    failed = 0
+
+    for term_id in body.term_ids:
+        try:
+            if body.operation == "approve":
+                ok = service.approve_term(term_id, reviewer_id)
+            elif body.operation == "reject":
+                ok = service.reject_term(term_id, reviewer_id)
+            elif body.operation == "delete":
+                ok = service.delete_term(term_id)
+            else:
+                ok = False
+            if ok:
+                succeeded += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+
+    return {"ok": failed == 0, "operation": body.operation, "succeeded": succeeded, "failed": failed}
+
+
+# ---- User terms (self-service) ----
+
+
+@router.get("/my-terms", response_model=TermListResponse)
+async def list_my_terms(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(default=20, ge=1, le=200, description="Items per page"),
+    status: Optional[str] = Query(default=None, description="Filter by status"),
+    current_user: dict[str, Any] | None = Depends(optional_current_user),
+):
+    """List the current user's own terminology terms."""
+    if not settings.rag_terminology_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_detail("TERMINOLOGY_DISABLED", "RAG terminology is not enabled on this server."),
+        )
+
+    user_id = resolve_current_user_id(current_user) or "anonymous"
+    service = _get_terminology_service()
+    try:
+        rows, total = service._repository.get_terms_by_owner(
+            owner_user_id=user_id, page=page, page_size=page_size, status=status,
+        )
+    except Exception:
+        logger.exception("Failed to list user terms")
+        return {"terms": [], "total": 0, "page": page, "page_size": page_size}
+
+    return {"terms": rows, "total": total, "page": page, "page_size": page_size}
+
+
 @router.get("/terms", response_model=TermListResponse)
 async def list_terms(
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=20, ge=1, le=200, description="Items per page"),
     status: Optional[str] = Query(default=None, description="Filter by status (pending_review, approved)"),
+    source_type: Optional[str] = Query(default=None, description="Filter by source type (system, imported, manual, etc.)"),
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
@@ -129,7 +372,7 @@ async def list_terms(
         )
 
     service = _get_terminology_service()
-    result = service.list_terms(page=page, page_size=page_size, status=status)
+    result = service.list_terms(page=page, page_size=page_size, status=status, source_type=source_type)
     return result
 
 

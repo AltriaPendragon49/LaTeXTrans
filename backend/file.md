@@ -1,5 +1,22 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-14 RAG terminology: domain management + sharing + expanded seed data)
+
+- `backend/app/services/rag/domain_constants.py`: 领域管理常量模块，包含 `TermDomain` 枚举（~50 个领域）、中英文标签、领域分组和标签查询函数。
+- `backend/app/services/rag/seed_terminology.json`: 扩展种子数据至 ~780 条术语，新增 physics（30+）、mathematics（20+）、biology（30+）、medicine（20+）、engineering（20+）领域。
+- `backend/app/models/config_models.py`: `AdvancedConfig` 新增 `rag_terminology_domain` 可选字段，用户可限制 RAG 术语注入的领域范围。
+- `backend/app/services/agents/langgraph_orchestrator.py`: `node_translate()` 中 RAG 术语注入支持领域筛选参数。
+- `backend/app/services/terminology_service.py`: `list_terms()` 新增 `source_type` 参数；`get_all_approved_terms_dict()` 新增 `domain` 可选筛选。
+- `backend/app/api/routes/terminology.py`: 新增 `GET /api/terminology/domains` 领域列举端点；新增 `POST /terms/{id}/share` 用户术语分享端点；`GET /terms` 新增 `source_type` 查询参数。
+
+## Recent Responsibility Updates (2026-05-14 RAG terminology test suite)
+
+- `backend/tests/unit/test_terminology_repository.py`: 术语仓储测试，覆盖 CRUD、审核工作流（approve/reject）、多条件搜索、分页、用户隔离、批量导入和匹配日志。
+- `backend/tests/unit/test_bm25_retriever.py`: BM25 检索器测试，覆盖索引构建、搜索排序、top_n 限制、空语料处理、自定义分词器和特殊字符。
+- `backend/tests/unit/test_rag_clients.py`: RAG 客户端测试，覆盖 EmbeddingClient 编码、CrossEncoderReranker 回退排序、VectorRetriever 不可用时的安全降级和余弦相似度计算。
+- `backend/tests/unit/test_pipeline.py`: RAG 流水线测试，覆盖候选去重合并、分数排序、LaTeX 查询变换、BM25/向量/仓储多源检索和组件故障降级。
+- `backend/tests/unit/test_rag_integration.py`: 集成测试，覆盖 Glossary 格式化、Prompt 注入、BM25→Pipeline→Glossary 端到端链路和 should_run_rag 特性门禁。
+
 ## Recent Responsibility Updates (2026-05-13 RAG terminology management)
 
 - `backend/app/core/config.py`: 新增 RAG 术语管理配置项，包括 `RAG_TERMINOLOGY_ENABLED`、`RAG_TERMINOLOGY_MILVUS_URI`、`RAG_TERMINOLOGY_EMBEDDING_MODEL`、`RAG_TERMINOLOGY_RERANK_MODEL`、`RAG_TERMINOLOGY_BM25_REFRESH_INTERVAL` 等环境变量。

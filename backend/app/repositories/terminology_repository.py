@@ -220,6 +220,28 @@ class TerminologyRepository:
             rows = _fetchall(cursor)
         return self._rows(rows) if rows else []
 
+    def get_terms_by_owner(self, owner_user_id: str, *, page: int = 1, page_size: int = 20,
+                           status: Optional[str] = None) -> tuple[list[dict[str, Any]], int]:
+        conditions = [f"owner_user_id = {_placeholder(0)}"]
+        params = [owner_user_id]
+        if status:
+            conditions.append(f"status = {_placeholder(len(params))}")
+            params.append(status)
+        where = " and ".join(conditions)
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"select count(*) as cnt from terminology_terms where {where}", tuple(params))
+            total = cursor.fetchone()["cnt"]
+            offset = (page - 1) * page_size
+            cursor.execute(
+                f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
+                f"where {where} order by created_at desc "
+                f"limit {_placeholder(len(params))} offset {_placeholder(len(params) + 1)}",
+                tuple(params) + (page_size, offset),
+            )
+            rows = _fetchall(cursor)
+        return self._rows(rows) if rows else [], total
+
     # ---- Review Workflow ----
 
     def list_pending_terms(
@@ -333,6 +355,7 @@ class TerminologyRepository:
         target_lang: Optional[str] = None,
         domain: Optional[str] = None,
         query: Optional[str] = None,
+        source_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -350,6 +373,10 @@ class TerminologyRepository:
             Filter by domain.
         query : str, optional
             LIKE search on ``source_term``.
+        source_type : str, optional
+            Filter by source type (e.g. ``"system"``, ``"imported"``).
+        source_type : str, optional
+            Filter by source type (e.g. ``"system"``, ``"imported"``).
         page : int
             Page number (1-based).
         page_size : int
@@ -378,6 +405,9 @@ class TerminologyRepository:
         if query:
             conditions.append(f"source_term like {_placeholder(len(params))}")
             params.append(f"%{query}%")
+        if source_type:
+            conditions.append(f"source_type = {_placeholder(len(params))}")
+            params.append(source_type)
 
         where = " and ".join(conditions) if conditions else "1 = 1"
 
