@@ -341,12 +341,12 @@ export function GlossaryWorkspace() {
             {/* Status filter */}
             <div className="flex items-center gap-3">
               <Label className="text-sm whitespace-nowrap">{t("glossary.filterStatus")}</Label>
-              <Select value={myStatusFilter} onValueChange={(v) => { setMyStatusFilter(v); setMyPage(1) }}>
+              <Select value={myStatusFilter || "__all__"} onValueChange={(v) => { setMyStatusFilter(v === "__all__" ? "" : v); setMyPage(1) }}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder={t("glossary.all")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("glossary.all")}</SelectItem>
+                  <SelectItem value="__all__">{t("glossary.all")}</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
                   <SelectItem value="pending_review">Pending</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>

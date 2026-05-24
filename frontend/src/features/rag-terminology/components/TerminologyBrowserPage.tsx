@@ -294,12 +294,12 @@ export function TerminologyBrowserPage() {
         {/* Status filter */}
         <div className="flex items-center gap-2">
           <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.status")}</Label>
-          <Select value={statusFilter} onValueChange={(v) => handleFilterChange(setStatusFilter, v)}>
+          <Select value={statusFilter || "__all__"} onValueChange={(v) => handleFilterChange(setStatusFilter, v === "__all__" ? "" : v)}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder={t("ragTerminology.filters.all")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+              <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
               <SelectItem value="pending_review">Pending</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
@@ -310,12 +310,12 @@ export function TerminologyBrowserPage() {
         {/* Domain filter */}
         <div className="flex items-center gap-2">
           <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
-          <Select value={domainFilter} onValueChange={(v) => handleFilterChange(setDomainFilter, v)}>
+          <Select value={domainFilter || "__all__"} onValueChange={(v) => handleFilterChange(setDomainFilter, v === "__all__" ? "" : v)}>
             <SelectTrigger className="w-44">
               <SelectValue placeholder={t("ragTerminology.filters.all")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+              <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
               {isDomainsLoading ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-4 w-4 animate-spin text-[color:var(--px-shell-muted)]" />
@@ -330,12 +330,12 @@ export function TerminologyBrowserPage() {
         {/* Source lang filter */}
         <div className="flex items-center gap-2">
           <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.sourceLang")}</Label>
-          <Select value={sourceLangFilter} onValueChange={(v) => handleFilterChange(setSourceLangFilter, v)}>
+          <Select value={sourceLangFilter || "__all__"} onValueChange={(v) => handleFilterChange(setSourceLangFilter, v === "__all__" ? "" : v)}>
             <SelectTrigger className="w-28">
               <SelectValue placeholder={t("ragTerminology.filters.all")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+              <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
               {LANGUAGE_OPTIONS.map((l) => (
                 <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
               ))}

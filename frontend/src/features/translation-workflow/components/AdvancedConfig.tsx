@@ -210,14 +210,14 @@ export function AdvancedConfig() {
             <div className="animate-in slide-in-from-top-2 space-y-2 duration-200">
               <Label className="text-sm">{t("ragTerminology.domainFilter")}</Label>
               <Select
-                value={advanced_config.rag_terminology_domain ?? ""}
-                onValueChange={(v) => updateConfig("rag_terminology_domain", v || undefined)}
+                value={advanced_config.rag_terminology_domain || "__all__"}
+                onValueChange={(v) => updateConfig("rag_terminology_domain", v === "__all__" ? undefined : v)}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={t("ragTerminology.allDomains")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("ragTerminology.allDomains")}</SelectItem>
+                  <SelectItem value="__all__">{t("ragTerminology.allDomains")}</SelectItem>
                   <SelectItem value="machine_learning">Machine Learning</SelectItem>
                   <SelectItem value="natural_language_processing">NLP</SelectItem>
                   <SelectItem value="computer_vision">Computer Vision</SelectItem>

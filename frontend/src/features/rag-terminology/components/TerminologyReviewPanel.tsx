@@ -401,12 +401,12 @@ export function TerminologyReviewPanel() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.status")}</Label>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setAllPage(1) }}>
+            <Select value={statusFilter || "__all__"} onValueChange={(v) => { setStatusFilter(v === "__all__" ? "" : v); setAllPage(1) }}>
               <SelectTrigger className="w-36">
                 <SelectValue placeholder={t("ragTerminology.filters.all")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+                <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
                 <SelectItem value="pending_review">Pending</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
@@ -415,12 +415,12 @@ export function TerminologyReviewPanel() {
           </div>
           <div className="flex items-center gap-2">
             <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
-            <Select value={domainFilter} onValueChange={(v) => { setDomainFilter(v); setAllPage(1) }}>
+            <Select value={domainFilter || "__all__"} onValueChange={(v) => { setDomainFilter(v === "__all__" ? "" : v); setAllPage(1) }}>
               <SelectTrigger className="w-44">
                 <SelectValue placeholder={t("ragTerminology.filters.all")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+                <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
                 {domains.map((d) => <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -613,12 +613,12 @@ export function TerminologyReviewPanel() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
-              <Select value={pendingDomainFilter} onValueChange={(v) => { setPendingDomainFilter(v); setPendingPage(1) }}>
+              <Select value={pendingDomainFilter || "__all__"} onValueChange={(v) => { setPendingDomainFilter(v === "__all__" ? "" : v); setPendingPage(1) }}>
                 <SelectTrigger className="w-44">
                   <SelectValue placeholder={t("ragTerminology.filters.all")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+                  <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
                   {domains.map((d) => (
                     <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>
                   ))}
