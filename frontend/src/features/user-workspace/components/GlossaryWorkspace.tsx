@@ -328,7 +328,7 @@ export function GlossaryWorkspace() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 py-2">
+    <div className="mx-auto max-w-7xl space-y-6 py-2">
       <PageIntro
         title={t("glossary.glossary_management")}
         description={t("glossary.description")}
@@ -394,7 +394,7 @@ export function GlossaryWorkspace() {
             )}
           </TabsContent>
 
-          <TabsContent value="official" className="mt-0 space-y-4 min-h-[420px]">
+          <TabsContent value="official" className="mt-0 space-y-6 min-h-[420px]">
             <TermsTable
               terms={officialTerms}
               loading={isLoadingOfficial}

@@ -184,7 +184,11 @@
 }
 
 @layer base {
-  html,
+  html {
+    scrollbar-gutter: stable;
+    overflow-y: auto;
+  }
+
   body,
   #root {
     min-height: 100%;
