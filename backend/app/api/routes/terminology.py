@@ -7,11 +7,12 @@ terminology entries used in the RAG-enhanced translation pipeline.
 from __future__ import annotations
 
 import logging
+from datetime import datetime as Datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.app.core.auth import optional_current_user, require_admin_user, resolve_current_user_id
 from backend.app.core.config import get_settings
@@ -47,6 +48,13 @@ class TermItem(BaseModel):
     provenance: Optional[Any] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+    @field_validator("created_at", "updated_at", "reviewed_at", mode="before")
+    @classmethod
+    def _coerce_datetime_to_str(cls, v: Any) -> Optional[str]:
+        if isinstance(v, Datetime):
+            return v.isoformat()
+        return v
 
 
 class TermListResponse(BaseModel):
@@ -99,6 +107,13 @@ class MatchLogItem(BaseModel):
     source_term: Optional[str] = None
     target_term: Optional[str] = None
     created_at: Optional[str] = None
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _coerce_datetime_to_str(cls, v: Any) -> Optional[str]:
+        if isinstance(v, Datetime):
+            return v.isoformat()
+        return v
 
 
 # ---- Helpers ----
