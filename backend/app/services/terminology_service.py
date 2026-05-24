@@ -590,8 +590,6 @@ class TerminologyService:
                     "domain": entry.get("domain", ""),
                     "source_type": "system",
                     "status": "approved",
-                    "owner_user_id": "system",
-                    "created_by_user_id": "system",
                 })
                 inserted += 1
             except Exception:
