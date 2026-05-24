@@ -14,6 +14,8 @@ This change restarts the RAG terminology work as an opt-in translation-tool capa
   - BibTeX citation parsing to extract keyphrase-term candidates (source type `auto_extracted` with citation provenance).
   - Auto-extraction from opted-in translation outputs (source type `auto_extracted`).
   - All sources funnel into the MySQL review workflow before entering retrieval.
+- Add a dedicated personal glossary workspace at `/workspace/glossary`, surfaced from `tools-hub` beside Translate and History, so authenticated users can manage only their own terminology entries.
+- Keep the personal glossary scope user-owned only: user uploads, status filters, read-only official library browsing, and optional share-to-review are in scope; admin CRUD and shared-library management remain separate.
 - Implement a three-stage terminology RAG pipeline:
   - query transformation from LaTeX chunk text to terminology queries,
   - hybrid retrieval combining **BM25 keyword search** and Milvus vector search,
@@ -30,9 +32,9 @@ This change restarts the RAG terminology work as an opt-in translation-tool capa
   - `backend/app/repositories/` for MySQL terminology persistence
   - `backend/app/services/rag/` for embedding, retrieval (BM25 + vector), Cross-Encoder reranking, and prompt formatting
   - `backend/app/services/rag/knowledge_base/` for multi-source ingestion (CSV import, BibTeX parsing)
-  - `backend/app/api/routes/` for terminology upload/review/admin endpoints
+  - `backend/app/api/routes/` for terminology upload/review/admin and personal-glossary endpoints
   - translation-tool configuration and execution paths that explicitly opt in to RAG terminology
-  - frontend translation settings/admin terminology review UI, if implemented in this change
+  - frontend translation settings/admin terminology review UI and the personal glossary workspace, if implemented in this change
 - Not affected:
   - default `origin_cli_parity` behavior
   - community/admin automated translation paths unless they explicitly opt in later through a separate approved change

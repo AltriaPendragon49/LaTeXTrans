@@ -155,13 +155,28 @@ Routes should stay thin and delegate business logic to services/repositories.
 
 Candidate API surface:
 - `GET /api/terminology/terms`
+- `GET /api/terminology/my-terms`
 - `POST /api/terminology/upload`
 - `GET /api/terminology/pending`
 - `POST /api/terminology/{term_id}/approve`
 - `POST /api/terminology/{term_id}/reject`
+- `POST /api/terminology/terms/{term_id}/share`
 - `GET /api/terminology/tasks/{task_id}/matches`
 
 Admin review endpoints MUST require admin authentication. User-uploaded term endpoints MUST validate ownership and file size/content type.
+
+### Personal Glossary Workspace
+
+The user-facing glossary surface is a dedicated workspace at `/workspace/glossary`, linked from `tools-hub` alongside Translate and History.
+
+Scope for this workspace is personal-only:
+- `My Terms` shows only rows owned by the current user via `owner_user_id`
+- `Official Library` is read-only and exposes approved system terms for reference
+- CSV/BibTeX upload adds user-owned terms into the personal collection
+- status filters let the user inspect `pending_review`, `approved`, and `rejected` personal entries
+- sharing a personal term creates a separate pending-review copy for admin review; the original personal entry remains in the user's collection
+
+This workspace does not introduce a public shared-library editor. Admin-side term CRUD and review remain in the admin terminology surface.
 
 ### Configuration
 

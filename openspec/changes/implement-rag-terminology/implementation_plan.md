@@ -24,6 +24,7 @@ This supporting plan mirrors `tasks.md` and exists only to explain implementatio
 - Keep default translation behavior unchanged when the toggle is off.
 - Inject glossary terms only when the toggle is on and retrieval succeeds.
 - Record matched terms for UI and evaluation.
+- Surface the personal glossary workspace in `tools-hub` and keep its data owner-scoped to the current user.
 
 ## Phase 5: Review And Evaluation
 - Auto-extract terminology pairs from opted-in translation outputs.

@@ -109,6 +109,24 @@ The system SHALL prioritize user/imported terms over system terms when multiple 
 - **WHEN** an approved user/imported term and an approved system term share the same source phrase for the same language pair
 - **THEN** the user/imported term MUST be preferred for that user's opted-in translation.
 
+### Requirement: Personal Glossary Workspace
+The system SHALL provide a dedicated personal glossary workspace for authenticated users to manage their own terminology entries.
+
+#### Scenario: User opens the personal glossary workspace
+- **WHEN** an authenticated user opens `/workspace/glossary` from the tools hub
+- **THEN** the workspace MUST show only the user's own glossary entries under `My Terms`
+- **AND** it MUST also provide a read-only `Official Library` view for approved system terms.
+
+#### Scenario: Personal terms remain user-owned
+- **WHEN** a user uploads CSV or BibTeX terminology into the personal glossary workspace
+- **THEN** the system MUST store the rows as user-owned terms with `owner_user_id`
+- **AND** list them only through the user's personal glossary API.
+
+#### Scenario: A personal term is shared for review
+- **WHEN** a user shares one of their own personal terms for review
+- **THEN** the system MUST create a separate pending-review copy for admin review
+- **AND** the original personal term MUST remain visible in the user's glossary.
+
 ### Requirement: Glossary Injection
 The system SHALL select a bounded Top-N set of terms and inject them as a compact `<Glossary>` block only for opted-in translation executions.
 

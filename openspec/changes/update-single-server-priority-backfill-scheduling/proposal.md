@@ -6,7 +6,6 @@
 
 ## What Changes
 - Introduce a single-machine dual-lane scheduler with `interactive` high priority and `backfill` opportunistic capacity borrowing.
-- Add cooperative backfill yield/resume behavior that pauses only at safe checkpoints and resumes from the last durable position.
 - Add a health-aware system token pool with two configured `base_url` groups and five independent system-managed credentials, plus quick failover on consecutive `429` or `503` failures.
 - Split single-server runtime responsibility into `web` and `worker` roles so admin backfill/delete execution can live outside the user-facing HTTP process.
 - Add a lightweight frontend-pressure signal so the worker defers starting new backfill work while recent browser/API traffic is active.

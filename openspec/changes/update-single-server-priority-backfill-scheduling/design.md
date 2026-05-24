@@ -14,7 +14,6 @@ This leads to a different optimization target from a typical public queueing ser
 - Goals:
   - Prioritize interactive translation requests over internal backfill on a single server.
   - Let backfill occupy all available translation slots when no interactive work is waiting.
-  - Pause backfill only at safe, resumable checkpoints.
   - Reduce 429 waiting time by using multiple tokens from the same relay provider more intelligently.
   - Keep the current single-paper LangGraph orchestration as the inner translation kernel.
   - Make the rollout incremental and easy to disable.
@@ -37,9 +36,8 @@ The scheduler will expose two logical lanes:
 Scheduling policy:
 
 - backfill may borrow every idle translation slot by default
-- when an interactive task arrives, the scheduler marks one running backfill task for cooperative yield
-- the yielded backfill task gives up its slot only after reaching a safe checkpoint
-- once interactive pressure disappears, the yielded backfill task is resumed from its checkpoint before newer backfill tasks are preferred
+- when an interactive task arrives, the scheduler reserves the next available slot for that work
+- backfill keeps using idle capacity until an existing slot frees up
 
 This preserves high utilization without introducing abrupt cancellation.
 
@@ -48,7 +46,7 @@ This preserves high utilization without introducing abrupt cancellation.
 The current per-paper LangGraph orchestration remains the authoritative execution kernel. The new scheduler is an outer control plane only. It may decide:
 
 - which paper gets a slot
-- when a running backfill paper should yield at the next checkpoint
+- when a running backfill paper should continue in the currently available slot
 - which token lease a request should use
 
 It may not:
@@ -59,21 +57,7 @@ It may not:
 
 This is the main stability guardrail for avoiding regressions in translation behavior.
 
-### 3. Introduce cooperative checkpoints instead of abrupt pause
-
-Backfill pause/resume must be cooperative. Safe checkpoints are explicit orchestration boundaries such as:
-
-- parse completed
-- a section or environment batch has been fully flushed to durable intermediate artifacts
-- a validation/retry round has completed
-- immediately before entering compile queue wait
-- immediately after compile finishes and results are persisted
-
-At each checkpoint the runtime records enough resume metadata to continue from the last completed boundary rather than restarting the whole paper.
-
-This is intentionally narrower than general-purpose process suspension. We only support pause at places where the pipeline already has durable, replayable state.
-
-### 4. Start with conservative single-server capacity
+### 3. Start with conservative single-server capacity
 
 Because the observed server is a 4 vCPU / ~8 GB RAM machine and LaTeX compilation is the sharpest shared bottleneck, the initial recommended policy is:
 
@@ -81,7 +65,7 @@ Because the observed server is a 4 vCPU / ~8 GB RAM machine and LaTeX compilatio
 - translation task slots start at `2`
 - compile concurrency remains `1`
 
-Backfill may occupy both translation slots when the interactive lane is empty. When interactive work appears, one slot is recovered at the next checkpoint. This gives meaningful throughput gain without turning compile or memory pressure into a stability risk.
+Backfill may occupy both translation slots when the interactive lane is empty. When interactive work appears, one slot is recovered as soon as the current slot becomes available. This gives meaningful throughput gain without turning compile or memory pressure into a stability risk.
 
 ### 4a. Split admin backfill ownership from the web-serving runtime
 
@@ -93,12 +77,12 @@ The current codebase still keeps translation runtime state partially in memory, 
 
 This avoids running heavy admin backfill orchestration inside the same Python process that answers homepage and health requests.
 
-### 4b. Let worker backfill yield to real browser pressure
+### 4b. Let worker backfill defer to real browser pressure
 
 Because both runtimes still share one physical server, splitting processes is necessary but not sufficient. The worker therefore watches a lightweight file-backed "frontend pressure" heartbeat written by the web runtime. When the heartbeat is recent:
 
 - the worker should avoid starting a new backfill task
-- already-running work is allowed to finish its current safe step
+- already-running work is allowed to finish its current step
 - the worker process is additionally de-prioritized with OS niceness where supported
 
 This keeps the user's desired behavior: background work can still occupy most spare capacity, but it must make room once real access traffic appears.
@@ -134,8 +118,6 @@ The wait path and startup recovery must therefore prefer durable truth:
 - impossible persistent states such as non-terminal status plus non-null `completed_at` should be reconciled immediately into a terminal failure state with an explicit reconciliation message
 - unexpected queue-level exceptions that escape the translation coroutine must also force a terminal failure write so slots, histories, and admin jobs do not wait forever on a non-terminal ghost
 
-This is not a replacement for the later checkpoint/resume design. It is a reliability guardrail that keeps broken task state from blocking throughput while that larger work remains deferred.
-
 ### 5. Add a health-aware token pool instead of naive round-robin
 
 The user has multiple API keys from different accounts on the same relay provider. In phase 1, the system-managed pool is explicitly:
@@ -157,7 +139,7 @@ Request policy:
 - if the current pool member hits consecutive `429` or consecutive `503` and another healthy member exists, retry locally only for a short window measured in seconds, then fail over quickly
 - if every token in the pool is rate-limited, keep retrying on the current token instead of thrashing across equally exhausted tokens
 - interactive tasks may keep waiting/retrying during pool exhaustion
-- backfill admission becomes more conservative when the entire pool is exhausted, so interactive tasks are not forced to queue behind useless retry churn
+- backfill admission remains conservative when the entire pool is exhausted, so interactive tasks are not forced to queue behind useless retry churn
 
 This matches the user's requirement that the token pool exists to shorten waits, not to create longer sleeps per request.
 
@@ -207,7 +189,6 @@ Redis remains a future option if the system later needs:
 
 ## Risks / Trade-offs
 
-- Cooperative yield is more complex than plain FIFO. Mitigation: keep checkpoint boundaries narrow and explicit.
 - Token-pool behavior can accidentally change quality if it alters model/runtime parity. Mitigation: the pool chooses credentials only; it does not change prompt, model, or repair semantics.
 - Single-server throughput can still be compile-bound. Mitigation: keep compile concurrency fixed at `1` and optimize scheduler utilization around it instead of pretending compilation is parallel-safe.
 - Attempt-token monotonicity adds runtime bookkeeping. Mitigation: keep the token runtime-only and use it only for stale-update rejection, not for cross-process scheduling.
@@ -231,12 +212,11 @@ Use a small regression corpus with about two papers per issue type:
 - math-dense papers
 - complex environment-heavy papers
 - fallback-sensitive papers
-- pause/resume-sensitive papers
+- throughput-sensitive papers
 
 Add targeted automated checks for:
 
 - interactive priority over backfill
-- checkpointed cooperative yield/resume
 - token failover to another healthy system-managed member
 - consecutive `503` failover behavior
 - custom user key bypassing the system-managed pool

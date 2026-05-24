@@ -15,7 +15,7 @@ The system SHALL manage translation tasks with priority-aware FIFO lanes on a si
 #### Scenario: Idle capacity is borrowed by backfill
 - **WHEN** no interactive task is waiting
 - **AND** a translation slot would otherwise remain idle
-- **THEN** the scheduler MAY start or resume a backfill task in that slot.
+- **THEN** the scheduler MAY start a backfill task in that slot.
 
 #### Scenario: Recent frontend traffic defers new backfill starts
 - **WHEN** the worker runtime has observed recent frontend pressure from the web runtime
@@ -26,12 +26,12 @@ The system SHALL manage translation tasks with priority-aware FIFO lanes on a si
 #### Scenario: Interactive work claims the next eligible slot
 - **WHEN** at least one backfill task is running
 - **AND** a new interactive task arrives while all translation slots are occupied
-- **THEN** the scheduler MUST reserve the next eligible safe-interrupt slot for the interactive task
+- **THEN** the scheduler MUST reserve the next eligible slot for the interactive task
 - **AND** MUST NOT abruptly terminate an in-flight backfill LLM call or compile subprocess
-- **AND** interactive priority is satisfied at the next cooperative checkpoint rather than after the entire backfill paper finishes.
+- **AND** interactive priority is satisfied as soon as a slot becomes available.
 
-#### Scenario: Task completion or yield releases resources
-- **WHEN** a running task completes, fails, or yields a slot at an approved checkpoint
+#### Scenario: Task completion releases resources
+- **WHEN** a running task completes or fails
 - **THEN** the scheduler releases the active slot
 - **AND** the highest-priority waiting task that is eligible to run starts next.
 
@@ -72,23 +72,3 @@ The system SHALL expose lane-aware queue status without breaking existing aggreg
 - **THEN** the response MUST still include aggregate active, waiting, and max-concurrency values
 - **AND** MAY additionally include `interactive_active`, `interactive_waiting`, `backfill_active`, `backfill_waiting`, and `borrowed_slots`
 - **AND** authenticated callers continue to receive current quota usage.
-
-## ADDED Requirements
-### Requirement: Cooperative Backfill Yield And Resume
-Backfill tasks SHALL yield only at scheduler-approved interruptible boundaries and SHALL resume from the last durable checkpoint when capacity becomes available again.
-
-#### Scenario: Backfill yields at a safe checkpoint
-- **WHEN** the scheduler has issued a yield request for a running backfill task
-- **AND** the task reaches a safe boundary such as parse completion, section-batch flush, validation-round completion, pre-compile boundary, or post-compile boundary
-- **THEN** the task MUST persist checkpoint metadata
-- **AND** transition to a yielded/waiting state without losing completed work.
-
-#### Scenario: Yield request arrives during an unsafe step
-- **WHEN** a yield request arrives while a backfill task is inside an LLM request or compile subprocess
-- **THEN** the task MUST finish or fail that step before yielding
-- **AND** MUST NOT interrupt the step mid-flight.
-
-#### Scenario: Backfill reclaims idle capacity after interactive drain
-- **WHEN** interactive demand drops and a yielded backfill checkpoint is available
-- **THEN** the scheduler MAY resume the yielded task before starting newer backfill work
-- **AND** resumption MUST continue from the last durable checkpoint rather than restarting the paper.

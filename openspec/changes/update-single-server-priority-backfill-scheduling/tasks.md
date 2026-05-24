@@ -12,8 +12,6 @@
 
 ## 3. Deferred Later Phases
 - [x] 3.1 Introduce a dual-lane single-server scheduler with `interactive` priority and opportunistic `backfill` capacity borrowing.
-- [ ] 3.2 Add cooperative yield requests plus durable resume checkpoints at approved orchestration boundaries.
-- [ ] 3.3 Reduce wasteful backfill retry churn when the whole token pool is exhausted without penalizing interactive retries.
 - [x] 3.4 Removed from this change scope per 2026-05-09 direction; terminology-table generation and success-only compilation diagnostics stay on the existing inline path.
 
 ## 4. Single-Server Web/Worker Isolation

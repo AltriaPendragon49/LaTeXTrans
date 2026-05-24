@@ -1,0 +1,37 @@
+# Tasks: Clean Up All Locales
+
+- [x] Scaffold OpenSpec proposal and tasks
+- [x] English (EN) locale cleanup
+  - [x] Update `history.this_action_deletes...continue` to declarative
+  - [x] Update `community.admin.deleteConfirm` to declarative
+  - [x] Update `community.detail.insights` section descriptions to declarative
+  - [x] Update `community.admin.tasks.deleteDialogTitle` to declarative
+- [x] German (DE) locale cleanup
+  - [x] Remove question marks from all prompts
+  - [x] Translate English fallbacks in `community.admin.tasks`
+  - [x] Make `insights` section declarative
+- [x] Spanish (ES) locale cleanup
+  - [x] Remove question marks from all prompts
+  - [x] Translate English fallbacks in `community.admin.tasks`
+  - [x] Make `insights` section declarative
+- [x] French (FR) locale cleanup
+  - [x] Remove question marks from all prompts
+  - [x] Translate English fallbacks in `community.admin.tasks`
+  - [x] Make `insights` section declarative
+- [x] Japanese (JA) locale cleanup
+  - [x] Remove question marks from all prompts
+  - [x] Translate English fallbacks in `community.admin.tasks`
+  - [x] Make `insights` section declarative
+- [x] Korean (KO) locale cleanup
+  - [x] Remove question marks from all prompts
+  - [x] Translate English fallbacks in `community.admin.tasks`
+  - [x] Make `insights` section declarative
+- [x] Russian (RU) locale cleanup
+  - [x] Remove question marks from all prompts
+  - [x] Translate English fallbacks in `community.admin.tasks`
+  - [x] Make `insights` section declarative
+  - [x] Fix placeholder corruption `????`
+- [x] Validation
+  - [x] Run `Select-String "[?锛焆"` across all locales
+  - [x] Verify JSON syntax for all files
+  - [x] Submit for review
