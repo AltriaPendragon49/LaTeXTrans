@@ -41,6 +41,7 @@ from backend.app.models.config_models import (
 from backend.app.core.encryption import decrypt_api_key
 from backend.app.services.agents.llm_runtime import resolve_task_llm_max_concurrent_requests
 from backend.app.services.agents.llm_token_pool import (
+    compute_pool_routing_key,
     LlmMemberScheduler,
 )
 from backend.app.services.translation_quota_service import (
@@ -230,6 +231,27 @@ async def get_user_api_config_async(user_id: str) -> dict:
         return {}
 
 
+def _build_system_managed_llm_config(advanced_config: AdvancedConfig) -> Dict[str, Any]:
+    members = settings.get_llm_system_pool_members()
+    if not members:
+        return {}
+
+    config: Dict[str, Any] = {
+        "api_key": members[0]["api_key"],
+        "base_url": members[0]["base_url"],
+        "model": advanced_config.translation_model,
+        "timeout": settings.llm_timeout,
+        "reserve_count": settings.llm_pool_reserve_count,
+        "default_member_concurrency": settings.llm_member_default_concurrency,
+        "pool_mode": "system_managed",
+        "pool_members": members,
+        "pool_routing_key": compute_pool_routing_key(members),
+    }
+    if settings.llm_shared_pool_concurrency:
+        config["shared_pool_concurrency"] = settings.llm_shared_pool_concurrency
+    return config
+
+
 def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Dict[str, Any]:
     """
     Build LLM configuration from advanced config.
@@ -248,11 +270,7 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
         LLM configuration dictionary for agent
     """
     def _system_pool_config() -> Dict[str, Any]:
-        config = settings.get_llm_config()
-        if config.get("pool_mode") != "system_managed":
-            return {}
-        config["model"] = advanced_config.translation_model
-        return config
+        return _build_system_managed_llm_config(advanced_config)
 
     # Priority 0: Default: use author's API if explicitly requested
     if advanced_config.use_author_api:
@@ -313,11 +331,7 @@ async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str =
     Async-safe variant of build_llm_config for async request paths.
     """
     def _system_pool_config() -> Dict[str, Any]:
-        config = settings.get_llm_config()
-        if config.get("pool_mode") != "system_managed":
-            return {}
-        config["model"] = advanced_config.translation_model
-        return config
+        return _build_system_managed_llm_config(advanced_config)
 
     if advanced_config.use_author_api:
         logger.info("Using author's API configuration (use_author_api=True)")

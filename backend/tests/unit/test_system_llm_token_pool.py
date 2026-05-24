@@ -114,10 +114,17 @@ def test_settings_parse_system_llm_pool_groups_json():
 async def test_build_llm_config_async_uses_system_pool_for_author_api(monkeypatch):
     monkeypatch.setattr(
         type(translate_route.settings),
-        "get_llm_system_pool_groups",
+        "get_llm_config",
+        lambda self: (_ for _ in ()).throw(AssertionError("default author API must not use legacy single-key config")),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        type(translate_route.settings),
+        "get_llm_system_pool_members",
         lambda self: [
-            {"group_id": "g1", "base_url": "https://relay-a.example/v1/chat/completions", "api_keys": ["k1", "k2"]},
-            {"group_id": "g2", "base_url": "https://relay-b.example/v1/chat/completions", "api_keys": ["k3", "k4", "k5"]},
+            {"member_id": "m1", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k1"},
+            {"member_id": "m2", "base_url": "https://relay-a.example/v1/chat/completions", "api_key": "k2"},
+            {"member_id": "m3", "base_url": "https://relay-b.example/v1/chat/completions", "api_key": "k3"},
         ],
         raising=False,
     )
@@ -126,7 +133,9 @@ async def test_build_llm_config_async_uses_system_pool_for_author_api(monkeypatc
     cfg = await translate_route.build_llm_config_async(AdvancedConfig(use_author_api=True), user_id=None)
 
     assert cfg["pool_mode"] == "system_managed"
-    assert len(cfg["pool_members"]) == 5
+    assert len(cfg["pool_members"]) == 3
+    assert cfg["base_url"] == "https://relay-a.example/v1/chat/completions"
+    assert cfg["api_key"] == "k1"
 
 
 @pytest.mark.asyncio
