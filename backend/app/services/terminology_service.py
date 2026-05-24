@@ -429,6 +429,38 @@ class TerminologyService:
             logger.exception("Failed to reject term %s", term_id)
             return False
 
+    # ---- Batch operations ----
+
+    def batch_approve_terms(self, term_ids: list[str], reviewer_id: str) -> int:
+        """Approve multiple terms in a single DB operation. Returns count of affected rows."""
+        if not term_ids:
+            return 0
+        try:
+            return self._repository.batch_approve_terms(term_ids, reviewer_id)
+        except Exception:
+            logger.exception("Batch approve failed for %d terms", len(term_ids))
+            return 0
+
+    def batch_reject_terms(self, term_ids: list[str], reviewer_id: str, reason: Optional[str] = None) -> int:
+        """Reject multiple terms in a single DB operation. Returns count of affected rows."""
+        if not term_ids:
+            return 0
+        try:
+            return self._repository.batch_reject_terms(term_ids, reviewer_id, reason)
+        except Exception:
+            logger.exception("Batch reject failed for %d terms", len(term_ids))
+            return 0
+
+    def batch_delete_terms(self, term_ids: list[str]) -> int:
+        """Delete multiple terms in a single DB operation. Returns count of affected rows."""
+        if not term_ids:
+            return 0
+        try:
+            return self._repository.batch_delete_terms(term_ids)
+        except Exception:
+            logger.exception("Batch delete failed for %d terms", len(term_ids))
+            return 0
+
     def list_pending(
         self,
         *,

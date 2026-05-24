@@ -300,6 +300,61 @@ class TerminologyRepository:
         }
         return self.update_term(term_id, updates)
 
+    # ---- Batch operations ----
+
+    def batch_approve_terms(self, term_ids: list[str], reviewed_by_user_id: str) -> int:
+        """Approve multiple terms in a single SQL statement. Returns count of affected rows."""
+        if not term_ids:
+            return 0
+        now = _utc_now_naive()
+        placeholders = ", ".join(_placeholder(i) for i in range(len(term_ids)))
+        with db_connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"update terminology_terms set status = 'approved', "
+                f"reviewed_by_user_id = {_placeholder(len(term_ids))}, "
+                f"reviewed_at = {_placeholder(len(term_ids) + 1)}, "
+                f"rejection_reason = NULL, "
+                f"embedding_status = 'pending', "
+                f"updated_at = {_placeholder(len(term_ids) + 2)} "
+                f"where id in ({placeholders})",
+                tuple(term_ids) + (reviewed_by_user_id, now, now),
+            )
+            return cursor.rowcount
+
+    def batch_reject_terms(self, term_ids: list[str], reviewed_by_user_id: str, reason: Optional[str] = None) -> int:
+        """Reject multiple terms in a single SQL statement. Returns count of affected rows."""
+        if not term_ids:
+            return 0
+        now = _utc_now_naive()
+        placeholders = ", ".join(_placeholder(i) for i in range(len(term_ids)))
+        with db_connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"update terminology_terms set status = 'rejected', "
+                f"reviewed_by_user_id = {_placeholder(len(term_ids))}, "
+                f"reviewed_at = {_placeholder(len(term_ids) + 1)}, "
+                f"rejection_reason = {_placeholder(len(term_ids) + 2)}, "
+                f"embedding_status = 'none', "
+                f"updated_at = {_placeholder(len(term_ids) + 3)} "
+                f"where id in ({placeholders})",
+                tuple(term_ids) + (reviewed_by_user_id, now, reason, now),
+            )
+            return cursor.rowcount
+
+    def batch_delete_terms(self, term_ids: list[str]) -> int:
+        """Delete multiple terms in a single SQL statement. Returns count of affected rows."""
+        if not term_ids:
+            return 0
+        placeholders = ", ".join(_placeholder(i) for i in range(len(term_ids)))
+        with db_connection(commit=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"delete from terminology_terms where id in ({placeholders})",
+                tuple(term_ids),
+            )
+            return cursor.rowcount
+
     def set_embedding_status(self, term_id: str, status: str, *, model: Optional[str] = None,
                              collection: Optional[str] = None, vector_term_id: Optional[str] = None) -> bool:
         updates: dict[str, Any] = {"embedding_status": status}

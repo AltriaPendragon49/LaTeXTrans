@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import type { DomainInfo, DomainsResponse } from "@/features/rag-terminology/types"
 import { listDomains } from "@/features/rag-terminology/services/rag-terminology-api"
 
+let cachedDomains: DomainsResponse | null = null
+
 interface UseDomainsResult {
   domains: DomainInfo[]
   groups: Record<string, { label_zh: string; members: string[] }>
@@ -15,16 +17,23 @@ interface UseDomainsResult {
  * Results are cached in memory; call `reload` to force a refresh.
  */
 export function useDomains(): UseDomainsResult {
-  const [domains, setDomains] = useState<DomainInfo[]>([])
-  const [groups, setGroups] = useState<Record<string, { label_zh: string; members: string[] }>>({})
-  const [isLoading, setIsLoading] = useState(true)
+  const [domains, setDomains] = useState<DomainInfo[]>(cachedDomains?.domains ?? [])
+  const [groups, setGroups] = useState<Record<string, { label_zh: string; members: string[] }>>(cachedDomains?.groups ?? {})
+  const [isLoading, setIsLoading] = useState(!cachedDomains)
   const [error, setError] = useState<string | null>(null)
 
-  const fetch = useCallback(async () => {
+  const fetch = useCallback(async (force = false) => {
+    if (!force && cachedDomains) {
+      setDomains(cachedDomains.domains)
+      setGroups(cachedDomains.groups)
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     setError(null)
     try {
       const response: DomainsResponse = await listDomains()
+      cachedDomains = response
       setDomains(response.domains)
       setGroups(response.groups)
     } catch {
@@ -38,5 +47,7 @@ export function useDomains(): UseDomainsResult {
     fetch()
   }, [fetch])
 
-  return { domains, groups, isLoading, error, reload: fetch }
+  const reload = useCallback(() => fetch(true), [fetch])
+
+  return { domains, groups, isLoading, error, reload }
 }

@@ -306,25 +306,22 @@ async def batch_operate_terms(
 
     service = _get_terminology_service()
     reviewer_id = str(_admin.get("id", "admin"))
-    succeeded = 0
-    failed = 0
 
-    for term_id in body.term_ids:
-        try:
-            if body.operation == "approve":
-                ok = service.approve_term(term_id, reviewer_id)
-            elif body.operation == "reject":
-                ok = service.reject_term(term_id, reviewer_id)
-            elif body.operation == "delete":
-                ok = service.delete_term(term_id)
-            else:
-                ok = False
-            if ok:
-                succeeded += 1
-            else:
-                failed += 1
-        except Exception:
-            failed += 1
+    if body.operation == "approve":
+        affected = service.batch_approve_terms(body.term_ids, reviewer_id)
+        succeeded = affected
+        failed = len(body.term_ids) - affected
+    elif body.operation == "reject":
+        affected = service.batch_reject_terms(body.term_ids, reviewer_id, reason=body.reason)
+        succeeded = affected
+        failed = len(body.term_ids) - affected
+    elif body.operation == "delete":
+        affected = service.batch_delete_terms(body.term_ids)
+        succeeded = affected
+        failed = len(body.term_ids) - affected
+    else:
+        succeeded = 0
+        failed = len(body.term_ids)
 
     return {"ok": failed == 0, "operation": body.operation, "succeeded": succeeded, "failed": failed}
 

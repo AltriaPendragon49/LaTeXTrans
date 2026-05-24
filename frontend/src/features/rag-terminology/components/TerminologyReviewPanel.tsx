@@ -49,7 +49,7 @@ import {
 } from "@/features/rag-terminology/services/rag-terminology-api"
 import type { ListTermsParams } from "@/features/rag-terminology/services/rag-terminology-api"
 import { TermFormModal } from "@/features/rag-terminology/components/TermFormModal"
-import type { TermFormData } from "@/features/rag-terminology/components/TermFormModal"
+import type { TermFormData } from "@/features/rag-terminology/types"
 import { useDomains } from "@/features/rag-terminology/hooks/useDomains"
 
 const PAGE_SIZE = 20

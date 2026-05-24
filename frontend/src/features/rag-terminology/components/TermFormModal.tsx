@@ -15,15 +15,7 @@ import {
   SelectLabel,
 } from "@/ui/primitives/select"
 
-import type { DomainInfo } from "@/features/rag-terminology/types"
-
-export interface TermFormData {
-  source_term: string
-  target_term: string
-  source_lang: string
-  target_lang: string
-  domain?: string
-}
+import type { DomainInfo, TermFormData } from "@/features/rag-terminology/types"
 
 export interface TermFormModalProps {
   open: boolean

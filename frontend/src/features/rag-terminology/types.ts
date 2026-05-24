@@ -74,3 +74,11 @@ export interface DomainsResponse {
   domains: DomainInfo[];
   groups: Record<string, { label_zh: string; members: string[] }>;
 }
+
+export interface TermFormData {
+  source_term: string;
+  target_term: string;
+  source_lang: string;
+  target_lang: string;
+  domain?: string;
+}

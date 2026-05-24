@@ -227,7 +227,8 @@ async def node_translate(state: PipelineState) -> PipelineState:
         enable_rag = config.get("enable_rag_terminology", False)
         if enable_rag:
             try:
-                from backend.app.services.terminology_service import TerminologyService
+                from backend.app.services.rag.domain_constants import map_arxiv_categories_to_domain
+from backend.app.services.terminology_service import TerminologyService
                 rag_service = TerminologyService()
                 if rag_service.is_enabled:
                     rag_domain = config.get("rag_terminology_domain") or None
@@ -244,7 +245,6 @@ async def node_translate(state: PipelineState) -> PipelineState:
                                 elif isinstance(cats, str):
                                     all_categories.append(cats)
                             if all_categories:
-                                from backend.app.services.rag.domain_constants import map_arxiv_categories_to_domain
                                 rag_domain = map_arxiv_categories_to_domain(all_categories)
                                 if rag_domain:
                                     logger.info(
