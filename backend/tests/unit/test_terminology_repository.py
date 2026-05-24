@@ -283,6 +283,87 @@ class TestBatch:
 # Match logs
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Embedding status 更新 (set_embedding_status)
+# ---------------------------------------------------------------------------
+
+class TestEmbeddingStatus:
+    """set_embedding_status 状态更新测试。"""
+
+    def test_set_embedding_status_completed_with_all_fields(self, repo: TerminologyRepository) -> None:
+        """更新 embedding_status 为 completed，同时设置 model/collection/vector_term_id。"""
+        inserted = repo.insert_term({"source_term": "word2vec", "target_term": "词向量"})
+        assert repo.set_embedding_status(
+            inserted["id"],
+            "completed",
+            model="sentence-transformers/all-MiniLM-L6-v2",
+            collection="terminology_terms",
+            vector_term_id="vec-001",
+        ) is True
+
+        fetched = repo.get_term(inserted["id"])
+        assert fetched["embedding_status"] == "completed"
+        assert fetched["embedding_model"] == "sentence-transformers/all-MiniLM-L6-v2"
+        assert fetched["vector_collection"] == "terminology_terms"
+        assert fetched["vector_term_id"] == "vec-001"
+
+    def test_set_embedding_status_in_progress(self, repo: TerminologyRepository) -> None:
+        """更新为 in_progress 状态。"""
+        inserted = repo.insert_term({"source_term": "GloVe", "target_term": "全局向量"})
+        assert repo.set_embedding_status(inserted["id"], "in_progress") is True
+
+        fetched = repo.get_term(inserted["id"])
+        assert fetched["embedding_status"] == "in_progress"
+        # 未传入可选字段，不被覆盖
+        assert fetched["embedding_model"] is None
+        assert fetched["vector_collection"] is None
+
+    def test_set_embedding_status_error(self, repo: TerminologyRepository) -> None:
+        """错误状态可以正确记录。"""
+        inserted = repo.insert_term({"source_term": "BERT", "target_term": "BERT模型"})
+        assert repo.set_embedding_status(inserted["id"], "error") is True
+
+        fetched = repo.get_term(inserted["id"])
+        assert fetched["embedding_status"] == "error"
+
+    def test_set_embedding_status_partial_update(self, repo: TerminologyRepository) -> None:
+        """仅传入部分可选字段。"""
+        inserted = repo.insert_term({"source_term": "ELMo", "target_term": "ELMo模型"})
+        assert repo.set_embedding_status(
+            inserted["id"], "completed", model="custom-model"
+        ) is True
+
+        fetched = repo.get_term(inserted["id"])
+        assert fetched["embedding_status"] == "completed"
+        assert fetched["embedding_model"] == "custom-model"
+        assert fetched["vector_collection"] is None  # 未传入
+
+    def test_set_embedding_status_nonexistent(self, repo: TerminologyRepository) -> None:
+        """更新不存在术语的 embedding 状态返回 False。"""
+        assert repo.set_embedding_status("no-such-id", "completed") is False
+
+    def test_set_embedding_status_transitions(self, repo: TerminologyRepository) -> None:
+        """embedding 状态可多次更新（none -> pending -> in_progress -> completed）。"""
+        inserted = repo.insert_term({"source_term": "stateful", "target_term": "有状态"})
+        assert inserted["embedding_status"] == "none"
+
+        # 批准触发 pending 状态
+        repo.approve_term(inserted["id"], "reviewer-1")
+        assert repo.get_term(inserted["id"])["embedding_status"] == "pending"
+
+        # 开始处理
+        repo.set_embedding_status(inserted["id"], "in_progress")
+        assert repo.get_term(inserted["id"])["embedding_status"] == "in_progress"
+
+        # 完成
+        repo.set_embedding_status(inserted["id"], "completed", model="all-MiniLM-L6-v2")
+        assert repo.get_term(inserted["id"])["embedding_status"] == "completed"
+
+        # 出错也可以覆盖
+        repo.set_embedding_status(inserted["id"], "error")
+        assert repo.get_term(inserted["id"])["embedding_status"] == "error"
+
+
 class TestMatchLogs:
     def test_insert_and_get_match_logs(self, repo: TerminologyRepository) -> None:
         term = repo.insert_term({"source_term": "attention", "target_term": "注意力", "status": "approved"})

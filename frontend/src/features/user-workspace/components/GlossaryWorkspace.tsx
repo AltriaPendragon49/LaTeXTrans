@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { BookOpenText, Loader2, Search, Share2, Upload, XCircle } from "lucide-react"
+import { BookOpenText, Loader2, Share2, Upload, XCircle } from "lucide-react"
 
 import { PageIntro } from "@/ui/page-intro/PageIntro"
 import { Button } from "@/ui/button/Button"
@@ -29,6 +29,7 @@ import {
   uploadTerminologyFile,
   shareTerm,
 } from "@/features/rag-terminology/services/rag-terminology-api"
+import type { ListTermsParams } from "@/features/rag-terminology/services/rag-terminology-api"
 
 const PAGE_SIZE = 20
 
@@ -188,7 +189,7 @@ export function GlossaryWorkspace() {
     setIsLoadingMy(true)
     setMyLoadError(null)
     try {
-      const params: Record<string, string | number> = { page: myPage, page_size: PAGE_SIZE }
+      const params: ListTermsParams = { page: myPage, page_size: PAGE_SIZE }
       if (myStatusFilter) params.status = myStatusFilter
       const response = await listMyTerms(params)
       setMyTerms(response.terms)
@@ -271,7 +272,7 @@ export function GlossaryWorkspace() {
   async function handleShare(termId: string) {
     setShareLoadingId(termId)
     try {
-      const result = await shareTerm(termId)
+      await shareTerm(termId)
       toast.success(t("glossary.shareSuccess"))
       loadMyTerms()
     } catch {

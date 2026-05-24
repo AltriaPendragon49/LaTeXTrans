@@ -76,6 +76,7 @@ class GlossaryLookupRequest(BaseModel):
     source_lang: str = Field(default="en", description="Source language code")
     target_lang: str = Field(default="zh", description="Target language code")
     top_n: Optional[int] = Field(default=None, description="Max terms to return (defaults to server setting)")
+    domain: Optional[str] = Field(default=None, description="Optional domain filter (e.g. 'machine_learning', 'physics'). When set, only terms from this domain are returned.")
 
 
 class GlossaryLookupResponse(BaseModel):
@@ -289,6 +290,9 @@ async def share_term(
         "created_by_user_id": user_id,
     })
     return {"ok": True, "shared_term_id": shared["id"]}
+
+
+@router.post("/terms/batch", response_model=dict)
 async def batch_operate_terms(
     body: BatchOperationRequest,
     _admin: dict = Depends(require_admin_user),
@@ -361,10 +365,13 @@ async def list_terms(
     page_size: int = Query(default=20, ge=1, le=200, description="Items per page"),
     status: Optional[str] = Query(default=None, description="Filter by status (pending_review, approved)"),
     source_type: Optional[str] = Query(default=None, description="Filter by source type (system, imported, manual, etc.)"),
+    domain: Optional[str] = Query(default=None, description="Filter by domain"),
+    source_lang: Optional[str] = Query(default=None, description="Filter by source language"),
+    query: Optional[str] = Query(default=None, description="LIKE search on source_term"),
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """List all terminology terms with optional status filter and pagination."""
+    """List all terminology terms with optional filters and pagination."""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -372,7 +379,10 @@ async def list_terms(
         )
 
     service = _get_terminology_service()
-    result = service.list_terms(page=page, page_size=page_size, status=status, source_type=source_type)
+    result = service.list_terms(
+        page=page, page_size=page_size, status=status, source_type=source_type,
+        domain=domain, source_lang=source_lang, query=query,
+    )
     return result
 
 
@@ -559,6 +569,7 @@ async def lookup_glossary(
         source_lang=body.source_lang,
         target_lang=body.target_lang,
         top_n=effective_top_n,
+        domain=body.domain,
     )
     return GlossaryLookupResponse(
         terms=result.get("terms", []),

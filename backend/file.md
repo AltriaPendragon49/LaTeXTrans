@@ -11,11 +11,11 @@
 
 ## Recent Responsibility Updates (2026-05-14 RAG terminology test suite)
 
-- `backend/tests/unit/test_terminology_repository.py`: 术语仓储测试，覆盖 CRUD、审核工作流（approve/reject）、多条件搜索、分页、用户隔离、批量导入和匹配日志。
+- `backend/tests/unit/test_terminology_repository.py`: 术语仓储测试，覆盖 CRUD、审核工作流（approve/reject）、多条件搜索、分页、用户隔离、批量导入、匹配日志和 embedding 状态转换。
 - `backend/tests/unit/test_bm25_retriever.py`: BM25 检索器测试，覆盖索引构建、搜索排序、top_n 限制、空语料处理、自定义分词器和特殊字符。
 - `backend/tests/unit/test_rag_clients.py`: RAG 客户端测试，覆盖 EmbeddingClient 编码、CrossEncoderReranker 回退排序、VectorRetriever 不可用时的安全降级和余弦相似度计算。
 - `backend/tests/unit/test_pipeline.py`: RAG 流水线测试，覆盖候选去重合并、分数排序、LaTeX 查询变换、BM25/向量/仓储多源检索和组件故障降级。
-- `backend/tests/unit/test_rag_integration.py`: 集成测试，覆盖 Glossary 格式化、Prompt 注入、BM25→Pipeline→Glossary 端到端链路和 should_run_rag 特性门禁。
+- `backend/tests/unit/test_rag_integration.py`: 集成测试，覆盖 Glossary 格式化、Prompt 注入、BM25→Pipeline→Glossary 端到端链路、should_run_rag 特性门禁、TerminologyService 完整流程（get_rag_glossary 含回退、seed_official_terms 幂等、approve_term/reject_term、extract_and_store 提取流程）。
 
 ## Recent Responsibility Updates (2026-05-13 RAG terminology management)
 

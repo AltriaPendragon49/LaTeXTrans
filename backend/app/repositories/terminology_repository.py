@@ -209,13 +209,19 @@ class TerminologyRepository:
             rows = _fetchall(cursor)
         return self._rows(rows) if rows else []
 
-    def get_all_approved_terms(self, *, source_lang: str = "en") -> list[dict[str, Any]]:
+    def get_all_approved_terms(self, *, source_lang: str = "en", domain: Optional[str] = None) -> list[dict[str, Any]]:
+        conditions = [f"status = 'approved'", f"source_lang = {_placeholder(0)}"]
+        params: list[Any] = [source_lang]
+        if domain:
+            conditions.append(f"domain = {_placeholder(len(params))}")
+            params.append(domain)
+        where = " and ".join(conditions)
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
-                f"where status = 'approved' and source_lang = {_placeholder(0)}",
-                (source_lang,),
+                f"where {where}",
+                tuple(params),
             )
             rows = _fetchall(cursor)
         return self._rows(rows) if rows else []

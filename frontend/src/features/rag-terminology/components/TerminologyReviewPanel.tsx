@@ -28,8 +28,13 @@ import {
   DataTableRow,
 } from "@/ui/data-table/DataTable"
 import { Label } from "@/ui/primitives/label"
-import { Input } from "@/ui/input/Input"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/ui/primitives/select"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/ui/primitives/select"
 
 import type { TerminologyTerm } from "@/features/rag-terminology/types"
 import {
@@ -42,6 +47,10 @@ import {
   updateTerm,
   deleteTerm,
 } from "@/features/rag-terminology/services/rag-terminology-api"
+import type { ListTermsParams } from "@/features/rag-terminology/services/rag-terminology-api"
+import { TermFormModal } from "@/features/rag-terminology/components/TermFormModal"
+import type { TermFormData } from "@/features/rag-terminology/components/TermFormModal"
+import { useDomains } from "@/features/rag-terminology/hooks/useDomains"
 
 const PAGE_SIZE = 20
 
@@ -61,21 +70,6 @@ const STATUS_LABELS: Record<string, { tone: "muted" | "accent" | "info" | "succe
   rejected: { tone: "danger", label: "Rejected" },
 }
 
-const DOMAIN_OPTIONS = [
-  "machine_learning",
-  "deep_learning",
-  "natural_language_processing",
-  "computer_vision",
-  "systems",
-  "security",
-  "mathematics",
-  "physics",
-  "information_retrieval",
-  "multimodal",
-  "artificial_intelligence",
-  "computer_science",
-]
-
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -87,86 +81,6 @@ function formatDate(dateString: string): string {
   } catch {
     return dateString
   }
-}
-
-function TermFormModal({
-  open,
-  onClose,
-  onSave,
-  initial,
-  title,
-}: {
-  open: boolean
-  onClose: () => void
-  onSave: (data: { source_term: string; target_term: string; domain?: string }) => Promise<void>
-  initial?: { source_term: string; target_term: string; domain?: string }
-  title: string
-}) {
-  const { t } = useTranslation()
-  const [sourceTerm, setSourceTerm] = useState(initial?.source_term ?? "")
-  const [targetTerm, setTargetTerm] = useState(initial?.target_term ?? "")
-  const [domain, setDomain] = useState(initial?.domain ?? "")
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setSourceTerm(initial?.source_term ?? "")
-      setTargetTerm(initial?.target_term ?? "")
-      setDomain(initial?.domain ?? "")
-    }
-  }, [open, initial])
-
-  async function handleSave() {
-    if (!sourceTerm.trim() || !targetTerm.trim()) return
-    setSaving(true)
-    try {
-      await onSave({ source_term: sourceTerm.trim(), target_term: targetTerm.trim(), domain: domain || undefined })
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (!open) return null
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-[color:var(--px-shell-surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-[color:var(--px-shell-ink)]">{title}</h2>
-        <p className="mt-1 text-sm text-[color:var(--px-shell-muted)]">{t("ragTerminology.dialog.description")}</p>
-        <div className="mt-5 space-y-4">
-          <div className="space-y-2">
-            <Label>{t("ragTerminology.dialog.sourceTerm")}</Label>
-            <Input value={sourceTerm} onChange={(e) => setSourceTerm(e.target.value)} placeholder="e.g. attention mechanism" />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("ragTerminology.dialog.targetTerm")}</Label>
-            <Input value={targetTerm} onChange={(e) => setTargetTerm(e.target.value)} placeholder="e.g. 注意力机制" />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("ragTerminology.dialog.domain")}</Label>
-            <Select value={domain} onValueChange={setDomain}>
-              <SelectTrigger>
-                <SelectValue placeholder={t("ragTerminology.dialog.selectDomain")} />
-              </SelectTrigger>
-              <SelectContent>
-                {DOMAIN_OPTIONS.map((d) => (
-                  <SelectItem key={d} value={d}>{d}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={handleSave} disabled={!sourceTerm.trim() || !targetTerm.trim() || saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            保存
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 export function TerminologyReviewPanel() {
@@ -190,7 +104,6 @@ export function TerminologyReviewPanel() {
   const [allLoadError, setAllLoadError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState("")
   const [domainFilter, setDomainFilter] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
 
   // Insert a state to track which term is being edited
   const [editingTerm, setEditingTerm] = useState<TerminologyTerm | null>(null)
@@ -207,6 +120,12 @@ export function TerminologyReviewPanel() {
   // Action loading
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
+  // Dynamic domains from API
+  const { domains, groups } = useDomains()
+
+  // Pending terms filters
+  const [pendingDomainFilter, setPendingDomainFilter] = useState("")
+
   const pendingTotalPages = Math.max(1, Math.ceil(pendingTotal / PAGE_SIZE))
   const allTotalPages = Math.max(1, Math.ceil(allTotal / PAGE_SIZE))
 
@@ -215,10 +134,9 @@ export function TerminologyReviewPanel() {
     setIsLoadingPending(true)
     setPendingLoadError(null)
     try {
-      const response = await listPendingTerms({
-        page: pendingPage,
-        page_size: PAGE_SIZE,
-      })
+      const params: ListTermsParams = { page: pendingPage, page_size: PAGE_SIZE }
+      if (pendingDomainFilter) params.domain = pendingDomainFilter
+      const response = await listPendingTerms(params)
       setPendingTerms(response.terms)
       setPendingTotal(response.total)
     } catch {
@@ -226,7 +144,7 @@ export function TerminologyReviewPanel() {
     } finally {
       setIsLoadingPending(false)
     }
-  }, [pendingPage, t])
+  }, [pendingPage, pendingDomainFilter, t])
 
   useEffect(() => {
     if (activeTab === "terms") loadPendingTerms()
@@ -237,7 +155,7 @@ export function TerminologyReviewPanel() {
     setIsLoadingAll(true)
     setAllLoadError(null)
     try {
-      const params: Record<string, string | number> = { page: allPage, page_size: PAGE_SIZE }
+      const params: ListTermsParams = { page: allPage, page_size: PAGE_SIZE }
       if (statusFilter) params.status = statusFilter
       if (domainFilter) params.domain = domainFilter
       const response = await listTerms(params)
@@ -283,11 +201,13 @@ export function TerminologyReviewPanel() {
     }
   }
 
-  async function handleCreate(data: { source_term: string; target_term: string; domain?: string }) {
+  async function handleCreate(data: TermFormData) {
     try {
       await createTerm({
         source_term: data.source_term,
         target_term: data.target_term,
+        source_lang: data.source_lang,
+        target_lang: data.target_lang,
         domain: data.domain,
         source_type: "manual",
         status: "approved",
@@ -299,10 +219,16 @@ export function TerminologyReviewPanel() {
     }
   }
 
-  async function handleEdit(data: { source_term: string; target_term: string; domain?: string }) {
+  async function handleEdit(data: TermFormData) {
     if (!editingTerm) return
     try {
-      await updateTerm(editingTerm.id, data)
+      await updateTerm(editingTerm.id, {
+        source_term: data.source_term,
+        target_term: data.target_term,
+        source_lang: data.source_lang,
+        target_lang: data.target_lang,
+        domain: data.domain,
+      })
       toast.success(t("ragTerminology.editSuccess"))
       setEditingTerm(null)
       if (activeTab === "allTerms") loadAllTerms()
@@ -495,7 +421,7 @@ export function TerminologyReviewPanel() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
-                {DOMAIN_OPTIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                {domains.map((d) => <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -649,13 +575,23 @@ export function TerminologyReviewPanel() {
         onClose={() => setCreateDialogOpen(false)}
         onSave={handleCreate}
         title={t("ragTerminology.dialog.createTitle")}
+        domainOptions={domains}
+        domainGroups={groups}
       />
       <TermFormModal
         open={editDialogOpen}
         onClose={() => { setEditDialogOpen(false); setEditingTerm(null) }}
         onSave={handleEdit}
-        initial={editingTerm ? { source_term: editingTerm.source_term, target_term: editingTerm.target_term, domain: editingTerm.domain } : undefined}
+        initial={editingTerm ? {
+          source_term: editingTerm.source_term,
+          target_term: editingTerm.target_term,
+          source_lang: editingTerm.source_lang,
+          target_lang: editingTerm.target_lang,
+          domain: editingTerm.domain,
+        } : undefined}
         title={t("ragTerminology.dialog.editTitle")}
+        domainOptions={domains}
+        domainGroups={groups}
       />
 
       <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -674,6 +610,27 @@ export function TerminologyReviewPanel() {
         </div>
 
         <TabsContent value="terms" className="mt-0 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
+              <Select value={pendingDomainFilter} onValueChange={(v) => { setPendingDomainFilter(v); setPendingPage(1) }}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder={t("ragTerminology.filters.all")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t("ragTerminology.filters.all")}</SelectItem>
+                  {domains.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {pendingDomainFilter && (
+              <Button variant="outline" size="sm" onClick={() => { setPendingDomainFilter(""); setPendingPage(1) }}>
+                {t("ragTerminology.filters.clear")}
+              </Button>
+            )}
+          </div>
           {renderPendingTable()}
         </TabsContent>
 

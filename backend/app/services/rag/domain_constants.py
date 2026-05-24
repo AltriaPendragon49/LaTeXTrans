@@ -1,11 +1,13 @@
 """Domain constants for RAG terminology classification.
 
 Provides canonical domain identifiers, human-readable labels,
-and grouping helpers used throughout the terminology system.
+grouping helpers, and arXiv category-to-domain mapping used
+throughout the terminology system.
 """
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Final
 
@@ -66,6 +68,13 @@ class TermDomain(str, Enum):
     CONTROL_THEORY = "control_theory"
     SIGNAL_PROCESSING = "signal_processing"
 
+    # Chemistry
+    CHEMISTRY = "chemistry"
+    ORGANIC_CHEMISTRY = "organic_chemistry"
+    INORGANIC_CHEMISTRY = "inorganic_chemistry"
+    PHYSICAL_CHEMISTRY = "physical_chemistry"
+    ANALYTICAL_CHEMISTRY = "analytical_chemistry"
+
     # Other
     ECONOMICS = "economics"
     LINGUISTICS = "linguistics"
@@ -122,6 +131,11 @@ DOMAIN_LABELS_ZH: Final[dict[str, str]] = {
     TermDomain.LINGUISTICS.value: "语言学",
     TermDomain.PHILOSOPHY.value: "哲学",
     TermDomain.EDUCATION.value: "教育",
+    TermDomain.CHEMISTRY.value: "化学",
+    TermDomain.ORGANIC_CHEMISTRY.value: "有机化学",
+    TermDomain.INORGANIC_CHEMISTRY.value: "无机化学",
+    TermDomain.PHYSICAL_CHEMISTRY.value: "物理化学",
+    TermDomain.ANALYTICAL_CHEMISTRY.value: "分析化学",
 }
 
 # Human-readable labels (English)
@@ -173,6 +187,11 @@ DOMAIN_LABELS_EN: Final[dict[str, str]] = {
     TermDomain.LINGUISTICS.value: "Linguistics",
     TermDomain.PHILOSOPHY.value: "Philosophy",
     TermDomain.EDUCATION.value: "Education",
+    TermDomain.CHEMISTRY.value: "Chemistry",
+    TermDomain.ORGANIC_CHEMISTRY.value: "Organic Chemistry",
+    TermDomain.INORGANIC_CHEMISTRY.value: "Inorganic Chemistry",
+    TermDomain.PHYSICAL_CHEMISTRY.value: "Physical Chemistry",
+    TermDomain.ANALYTICAL_CHEMISTRY.value: "Analytical Chemistry",
 }
 
 
@@ -231,6 +250,13 @@ DOMAIN_GROUPS: Final[dict[str, list[str]]] = {
         TermDomain.CONTROL_THEORY.value,
         TermDomain.SIGNAL_PROCESSING.value,
     ],
+    "chemistry": [
+        TermDomain.CHEMISTRY.value,
+        TermDomain.ORGANIC_CHEMISTRY.value,
+        TermDomain.INORGANIC_CHEMISTRY.value,
+        TermDomain.PHYSICAL_CHEMISTRY.value,
+        TermDomain.ANALYTICAL_CHEMISTRY.value,
+    ],
 }
 
 
@@ -245,4 +271,149 @@ def get_domain_group(domain: str) -> str | None:
     for group, members in DOMAIN_GROUPS.items():
         if domain in members:
             return group
+    return None
+
+
+# ---- arXiv Category to Domain Mapping ----
+
+# Mapping from arXiv category prefix patterns to TermDomain values.
+# Patterns are matched in order; the first match wins.
+_ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
+    # Computer Science & AI
+    (r"^cs\.AI$", "artificial_intelligence"),
+    (r"^cs\.LG$", "machine_learning"),
+    (r"^cs\.NE$", "machine_learning"),
+    (r"^cs\.CL$", "natural_language_processing"),
+    (r"^cs\.CV$", "computer_vision"),
+    (r"^cs\.IR$", "information_retrieval"),
+    (r"^cs\.MM$", "multimodal"),
+    (r"^cs\.SE$", "software_engineering"),
+    (r"^cs\.DB$", "database"),
+    (r"^cs\.NI$", "networking"),
+    (r"^cs\.CR$", "security"),
+    (r"^cs\.OS$", "systems"),
+    (r"^cs\.DC$", "systems"),
+    (r"^cs\.DS$", "computer_science"),
+    (r"^cs\.RO$", "robotics"),
+    (r"^cs\.SY$", "systems"),
+    (r"^cs\.IT$", "information_retrieval"),
+    (r"^cs\.[A-Z]{2}$", "computer_science"),  # Generic CS catch-all
+
+    # Mathematics
+    (r"^math\.[A-Z]{2}$", "mathematics"),
+    (r"^math$", "mathematics"),
+
+    # Statistics
+    (r"^stat\.ML$", "machine_learning"),
+    (r"^stat\.TH$", "statistics"),
+    (r"^stat\.ME$", "statistics"),
+    (r"^stat\.AP$", "statistics"),
+    (r"^stat\.CO$", "statistics"),
+    (r"^stat\.OT$", "statistics"),
+    (r"^stat$", "statistics"),
+
+    # Physics
+    (r"^physics\.[a-z-]+$", "physics"),
+    (r"^physics$", "physics"),
+    (r"^quant-ph$", "quantum_mechanics"),
+    (r"^hep-th$", "physics"),
+    (r"^hep-ph$", "physics"),
+    (r"^hep-ex$", "physics"),
+    (r"^hep-lat$", "physics"),
+    (r"^astro-ph\.[A-Z]{2}$", "astrophysics"),
+    (r"^gr-qc$", "physics"),
+    (r"^nucl-th$", "physics"),
+    (r"^nucl-ex$", "physics"),
+    (r"^cond-mat\.[a-z-]+$", "condensed_matter"),
+    (r"^physics\.flu-dyn$", "engineering"),
+
+    # Biology & Medicine
+    (r"^q-bio\.[A-Z]{2}$", "biology"),
+    (r"^q-bio$", "biology"),
+    (r"^q-bio\.BM$", "biochemistry"),
+    (r"^q-bio\.GN$", "genetics"),
+    (r"^q-bio\.MN$", "molecular_biology"),
+    (r"^q-bio\.NC$", "neuroscience"),
+    (r"^q-bio\.QM$", "bioinformatics"),
+    (r"^q-bio\.TO$", "biology"),
+
+    # Chemistry
+    (r"^chem-ph$", "physical_chemistry"),
+    (r"^physics\.chem-ph$", "physical_chemistry"),
+
+    # Engineering
+    (r"^eess\.[A-Z]{2}$", "engineering"),
+    (r"^eess\.SP$", "signal_processing"),
+    (r"^eess\.SY$", "control_theory"),
+    (r"^eess\.IV$", "computer_vision"),
+    (r"^eess\.AS$", "signal_processing"),
+    (r"^eess$", "engineering"),
+
+    # Economics
+    (r"^econ\.[A-Z]{2}$", "economics"),
+    (r"^q-fin\.[A-Z]{2}$", "economics"),
+    (r"^q-fin$", "economics"),
+]
+
+
+def map_arxiv_category_to_domain(arxiv_cat: str) -> str | None:
+    """Map a single arXiv category string to a TermDomain value.
+
+    Args:
+        arxiv_cat: An arXiv category string, e.g. ``"cs.CL"``, ``"math.OC"``,
+                   ``"quant-ph"``, ``"physics.optics"``.
+
+    Returns:
+        The corresponding ``TermDomain`` value (e.g. ``"natural_language_processing"``,
+        ``"mathematics"``, ``"quantum_mechanics"``), or ``None`` if no mapping
+        is found.
+    """
+    if not arxiv_cat or not isinstance(arxiv_cat, str):
+        return None
+
+    cat = arxiv_cat.strip()
+    if not cat:
+        return None
+
+    for pattern, domain in _ARXIV_CATEGORY_DOMAIN_MAP:
+        if re.match(pattern, cat):
+            return domain
+    return None
+
+
+def map_arxiv_categories_to_domain(categories: list[str]) -> str | None:
+    """Map a list of arXiv categories to the most specific TermDomain value.
+
+    When a paper has multiple categories, this function uses the first
+    non-generic match found.  "Generic" here means top-level domains like
+    ``"computer_science"``, ``"mathematics"``, ``"biology"`` – more specific
+    sub-domains are preferred.
+
+    Args:
+        categories: List of arXiv category strings, e.g. ``["cs.CL", "cs.AI"]``.
+
+    Returns:
+        A ``TermDomain`` value, or ``None`` if no mapping is found.
+    """
+    if not categories:
+        return None
+
+    generic_domains = {
+        "computer_science", "mathematics", "physics", "biology",
+        "engineering", "chemistry", "statistics", "economics",
+        "biochemistry", "signal_processing",
+    }
+
+    # First pass: look for a specific (non-generic) match
+    for cat in categories:
+        domain = map_arxiv_category_to_domain(cat)
+        if domain and domain not in generic_domains:
+            return domain
+
+    # Second pass: fall back to any match
+    for cat in categories:
+        domain = map_arxiv_category_to_domain(cat)
+        if domain:
+            return domain
+
     return None

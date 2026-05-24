@@ -231,16 +231,50 @@ async def node_translate(state: PipelineState) -> PipelineState:
                 rag_service = TerminologyService()
                 if rag_service.is_enabled:
                     rag_domain = config.get("rag_terminology_domain") or None
+
+                    # Auto-detect domain from arXiv category if not explicitly set
+                    if not rag_domain:
+                        category_map = config.get("category") or {}
+                        if category_map:
+                            # category_map is {arxiv_id: ["cs.CL", ...]}
+                            all_categories: list[str] = []
+                            for cats in category_map.values():
+                                if isinstance(cats, list):
+                                    all_categories.extend(cats)
+                                elif isinstance(cats, str):
+                                    all_categories.append(cats)
+                            if all_categories:
+                                from backend.app.services.rag.domain_constants import map_arxiv_categories_to_domain
+                                rag_domain = map_arxiv_categories_to_domain(all_categories)
+                                if rag_domain:
+                                    logger.info(
+                                        "Auto-detected RAG terminology domain '%s' from arXiv categories: %s",
+                                        rag_domain,
+                                        all_categories,
+                                    )
+                                else:
+                                    logger.info(
+                                        "Could not map arXiv categories to a known domain: %s",
+                                        all_categories,
+                                    )
+
+                    if rag_domain:
+                        logger.info("Using RAG terminology domain filter: %s", rag_domain)
+
                     term_dict = rag_service.get_all_approved_terms_dict(domain=rag_domain)
                     if term_dict:
                         translator_agent.term_dict = term_dict
                         translator_agent.trans_mode = 2
                         logger.info(
-                            "RAG terminology injected: %d terms loaded into translator agent.",
+                            "RAG terminology injected: %d terms loaded into translator agent%s.",
                             len(term_dict),
+                            f" (domain={rag_domain})" if rag_domain else "",
                         )
                     else:
-                        logger.info("RAG terminology enabled but no approved terms found.")
+                        logger.info(
+                            "RAG terminology enabled but no approved terms found%s.",
+                            f" for domain '{rag_domain}'" if rag_domain else "",
+                        )
                 else:
                     logger.info("RAG terminology not enabled at server level; skipping injection.")
             except Exception:

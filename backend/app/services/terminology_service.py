@@ -327,6 +327,7 @@ class TerminologyService:
         source_lang: str = "en",
         target_lang: str = "zh",
         top_n: int = 10,
+        domain: Optional[str] = None,
     ) -> dict[str, Any]:
         """Build a glossary block for a text chunk from approved terms.
 
@@ -339,6 +340,9 @@ class TerminologyService:
             source_lang: Source language code.
             target_lang: Target language code.
             top_n: Maximum number of terms to return (default 10).
+            domain: Optional domain filter. When set, only terms from this
+                    domain are returned. Pass ``None`` or ``"*"`` to return
+                    all domains.
 
         Returns:
             Dict with keys:
@@ -359,11 +363,15 @@ class TerminologyService:
                     target_lang=target_lang,
                     top_n=top_n,
                 )
+                # If domain filter is set, post-filter the pipeline results
                 if result.get("glossary_block"):
+                    terms = result.get("selected_terms", [])
+                    if domain and domain != "*":
+                        terms = [t for t in terms if t.get("domain") == domain]
                     return {
-                        "terms": result.get("selected_terms", []),
+                        "terms": terms,
                         "glossary_block": result.get("glossary_block", ""),
-                        "match_count": len(result.get("selected_terms", [])),
+                        "match_count": len(terms),
                     }
             except Exception:
                 logger.warning("RAG pipeline run failed, falling back to substring matching", exc_info=True)
@@ -371,7 +379,7 @@ class TerminologyService:
         # ---- Fallback: substring matching ----
         try:
             approved = self._repository.get_all_approved_terms(
-                source_lang=source_lang
+                source_lang=source_lang, domain=domain if domain and domain != "*" else None
             )
         except Exception:
             logger.exception("Failed to retrieve approved terms")
@@ -455,19 +463,25 @@ class TerminologyService:
         page_size: int = 20,
         status: Optional[str] = None,
         source_type: Optional[str] = None,
+        domain: Optional[str] = None,
+        source_lang: Optional[str] = None,
+        query: Optional[str] = None,
     ) -> dict[str, Any]:
-        """List all terms with optional status filter and pagination.
+        """List all terms with optional filters and pagination.
 
         Uses SQL-level pagination via ``search_terms`` for efficient
         database access.
         """
-        if status == "pending_review" and not source_type:
+        if status == "pending_review" and not source_type and not domain and not source_lang and not query:
             return self.list_pending(page=page, page_size=page_size)
 
         try:
             rows, total = self._repository.search_terms(
                 status=status,
                 source_type=source_type,
+                domain=domain,
+                source_lang=source_lang,
+                query=query,
                 page=page,
                 page_size=page_size,
             )

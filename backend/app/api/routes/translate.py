@@ -757,6 +757,8 @@ async def run_translation(
             "use_verification_agent": False,
             "generate_terminology": advanced_config.generate_terminology_table,
             "generate_terminology_table": advanced_config.generate_terminology_table,
+            "enable_rag_terminology": getattr(advanced_config, "enable_rag_terminology", False),
+            "rag_terminology_domain": getattr(advanced_config, "rag_terminology_domain", None),
             "update_term": False,
             "user_term": "",
             "category": category_map,

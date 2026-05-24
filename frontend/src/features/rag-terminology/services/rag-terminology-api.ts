@@ -16,6 +16,7 @@ export interface ListTermsParams {
   source_lang?: string
   domain?: string
   source_type?: string
+  query?: string
 }
 
 export interface ListTermsResponse {

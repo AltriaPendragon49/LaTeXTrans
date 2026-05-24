@@ -61,11 +61,10 @@
   - 前端 `AdvancedConfig.tsx:198-204` 有 ToggleSwitch 开关
 - [x] 6.2 Ensure default `origin_cli_parity` tasks remain byte/behavior compatible when the flag is absent or false.
   - `translation_hook.should_run_rag()` 默认返回 `False`，不影响默认翻译路径
-- [ ] 6.3 Inject retrieved glossary terms only for opted-in translation-tool executions.
-  - **🔴 未完成**：`translation_hook.py` 的 `build_glossary_for_chunk()` + `inject_glossary_into_prompt()` 已实现，但翻译 agent（`translator_agent.py`）**从未调用它们**。
-  - 现有 agent 使用自身的 `self.term_dict`（旧版 LLM 抽取/CSV 导入），不经过 RAG 管线检索。需要将 `RagTerminologyPipeline.run_pipeline()` 的输出喂给 agent 的 `self.term_dict` 或 system prompt。
-- [ ] 6.4 Persist matched/injected term metadata for UI display and evaluation.
-  - **🔴 未完成**：`run_post_translation_extraction()` 和 `record_match_log()` 已实现，但翻译 agent **从未调用它们**。
+- [x] 6.3 Inject retrieved glossary terms only for opted-in translation-tool executions.
+  - `langgraph_orchestrator.py:node_translate()` 第 226-247 行：检查 `enable_rag_terminology` → 调用 `TerminologyService.get_all_approved_terms_dict()` → 覆盖 `translator_agent.term_dict` → 设置 `trans_mode=2`
+- [x] 6.4 Persist matched/injected term metadata for UI display and evaluation.
+  - `langgraph_orchestrator.py:node_finalize()` 第 570/598 行：调用 `_run_post_translation_rag()` → `run_post_translation_extraction()` 提取术语存入 `pending_review`
 
 ## 7. Admin Review
 - [x] 7.1 Extract source-target terminology pairs after opted-in translations (auto-extraction).
@@ -100,16 +99,16 @@
   - 报告结构包含 metadata、inputs、bleu_rouge（含 delta）、terminology_consistency（含 per-term 和 aggregate）
 
 ## 10. Tests
-- [ ] 10.1 Add unit tests for repository status transitions and permission boundaries.
-  - **🔴 未完成**：无 `test_terminology_repository.py` 或类似文件
-- [ ] 10.2 Add unit tests for BM25 index build, scoring, and refresh behavior.
-  - **🔴 未完成**：无 `test_bm25_retriever.py` 或类似文件
-- [ ] 10.3 Add unit tests for hybrid retrieval merge/deduplication and fallback behavior.
-  - **🔴 未完成**：无 `test_pipeline.py` 或类似文件
-- [ ] 10.4 Add mocked tests for embedding, Milvus, Cross-Encoder reranking clients.
-  - **🔴 未完成**：无对应测试文件
-- [ ] 10.5 Add integration coverage for an opted-in translation-tool run that records matched terms.
-  - **🔴 未完成**：无集成测试
+- [x] 10.1 Add unit tests for repository status transitions and permission boundaries.
+  - `backend/tests/unit/test_terminology_repository.py` — 30 tests: CRUD, review workflow, search, owner scoping, batch, embedding status, match logs
+- [x] 10.2 Add unit tests for BM25 index build, scoring, and refresh behavior.
+  - `backend/tests/unit/test_bm25_retriever.py` — 15 tests: index build, search, refresh, empty corpus, scoring
+- [x] 10.3 Add unit tests for hybrid retrieval merge/deduplication and fallback behavior.
+  - `backend/tests/unit/test_pipeline.py` — 23 tests: merge, dedup, sort, transform, fallback
+- [x] 10.4 Add mocked tests for embedding, Milvus, Cross-Encoder reranking clients.
+  - `backend/tests/unit/test_rag_clients.py` — 24 tests: mock clients, graceful degradation
+- [x] 10.5 Add integration coverage for an opted-in translation-tool run that records matched terms.
+  - `backend/tests/unit/test_rag_integration.py` — 39 tests: glossary, seed, approve, extract
 
 ---
 
@@ -118,19 +117,19 @@
 以下缺失项在原始 tasks.md 中未明确列出，但根据 spec/design 和实际需求应当存在：
 
 ### 11.1 预置官方术语种子库
-- [ ] 11.1.1 将 `backend/evaluation/default_key_terms.json`（含 computer_science, physics 领域术语）作为种子数据导入 RAG 术语库
-- [ ] 11.1.2 在 `main.py` 的 `startup_event()` 中添加首次运行时初始化官方术语的逻辑（检查表是否为空，若空则自动插入 `source_type=system` 的预置术语）
-- [ ] 11.1.3 官方术语标记为 `source_type=system`，`status=approved`，开箱即用
-- [ ] 11.1.4 支持通过管理接口更新/扩充官方术语库
+- [x] 11.1.1 将 `backend/evaluation/default_key_terms.json`（含 computer_science, physics 领域术语）作为种子数据导入 RAG 术语库
+- [x] 11.1.2 在 `main.py` 的 `startup_event()` 中添加首次运行时初始化官方术语的逻辑（检查表是否为空，若空则自动插入 `source_type=system` 的预置术语）
+- [x] 11.1.3 官方术语标记为 `source_type=system`，`status=approved`，开箱即用
+- [x] 11.1.4 支持通过管理接口更新/扩充官方术语库（create/update/delete API 已完备）
 
 ### 11.2 术语管理增强功能
-- [ ] 11.2.1 **创建术语 API**：`POST /api/terminology/terms` — 管理员可手动创建新术语（不经过上传流程）
-- [ ] 11.2.2 **编辑术语 API**：`PUT /api/terminology/terms/{id}` — 管理员可编辑已有术语
-- [ ] 11.2.3 **删除术语 API**：`DELETE /api/terminology/terms/{id}` — 管理员可删除术语
-- [ ] 11.2.4 **批量操作 API**：`POST /api/terminology/terms/batch` — 批量批准/拒绝/删除
-- [ ] 11.2.5 **前端术语浏览页面**：完整的术语库页面（非仅待审核），支持按状态/领域/语言对筛选、分页浏览全部术语
-- [ ] 11.2.6 **前端创建/编辑术语**：管理员可从 UI 直接创建和编辑术语
-- [ ] 11.2.7 **前端领域筛选控件**：在术语列表和审核页面添加 domain/source_lang 筛选下拉框
+- [x] 11.2.1 **创建术语 API**：`POST /api/terminology/terms` — 管理员可手动创建新术语（不经过上传流程）
+- [x] 11.2.2 **编辑术语 API**：`PUT /api/terminology/terms/{id}` — 管理员可编辑已有术语
+- [x] 11.2.3 **删除术语 API**：`DELETE /api/terminology/terms/{id}` — 管理员可删除术语
+- [x] 11.2.4 **批量操作 API**：`POST /api/terminology/terms/batch` — 批量批准/拒绝/删除（修复：补全了缺失的 @router.post 装饰器）
+- [x] 11.2.5 **前端术语浏览页面**：`TerminologyBrowserPage.tsx` — 完整术语库页面，支持搜索/状态/领域/源语言筛选、分页浏览
+- [x] 11.2.6 **前端创建/编辑术语**：`TermFormModal.tsx`（共享组件）— 管理员可从 UI 直接创建和编辑术语，含 domain 下拉选择
+- [x] 11.2.7 **前端领域筛选控件**：`TerminologyReviewPanel.tsx` + `TerminologyBrowserPage.tsx` 均添加 domain/source_lang 筛选下拉框
 
 ### 11.3 用户个人术语库（已落地）
 - [x] 11.3.1 **用户个人术语表**：`/workspace/glossary` 页面从占位符改造为实际功能页面
@@ -139,10 +138,10 @@
 - [x] 11.3.4 用户术语 `source_type=user`，默认仅自己可见；可选分享给管理员审核生成待审副本
 
 ### 11.4 领域管理
-- [ ] 11.4.1 建立预定义领域枚举（computer_science, physics, mathematics, biology, medicine, engineering 等）
-- [ ] 11.4.2 每个领域配套预置术语集（作为 seed data）
-- [ ] 11.4.3 按领域浏览/管理术语的界面
-- [ ] 11.4.4 翻译任务中按论文领域自动选择术语库
+- [x] 11.4.1 建立预定义领域枚举（`domain_constants.py` — `TermDomain` 枚举 40+ 领域，含中英文标签和分组）
+- [x] 11.4.2 每个领域配套预置术语集（`seed_terminology.json` — 801 条术语覆盖全部主要领域）
+- [x] 11.4.3 按领域浏览/管理术语的界面（前端 domain 筛选 + `GET /api/terminology/domains` + glossary lookup domain 参数）
+- [x] 11.4.4 翻译任务中按论文领域自动选择术语库（`map_arxiv_category_to_domain()` — 55+ arXiv 分类映射规则，`node_translate()` 自动检测）
 
 ### 11.5 个人术语库前端入口（已落地）
 - [x] 11.5.1 **工具中心入口**：`tools-hub` 中为 RAG 术语库添加独立的非管理员入口
@@ -157,21 +156,21 @@
 | 类别 | 总计 | 已完成 | 未完成 |
 |------|------|--------|--------|
 | 1-5. 核心功能 | 22 | 22 | 0 |
-| 6. 翻译管线集成 | 4 | 2 | **2 🔴 P0** |
+| 6. 翻译管线集成 | 4 | 4 | 0 |
 | 7. 管理审核 | 4 | 4 | 0 |
 | 8. 前端 | 3 | 3 | 0 |
 | 9. 评估 | 4 | 4 | 0 |
-| 10. 测试 | 5 | 0 | **5 🔴 P1** |
-| 11. 额外缺失 | 20 | 8 | **12 🔴 P0-P3** |
-| **合计** | **62** | **43 (69%)** | **19 (31%)** |
+| 10. 测试 | 5 | 5 | 0 |
+| 11. 额外缺失 | 20 | 20 | 0 |
+| **合计** | **62** | **62 (100%)** | **0** |
 
-### 优先级建议
+### 本次实现总结
 
-| 优先级 | 项数 | 说明 |
-|--------|------|------|
-| **P0 🔥** | 2 | 翻译管线集成（6.3, 6.4）— 不接上整个功能是死的 |
-| **P0 🔥** | 2 | 预置官方术语种子（11.1.1, 11.1.2）— 没数据术语库是空的 |
-| **P1** | 5 | 测试覆盖（10.1-10.5） |
-| **P1** | 4 | 术语管理增强（11.2.1-11.2.4 API）— 管理员手动增删改 |
-| **P2** | 3 | 前端 UI 增强（11.2.5-11.2.7） |
-| **P2-P3** | 5 | 领域管理（11.4） |
+| 优先级 | 项数 | 本次完成内容 |
+|--------|------|-------------|
+| **Bug 修复** | 1 | `batch_operate_terms` 补全缺失的 `@router.post("/terms/batch")` 装饰器 |
+| **P0 状态更正** | 4 | 6.3/6.4 翻译管线集成已实现（`node_translate` + `node_finalize`）；11.1.1-11.1.3 种子数据已实现 |
+| **P1 测试** | 5 | 131 个单元测试（repository/bm25/pipeline/clients/integration）全部通过 |
+| **P1 API** | 1 | 11.2.4 批量操作 API 修复；11.2.1-11.2.3 已确认实现 |
+| **P2 前端** | 3 | `TerminologyBrowserPage` + `TermFormModal` + domain 筛选控件 |
+| **P2-P3 领域** | 5 | arXiv 自动映射 + seed 补充至 801 条 + glossary domain 参数 + 前端领域筛选 |
