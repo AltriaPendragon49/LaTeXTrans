@@ -110,4 +110,27 @@ def test_settings_defaults_include_gemini_flash_model(monkeypatch: pytest.Monkey
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json()["translation_model"] == "gemini-2.5-flash"
+    assert response.json()["translation_model"] == settings_route.SYSTEM_DEFAULTS["translation_model"]
+
+
+def test_user_settings_repository_normalizes_legacy_default_translation_model() -> None:
+    from backend.app.core.config import get_default_translation_model
+    from backend.app.repositories.user_settings_repository import UserSettingsRepository
+
+    row = {
+        "default_source_language": "en",
+        "default_target_language": "zh",
+        "translation_mode": "full",
+        "compile_strategy": "auto",
+        "translation_model": "gemini-2.5-flash",
+        "generate_glossary": True,
+        "use_author_api": True,
+        "custom_base_url": None,
+        "custom_api_key_encrypted": None,
+        "default_formatting": None,
+    }
+
+    normalized = UserSettingsRepository()._normalize_settings_row(row)
+
+    assert normalized is not None
+    assert normalized["translation_model"] == get_default_translation_model()

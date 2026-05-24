@@ -5,7 +5,7 @@ import { API_BASE_URL } from "@/api-base"
 import i18n from "@/i18n"
 import { downloadArxiv, getDailyLatexQuotaExceededMessage, getTaskStatus, startTranslation } from "@/lib/api"
 import { getAccessToken, isLocalAuthConfigured } from "@/lib/local-auth"
-import { DEFAULT_CONFIG } from "@/types/config"
+import { DEFAULT_CONFIG, getDefaultTranslationModel } from "@/types/config"
 import type { AdvancedConfig, LatexValidation, TranslationConfig } from "@/types/config"
 import type { TranslateRequest } from "@/lib/api"
 
@@ -205,7 +205,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
           translation_mode: settings.translation_mode || "full",
           compile_strategy: settings.compile_strategy || "auto",
           generate_terminology_table: settings.generate_glossary ?? true,
-          translation_model: settings.translation_model || "deepseek-ai/deepseek-v3.2",
+          translation_model: settings.translation_model || getDefaultTranslationModel(),
           use_author_api: settings.use_author_api ?? true,
           custom_base_url: settings.custom_base_url || undefined,
           formatting: settings.default_formatting || undefined,

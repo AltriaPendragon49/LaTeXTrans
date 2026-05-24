@@ -49,7 +49,8 @@ def test_cors_origins_loads_json_env_value(monkeypatch) -> None:
     ]
 
 
-def test_advanced_config_defaults_to_gemini_flash() -> None:
+def test_advanced_config_defaults_to_runtime_llm_model() -> None:
+    from backend.app.core.config import get_default_translation_model
     from backend.app.models.config_models import AdvancedConfig
 
-    assert AdvancedConfig().translation_model == "gemini-2.5-flash"
+    assert AdvancedConfig().translation_model == get_default_translation_model()

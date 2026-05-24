@@ -4,14 +4,21 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from backend.app.core.config import get_default_translation_model
 from backend.app.db import db_connection, get_database_dialect
+
+DEFAULT_TRANSLATION_MODEL = get_default_translation_model()
+LEGACY_TRANSLATION_MODELS = {
+    "gemini-2.5-flash",
+    "deepseek-ai/deepseek-v3.2",
+}
 
 USER_SETTINGS_DEFAULTS: dict[str, Any] = {
     "default_source_language": "en",
     "default_target_language": "zh",
     "translation_mode": "full",
     "compile_strategy": "auto",
-    "translation_model": "gemini-2.5-flash",
+    "translation_model": DEFAULT_TRANSLATION_MODEL,
     "generate_glossary": True,
     "use_author_api": True,
     "custom_base_url": None,
@@ -70,6 +77,12 @@ class UserSettingsRepository:
                 normalized[column] = bool(value)
             else:
                 normalized[column] = value
+        if (
+            normalized.get("use_author_api")
+            and not normalized.get("custom_api_key_encrypted")
+            and normalized.get("translation_model") in LEGACY_TRANSLATION_MODELS
+        ):
+            normalized["translation_model"] = DEFAULT_TRANSLATION_MODEL
         return normalized
 
     def _serialize_updates(self, updates: dict[str, Any]) -> dict[str, Any]:

@@ -757,3 +757,8 @@ def get_settings() -> Settings:
 def get_llm_config() -> Dict[str, Any]:
     """Get LLM API configuration as a dictionary"""
     return settings.get_llm_config()
+
+
+def get_default_translation_model() -> str:
+    """Get the default translation model from the runtime LLM config."""
+    return settings.llm_model

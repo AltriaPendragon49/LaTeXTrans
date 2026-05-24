@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from backend.app.core.auth import require_current_user
+from backend.app.core.config import get_default_translation_model
 from backend.app.core.encryption import encrypt_api_key
 from backend.app.policies import authorize
 from backend.app.repositories import USER_SETTINGS_DEFAULTS, UserSettingsRepository
@@ -21,7 +22,7 @@ class UserSettingsResponse(BaseModel):
     default_target_language: str = "zh"
     translation_mode: str = "full"
     compile_strategy: str = "auto"
-    translation_model: Optional[str] = "gemini-2.5-flash"
+    translation_model: Optional[str] = get_default_translation_model()
     generate_glossary: bool = True
     use_author_api: bool = True
     custom_base_url: Optional[str] = None

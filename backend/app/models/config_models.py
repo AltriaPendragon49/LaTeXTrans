@@ -8,6 +8,8 @@ from enum import Enum
 from typing import Optional, List, Dict, Any, Mapping
 from pydantic import BaseModel, Field
 
+from backend.app.core.config import get_default_translation_model
+
 
 ORIGIN_CLI_PARITY_MODE = "origin_cli_parity"
 MODERN_TRANSLATION_CORE_MODE = "modern"
@@ -133,7 +135,7 @@ class AdvancedConfig(BaseModel):
         description="Generate terminology reference table (CSV)"
     )
     translation_model: str = Field(
-        default="gemini-2.5-flash",
+        default_factory=get_default_translation_model,
         description="Translation LLM model name"
     )
     translation_core_mode: str = Field(
