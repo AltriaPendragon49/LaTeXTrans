@@ -1,0 +1,8 @@
+{
+  "name": "latextrans-e2e-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}
