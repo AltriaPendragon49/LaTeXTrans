@@ -107,7 +107,7 @@ function TermsTable({
 
   return (
     <DataTable>
-      <DataTableHeader>
+      <DataTableHeader className="hidden md:block">
         <DataTableHeaderRow className={gridCols}>
           <DataTableHeaderCell>{t("glossary.table.sourceTerm")}</DataTableHeaderCell>
           <DataTableHeaderCell>{t("glossary.table.targetTerm")}</DataTableHeaderCell>
@@ -122,16 +122,29 @@ function TermsTable({
           const statusStyle = STATUS_LABELS[term.status] ?? { tone: "muted" as const, label: term.status }
           const isShareLoading = shareLoadingId === term.id
           return (
-            <DataTableRow key={term.id} className={`${gridCols} items-center`}>
-              <DataTableCell className="truncate font-medium text-[color:var(--px-shell-ink)]">{term.source_term}</DataTableCell>
-              <DataTableCell className="truncate text-[color:var(--px-shell-muted)]">{term.target_term}</DataTableCell>
-              <DataTableCell className="truncate text-sm text-[color:var(--px-shell-muted)]">{term.domain || "-"}</DataTableCell>
-              <DataTableCell>
+            <DataTableRow key={term.id} className={`flex flex-col gap-2 px-4 py-3 md:grid ${gridCols} md:items-center sm:px-6 sm:py-4`}>
+              <DataTableCell className="flex justify-between gap-2 md:block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.sourceTerm")}</span>
+                <span className="truncate font-medium text-[color:var(--px-shell-ink)]">{term.source_term}</span>
+              </DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.targetTerm")}</span>
+                <span className="truncate text-[color:var(--px-shell-muted)]">{term.target_term}</span>
+              </DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.domain")}</span>
+                <span className="truncate text-sm text-[color:var(--px-shell-muted)]">{term.domain || "-"}</span>
+              </DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.status")}</span>
                 <StatusBadge tone={statusStyle.tone} size="sm">{statusStyle.label}</StatusBadge>
               </DataTableCell>
-              <DataTableCell className="text-xs text-[color:var(--px-shell-muted)]">{formatDate(term.created_at)}</DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.createdAt")}</span>
+                <span className="text-xs text-[color:var(--px-shell-muted)]">{formatDate(term.created_at)}</span>
+              </DataTableCell>
               {showActions && (
-                <DataTableCell className="text-right">
+                <DataTableCell className="flex justify-end md:block md:text-right">
                   {term.source_type !== "system" && (
                     <Button
                       variant="ghost"
