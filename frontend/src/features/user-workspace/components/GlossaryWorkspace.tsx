@@ -80,7 +80,7 @@ function TermsTable({
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
+      <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)]/70 text-[color:var(--px-shell-muted)]">
         <Loader2 className="h-6 w-6 animate-spin" />
         <p className="mt-3 text-sm">{t("glossary.loading")}</p>
       </div>
@@ -98,7 +98,7 @@ function TermsTable({
   }
   if (terms.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
+      <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)]/58 px-6 text-center text-[color:var(--px-shell-muted)]">
         {emptyIcon || <BookOpenText className="h-7 w-7" />}
         <p className="mt-3 text-sm">{emptyMessage}</p>
       </div>
@@ -106,7 +106,7 @@ function TermsTable({
   }
 
   return (
-    <DataTable>
+    <DataTable className="rounded-[18px] shadow-none">
       <DataTableHeader className="hidden md:block">
         <DataTableHeaderRow className={gridCols}>
           <DataTableHeaderCell>{t("glossary.table.sourceTerm")}</DataTableHeaderCell>
@@ -304,7 +304,7 @@ export function GlossaryWorkspace() {
         onDragOver={handleDrag}
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed p-8 transition-colors ${
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-[18px] border border-dashed p-8 transition-colors ${
           isDragActive
             ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)]"
             : "border-[color:var(--px-shell-line)] hover:border-[color:var(--px-shell-accent)]/30 hover:bg-[color:var(--px-shell-panel-strong)]"
@@ -328,20 +328,20 @@ export function GlossaryWorkspace() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 py-2">
+    <div className="mx-auto w-full max-w-7xl space-y-6 py-2">
       <PageIntro
         title={t("glossary.glossary_management")}
         description={t("glossary.description")}
       />
 
-      <PanelShell className="space-y-6 p-4 sm:p-6">
+      <PanelShell className="w-full space-y-6 rounded-none border-0 bg-transparent p-0 shadow-none">
         <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex justify-start">
-            <EditorialTabsList className="gap-1">
-              <EditorialTabsTrigger value="my">
+            <EditorialTabsList className="gap-1 rounded-[16px] bg-[color:var(--px-shell-panel)]/72 p-1 shadow-none">
+              <EditorialTabsTrigger value="my" className="rounded-[12px]">
                 {t("glossary.myTerms")}
               </EditorialTabsTrigger>
-              <EditorialTabsTrigger value="official">
+              <EditorialTabsTrigger value="official" className="rounded-[12px]">
                 {t("glossary.officialLibrary")}
               </EditorialTabsTrigger>
             </EditorialTabsList>
