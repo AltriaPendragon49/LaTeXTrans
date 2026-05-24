@@ -174,3 +174,24 @@
 | **P1 API** | 1 | 11.2.4 批量操作 API 修复；11.2.1-11.2.3 已确认实现 |
 | **P2 前端** | 3 | `TerminologyBrowserPage` + `TermFormModal` + domain 筛选控件 |
 | **P2-P3 领域** | 5 | arXiv 自动映射 + seed 补充至 801 条 + glossary domain 参数 + 前端领域筛选 |
+
+---
+
+## 12. 用户个人术语优化（2026-05-24 迭代）
+
+### 12.1 翻译优先级 — 用户术语覆盖系统术语
+- [x] 12.1.1 **Repository**：新增 `get_approved_terms_by_owner(owner_user_id, domain=None)` 查询方法
+- [x] 12.1.2 **Repository**：新增 `get_approved_system_terms(domain=None)` 查询方法（只查 `source_type=system`）
+- [x] 12.1.3 **Service**：`get_all_approved_terms_dict()` 增加 `user_id` 可选参数，先加载系统术语 base，再 overlay 用户个人术语
+- [x] 12.1.4 **Orchestrator**：`node_translate()` 传入 `user_id` 给 `get_all_approved_terms_dict()`
+
+### 12.2 上传即生效 + 自动发现新术语
+- [x] 12.2.1 **Repository**：`insert_terms_batch()` 支持可配置 status 参数（默认 `pending_review` 保持向后兼容）
+- [x] 12.2.2 **Repository**：新增 `find_existing_system_terms(source_terms: list[str]) -> set[str]`
+- [x] 12.2.3 **Service**：`import_csv()` 改为直接 `status=approved` + 调用 `_auto_submit_new_terms_for_review()`
+- [x] 12.2.4 **Service**：`import_bibtex()` 同上
+- [x] 12.2.5 **Service**：新增 `_auto_submit_new_terms_for_review(terms, user_id)` — 对比系统库，新术语创建 pending_review 副本
+
+### 12.3 前端抖动修复
+- [x] 12.3.1 **TerminologyReviewPanel**：三个 TabsContent 外层容器加 `min-h-[420px]`，loading/empty 容器加 `min-h-[300px]`
+- [x] 12.3.2 **GlossaryWorkspace**：两个 TabsContent 外层容器加 `min-h-[420px]`，TermsTable loading/empty 容器加 `min-h-[300px]`

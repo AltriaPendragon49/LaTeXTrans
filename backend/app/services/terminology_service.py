@@ -154,7 +154,11 @@ class TerminologyService:
     def import_csv(
         self, content: str | bytes, user_id: str, task_id: Optional[str] = None
     ) -> ImporterResult:
-        """Parse and import a CSV file into the terminology database.
+        """Parse and import a CSV file into the user's personal terminology database.
+
+        User-uploaded terms are directly set to ``status=approved`` so they take
+        effect immediately.  Terms that do not exist in the system library are
+        automatically submitted as ``pending_review`` for admin consideration.
 
         Args:
             content: Raw CSV content.
@@ -185,7 +189,8 @@ class TerminologyService:
                     "source_lang": row.get("source_lang", "en"),
                     "target_lang": row.get("target_lang", "zh"),
                     "domain": row.get("domain"),
-                    "source_type": "imported",
+                    "source_type": "user",
+                    "status": "approved",
                     "owner_user_id": user_id,
                     "created_by_user_id": user_id,
                     "extracted_from_task_id": task_id,
@@ -211,6 +216,9 @@ class TerminologyService:
                 term_ids=[],
             )
 
+        # Auto-detect new terms (not in system library) → submit for admin review
+        self._auto_submit_new_terms_for_review(accepted, user_id)
+
         return ImporterResult(
             accepted=len(accepted),
             rejected=len(rows) - len(accepted),
@@ -221,10 +229,11 @@ class TerminologyService:
     def import_bibtex(
         self, content: str, user_id: str, task_id: Optional[str] = None
     ) -> list[str]:
-        """Parse and import terms from a BibTeX file.
+        """Parse and import terms from a BibTeX file into the user's personal library.
 
-        Extracts term candidates from BibTeX entry titles and inserts
-        them as pending-review terms.
+        Extracts term candidates from BibTeX entry titles and inserts them
+        directly as ``status=approved`` so they take effect immediately.
+        Terms not present in the system library are auto-submitted for admin review.
 
         Args:
             content: Raw .bib content.
@@ -253,7 +262,8 @@ class TerminologyService:
                     "source_lang": "en",
                     "target_lang": "zh",
                     "domain": cand.get("domain"),
-                    "source_type": "bibtex_imported",
+                    "source_type": "user",
+                    "status": "approved",
                     "owner_user_id": user_id,
                     "created_by_user_id": user_id,
                     "extracted_from_task_id": task_id,
@@ -262,10 +272,68 @@ class TerminologyService:
             )
 
         try:
-            return self._repository.insert_terms_batch(terms)
+            term_ids = self._repository.insert_terms_batch(terms)
         except Exception:
             logger.exception("Failed to insert BibTeX terms batch")
             return []
+
+        # Auto-detect new terms (not in system library) → submit for admin review
+        self._auto_submit_new_terms_for_review(terms, user_id)
+
+        return term_ids
+
+    def _auto_submit_new_terms_for_review(self, terms: list[dict[str, Any]], user_id: str) -> int:
+        """Compare uploaded terms against the system library.
+
+        Terms whose ``source_term`` does NOT exist in the system library
+        are copied as ``pending_review`` records (without owner) so they
+        appear in the admin review queue.
+
+        Args:
+            terms: The list of term dicts that were just inserted.
+            user_id: The uploading user's ID (recorded as ``created_by_user_id``).
+
+        Returns:
+            Number of new terms submitted for review.
+        """
+        source_terms = [t["source_term"] for t in terms if t.get("source_term")]
+        if not source_terms:
+            return 0
+
+        try:
+            existing = self._repository.find_existing_system_terms(source_terms)
+        except Exception:
+            logger.exception("Failed to query existing system terms")
+            return 0
+
+        new_terms = [t for t in terms if t.get("source_term") not in existing]
+        if not new_terms:
+            logger.info("All %d uploaded terms already exist in system library; nothing to submit.", len(terms))
+            return 0
+
+        pending: list[dict[str, Any]] = []
+        for t in new_terms:
+            pending.append({
+                "source_term": t["source_term"],
+                "target_term": t["target_term"],
+                "source_lang": t.get("source_lang", "en"),
+                "target_lang": t.get("target_lang", "zh"),
+                "domain": t.get("domain"),
+                "source_type": "user",
+                "status": "pending_review",
+                "owner_user_id": None,
+                "created_by_user_id": user_id,
+                "extracted_from_task_id": t.get("extracted_from_task_id"),
+                "provenance": t.get("provenance"),
+            })
+
+        try:
+            ids = self._repository.insert_terms_batch(pending)
+            logger.info("Auto-submitted %d new terms for admin review from user %s", len(ids), user_id)
+            return len(ids)
+        except Exception:
+            logger.exception("Failed to auto-submit new terms for review")
+            return 0
 
     def extract_and_store(
         self,
@@ -598,12 +666,18 @@ class TerminologyService:
         logger.info("Seeded %d official terminology terms.", inserted)
         return inserted
 
-    def get_all_approved_terms_dict(self, *, domain: Optional[str] = None) -> dict[str, str]:
+    def get_all_approved_terms_dict(self, *, user_id: Optional[str] = None, domain: Optional[str] = None) -> dict[str, str]:
         """Get all approved terms as a flat dict mapping source→target.
+
+        When ``user_id`` is provided, system terms are loaded first as a base,
+        then the user's personal approved terms are overlaid on top.  User terms
+        win on conflict and extra user terms (not present in the system library)
+        are also included.
 
         Used by the translator agent for glossary injection into LLM prompts.
 
         Args:
+            user_id: Optional user ID for personal term overlay.
             domain: Optional domain filter. When set, only terms matching this
                     domain are returned. Pass ``"*"`` to return all domains.
 
@@ -611,14 +685,33 @@ class TerminologyService:
             Dict mapping source_term -> target_term.
         """
         try:
-            if domain and domain != "*":
-                terms = self._repository.search_approved_terms(source_lang="en", domain=domain)
+            domain_filter = domain if domain and domain != "*" else None
+
+            # 1. Load system terms as base
+            if domain_filter:
+                sys_terms = self._repository.search_approved_terms(source_lang="en", domain=domain_filter)
             else:
-                terms = self._repository.get_all_approved_terms(source_lang="en")
+                sys_terms = self._repository.get_approved_system_terms(source_lang="en")
+            term_dict = {
+                t["source_term"]: t["target_term"]
+                for t in sys_terms if t.get("source_term") and t.get("target_term")
+            }
+
+            # 2. Overlay user's personal approved terms
+            if user_id:
+                user_terms = self._repository.get_approved_terms_by_owner(
+                    user_id, source_lang="en", domain=domain_filter
+                )
+                for t in user_terms:
+                    src = t.get("source_term")
+                    tgt = t.get("target_term")
+                    if src and tgt:
+                        term_dict[src] = tgt  # user overwrites system on conflict
+
+            return term_dict
         except Exception:
             logger.exception("Failed to load approved terms")
             return {}
-        return {t["source_term"]: t["target_term"] for t in terms if t.get("source_term") and t.get("target_term")}
 
     # ---- CRUD ----
 

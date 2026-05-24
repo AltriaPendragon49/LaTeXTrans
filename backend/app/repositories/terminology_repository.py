@@ -220,11 +220,62 @@ class TerminologyRepository:
             cursor = conn.cursor()
             cursor.execute(
                 f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
-                f"where {where}",
+                f"where {where} order by source_length",
                 tuple(params),
             )
             rows = _fetchall(cursor)
         return self._rows(rows) if rows else []
+
+    def get_approved_system_terms(self, *, source_lang: str = "en", domain: Optional[str] = None) -> list[dict[str, Any]]:
+        """Return approved system terms only (source_type='system')."""
+        conditions = ["source_type = 'system'", "status = 'approved'", f"source_lang = {_placeholder(0)}"]
+        params: list[Any] = [source_lang]
+        if domain:
+            conditions.append(f"domain = {_placeholder(len(params))}")
+            params.append(domain)
+        where = " and ".join(conditions)
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
+                f"where {where} order by source_length",
+                tuple(params),
+            )
+            rows = _fetchall(cursor)
+        return self._rows(rows) if rows else []
+
+    def get_approved_terms_by_owner(self, owner_user_id: str, *, source_lang: str = "en", domain: Optional[str] = None) -> list[dict[str, Any]]:
+        """Return approved terms owned by a specific user."""
+        conditions = [f"owner_user_id = {_placeholder(0)}", "status = 'approved'", f"source_lang = {_placeholder(1)}"]
+        params: list[Any] = [owner_user_id, source_lang]
+        if domain:
+            conditions.append(f"domain = {_placeholder(len(params))}")
+            params.append(domain)
+        where = " and ".join(conditions)
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
+                f"where {where} order by source_length",
+                tuple(params),
+            )
+            rows = _fetchall(cursor)
+        return self._rows(rows) if rows else []
+
+    def find_existing_system_terms(self, source_terms: list[str]) -> set[str]:
+        """Return the subset of source_terms that already exist in the system library."""
+        if not source_terms:
+            return set()
+        placeholders_list = ", ".join(_placeholder(i) for i in range(len(source_terms)))
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"select source_term from terminology_terms "
+                f"where source_type = 'system' and source_term in ({placeholders_list})",
+                tuple(source_terms),
+            )
+            rows = _fetchall(cursor)
+        return {r["source_term"] for r in rows} if rows else set()
 
     def get_terms_by_owner(self, owner_user_id: str, *, page: int = 1, page_size: int = 20,
                            status: Optional[str] = None) -> tuple[list[dict[str, Any]], int]:
@@ -383,7 +434,7 @@ class TerminologyRepository:
                     "target_lang": payload.get("target_lang", "zh"),
                     "domain": payload.get("domain"),
                     "source_type": payload.get("source_type", "imported"),
-                    "status": "pending_review",
+                    "status": payload.get("status", "pending_review"),
                     "owner_user_id": payload.get("owner_user_id"),
                     "created_by_user_id": payload.get("created_by_user_id"),
                     "reviewed_by_user_id": None,

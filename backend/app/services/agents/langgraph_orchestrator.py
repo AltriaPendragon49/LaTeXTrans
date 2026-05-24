@@ -261,7 +261,9 @@ from backend.app.services.terminology_service import TerminologyService
                     if rag_domain:
                         logger.info("Using RAG terminology domain filter: %s", rag_domain)
 
-                    term_dict = rag_service.get_all_approved_terms_dict(domain=rag_domain)
+                    term_dict = rag_service.get_all_approved_terms_dict(
+                        user_id=config.get("user_id"), domain=rag_domain,
+                    )
                     if term_dict:
                         translator_agent.term_dict = term_dict
                         translator_agent.trans_mode = 2

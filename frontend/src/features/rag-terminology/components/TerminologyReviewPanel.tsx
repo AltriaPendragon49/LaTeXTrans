@@ -300,7 +300,7 @@ export function TerminologyReviewPanel() {
   function renderPendingTable() {
     if (isLoadingPending) {
       return (
-        <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
+        <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
           <Loader2 className="h-6 w-6 animate-spin" />
           <p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.loading")}</p>
         </div>
@@ -322,7 +322,7 @@ export function TerminologyReviewPanel() {
     }
     if (pendingTerms.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
+        <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
           <Search className="h-7 w-7" />
           <p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.empty")}</p>
         </div>
@@ -450,7 +450,7 @@ export function TerminologyReviewPanel() {
         </div>
 
         {isLoadingAll ? (
-          <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
+          <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
             <Loader2 className="h-6 w-6 animate-spin" />
             <p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.loading")}</p>
           </div>
@@ -459,7 +459,7 @@ export function TerminologyReviewPanel() {
             action={<Button variant="ghost" size="sm" onClick={loadAllTerms}>{t("common.actions.retry")}</Button>}
           />
         ) : allTerms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
+          <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
             <Search className="h-7 w-7" />
             <p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.empty")}</p>
           </div>
@@ -637,7 +637,7 @@ export function TerminologyReviewPanel() {
           </EditorialTabsList>
         </div>
 
-        <TabsContent value="terms" className="mt-0 space-y-4">
+        <TabsContent value="terms" className="mt-0 space-y-4 min-h-[420px]">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
@@ -662,11 +662,11 @@ export function TerminologyReviewPanel() {
           {renderPendingTable()}
         </TabsContent>
 
-        <TabsContent value="allTerms" className="mt-0 space-y-4">
+        <TabsContent value="allTerms" className="mt-0 space-y-4 min-h-[420px]">
           {renderAllTermsTable()}
         </TabsContent>
 
-        <TabsContent value="upload" className="mt-0 space-y-4">
+        <TabsContent value="upload" className="mt-0 space-y-4 min-h-[420px]">
           {renderUploadTab()}
         </TabsContent>
       </EditorialTabs>

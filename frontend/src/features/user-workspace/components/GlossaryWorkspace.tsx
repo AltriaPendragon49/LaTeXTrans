@@ -80,7 +80,7 @@ function TermsTable({
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
+      <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
         <Loader2 className="h-6 w-6 animate-spin" />
         <p className="mt-3 text-sm">{t("glossary.loading")}</p>
       </div>
@@ -98,7 +98,7 @@ function TermsTable({
   }
   if (terms.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
+      <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
         {emptyIcon || <BookOpenText className="h-7 w-7" />}
         <p className="mt-3 text-sm">{emptyMessage}</p>
       </div>
@@ -347,7 +347,7 @@ export function GlossaryWorkspace() {
             </EditorialTabsList>
           </div>
 
-          <TabsContent value="my" className="mt-0 space-y-6">
+          <TabsContent value="my" className="mt-0 space-y-6 min-h-[420px]">
             {/* Upload area */}
             {renderUploadArea()}
 
@@ -394,7 +394,7 @@ export function GlossaryWorkspace() {
             )}
           </TabsContent>
 
-          <TabsContent value="official" className="mt-0 space-y-4">
+          <TabsContent value="official" className="mt-0 space-y-4 min-h-[420px]">
             <TermsTable
               terms={officialTerms}
               loading={isLoadingOfficial}
