@@ -3,7 +3,6 @@
 ## Purpose
 Define the current production orchestration contract for LaTeXTrans backend translation tasks.
 Production translation uses a single backend-owned `origin_cli_parity` kernel wrapped by a thin LangGraph pipeline. Historical modern-kernel enhancement branches such as controlled repair, hard-freeze orchestration, post-compile target-language fallback, residual-English fallback, compilation diagnostic nodes, and ultimate downgrade are not part of current production orchestration.
-
 ## Requirements
 ### Requirement: Origin CLI Parity Graph
 The backend SHALL orchestrate production translation tasks through a thin LangGraph wrapper around the legacy linear parity workflow.
@@ -69,3 +68,17 @@ The orchestration layer SHALL enforce a task-level pipeline timeout when configu
 - **WHEN** the LangGraph invocation exceeds the configured timeout
 - **THEN** orchestration MUST record a `pipeline_timeout` audit event
 - **AND** propagate the timeout to the caller for normal task failure handling.
+
+### Requirement: State-Machine Orchestration and Agent Scope
+The system SHALL orchestrate parsing, translation, validation, and compilation exclusively through a LangGraph StateMachine, and any outer scheduler SHALL treat one paper run as an indivisible orchestration kernel rather than splitting LangGraph nodes across independent workers.
+
+#### Scenario: LangGraph Agent Guardrails
+- **WHEN** the agent handles orchestration across paragraphs, package conflicts, or layout logic
+- **THEN** it operates within scope
+- **AND** the system MUST PREVENT the agent from executing character-level syntax fixes or entering infinite retry cycles.
+
+#### Scenario: Single-paper kernel remains intact under scheduler scaling
+- **WHEN** the system adds queue priority or token-pool scheduling
+- **THEN** those controls MUST operate outside the LangGraph paper workflow
+- **AND** the change MUST NOT distribute nodes from the same paper across multiple independent workers or queues.
+

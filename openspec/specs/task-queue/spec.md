@@ -4,30 +4,40 @@
 定义翻译任务队列的并发管理、用户配额限制以及任务执行健壮性规范，确保系统在高并发场景下按序有序地处理翻译请求。
 ## Requirements
 ### Requirement: Translation Task Queue
-系统 SHALL 使用 FIFO 任务队列管理翻译任务的执行，限制最大并发翻译数。
+The system SHALL manage translation tasks with priority-aware FIFO lanes on a single-machine scheduler, limiting total active translation slots while allowing backfill work to borrow idle interactive capacity.
 
-#### Scenario: 任务入队
-- **WHEN** 用户通过 `POST /translate/{task_id}` 启动翻译
-- **THEN** 系统将翻译任务加入队列
-- **AND** 返回 `status: "queued"` 给前端
-- **AND** 任务状态设为 `queued`
+#### Scenario: Interactive task admission
+- **WHEN** a user submits an interactive translation request
+- **THEN** the system enqueues that task into the interactive lane
+- **AND** the task remains eligible ahead of waiting backfill work.
 
-#### Scenario: 并发上限内直接执行
-- **WHEN** 翻译任务入队
-- **AND** 当前活跃翻译数 < MAX_CONCURRENT_TRANSLATIONS（默认 3）
-- **THEN** 任务立即开始执行
+#### Scenario: Backfill task admission
+- **WHEN** the system submits an internal backfill translation
+- **THEN** the system enqueues that task into the backfill lane
+- **AND** backfill ordering remains FIFO within the backfill lane.
 
-#### Scenario: 并发上限已满排队等待
-- **WHEN** 翻译任务入队
-- **AND** 当前活跃翻译数 >= MAX_CONCURRENT_TRANSLATIONS
-- **THEN** 任务在队列中等待
-- **AND** 任务状态显示为 `queued`
+#### Scenario: Idle capacity is borrowed by backfill
+- **WHEN** no interactive task is waiting
+- **AND** a translation slot would otherwise remain idle
+- **THEN** the scheduler MAY start a backfill task in that slot.
 
-#### Scenario: 任务完成释放资源
-- **WHEN** 某翻译任务完成或失败
-- **THEN** 活跃计数 -1
-- **AND** 登录用户的配额计数 -1
-- **AND** 队列中下一个等待任务自动开始执行
+#### Scenario: Recent frontend traffic defers new backfill starts
+- **WHEN** the worker runtime has observed recent frontend pressure from the web runtime
+- **AND** only backfill tasks are waiting for admission
+- **THEN** the scheduler MUST defer starting a new backfill task until the pressure window expires or new capacity becomes explicitly available to backfill
+- **AND** this deferral MUST NOT block already-waiting interactive work.
+
+#### Scenario: Interactive work claims the next eligible slot
+- **WHEN** at least one backfill task is running
+- **AND** a new interactive task arrives while all translation slots are occupied
+- **THEN** the scheduler MUST reserve the next eligible slot for the interactive task
+- **AND** MUST NOT abruptly terminate an in-flight backfill LLM call or compile subprocess
+- **AND** interactive priority is satisfied as soon as a slot becomes available.
+
+#### Scenario: Task completion releases resources
+- **WHEN** a running task completes or fails
+- **THEN** the scheduler releases the active slot
+- **AND** the highest-priority waiting task that is eligible to run starts next.
 
 ### Requirement: Per-User Task Quota
 系统 SHALL 限制每个登录用户同时拥有的活跃任务数（排队中 + 执行中）。Guest 用户不适用此限制。
@@ -48,12 +58,13 @@
 - **THEN** 系统正常入队，不检查配额
 
 ### Requirement: Queue Status API
-系统 SHALL 提供队列状态查询接口。
+The system SHALL expose lane-aware queue status without breaking existing aggregate queue-status consumers.
 
-#### Scenario: 查询队列状态
-- **WHEN** 客户端请求 `GET /api/queue/status`
-- **THEN** 系统返回当前活跃任务数、队列等待数、最大并发数
-- **AND** 若已登录，返回当前用户已用配额
+#### Scenario: Query queue status
+- **WHEN** a client requests `GET /api/queue/status`
+- **THEN** the response MUST still include aggregate active, waiting, and max-concurrency values
+- **AND** MAY additionally include `interactive_active`, `interactive_waiting`, `backfill_active`, `backfill_waiting`, and `borrowed_slots`
+- **AND** authenticated callers continue to receive current quota usage.
 
 ### Requirement: Concurrent Translation Limit Configuration
 系统 SHALL 允许通过配置项控制最大并发翻译数和登录用户配额。
@@ -91,4 +102,33 @@
 - **WHEN** worker 发现已记录的 `source_path` 丢失
 - **AND** 任务具备可恢复性（如 arXiv 任务）
 - **THEN** worker SHALL 尝试自动重建环境（如重新下载）而非直接报错
+
+### Requirement: Task terminal state remains monotonic within one execution attempt
+The system SHALL prevent same-attempt stale updates from regressing a task from terminal back to non-terminal state.
+
+#### Scenario: Late progress callback arrives after completion
+- **WHEN** a translation attempt has already written a terminal task state
+- **AND** a delayed progress or message update from that same attempt arrives later
+- **THEN** the system MUST ignore the stale non-terminal regression
+- **AND** MUST keep the existing terminal `status` and `completed_at`.
+
+#### Scenario: Fresh retry starts a new execution attempt
+- **WHEN** the scheduler or operator intentionally retries a previously terminal task
+- **THEN** the system MUST create a fresh execution attempt boundary before accepting new non-terminal progress updates
+- **AND** MAY clear stale terminal markers only for that fresh attempt.
+
+### Requirement: Impossible persistent task states are reconciled before they can block operators
+The system SHALL treat contradictory durable task rows as recoverable failures instead of leaving them non-terminal.
+
+#### Scenario: Persistent row has completed timestamp but non-terminal status
+- **WHEN** durable task state shows a non-terminal `status`
+- **AND** `completed_at` is already populated
+- **THEN** the system MUST reconcile that task into an explicit terminal failure state
+- **AND** MUST record a recovery-oriented message instead of leaving the task indefinitely active.
+
+#### Scenario: Admin curation waits across memory loss or runtime split
+- **WHEN** admin curation waits for a translation task to reach terminal state
+- **AND** the in-memory task snapshot is missing or stale
+- **THEN** the wait path MUST fall back to durable `translation_tasks` state
+- **AND** MUST NOT remain blocked forever on an already-terminal or already-reconciled task.
 

@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 ### Requirement: API Rate Limit Resilience (429 Handling)
 The translation service SHALL handle transient LLM endpoint failures through token-aware short retries, system-managed pool failover, and eventual infinite retry semantics without weakening translation correctness or falsely exhausting healthy capacity.
 

@@ -100,7 +100,7 @@ async def current_user(request: Request):
 
     try:
         user = await auth_service.get_current_user_from_token(token)
-        quota_snapshot = await auth_service.get_quota_snapshot_for_user(user["id"])
+        quota_snapshot = await auth_service.get_quota_snapshot_for_user(user["id"], roles=user.get("roles"))
     except AuthServiceError as exc:
         return _error_response(exc)
     return {"user": user, "quota_snapshot": quota_snapshot}
@@ -118,7 +118,7 @@ async def current_quota(request: Request):
 
     try:
         user = await auth_service.get_current_user_from_token(token)
-        quota_snapshot = await auth_service.get_quota_snapshot_for_user(user["id"])
+        quota_snapshot = await auth_service.get_quota_snapshot_for_user(user["id"], roles=user.get("roles"))
     except AuthServiceError as exc:
         return _error_response(exc)
     return {"quota_snapshot": quota_snapshot}

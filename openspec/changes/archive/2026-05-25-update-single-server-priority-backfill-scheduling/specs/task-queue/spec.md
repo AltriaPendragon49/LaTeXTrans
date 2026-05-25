@@ -35,6 +35,16 @@ The system SHALL manage translation tasks with priority-aware FIFO lanes on a si
 - **THEN** the scheduler releases the active slot
 - **AND** the highest-priority waiting task that is eligible to run starts next.
 
+### Requirement: Queue Status API
+The system SHALL expose lane-aware queue status without breaking existing aggregate queue-status consumers.
+
+#### Scenario: Query queue status
+- **WHEN** a client requests `GET /api/queue/status`
+- **THEN** the response MUST still include aggregate active, waiting, and max-concurrency values
+- **AND** MAY additionally include `interactive_active`, `interactive_waiting`, `backfill_active`, `backfill_waiting`, and `borrowed_slots`
+- **AND** authenticated callers continue to receive current quota usage.
+
+## ADDED Requirements
 ### Requirement: Task terminal state remains monotonic within one execution attempt
 The system SHALL prevent same-attempt stale updates from regressing a task from terminal back to non-terminal state.
 
@@ -63,12 +73,3 @@ The system SHALL treat contradictory durable task rows as recoverable failures i
 - **AND** the in-memory task snapshot is missing or stale
 - **THEN** the wait path MUST fall back to durable `translation_tasks` state
 - **AND** MUST NOT remain blocked forever on an already-terminal or already-reconciled task.
-
-### Requirement: Queue Status API
-The system SHALL expose lane-aware queue status without breaking existing aggregate queue-status consumers.
-
-#### Scenario: Query queue status
-- **WHEN** a client requests `GET /api/queue/status`
-- **THEN** the response MUST still include aggregate active, waiting, and max-concurrency values
-- **AND** MAY additionally include `interactive_active`, `interactive_waiting`, `backfill_active`, `backfill_waiting`, and `borrowed_slots`
-- **AND** authenticated callers continue to receive current quota usage.

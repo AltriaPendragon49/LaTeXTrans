@@ -19,6 +19,7 @@ class LatexQuotaSnapshot:
     remaining: int
     quota_date: str
     reset_timezone: str
+    bypassed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -27,7 +28,19 @@ class LatexQuotaSnapshot:
             "remaining": self.remaining,
             "quota_date": self.quota_date,
             "reset_timezone": self.reset_timezone,
+            "bypassed": self.bypassed,
         }
+
+    @staticmethod
+    def admin_bypass(timezone_name: str) -> "LatexQuotaSnapshot":
+        return LatexQuotaSnapshot(
+            limit=0,
+            used=0,
+            remaining=0,
+            quota_date="",
+            reset_timezone=timezone_name,
+            bypassed=True,
+        )
 
 
 @dataclass(frozen=True)
@@ -47,7 +60,11 @@ class TranslationQuotaService:
         self._repository = repository or TranslationQuotaRepository()
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
 
-    def get_latex_translation_snapshot(self, user_id: str) -> LatexQuotaSnapshot:
+    def get_latex_translation_snapshot(
+        self, user_id: str, roles: Optional[list[str]] = None,
+    ) -> LatexQuotaSnapshot:
+        if self._is_admin(roles):
+            return LatexQuotaSnapshot.admin_bypass(self._timezone_name())
         quota_date = self._current_quota_date()
         row = self._repository.ensure_daily_quota(
             user_id=user_id,
@@ -62,7 +79,10 @@ class TranslationQuotaService:
         *,
         user_id: str,
         requested_count: int,
+        roles: Optional[list[str]] = None,
     ) -> LatexQuotaSnapshot:
+        if self._is_admin(roles):
+            return LatexQuotaSnapshot.admin_bypass(self._timezone_name())
         normalized_count = self._normalize_count(requested_count)
         accepted, row = self._repository.reserve_daily_quota(
             user_id=user_id,
@@ -84,7 +104,10 @@ class TranslationQuotaService:
         *,
         user_id: str,
         count: int,
+        roles: Optional[list[str]] = None,
     ) -> LatexQuotaSnapshot:
+        if self._is_admin(roles):
+            return LatexQuotaSnapshot.admin_bypass(self._timezone_name())
         normalized_count = self._normalize_count(count)
         row = self._repository.release_daily_quota(
             user_id=user_id,
@@ -111,9 +134,9 @@ class TranslationQuotaService:
             fetched_at=fetched_at,
         )
 
-    def get_quota_snapshot(self, user_id: str) -> dict[str, Any]:
+    def get_quota_snapshot(self, user_id: str, roles: Optional[list[str]] = None) -> dict[str, Any]:
         return {
-            "latex_translation": self.get_latex_translation_snapshot(user_id).to_dict(),
+            "latex_translation": self.get_latex_translation_snapshot(user_id, roles=roles).to_dict(),
             "pdf_direct": self._pdf_direct_snapshot_to_dict(
                 self._repository.get_pdf_direct_snapshot_for_user(user_id)
             ),
@@ -185,6 +208,12 @@ class TranslationQuotaService:
         if count <= 0:
             raise ValueError("requested quota count must be positive")
         return count
+
+    @staticmethod
+    def _is_admin(roles: Optional[list[str]]) -> bool:
+        if not roles:
+            return False
+        return "admin" in {str(r).strip().lower() for r in roles}
 
     @staticmethod
     def _normalize_pdf_status(value: str) -> str:

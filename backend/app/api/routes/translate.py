@@ -1062,10 +1062,11 @@ async def _start_translation_for_task(
 
     quota_service: Optional[TranslationQuotaService] = None
     quota_reserved = False
+    user_roles = current_user.get("roles") if current_user else None
     if user_id and reserve_daily_quota:
         quota_service = get_translation_quota_service()
         try:
-            quota_service.reserve_latex_translation(user_id=user_id, requested_count=1)
+            quota_service.reserve_latex_translation(user_id=user_id, requested_count=1, roles=user_roles)
             quota_reserved = True
         except DailyQuotaExceededError as exc:
             raise HTTPException(status_code=429, detail=_quota_exceeded_detail(exc)) from exc
@@ -1101,7 +1102,7 @@ async def _start_translation_for_task(
         except Exception:
             if quota_reserved and quota_service is not None:
                 try:
-                    quota_service.release_latex_translation(user_id=user_id, count=1)
+                    quota_service.release_latex_translation(user_id=user_id, count=1, roles=user_roles)
                 except Exception:
                     logger.warning("Failed to release daily quota after config persistence failure", exc_info=True)
             raise
@@ -1154,7 +1155,7 @@ async def _start_translation_for_task(
     except Exception:
         if quota_reserved and quota_service is not None and user_id:
             try:
-                quota_service.release_latex_translation(user_id=user_id, count=1)
+                quota_service.release_latex_translation(user_id=user_id, count=1, roles=user_roles)
             except Exception:
                 logger.warning("Failed to release daily quota for pre-acceptance failure", exc_info=True)
         raise
@@ -1242,6 +1243,7 @@ async def batch_translate(
     user_id = resolve_current_user_id(current_user, credentials)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required for batch translation")
+    user_roles = current_user.get("roles") if isinstance(current_user, dict) else None
     effective_advanced_config = normalize_origin_cli_parity_advanced_config(request.advanced_config)
 
     # Validate arxiv_ids count
@@ -1290,6 +1292,7 @@ async def batch_translate(
         quota_service.reserve_latex_translation(
             user_id=user_id,
             requested_count=reserved_count,
+            roles=user_roles,
         )
     except DailyQuotaExceededError as exc:
         raise HTTPException(status_code=429, detail=_quota_exceeded_detail(exc)) from exc
@@ -1380,7 +1383,7 @@ async def batch_translate(
             errors.append(f"{arxiv_id}: {str(e)}")
 
     if not task_ids:
-        quota_service.release_latex_translation(user_id=user_id, count=reserved_count)
+        quota_service.release_latex_translation(user_id=user_id, count=reserved_count, roles=user_roles)
         raise HTTPException(
             status_code=500,
             detail=f"All batch tasks failed: {'; '.join(errors)}"
@@ -1388,7 +1391,7 @@ async def batch_translate(
 
     unaccepted_count = max(reserved_count - accepted_count, 0)
     if unaccepted_count:
-        quota_service.release_latex_translation(user_id=user_id, count=unaccepted_count)
+        quota_service.release_latex_translation(user_id=user_id, count=unaccepted_count, roles=user_roles)
 
     return BatchTranslateResponse(
         batch_id=batch_id,

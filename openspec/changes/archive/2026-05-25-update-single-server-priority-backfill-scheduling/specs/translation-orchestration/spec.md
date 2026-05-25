@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 ### Requirement: State-Machine Orchestration and Agent Scope
 The system SHALL orchestrate parsing, translation, validation, and compilation exclusively through a LangGraph StateMachine, and any outer scheduler SHALL treat one paper run as an indivisible orchestration kernel rather than splitting LangGraph nodes across independent workers.
 

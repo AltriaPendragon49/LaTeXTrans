@@ -234,3 +234,11 @@ The public reader SHALL use first-party Range-capable inline proxy responses for
 - **THEN** the download route SHALL redirect to a signed COS URL with attachment disposition when available
 - **AND** the backend SHALL NOT proxy explicit download byte streams unless COS delivery is unavailable.
 
+### Requirement: Public feed thumbnails are warm-cache friendly
+Public paper thumbnails MUST be available from cache whenever a previously warmed public paper appears on the homepage.
+
+#### Scenario: Paper becomes publicly readable
+- **WHEN** a paper transitions into a public readable state with source or translated PDF preview assets
+- **THEN** the backend MUST schedule thumbnail cache warmup for the relevant public preview assets
+- **AND** subsequent homepage thumbnail requests SHOULD reuse the cached rasterized image when it already exists.
+

@@ -128,3 +128,144 @@ def test_niutrans_balance_snapshot_persists_only_safe_fields(
     assert "token" not in str(snapshot).lower()
     assert "apikey" not in str(snapshot).lower()
     assert "password" not in str(snapshot).lower()
+
+
+def _fixed_utc_now() -> datetime:
+    return datetime(2026, 5, 6, 15, 30, tzinfo=timezone.utc)
+
+
+def test_admin_reserve_skips_db_and_returns_bypass_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Admin reserve_latex_translation does not touch DB and returns bypassed=True."""
+    db_path = tmp_path / "admin_reserve.db"
+    _create_quota_schema(db_path)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_path}")
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_limit", 3)
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_timezone", "Asia/Shanghai")
+
+    service = TranslationQuotaService(now_provider=_fixed_utc_now)
+
+    snapshot = service.reserve_latex_translation(
+        user_id="usr_quota_1", requested_count=1, roles=["admin"]
+    )
+    assert snapshot.bypassed is True
+    assert snapshot.limit == 0
+    assert snapshot.used == 0
+    assert snapshot.remaining == 0
+    assert snapshot.reset_timezone == "Asia/Shanghai"
+
+    # Verify DB was NOT touched - the user's quota should still be at default
+    db_snapshot = service.get_latex_translation_snapshot("usr_quota_1")
+    assert db_snapshot.used == 0
+    assert db_snapshot.remaining == 3
+    assert db_snapshot.bypassed is False
+
+
+def test_admin_release_skips_db_and_returns_bypass_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Admin release_latex_translation does not touch DB."""
+    db_path = tmp_path / "admin_release.db"
+    _create_quota_schema(db_path)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_path}")
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_limit", 3)
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_timezone", "Asia/Shanghai")
+
+    service = TranslationQuotaService(now_provider=_fixed_utc_now)
+
+    # First reserve as non-admin to use some quota
+    service.reserve_latex_translation(user_id="usr_quota_1", requested_count=2, roles=["user"])
+    db_snapshot = service.get_latex_translation_snapshot("usr_quota_1")
+    assert db_snapshot.used == 2
+
+    # Release as admin should not affect the DB
+    snapshot = service.release_latex_translation(user_id="usr_quota_1", count=1, roles=["admin"])
+    assert snapshot.bypassed is True
+
+    # DB should still show used=2 (admin release was a no-op)
+    db_snapshot2 = service.get_latex_translation_snapshot("usr_quota_1")
+    assert db_snapshot2.used == 2
+
+
+def test_admin_snapshot_bypasses_db_read(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Admin get_latex_translation_snapshot skips DB query entirely."""
+    db_path = tmp_path / "admin_snapshot.db"
+    _create_quota_schema(db_path)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_path}")
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_limit", 3)
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_timezone", "Asia/Shanghai")
+
+    service = TranslationQuotaService(now_provider=_fixed_utc_now)
+
+    # Non-admin snapshot reads DB - returns default values for unknown user
+    normal = service.get_latex_translation_snapshot("nonexistent_user", roles=["user"])
+    assert normal.bypassed is False
+
+    # Admin snapshot skips DB - even for nonexistent user with no prior DB entries
+    admin = service.get_latex_translation_snapshot("nonexistent_user", roles=["admin"])
+    assert admin.bypassed is True
+    assert admin.limit == 0
+    assert admin.remaining == 0
+
+
+def test_is_admin_correctly_detects_role() -> None:
+    """_is_admin returns True only for roles containing 'admin' (case-insensitive)."""
+    assert TranslationQuotaService._is_admin(["admin"]) is True
+    assert TranslationQuotaService._is_admin(["user", "admin"]) is True
+    assert TranslationQuotaService._is_admin(["ADMIN"]) is True
+    assert TranslationQuotaService._is_admin(["Admin"]) is True
+    assert TranslationQuotaService._is_admin(["user"]) is False
+    assert TranslationQuotaService._is_admin([]) is False
+    assert TranslationQuotaService._is_admin(None) is False
+    assert TranslationQuotaService._is_admin(["moderator"]) is False
+
+
+def test_admin_reserve_never_raises_quota_exceeded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Admin reserve always succeeds even when non-admin quota is exhausted."""
+    db_path = tmp_path / "admin_never_blocked.db"
+    _create_quota_schema(db_path)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_path}")
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_limit", 3)
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_timezone", "Asia/Shanghai")
+
+    service = TranslationQuotaService(now_provider=_fixed_utc_now)
+
+    # Exhaust non-admin quota first
+    service.reserve_latex_translation(user_id="usr_quota_1", requested_count=3, roles=["user"])
+
+    # Verify non-admin is blocked
+    try:
+        service.reserve_latex_translation(user_id="usr_quota_1", requested_count=1, roles=["user"])
+        pytest.fail("Should have raised DailyQuotaExceededError")
+    except DailyQuotaExceededError:
+        pass
+
+    # Admin with same user_id bypasses the exhausted quota
+    snapshot = service.reserve_latex_translation(
+        user_id="usr_quota_1", requested_count=99, roles=["admin"]
+    )
+    assert snapshot.bypassed is True
+
+
+def test_get_quota_snapshot_for_admin_includes_bypassed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """get_quota_snapshot shows bypassed=True in latex_translation for admin."""
+    db_path = tmp_path / "admin_full_snapshot.db"
+    _create_quota_schema(db_path)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_path}")
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_limit", 3)
+    monkeypatch.setattr(settings, "daily_latex_translation_quota_timezone", "Asia/Shanghai")
+
+    service = TranslationQuotaService(now_provider=_fixed_utc_now)
+
+    admin_snap = service.get_quota_snapshot("any_user", roles=["admin"])
+    assert admin_snap["latex_translation"]["bypassed"] is True
+
+    non_admin_snap = service.get_quota_snapshot("any_user", roles=["user"])
+    assert non_admin_snap["latex_translation"]["bypassed"] is False

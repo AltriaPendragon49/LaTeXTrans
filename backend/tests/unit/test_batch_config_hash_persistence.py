@@ -274,12 +274,12 @@ def test_batch_translate_persists_config_hash(monkeypatch):
         return None
 
     class _FakeQuotaService:
-        def reserve_latex_translation(self, *, user_id: str, requested_count: int):
+        def reserve_latex_translation(self, *, user_id: str, requested_count: int, roles=None):
             assert user_id == "user-1"
             assert requested_count == 1
             return None
 
-        def release_latex_translation(self, *, user_id: str, count: int):
+        def release_latex_translation(self, *, user_id: str, count: int, roles=None):
             raise AssertionError("accepted batch tasks should not release reserved quota")
 
     monkeypatch.setattr(translate_route, "task_manager", _FakeTaskManager())

@@ -325,9 +325,9 @@ class LocalAuthService:
             )
         )
 
-    async def get_quota_snapshot_for_user(self, user_id: str) -> dict[str, Any]:
+    async def get_quota_snapshot_for_user(self, user_id: str, roles: Optional[list[str]] = None) -> dict[str, Any]:
         try:
-            return await run_blocking(lambda: self._quota_service.get_quota_snapshot(user_id))
+            return await run_blocking(lambda: self._quota_service.get_quota_snapshot(user_id, roles=roles))
         except DatabaseUnavailableError as exc:
             raise AuthServiceError(
                 503,
@@ -436,7 +436,7 @@ class LocalAuthService:
                 )
             )
 
-        quota_snapshot = await self.get_quota_snapshot_for_user(user["id"])
+        quota_snapshot = await self.get_quota_snapshot_for_user(user["id"], roles=user.get("roles"))
 
         payload = {
             "iss": self._settings.auth_jwt_issuer,

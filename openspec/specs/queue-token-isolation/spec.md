@@ -4,21 +4,22 @@
 TBD - created by archiving change isolate-token-queues. Update Purpose after archive.
 ## Requirements
 ### Requirement: Partition queues by API Token Hash
-The TaskQueue macro dispatcher MUST partition all incoming background translations by the hashed value of the translation LLM API token employed by the configuration context.
+The scheduler MUST bind each LLM request to a concrete token lease whose health state is tracked independently, and task routing MAY select that lease from a configured token pool instead of one hard-coded token.
 
-#### Scenario: Mapping task to token-specific queue
-- **WHEN** a translation task is submitted with a specific LLM Token
-- **THEN** the system generates a hash of the token
-- **AND** routes the task to a queue dedicated to that token hash
+#### Scenario: Mapping task to a token-specific lease
+- **WHEN** a translation request or retry is ready to call the LLM
+- **THEN** the system selects a concrete endpoint-credential member from the configured system-managed pool or uses task-specific credentials directly
+- **AND** records rate-limit and cooldown state against that token only
+- **AND** MUST NOT treat one token's 429 response as a global provider-wide pause.
 
 ### Requirement: Concurrent processing of divergent tokens
-The TaskQueue MUST concurrently process translation bundles belonging to completely different designated token sets, bypassing any shared global limiting semaphore bottlenecks across conflicting credentials.
+The TaskQueue MUST keep unrelated healthy tokens independently usable, even when another token or pool member is cooling down due to 429 responses.
 
-#### Scenario: Submitting multi-batch tasks alongside user custom token tasks
-- **Given** user A begins 9 simultaneous translation requests bound explicitly to a customized LLM Token Key.
-- **When** user B subsequently hits the batch trigger with 1 task using another differing custom LLM Token immediately following.
-- **Then** the TaskQueue system maps user A to a fully autonomous logic boundary (`Queue<TokenHash_A>`) and dynamically allocates user B identically to `Queue<TokenHash_B>`.
-- **And** user B's translation starts computation immediately oblivious to user A queuing status, because `Queue<Token_B>` retains unoccupied standalone concurrency execution slots mapping exclusively to its API key bandwidth without intersecting traffic with A.
+#### Scenario: Healthy token continues while another token cools down
+- **GIVEN** token A recently hit 429 and entered cooldown
+- **WHEN** token B from the same configured pool remains healthy
+- **THEN** new eligible requests MAY lease token B immediately
+- **AND** token A's cooldown MUST NOT block token B's execution slots.
 
 ### Requirement: Maintain Independent User Admission Control
 The TaskQueue MUST maintain user connection limits scaling (`max_user_active_tasks` guard rails) entirely independent from the aforementioned hashed token queuing model, gracefully dropping/refusing overload admissions per User ID prior to applying mapping algorithms.
@@ -51,4 +52,40 @@ The system-managed token-pool layer SHALL cool down individual members after rep
 - **WHEN** every eligible member in the applicable pool is cooling down or unavailable
 - **THEN** the current request SHALL keep retrying its current member on a short bounded interval
 - **AND** it SHALL NOT rotate blindly across equally unavailable members.
+
+### Requirement: Token Pool Failover And Exhaustion Policy
+The system-managed token-pool layer SHALL prefer quick failover to healthy endpoint-credential members and SHALL avoid blind member thrashing when every member in the pool is unavailable.
+
+#### Scenario: System-managed pool spans two base URLs and five keys
+- **WHEN** the backend uses system-managed credentials
+- **THEN** the applicable pool MUST support two configured `base_url` groups
+- **AND** MUST support five independent endpoint-credential members total across those groups
+- **AND** each member's health and cooldown state MUST be tracked independently.
+
+#### Scenario: Healthy alternative token is available
+- **WHEN** the current token receives HTTP 429
+- **AND** another token in the same applicable pool is not cooling down
+- **THEN** the system MUST prefer quick failover after a short request-local retry budget measured in seconds
+- **AND** MUST avoid long sleeps on the rate-limited token before trying the healthy alternative.
+
+#### Scenario: Healthy alternative member exists after consecutive 503
+- **WHEN** the current endpoint-credential member receives consecutive HTTP 503 failures
+- **AND** another member in the same applicable system-managed pool is healthy
+- **THEN** the system MUST fail over quickly to that healthy member
+- **AND** MUST avoid waiting through a long retry ladder on the degraded member first.
+
+#### Scenario: Every token in the pool is rate-limited
+- **WHEN** all tokens in the applicable pool are simultaneously cooling down or rate-limited
+- **THEN** the system MUST keep retrying with the current token until success or a non-429 fatal error occurs
+- **AND** MUST NOT rotate blindly across equally exhausted tokens.
+
+#### Scenario: Custom user credentials bypass the system-managed pool
+- **WHEN** a request uses `custom_api_key/custom_base_url` from the request or user settings
+- **THEN** the system MUST preserve the current single-credential behavior for that request
+- **AND** MUST NOT silently enroll those user-owned credentials into the system-managed pool in phase 1.
+
+#### Scenario: Structured insight sidecar calls share pool health state
+- **WHEN** a translated paper triggers structured insight generation with system-managed credentials
+- **THEN** the request MUST use the same configured pool members and routing key family as the translation runtime for that backend deployment
+- **AND** failover and exhaustion handling MUST observe the same per-member health state instead of maintaining an isolated direct-call path.
 

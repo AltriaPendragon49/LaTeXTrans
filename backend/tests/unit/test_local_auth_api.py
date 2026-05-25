@@ -65,7 +65,7 @@ class _FakeAuthService:
             "email": None,
         }
 
-    async def get_quota_snapshot_for_user(self, user_id: str):
+    async def get_quota_snapshot_for_user(self, user_id: str, roles=None):
         assert user_id == "usr_123"
         return {
             "latex_translation": {

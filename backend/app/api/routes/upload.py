@@ -148,6 +148,7 @@ async def batch_upload_translate(
     user_id = resolve_current_user_id(current_user, credentials)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required for batch upload translation")
+    user_roles = current_user.get("roles") if isinstance(current_user, dict) else None
 
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -191,6 +192,7 @@ async def batch_upload_translate(
         quota_service.reserve_latex_translation(
             user_id=user_id,
             requested_count=reserved_count,
+            roles=user_roles,
         )
     except translate_route.DailyQuotaExceededError as exc:
         raise HTTPException(status_code=429, detail=translate_route._quota_exceeded_detail(exc)) from exc
@@ -234,7 +236,7 @@ async def batch_upload_translate(
     unaccepted_count = max(reserved_count - accepted_count, 0)
     if unaccepted_count:
         try:
-            quota_service.release_latex_translation(user_id=user_id, count=unaccepted_count)
+            quota_service.release_latex_translation(user_id=user_id, count=unaccepted_count, roles=user_roles)
         except Exception:
             logger.warning("Failed to release daily quota for unaccepted batch uploads", exc_info=True)
 

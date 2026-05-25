@@ -97,6 +97,15 @@ Bug fixes restoring intended behavior, test-only changes, non-breaking config, b
 
 # Execution Discipline
 
+## 🚨 铁律：Git 提交禁止 Claude 署名
+
+**任何 git commit 消息中绝对不允许出现以下内容：**
+- `Co-Authored-By: Claude ...`
+- `Co-authored-by: Claude ...`
+- 任何形式的 Claude / Anthropic / AI 署名或引用
+
+违反此规则属于严重错误，必须立即 `git reset --soft HEAD~1` 撤回并重提。
+
 ## Think Before Coding
 Identify the user goal, minimal files involved, expected behavior, and verification check before editing.
 
