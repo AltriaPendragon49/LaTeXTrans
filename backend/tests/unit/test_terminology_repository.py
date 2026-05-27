@@ -33,7 +33,6 @@ def _create_sqlite_schema(database_path: Path) -> None:
                 embedding_status    varchar(32)  not null default 'none',
                 vector_collection   varchar(128)         default null,
                 vector_term_id      varchar(128)         default null,
-                source_length       integer              default null,
                 created_at          datetime     not null,
                 updated_at          datetime     not null
             );

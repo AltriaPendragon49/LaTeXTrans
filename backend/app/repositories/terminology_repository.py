@@ -203,7 +203,7 @@ class TerminologyRepository:
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms where {where} order by source_length",
+                f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms where {where} order by length(source_term)",
                 tuple(params),
             )
             rows = _fetchall(cursor)
@@ -220,7 +220,7 @@ class TerminologyRepository:
             cursor = conn.cursor()
             cursor.execute(
                 f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
-                f"where {where} order by source_length",
+                f"where {where} order by length(source_term)",
                 tuple(params),
             )
             rows = _fetchall(cursor)
@@ -238,7 +238,7 @@ class TerminologyRepository:
             cursor = conn.cursor()
             cursor.execute(
                 f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
-                f"where {where} order by source_length",
+                f"where {where} order by length(source_term)",
                 tuple(params),
             )
             rows = _fetchall(cursor)
@@ -256,7 +256,7 @@ class TerminologyRepository:
             cursor = conn.cursor()
             cursor.execute(
                 f"select {', '.join(TERMINOLOGY_TERM_COLUMNS)} from terminology_terms "
-                f"where {where} order by source_length",
+                f"where {where} order by length(source_term)",
                 tuple(params),
             )
             rows = _fetchall(cursor)
