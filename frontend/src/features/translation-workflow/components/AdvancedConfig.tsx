@@ -167,12 +167,16 @@ export function AdvancedConfig() {
             <InfoTile
               className="flex-1"
               icon={<BookText className="h-4 w-4" />}
-              title={t("common.generate_glossary")}
-              description={t("dashboard.config.output_a_source_translation_terminology_table")}
+              title={t("ragTerminology.enableRagTerminology")}
+              description={t("ragTerminology.mergedDescription")}
               trailing={(
                 <ToggleSwitch
-                  checked={advanced_config.generate_terminology_table}
-                  onCheckedChange={(checked) => updateConfig("generate_terminology_table", checked)}
+                  id="enable-rag-terminology"
+                  checked={advanced_config.enable_rag_terminology ?? false}
+                  onCheckedChange={(checked) => {
+                    updateConfig("enable_rag_terminology", checked)
+                    updateConfig("generate_terminology_table", checked)
+                  }}
                 />
               )}
             />
@@ -192,19 +196,6 @@ export function AdvancedConfig() {
               )}
             />
           ) : null}
-
-          <InfoTile
-            icon={<BookText className="h-4 w-4" />}
-            title={t("ragTerminology.enableRagTerminology")}
-            description={t("ragTerminology.enableRagTerminologyDescription")}
-            trailing={(
-              <ToggleSwitch
-                id="enable-rag-terminology"
-                checked={advanced_config.enable_rag_terminology ?? false}
-                onCheckedChange={(checked) => updateConfig("enable_rag_terminology", checked)}
-              />
-            )}
-          />
 
           {advanced_config.enable_rag_terminology ? (
             <div className="animate-in slide-in-from-top-2 space-y-2 duration-200">

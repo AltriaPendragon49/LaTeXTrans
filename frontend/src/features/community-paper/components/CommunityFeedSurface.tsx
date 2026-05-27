@@ -12,6 +12,7 @@ import { hasAdminRole } from "@/features/admin-curation/utils/admin-access"
 import { deleteCommunityPaper } from "@/lib/community-api"
 import type { CommunityFeedSort, CommunityPaper } from "@/types/community"
 import { Button } from "@/ui/button/Button"
+import { HotWindowFilter } from "@/features/community-paper/components/HotWindowFilter"
 import { FilterToolbar } from "@/ui/filter-toolbar/FilterToolbar"
 import { Pill } from "@/ui/pill/Pill"
 
@@ -27,6 +28,7 @@ export default function CommunityFeedSurface() {
   const [searchInput, setSearchInput] = useState("")
   const [query, setQuery] = useState("")
   const [activeTab, setActiveTab] = useState<CommunityFeedSort>("hot")
+  const [hotWindow, setHotWindow] = useState("30d")
   const [deletingPaperId, setDeletingPaperId] = useState<string | null>(null)
   const isAdmin = hasAdminRole(user?.roles)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -156,6 +158,14 @@ export default function CommunityFeedSurface() {
         value={activeTab}
         onValueChange={(nextValue) => setActiveTab(nextValue as CommunityFeedSort)}
         className="mt-2 pb-2"
+        actions={
+          activeTab === "hot" ? (
+            <HotWindowFilter
+              selectedWindow={hotWindow}
+              onWindowChange={setHotWindow}
+            />
+          ) : undefined
+        }
         meta={
           query ? (
             <Pill className="px-3 py-2 text-xs font-medium normal-case tracking-normal">

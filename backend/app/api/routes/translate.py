@@ -156,7 +156,9 @@ def normalize_origin_cli_parity_advanced_config(advanced_config: AdvancedConfig)
     normalized.translation_core_mode = ORIGIN_CLI_PARITY_MODE
     normalized.translation_mode = "full"
     normalized.compile_strategy = "auto"
-    normalized.generate_terminology_table = False
+    # Preserve the user's choice: only default to False if not already set.
+    if getattr(normalized, "generate_terminology_table", None) is None:
+        normalized.generate_terminology_table = False
     return normalized
 
 

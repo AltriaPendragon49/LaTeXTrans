@@ -226,6 +226,7 @@ async def node_translate(state: PipelineState) -> PipelineState:
         # RAG Terminology injection: load approved terms if RAG is enabled
         enable_rag = config.get("enable_rag_terminology", False)
         if enable_rag:
+            _update_progress(state, 10, "Loading RAG terminology…")
             try:
                 from backend.app.services.rag.domain_constants import map_arxiv_categories_to_domain
                 from backend.app.services.terminology_service import TerminologyService
@@ -268,19 +269,26 @@ async def node_translate(state: PipelineState) -> PipelineState:
                     if term_dict:
                         translator_agent.term_dict = term_dict
                         translator_agent.trans_mode = 2
+                        msg = f"RAG terminology loaded: {len(term_dict)} terms"
+                        if rag_domain:
+                            msg += f" (domain: {rag_domain})"
+                        _update_progress(state, 12, msg)
                         logger.info(
                             "RAG terminology injected: %d terms loaded into translator agent%s.",
                             len(term_dict),
                             f" (domain={rag_domain})" if rag_domain else "",
                         )
                     else:
+                        _update_progress(state, 12, "RAG: no approved terms found")
                         logger.info(
                             "RAG terminology enabled but no approved terms found%s.",
                             f" for domain '{rag_domain}'" if rag_domain else "",
                         )
                 else:
+                    _update_progress(state, 12, "RAG: not enabled at server level")
                     logger.info("RAG terminology not enabled at server level; skipping injection.")
             except Exception:
+                _update_progress(state, 12, "RAG: terminology loading failed (non-fatal)")
                 logger.warning("Failed to inject RAG terminology (non-fatal)", exc_info=True)
 
         await translator_agent.execute()

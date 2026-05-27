@@ -334,6 +334,7 @@ async def startup_event():
     app.state.admin_job_poll_task = None
     app.state.public_feed_rebuild_task = None
     app.state.arxiv_metadata_repair_task = None
+    app.state.hot_ranking_cron_task = None
 
     # Initialize TaskQueue
     import backend.app.services.task_manager as tm_module
@@ -411,6 +412,45 @@ async def startup_event():
                 arxiv_metadata_repair_interval_seconds,
                 arxiv_metadata_repair_limit,
             )
+
+        # Hot ranking daily cron
+        hot_ranking_cron_enabled = bool(getattr(settings, "hot_ranking_cron_enabled", True))
+        if hot_ranking_cron_enabled:
+            from backend.app.core import timezone_utils
+
+            async def _hot_ranking_daily_cron():
+                """Daily hot ranking cron: refresh rankings, auto-intake new papers, write summary."""
+                while True:
+                    try:
+                        await paper_service.run_hot_ranking_daily_cron()
+                    except Exception as exc:
+                        logger.warning("[Startup] Hot ranking daily cron failed: %s", exc)
+
+                    # Compute seconds until next CST trigger time
+                    now_cst = timezone_utils.get_cst_now()
+                    hour = int(getattr(settings, "hot_ranking_cron_hour", 3) or 3)
+                    minute = int(getattr(settings, "hot_ranking_cron_minute", 7) or 7)
+
+                    # Next trigger in CST
+                    next_trigger = now_cst.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    if next_trigger <= now_cst:
+                        from datetime import timedelta
+
+                        next_trigger += timedelta(days=1)
+
+                    wait_seconds = (next_trigger - now_cst).total_seconds()
+                    # Cap at 24h to be safe, and ensure at least 60s
+                    wait_seconds = max(60.0, min(wait_seconds, 86400.0))
+
+                    logger.info(
+                        "[Startup] Hot ranking daily cron: next run at %s CST (in %.0f seconds)",
+                        next_trigger.strftime("%Y-%m-%d %H:%M:%S"),
+                        wait_seconds,
+                    )
+                    await asyncio.sleep(wait_seconds)
+
+            app.state.hot_ranking_cron_task = asyncio.create_task(_hot_ranking_daily_cron())
+            logger.info("[Startup] Hot ranking daily cron started")
 
     if runtime_role != "all":
         # Seed RAG terminology for all runtime roles
@@ -562,6 +602,13 @@ async def shutdown_event():
         cleanup_task.cancel()
         try:
             await cleanup_task
+        except asyncio.CancelledError:
+            pass
+    hot_ranking_cron_task = getattr(app.state, "hot_ranking_cron_task", None)
+    if hot_ranking_cron_task:
+        hot_ranking_cron_task.cancel()
+        try:
+            await hot_ranking_cron_task
         except asyncio.CancelledError:
             pass
     logger.info(f"Shutting down {settings.app_name}")

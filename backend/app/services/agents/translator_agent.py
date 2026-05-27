@@ -2767,6 +2767,11 @@ class TranslatorAgent(BaseToolAgent):
                 logger.info("Quick scan mode completed: abstract and conclusion translated")
                 self.update_progress(100, "Quick scan completed: abstract and conclusion translated")
         
+        # When RAG provides term_dict but LLM extraction was skipped (trans_mode==2),
+        # populate terminology_table from term_dict so the user can still view it.
+        if self.term_dict and not self.terminology_table:
+            self.terminology_table = list(self.term_dict.items())
+
         # Save terminology table if enabled
         if self.generate_terminology and self.terminology_table:
             self._save_terminology_table()

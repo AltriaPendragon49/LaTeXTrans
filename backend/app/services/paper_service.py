@@ -4745,6 +4745,43 @@ async def rebuild_public_feed_indexes_if_enabled() -> bool:
     return await _rebuild_public_feed_indexes_from_db()
 
 
+async def run_hot_ranking_daily_cron() -> dict[str, Any]:
+    """Bridge function called by the cron loop in main.py.
+
+    Acquires a Redis lock, instantiates HotRankingService, and runs a full cycle.
+    Returns a dict with summary for logging.
+    """
+    # Try Redis lock
+    redis_locked = False
+    try:
+        redis_url = getattr(settings, "community_feed_redis_url", None) or ""
+        if redis_url:
+            r = redis.Redis.from_url(redis_url)
+            lock_key = (
+                f"{getattr(settings, 'community_feed_redis_prefix', 'feed')}"
+                ":hot_ranking_daily_cron_lock"
+            )
+            lock_ttl = int(getattr(settings, "hot_ranking_cron_lock_ttl_seconds", 7200) or 7200)
+            redis_locked = r.set(lock_key, "1", nx=True, ex=lock_ttl)
+    except Exception:
+        redis_locked = True  # If Redis unavailable, proceed anyway
+
+    if not redis_locked:
+        logger.info("Hot ranking daily cron: lock not acquired, another worker is running")
+        return {"status": "skipped", "reason": "lock_not_acquired"}
+
+    try:
+        from backend.app.services.hot_ranking_service import HotRankingService
+
+        service = HotRankingService(settings=settings)
+        result = await service.run_full_cycle()
+        logger.info("Hot ranking daily cron completed: %s", result)
+        return {"status": "completed", **result}
+    except Exception as exc:
+        logger.error("Hot ranking daily cron failed: %s", exc, exc_info=True)
+        return {"status": "error", "error": str(exc)}
+
+
 async def _list_public_papers_from_shared_feed_store(
     *,
     sort: str,

@@ -304,6 +304,51 @@ class Settings(BaseSettings):
         validation_alias="COMMUNITY_CURATION_MAX_CONCURRENT",
         description="Maximum concurrent admin community curation jobs.",
     )
+
+    # Hot Ranking Cron
+    hot_ranking_cron_enabled: bool = Field(
+        default=True,
+        validation_alias="HOT_RANKING_CRON_ENABLED",
+    )
+    hot_ranking_cron_hour: int = Field(
+        default=3,
+        validation_alias="HOT_RANKING_CRON_HOUR",
+    )
+    hot_ranking_cron_minute: int = Field(
+        default=7,
+        validation_alias="HOT_RANKING_CRON_MINUTE",
+    )
+    hot_ranking_cron_lock_ttl_seconds: int = Field(
+        default=7200,
+        validation_alias="HOT_RANKING_CRON_LOCK_TTL_SECONDS",
+    )
+
+    # Auto-Intake
+    hot_ranking_auto_intake_enabled: bool = Field(
+        default=True,
+        validation_alias="HOT_RANKING_AUTO_INTAKE_ENABLED",
+    )
+    hot_ranking_auto_intake_top_n: int = Field(
+        default=20,
+        validation_alias="HOT_RANKING_AUTO_INTAKE_TOP_N",
+    )
+    hot_ranking_auto_intake_min_score: float = Field(
+        default=50.0,
+        validation_alias="HOT_RANKING_AUTO_INTAKE_MIN_SCORE",
+    )
+    hot_ranking_auto_intake_default_window: str = Field(
+        default="30d",
+        validation_alias="HOT_RANKING_AUTO_INTAKE_DEFAULT_WINDOW",
+    )
+    hot_ranking_system_user_id: str = Field(
+        default="",
+        validation_alias="HOT_RANKING_SYSTEM_USER_ID",
+    )
+    hot_ranking_arxiv_id_dir: str = Field(
+        default="",
+        validation_alias="HOT_RANKING_ARXIV_ID_DIR",
+    )
+
     backend_runtime_role: str = Field(
         default="all",
         validation_alias="BACKEND_RUNTIME_ROLE",

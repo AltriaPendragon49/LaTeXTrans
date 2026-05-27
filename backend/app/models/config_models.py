@@ -38,10 +38,11 @@ def normalize_origin_cli_parity_agent_config(config: Mapping[str, Any]) -> Dict[
     normalized["llm_error_max_concurrent_requests"] = (
         ORIGIN_CLI_PARITY_ERROR_LLM_MAX_CONCURRENT_REQUESTS
     )
-    normalized["generate_terminology"] = False
-    normalized["generate_terminology_table"] = False
-    normalized["update_term"] = False
-    normalized["user_term"] = ""
+    # Preserve user choices for terminology features; only override when absent.
+    normalized.setdefault("generate_terminology", False)
+    normalized.setdefault("generate_terminology_table", False)
+    normalized.setdefault("update_term", False)
+    normalized.setdefault("user_term", "")
     return normalized
 
 

@@ -18,16 +18,38 @@ from typing import Any, Sequence
 from urllib.parse import quote, unquote, urlencode, urlparse
 import xml.etree.ElementTree as ET
 
+# ── Import shared utilities from the ranking package ───────────────
+# Keep the legacy export script thin by sharing fetch/normalize/category helpers
+# with the new ranking system.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from backend.app.services.ranking.utils import (  # noqa: E402
+    ALPHAXIV_API_BASE,
+    ARXIV_API_URL,
+    ARXIV_ID_PATTERN,
+    ARXIV_ID_PREFIX_PATTERN,
+    BROAD_TOPIC_TO_MAJOR_CATEGORY,
+    OPENALEX_API_URL,
+    TITLE_KEY_PATTERN,
+    USER_AGENT,
+    _parse_datetime,
+    _pick_openalex_match,
+    _title_key,
+    fetch_json,
+    fetch_text,
+    infer_submission_date_from_arxiv_id,
+    major_category_from_topic,
+    normalize_arxiv_id,
+)
+
 
 SITEMAP_INDEX_URL = "https://www.alphaxiv.org/sitemaps/sitemap-index.xml"
-ALPHAXIV_API_BASE = "https://api.alphaxiv.org"
-ARXIV_API_URL = "https://export.arxiv.org/api/query"
-OPENALEX_API_URL = "https://api.openalex.org/works"
 SITEMAP_NAMESPACE = "http://www.sitemaps.org/schemas/sitemap/0.9"
 ATOM_NAMESPACE = "http://www.w3.org/2005/Atom"
 OPENSEARCH_NAMESPACE = "http://a9.com/-/spec/opensearch/1.1/"
 BACKEND_ARXIV_ID_DIR = Path(__file__).resolve().parent.parent / "backend" / "arxiv_id"
-USER_AGENT = "LaTexTrans paper source exporter/2.0"
 MODE_OUTPUT_DIRS = {
     "hot-top-n": "all_hot",
     "hot-new-24h": "daily_hot",
@@ -56,25 +78,6 @@ OPENALEX_FIELD_ID_BY_CATEGORY = {
     "econ": 20,
     "q-bio": 13,
 }
-BROAD_TOPIC_TO_MAJOR_CATEGORY = {
-    "computer science": "cs",
-    "mathematics": "math",
-    "physics": "physics",
-    "statistics": "stat",
-    "quantitative biology": "q-bio",
-    "quantitative finance": "q-fin",
-    "electrical engineering and systems science": "eess",
-    "economics": "econ",
-}
-ARXIV_ID_PATTERN = re.compile(
-    r"^(?P<id>(?:\d{4}\.\d{4,5}|[a-z\-]+(?:\.[A-Z]{2})?/\d{7}))(?:v\d+)?$",
-    re.IGNORECASE,
-)
-ARXIV_ID_PREFIX_PATTERN = re.compile(
-    r"(?P<id>(?:\d{4}\.\d{4,5}|[a-z\-]+(?:\.[A-Z]{2})?/\d{7}))(?:v\d+)?",
-    re.IGNORECASE,
-)
-TITLE_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -156,30 +159,6 @@ def utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def fetch_text(url: str, *, timeout: int = 20, retries: int = 3, retry_delay: float = 0.5) -> str:
-    last_error: Exception | None = None
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json,text/html,application/xml;q=0.9,*/*;q=0.8",
-    }
-    for attempt in range(1, retries + 1):
-        try:
-            response = requests.get(url, headers=headers, timeout=timeout)
-            response.raise_for_status()
-            response.encoding = response.encoding or "utf-8"
-            return response.text
-        except Exception as exc:
-            last_error = exc
-            if attempt < retries:
-                time.sleep(retry_delay * attempt)
-
-    raise RuntimeError(f"Failed to fetch {url}: {last_error}") from last_error
-
-
-def fetch_json(url: str, *, timeout: int = 20, retries: int = 3) -> dict[str, Any]:
-    return json.loads(fetch_text(url, timeout=timeout, retries=retries))
-
-
 def _parse_loc_values(xml_text: str) -> list[str]:
     try:
         root = ET.fromstring(xml_text)
@@ -212,32 +191,6 @@ def is_primary_paper_url(url: str) -> bool:
 
 def parse_paper_sitemap(xml_text: str) -> list[str]:
     return [loc for loc in _parse_loc_values(xml_text) if is_primary_paper_url(loc)]
-
-
-def normalize_arxiv_id(raw_value: str | None) -> str | None:
-    if raw_value is None:
-        return None
-
-    value = unquote(raw_value.strip())
-    if not value:
-        return None
-
-    if value.lower().startswith("arxiv:"):
-        value = value.split(":", 1)[1]
-
-    value = value.split("?", 1)[0].split("#", 1)[0]
-    if value.endswith(".pdf"):
-        value = value[:-4]
-
-    match = ARXIV_ID_PATTERN.match(value)
-    if match:
-        return match.group("id")
-
-    prefix_match = ARXIV_ID_PREFIX_PATTERN.match(value)
-    if prefix_match:
-        return prefix_match.group("id")
-
-    return None
 
 
 def is_valid_arxiv_id(raw_value: str | None) -> bool:
@@ -367,20 +320,6 @@ def _candidate_publication_date(paper: dict[str, Any]) -> str | None:
     return paper.get("first_publication_date") or paper.get("publication_date")
 
 
-def infer_submission_date_from_arxiv_id(arxiv_id: str | None) -> str | None:
-    if not arxiv_id:
-        return None
-    match = re.match(r"^(?P<yy>\d{2})(?P<mm>\d{2})\.\d{4,5}$", arxiv_id)
-    if not match:
-        return None
-
-    year = 2000 + int(match.group("yy"))
-    month = int(match.group("mm"))
-    if month < 1 or month > 12:
-        return None
-    return f"{year:04d}-{month:02d}-01T00:00:00Z"
-
-
 def core_pool_lookback_start(now: datetime, lookback_years: int) -> datetime:
     start_year = max(1900, now.year - lookback_years)
     return datetime(start_year, 1, 1, tzinfo=UTC)
@@ -416,35 +355,6 @@ def _normalize_topic_strings(topics: Any) -> tuple[str, ...]:
     return tuple(values)
 
 
-def major_category_from_topic(topic: str | None) -> str | None:
-    if topic is None:
-        return None
-
-    normalized = topic.strip().lower()
-    if not normalized:
-        return None
-
-    if normalized in BROAD_TOPIC_TO_MAJOR_CATEGORY:
-        return BROAD_TOPIC_TO_MAJOR_CATEGORY[normalized]
-
-    prefix = normalized.split(".", 1)[0]
-    if prefix in {"cs", "math", "stat", "q-bio", "q-fin", "eess", "econ"}:
-        return prefix
-    if prefix in {
-        "astro-ph",
-        "cond-mat",
-        "gr-qc",
-        "math-ph",
-        "nlin",
-        "physics",
-        "quant-ph",
-    }:
-        return "physics"
-    if prefix.startswith("hep-") or prefix.startswith("nucl-"):
-        return "physics"
-    return None
-
-
 def infer_primary_category(topics: Sequence[str]) -> str | None:
     for topic in topics:
         if " " in topic:
@@ -468,12 +378,6 @@ def _metric_value(value: Any) -> int:
     if isinstance(value, float):
         return int(value)
     return 0
-
-
-def _title_key(title: str | None) -> str:
-    if not title:
-        return ""
-    return TITLE_KEY_PATTERN.sub("", title.casefold())
 
 
 def make_alphaxiv_record(
@@ -610,16 +514,6 @@ def parse_arxiv_feed_entries(
         )
         next_rank += 1
     return records
-
-
-def _parse_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    normalized = value.replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
 
 
 def _fetch_alphaxiv_feed_page(
@@ -1265,47 +1159,6 @@ def save_json_cache(cache_path: Path | None, payload: dict[str, Any]) -> None:
         return
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def _pick_openalex_match(
-    results: Sequence[dict[str, Any]],
-    *,
-    title: str,
-    arxiv_id: str,
-    publication_year: int | None,
-) -> dict[str, Any] | None:
-    expected_key = _title_key(title)
-    best_match: dict[str, Any] | None = None
-    best_score: tuple[int, int, int] | None = None
-
-    for result in results:
-        display_name = result.get("display_name") or result.get("title") or ""
-        if _title_key(display_name) != expected_key:
-            continue
-
-        ids = result.get("ids") or {}
-        contains_arxiv_id = 0
-        for value in ids.values():
-            if isinstance(value, str) and arxiv_id in value:
-                contains_arxiv_id = 1
-                break
-
-        result_year = result.get("publication_year")
-        year_distance = 999
-        if publication_year is not None and isinstance(result_year, int):
-            year_distance = abs(publication_year - result_year)
-        elif isinstance(result_year, int):
-            year_distance = 0
-
-        score = (
-            contains_arxiv_id,
-            -year_distance,
-            result.get("cited_by_count") or 0,
-        )
-        if best_score is None or score > best_score:
-            best_score = score
-            best_match = result
-    return best_match
 
 
 def fetch_openalex_citation_count(
