@@ -1,5 +1,12 @@
 # Backend File Index
 
+## Recent Responsibility Updates (2026-05-28 hot ranking curation metadata)
+
+- `backend/migrations_mysql/20260528_0014_add_hot_ranking_curation_metadata.sql`: MySQL 迁移脚本，为 `community_curation_jobs` 增补 `source_family`、`hot_score`、`score_breakdown` 与热榜查询索引，用于保留自动入库来源和分数明细。
+- `backend/app/services/hot_ranking_service.py`: 热榜自动入库改为复用现有管理员 arXiv 策展批量入口，并在 curation job 上附加热榜来源、分数和分项明细，避免预建 paper 造成失败占位与重复跳过。
+- `backend/app/services/paper_service.py`: 管理员策展占位论文创建时继承 job 上的 `hot_score`，保证热榜自动入库发布后仍可参与首页 Hot 排序。
+- `backend/app/repositories/community_paper_repository.py`: curation job 仓储支持读写热榜来源和分数明细字段。
+
 ## Recent Responsibility Updates (2026-05-14 RAG terminology: domain management + sharing + expanded seed data)
 
 - `backend/app/services/rag/domain_constants.py`: 领域管理常量模块，包含 `TermDomain` 枚举（~50 个领域）、中英文标签、领域分组和标签查询函数。

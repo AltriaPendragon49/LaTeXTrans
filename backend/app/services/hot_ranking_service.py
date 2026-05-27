@@ -15,7 +15,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from backend.app.core.config import get_settings
 from backend.app.services.ranking.engine import rank_candidates
@@ -157,7 +156,11 @@ class HotRankingService:
             from backend.app.services.ranking.source_adapters import collect_candidates_from_sources
 
             # Collect real candidates from alphaXiv hot feed + all source adapters
-            source_candidates = await collect_candidates_from_sources(limit=200)
+            source_candidates = await collect_candidates_from_sources(
+                limit=200,
+                timeout=120,
+                retries=3,
+            )
             if source_candidates:
                 raw_candidates = source_candidates
                 logger.info(
@@ -282,10 +285,9 @@ class HotRankingService:
 
         1. Filter by min_score from settings.
         2. Take top_n from settings.
-        3. For each candidate:
-           a. Check self._intaken_in_run (in-memory dedup).
-           b. Call import_or_reuse_paper(source="arxiv", arxiv_id=...).
-           c. Log the intent to create a curation job.
+        3. Submit the eligible arXiv IDs through the existing admin curation
+           batch path so duplicate cleanup, job creation, and scheduling stay
+           identical to operator-driven intake.
         4. Return intake result dict.
 
         Uses late imports to avoid circular dependencies.
@@ -306,14 +308,19 @@ class HotRankingService:
             logger.info("Hot ranking auto_intake: no candidates above threshold %.1f", min_score)
             return {"intaken": [], "skipped": [], "errors": []}
 
+        system_user_id = str(getattr(self.settings, "hot_ranking_system_user_id", "") or "").strip()
+        if not system_user_id:
+            logger.error("Hot ranking auto_intake: HOT_RANKING_SYSTEM_USER_ID is not configured")
+            return {
+                "intaken": [],
+                "skipped": [],
+                "errors": [{"arxiv_id": "N/A", "error": "HOT_RANKING_SYSTEM_USER_ID is not configured"}],
+            }
+
         # Late imports (avoid circular deps)
         try:
             from backend.app.services.paper_service import (
-                _schedule_curation_job,
-                import_or_reuse_paper,
-            )
-            from backend.app.repositories.community_paper_repository import (
-                CommunityPaperRepository,
+                submit_admin_arxiv_curation_batch,
             )
         except ImportError as exc:
             logger.error(
@@ -325,96 +332,82 @@ class HotRankingService:
                 "errors": [{"arxiv_id": "N/A", "error": f"ImportError: {exc}"}],
             }
 
-        system_user_id = getattr(self.settings, "hot_ranking_system_user_id", "") or ""
-        repository = CommunityPaperRepository()
-
+        selected_candidates: list[RankedCandidate] = []
         for candidate in eligible:
+            if candidate.arxiv_id in self._intaken_in_run:
+                skipped.append({
+                    "arxiv_id": candidate.arxiv_id,
+                    "reason": "already_intaken_in_this_run",
+                })
+                continue
+            self._intaken_in_run.add(candidate.arxiv_id)
+            selected_candidates.append(candidate)
+
+        if not selected_candidates:
+            return {"intaken": [], "skipped": skipped, "errors": []}
+
+        candidate_by_id = {candidate.arxiv_id: candidate for candidate in selected_candidates}
+        try:
+            batch = await submit_admin_arxiv_curation_batch(
+                arxiv_ids=[candidate.arxiv_id for candidate in selected_candidates],
+                current_user={"id": system_user_id},
+                source_language="en",
+                target_language="zh",
+            )
+        except Exception as exc:
+            logger.error("Hot ranking auto_intake: curation batch submission failed: %s", exc, exc_info=True)
+            return {
+                "intaken": [],
+                "skipped": skipped,
+                "errors": [
+                    {"arxiv_id": candidate.arxiv_id, "error": str(exc)}
+                    for candidate in selected_candidates
+                ],
+            }
+
+        for item in batch.get("items", []) or []:
             try:
-                # In-memory dedup within this run
-                if candidate.arxiv_id in self._intaken_in_run:
-                    skipped.append({
-                        "arxiv_id": candidate.arxiv_id,
-                        "reason": "already_intaken_in_this_run",
-                    })
+                arxiv_id = str(item.get("arxiv_id") or "").strip()
+                candidate = candidate_by_id.get(arxiv_id)
+                if candidate is None:
                     continue
 
-                self._intaken_in_run.add(candidate.arxiv_id)
-
-                # Import or reuse the paper
-                result = await import_or_reuse_paper(
-                    source="arxiv",
-                    arxiv_id=candidate.arxiv_id,
-                )
-
-                paper_id = result.get("paper_id", "")
-                reused = result.get("reused", False)
-                imported = result.get("imported", False)
-
                 logger.info(
-                    "Hot ranking auto_intake: %s paper_id=%s (reused=%s, imported=%s)",
+                    "Hot ranking auto_intake: %s job_id=%s paper_id=%s",
                     candidate.arxiv_id,
-                    paper_id,
-                    reused,
-                    imported,
+                    item.get("job_id"),
+                    item.get("paper_id"),
                 )
 
-                # Update hot_score on the paper record
                 try:
+                    from backend.app.services.paper_service import get_community_paper_repository
+
+                    repository = get_community_paper_repository()
                     await asyncio.to_thread(
-                        repository.update_paper, paper_id, {"hot_score": candidate.hot_score}
+                        repository.update_curation_job,
+                        str(item.get("job_id") or ""),
+                        {
+                            "source_family": "hot_ranking",
+                            "hot_score": candidate.hot_score,
+                            "score_breakdown": {
+                                "attention": candidate.score_breakdown.attention,
+                                "authority": candidate.score_breakdown.authority,
+                                "implementation": candidate.score_breakdown.implementation,
+                                "local": candidate.score_breakdown.local,
+                            },
+                        },
                     )
                 except Exception as exc:
                     logger.warning(
-                        "Hot ranking auto_intake: failed to update hot_score for %s: %s",
-                        paper_id, exc,
-                    )
-
-                # Create and schedule a curation job for the paper
-                created_at = datetime.now(timezone.utc).isoformat()
-                batch_id = f"hot-ranking-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
-                job_payload = {
-                    "job_id": f"curation-job-{uuid4().hex}",
-                    "batch_id": batch_id,
-                    "paper_id": paper_id,
-                    "source_type": "arxiv",
-                    "arxiv_id": candidate.arxiv_id,
-                    "original_filename": None,
-                    "source_path": None,
-                    "task_id": None,
-                    "source_language": "en",
-                    "target_language": "zh",
-                    "source_family": "hot_ranking",
-                    "hot_score": candidate.hot_score,
-                    "score_breakdown": {
-                        "attention": candidate.score_breakdown.attention,
-                        "authority": candidate.score_breakdown.authority,
-                        "implementation": candidate.score_breakdown.implementation,
-                        "local": candidate.score_breakdown.local,
-                    },
-                    "status": "queued",
-                    "error": None,
-                    "created_by": system_user_id,
-                    "created_at": created_at,
-                    "updated_at": created_at,
-                }
-                stored = await asyncio.to_thread(repository.insert_curation_job, job_payload)
-                job_id = str(stored.get("job_id") or "")
-                if job_id:
-                    _schedule_curation_job(job_id)
-                    logger.info(
-                        "Hot ranking auto_intake: curation job %s scheduled for %s",
-                        job_id,
-                        candidate.arxiv_id,
-                    )
-                else:
-                    logger.warning(
-                        "Hot ranking auto_intake: curation job creation returned empty job_id for %s",
-                        candidate.arxiv_id,
+                        "Hot ranking auto_intake: failed to attach score metadata to job %s: %s",
+                        item.get("job_id"),
+                        exc,
                     )
 
                 intaken.append({
                     "arxiv_id": candidate.arxiv_id,
-                    "paper_id": paper_id,
+                    "paper_id": item.get("paper_id") or "",
+                    "job_id": item.get("job_id") or "",
                     "title": candidate.title or "",
                     "hot_score": candidate.hot_score,
                     "score_breakdown": {
@@ -424,8 +417,8 @@ class HotRankingService:
                         "local": candidate.score_breakdown.local,
                     },
                     "selected_reason": candidate.selected_reason,
-                    "reused": reused,
-                    "imported": imported,
+                    "reused": False,
+                    "imported": True,
                 })
 
             except Exception as exc:

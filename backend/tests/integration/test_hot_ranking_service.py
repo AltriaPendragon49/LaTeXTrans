@@ -140,19 +140,25 @@ class TestHotRankingService:
         assert service is not None
         assert isinstance(service._intaken_in_run, set)
 
-    def test_run_ranking_cycle_with_demo_data(self, temp_base_dir):
+    @pytest.mark.asyncio
+    async def test_run_ranking_cycle_with_demo_data(self, temp_base_dir):
         """run_ranking_cycle should produce results with demo data."""
         from backend.app.services.hot_ranking_service import HotRankingService
         from unittest.mock import patch, PropertyMock
 
         service = HotRankingService()
         # Override base dir to use temp
-        with patch.object(
-            service,
-            "_get_arxiv_id_dir",
-            return_value=temp_base_dir,
+        with patch(
+            "backend.app.services.ranking.source_adapters.collect_candidates_from_sources",
+            side_effect=Exception("network unavailable"),
         ):
-            result = service.run_ranking_cycle(window="30d")
+            with patch.object(
+                service,
+                "_get_arxiv_id_dir",
+                return_value=temp_base_dir,
+            ):
+                result = await service.run_ranking_cycle(window="30d")
+                assert result.window == "30d"
 
     @pytest.mark.asyncio
     async def test_run_ranking_cycle_async(self, temp_base_dir):
@@ -163,11 +169,11 @@ class TestHotRankingService:
 
         service = HotRankingService()
 
-        # Make source enrichment raise so we exercise the demo fallback.
-        # enrich_candidates_with_sources is late-imported inside run_ranking_cycle
+        # Make source collection raise so we exercise the demo fallback.
+        # collect_candidates_from_sources is late-imported inside run_ranking_cycle
         # from ranking.source_adapters, so patch there.
         with patch(
-            "backend.app.services.ranking.source_adapters.enrich_candidates_with_sources",
+            "backend.app.services.ranking.source_adapters.collect_candidates_from_sources",
             side_effect=Exception("network unavailable"),
         ):
             with patch.object(service, "_get_arxiv_id_dir", return_value=temp_base_dir):
@@ -305,6 +311,59 @@ class TestHotRankingService:
         assert len(result.get("skipped", [])) == 0
         assert result["errors"] == []
 
+    @pytest.mark.asyncio
+    async def test_auto_intake_uses_admin_curation_batch(self):
+        """Eligible candidates should go through the existing admin curation path."""
+        from backend.app.services.hot_ranking_service import HotRankingService
+        from backend.app.services.ranking.schemas import RankedCandidate, ScoreBreakdown
+        from unittest.mock import MagicMock
+
+        mock_settings = MagicMock()
+        mock_settings.hot_ranking_auto_intake_min_score = 50.0
+        mock_settings.hot_ranking_auto_intake_top_n = 20
+        mock_settings.hot_ranking_system_user_id = "admin-user"
+
+        candidate = RankedCandidate(
+            arxiv_id="2501.12345",
+            window="30d",
+            hot_score=90.0,
+            evidence_score=75.0,
+            age_days=5.0,
+            half_life_days=10.0,
+            time_decay=0.9,
+            score_breakdown=ScoreBreakdown(
+                attention=80.0, authority=60.0, implementation=40.0, local=20.0
+            ),
+            title="Eligible Paper",
+            rank=1,
+        )
+
+        async def _submit_batch(**kwargs):
+            assert kwargs["arxiv_ids"] == ["2501.12345"]
+            assert kwargs["current_user"] == {"id": "admin-user"}
+            return {
+                "items": [
+                    {
+                        "job_id": "job-1",
+                        "paper_id": "paper-1",
+                        "arxiv_id": "2501.12345",
+                    }
+                ]
+            }
+
+        service = HotRankingService(settings=mock_settings)
+        with patch(
+            "backend.app.services.paper_service.submit_admin_arxiv_curation_batch",
+            side_effect=_submit_batch,
+        ):
+            result = await service.auto_intake([candidate])
+
+        assert result["errors"] == []
+        assert result["skipped"] == []
+        assert result["intaken"][0]["job_id"] == "job-1"
+        assert result["intaken"][0]["paper_id"] == "paper-1"
+        assert result["intaken"][0]["hot_score"] == 90.0
+
     def test_generate_daily_summary(self):
         """generate_daily_summary should produce a valid DailyIntakeSummary."""
         import asyncio
@@ -397,9 +456,9 @@ class TestHotRankingService:
 
         service = HotRankingService(settings=mock_settings)
 
-        # Make source enrichment fail so we exercise the demo fallback.
+        # Make source collection fail so we exercise the demo fallback.
         with patch(
-            "backend.app.services.ranking.source_adapters.enrich_candidates_with_sources",
+            "backend.app.services.ranking.source_adapters.collect_candidates_from_sources",
             side_effect=Exception("network unavailable"),
         ):
             with patch.object(service, "_get_arxiv_id_dir", return_value=temp_base_dir):

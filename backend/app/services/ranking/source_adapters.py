@@ -778,19 +778,14 @@ async def collect_candidates_from_sources(
         arxiv_ids = [f"{y:02d}{m:02d}.{_rng.randint(10000, 99999)}" for y, m in ((25, m) for m in range(1, 13))][:limit]
 
     # 2. Run source adapters concurrently (each is fail-soft)
-    # Each adapter gets its own time budget so a single slow adapter cannot
-    # block the entire gather. The per-adapter timeout is independent of the
-    # per-request timeout passed to each adapter.
-    PER_ADAPTER_TIMEOUT = 120  # seconds — relaxed for automated cron; paginated APIs need time
-
     async def _safe_fetch(fn, *args, default=None, **kwargs):
         try:
-            return await asyncio.wait_for(fn(*args, **kwargs), timeout=PER_ADAPTER_TIMEOUT)
+            return await fn(*args, **kwargs)
         except Exception:
             return default
 
-    adapter_timeout = max(timeout, 10)  # floor at 10 s
-    adapter_retries = min(retries, 2)  # cap at 2
+    adapter_timeout = max(timeout, 30)
+    adapter_retries = max(retries, 1)
     arxiv_meta, openalex, ss, hf, alphaxiv, github, local = await asyncio.gather(
         _safe_fetch(fetch_arxiv_batch, arxiv_ids, timeout=adapter_timeout, retries=adapter_retries, default={}) if "arxiv" not in skip else asyncio.sleep(0, result={}),
         _safe_fetch(fetch_openalex_citations, arxiv_ids, timeout=adapter_timeout, retries=adapter_retries, default={}) if "openalex" not in skip else asyncio.sleep(0, result={}),

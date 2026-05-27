@@ -69,7 +69,7 @@ describe("CommunityFeedSurface", () => {
       </MemoryRouter>,
     )
 
-    expect(useCommunityPapersMock).toHaveBeenCalledWith("hot", "")
+    expect(useCommunityPapersMock).toHaveBeenCalledWith("hot", "", "30d")
     expect(screen.getByRole("textbox", { name: "Search community papers" })).toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "Ask the paper agent" })).not.toBeInTheDocument()
   })
@@ -117,7 +117,7 @@ describe("CommunityFeedSurface", () => {
     await user.type(screen.getByRole("textbox", { name: "Search community papers" }), "transformers")
     await user.click(screen.getByRole("button", { name: "Community search" }))
 
-    expect(useCommunityPapersMock).toHaveBeenLastCalledWith("hot", "transformers")
+    expect(useCommunityPapersMock).toHaveBeenLastCalledWith("hot", "transformers", "30d")
   })
 
   it("hides the default public results pill before a search is active", () => {

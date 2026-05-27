@@ -6671,6 +6671,8 @@ async def _ensure_admin_curation_placeholder_paper(
     payload["id"] = paper_id
     payload["visibility"] = "private"
     payload["status"] = "curating"
+    if job.get("hot_score") is not None:
+        payload["hot_score"] = float(job.get("hot_score") or 0)
     try:
         return await _insert_paper(payload)
     except HTTPException as exc:
@@ -8770,7 +8772,6 @@ async def record_community_paper_view(
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
         raise HTTPException(status_code=404, detail="Paper not found")
     return {"paper_id": paper_id, "view_count": int(paper.get("view_count") or 0)}
-
 
 
 

@@ -90,6 +90,9 @@ CURATION_JOB_COLUMNS = (
     "error",
     "failed_artifact_path",
     "artifact_storage_backend",
+    "source_family",
+    "hot_score",
+    "score_breakdown",
     "created_by",
     "created_at",
     "updated_at",
@@ -286,10 +289,34 @@ class CommunityPaperRepository:
         return serialized
 
     def _normalize_curation_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        normalized = dict(row)
+        if normalized.get("hot_score") is not None:
+            normalized["hot_score"] = float(normalized["hot_score"])
+        if "score_breakdown" in normalized:
+            value = normalized.get("score_breakdown")
+            if isinstance(value, (bytes, bytearray)):
+                value = value.decode("utf-8")
+            if isinstance(value, str):
+                try:
+                    normalized["score_breakdown"] = json.loads(value)
+                except json.JSONDecodeError:
+                    normalized["score_breakdown"] = {}
+        return normalized
 
     def _serialize_curation_job_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return {key: value for key, value in payload.items() if key in CURATION_JOB_COLUMNS}
+        serialized: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key not in CURATION_JOB_COLUMNS:
+                continue
+            if key == "hot_score" and value is not None:
+                serialized[key] = float(value)
+            elif key == "score_breakdown" and value is not None:
+                serialized[key] = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+            else:
+                serialized[key] = value
+        return serialized
 
     def _normalize_delete_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         if row is None:
