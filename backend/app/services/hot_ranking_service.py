@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from backend.app.core.config import get_settings
 from backend.app.services.ranking.engine import rank_candidates
@@ -147,140 +148,20 @@ class HotRankingService:
         4. Write window artifacts.
         5. Return RankResult.
         """
-        active_window = window or getattr(self.settings, "hot_ranking_auto_intake_default_window", "30d") or "30d"
+        active_window = window or getattr(self.settings, "hot_ranking_auto_intake_default_window", "3d") or "3d"
         exported_at = self._exported_at()
         raw_candidates: list[dict] = []
 
         # --- Try live source adapters ---
         try:
-            from backend.app.services.ranking.source_adapters import enrich_candidates_with_sources
+            from backend.app.services.ranking.source_adapters import collect_candidates_from_sources
 
-            enriched = await enrich_candidates_with_sources(_DEMO_ARXIV_IDS[:15])
-            if enriched:
-                for arxiv_id, source_data in enriched.items():
-                    raw_attention = 0.0
-                    raw_authority = 0.0
-                    raw_implementation = 0.0
-                    raw_local = 0.0
-                    source_evidence: list = []
-
-                    # arXiv metadata → attention + authority
-                    arxiv_meta = source_data.get("arxiv_meta")
-                    if arxiv_meta and isinstance(arxiv_meta, dict) and arxiv_meta.get("published"):
-                        pub_date = arxiv_meta["published"]
-                        title = arxiv_meta.get("title", "")
-                        authors = arxiv_meta.get("authors", [])
-                        categories = arxiv_meta.get("categories", [])
-                    else:
-                        # No real arXiv metadata — generate a recent demo date so the
-                        # candidate survives time-window filtering.
-                        import random as _random
-                        _rng = _random.Random(hash(arxiv_id) % 2**31)
-                        days_ago = _rng.uniform(0, 25)
-                        pub_dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
-                        pub_date = pub_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-                        title = ""
-                        authors = []
-                        categories = []
-
-                    # OpenAlex citations → authority
-                    citations = source_data.get("citations")
-                    if isinstance(citations, (int, float)) and citations > 0:
-                        raw_authority += float(citations)
-                        source_evidence.append({
-                            "source": "OpenAlex",
-                            "signal": "citations",
-                            "raw_value": float(citations),
-                            "normalized_value": None,
-                            "fetched_at": exported_at,
-                        })
-
-                    # Semantic Scholar → authority
-                    ss = source_data.get("semantic_scholar")
-                    if ss and isinstance(ss, dict):
-                        cc = ss.get("citationCount", 0)
-                        icc = ss.get("influentialCitationCount", 0)
-                        if isinstance(cc, (int, float)):
-                            raw_authority += float(cc) * 0.5
-                        if isinstance(icc, (int, float)):
-                            raw_authority += float(icc) * 1.5
-                        source_evidence.append({
-                            "source": "SemanticScholar",
-                            "signal": "citations",
-                            "raw_value": float(cc) if isinstance(cc, (int, float)) else 0,
-                            "normalized_value": None,
-                            "fetched_at": exported_at,
-                        })
-
-                    # HuggingFace → attention
-                    hf = source_data.get("huggingface")
-                    if hf and isinstance(hf, dict):
-                        upvotes = hf.get("upvotes", 0)
-                        if isinstance(upvotes, (int, float)):
-                            raw_attention += float(upvotes) * 10.0
-                        source_evidence.append({
-                            "source": "HuggingFace",
-                            "signal": "upvotes",
-                            "raw_value": float(upvotes) if isinstance(upvotes, (int, float)) else 0,
-                            "normalized_value": None,
-                            "fetched_at": exported_at,
-                        })
-
-                    # alphaXiv → attention
-                    ax = source_data.get("alphaxiv")
-                    if ax and isinstance(ax, dict):
-                        views = ax.get("views", 0)
-                        if isinstance(views, (int, float)):
-                            raw_attention += float(views) * 0.5
-                        source_evidence.append({
-                            "source": "alphaXiv",
-                            "signal": "views",
-                            "raw_value": float(views) if isinstance(views, (int, float)) else 0,
-                            "normalized_value": None,
-                            "fetched_at": exported_at,
-                        })
-
-                    # GitHub → implementation
-                    gh = source_data.get("github")
-                    if gh and isinstance(gh, dict):
-                        stars = gh.get("stars", 0)
-                        forks = gh.get("forks", 0)
-                        if isinstance(stars, (int, float)):
-                            raw_implementation += float(stars) * 2.0
-                        if isinstance(forks, (int, float)):
-                            raw_implementation += float(forks) * 5.0
-                        source_evidence.append({
-                            "source": "GitHub",
-                            "signal": "stars",
-                            "raw_value": float(stars) if isinstance(stars, (int, float)) else 0,
-                            "normalized_value": None,
-                            "fetched_at": exported_at,
-                        })
-
-                    # Local → local
-                    local = source_data.get("local")
-                    if local and isinstance(local, dict):
-                        l_views = local.get("views", 0)
-                        l_likes = local.get("likes", 0)
-                        l_saves = local.get("saves", 0)
-                        raw_local += float(l_views) * 0.1 + float(l_likes) * 5.0 + float(l_saves) * 10.0
-
-                    raw_candidates.append({
-                        "arxiv_id": arxiv_id,
-                        "title": title,
-                        "authors": authors,
-                        "categories": categories,
-                        "publication_date": pub_date,
-                        "raw_attention": round(raw_attention, 2),
-                        "raw_authority": round(raw_authority, 2),
-                        "raw_implementation": round(raw_implementation, 2),
-                        "raw_local": round(raw_local, 2),
-                        "source_evidence": source_evidence,
-                    })
-
-            if raw_candidates:
+            # Collect real candidates from alphaXiv hot feed + all source adapters
+            source_candidates = await collect_candidates_from_sources(limit=200)
+            if source_candidates:
+                raw_candidates = source_candidates
                 logger.info(
-                    "Hot ranking: enriched %d candidates from live source adapters",
+                    "Hot ranking: collected %d candidates from live source adapters",
                     len(raw_candidates),
                 )
         except Exception as exc:
@@ -431,6 +312,9 @@ class HotRankingService:
                 _schedule_curation_job,
                 import_or_reuse_paper,
             )
+            from backend.app.repositories.community_paper_repository import (
+                CommunityPaperRepository,
+            )
         except ImportError as exc:
             logger.error(
                 "Hot ranking: cannot import paper_service functions for auto_intake: %s", exc
@@ -442,6 +326,7 @@ class HotRankingService:
             }
 
         system_user_id = getattr(self.settings, "hot_ranking_system_user_id", "") or ""
+        repository = CommunityPaperRepository()
 
         for candidate in eligible:
             try:
@@ -473,10 +358,59 @@ class HotRankingService:
                     imported,
                 )
 
-                # TODO: When a create_curation_job method becomes available in
-                # the repository, create a curation job record here and call
-                # _schedule_curation_job(job_id) to trigger processing.
-                # For now, the paper is imported but curation is not auto-triggered.
+                # Update hot_score on the paper record
+                try:
+                    await asyncio.to_thread(
+                        repository.update_paper, paper_id, {"hot_score": candidate.hot_score}
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Hot ranking auto_intake: failed to update hot_score for %s: %s",
+                        paper_id, exc,
+                    )
+
+                # Create and schedule a curation job for the paper
+                created_at = datetime.now(timezone.utc).isoformat()
+                batch_id = f"hot-ranking-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+                job_payload = {
+                    "job_id": f"curation-job-{uuid4().hex}",
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "source_type": "arxiv",
+                    "arxiv_id": candidate.arxiv_id,
+                    "original_filename": None,
+                    "source_path": None,
+                    "task_id": None,
+                    "source_language": "en",
+                    "target_language": "zh",
+                    "source_family": "hot_ranking",
+                    "hot_score": candidate.hot_score,
+                    "score_breakdown": {
+                        "attention": candidate.score_breakdown.attention,
+                        "authority": candidate.score_breakdown.authority,
+                        "implementation": candidate.score_breakdown.implementation,
+                        "local": candidate.score_breakdown.local,
+                    },
+                    "status": "queued",
+                    "error": None,
+                    "created_by": system_user_id,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                }
+                stored = await asyncio.to_thread(repository.insert_curation_job, job_payload)
+                job_id = str(stored.get("job_id") or "")
+                if job_id:
+                    _schedule_curation_job(job_id)
+                    logger.info(
+                        "Hot ranking auto_intake: curation job %s scheduled for %s",
+                        job_id,
+                        candidate.arxiv_id,
+                    )
+                else:
+                    logger.warning(
+                        "Hot ranking auto_intake: curation job creation returned empty job_id for %s",
+                        candidate.arxiv_id,
+                    )
 
                 intaken.append({
                     "arxiv_id": candidate.arxiv_id,
@@ -582,8 +516,8 @@ class HotRankingService:
         Always writes artifacts even if some steps fail.
         """
         window = (
-            getattr(self.settings, "hot_ranking_auto_intake_default_window", "30d")
-            or "30d"
+            getattr(self.settings, "hot_ranking_auto_intake_default_window", "3d")
+            or "3d"
         )
         logger.info("Hot ranking daily cycle started for window=%s", window)
 

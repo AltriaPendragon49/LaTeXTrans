@@ -333,11 +333,11 @@ class Settings(BaseSettings):
         validation_alias="HOT_RANKING_AUTO_INTAKE_TOP_N",
     )
     hot_ranking_auto_intake_min_score: float = Field(
-        default=50.0,
+        default=3.0,
         validation_alias="HOT_RANKING_AUTO_INTAKE_MIN_SCORE",
     )
     hot_ranking_auto_intake_default_window: str = Field(
-        default="30d",
+        default="3d",
         validation_alias="HOT_RANKING_AUTO_INTAKE_DEFAULT_WINDOW",
     )
     hot_ranking_system_user_id: str = Field(

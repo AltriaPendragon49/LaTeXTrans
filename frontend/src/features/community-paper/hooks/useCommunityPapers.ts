@@ -50,7 +50,7 @@ function applyEngagementState(items: CommunityPaper[], sort: CommunityFeedSort) 
   )
 }
 
-export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
+export function useCommunityPapers(sort: CommunityFeedSort, query: string, hotWindow?: string) {
   const bootstrappedFeed = getBootstrappedFeed(sort, query)
   const [items, setItems] = useState<CommunityPaper[]>(() =>
     applyEngagementState(bootstrappedFeed?.items ?? [], sort),
@@ -91,6 +91,7 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
           q: normalizedQuery || undefined,
           limit: COMMUNITY_PAGE_SIZE,
           offset: 0,
+          hotWindow: sort === "hot" ? hotWindow : undefined,
         })
         if (!isCancelled) {
           setItems(applyEngagementState(response.items, sort))
@@ -125,7 +126,7 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
         window.clearTimeout(timer)
       }
     }
-  }, [bootstrappedFeed, normalizedQuery, reloadToken, sort])
+  }, [bootstrappedFeed, normalizedQuery, reloadToken, sort, hotWindow])
 
   useEffect(() => {
     return subscribeCommunityPaperEngagement((patch) => {
@@ -157,6 +158,7 @@ export function useCommunityPapers(sort: CommunityFeedSort, query: string) {
           q: normalizedQuery || undefined,
           limit: COMMUNITY_PAGE_SIZE,
           offset: nextOffset,
+          hotWindow: sort === "hot" ? hotWindow : undefined,
         })
         setItems((current) => applyEngagementState([...current, ...response.items], sort))
         setTotal(response.total)

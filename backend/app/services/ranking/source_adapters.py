@@ -382,14 +382,38 @@ async def fetch_huggingface_papers(
     Calls ``huggingface.co/api/daily_papers`` and maps each paper's
     ``arxivId`` to ``{upvotes, comments, title, paper_url}``.
 
+    Uses ``HF_PROXY`` env var (default ``http://127.0.0.1:7890``) for
+    deployments where HuggingFace is blocked.
+
     Fail‑soft: returns ``{}`` on any error.
     """
     HF_API = "https://huggingface.co/api/daily_papers"
+    hf_proxy = os.environ.get("HF_PROXY", "http://127.0.0.1:7890")
+    proxies = {"https": hf_proxy} if hf_proxy else None
+
+    def _fetch_hf():
+        headers = {
+            "User-Agent": "LaTexTrans paper source exporter/2.0",
+            "Accept": "application/json",
+        }
+        for attempt in range(1, retries + 1):
+            # Use proxy on first attempt, direct on retries if proxy fails
+            _proxies = proxies if attempt == 1 else None
+            try:
+                resp = requests.get(
+                    HF_API, headers=headers, timeout=timeout,
+                    proxies=_proxies, verify=True,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except Exception:
+                if attempt >= retries:
+                    raise
+                time.sleep(0.5 * attempt)
+        return {}
 
     try:
-        data = await asyncio.to_thread(
-            fetch_json, HF_API, timeout=timeout, retries=retries
-        )
+        data = await asyncio.to_thread(_fetch_hf)
     except Exception as exc:
         logger.warning("huggingface daily papers fetch failed: %s", exc)
         return {}
@@ -705,6 +729,188 @@ async def enrich_candidates_with_sources(
         }
 
     return merged
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Candidate collection (for standalone export script)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+async def collect_candidates_from_sources(
+    limit: int = 200,
+    *,
+    skip_sources: set[str] | None = None,
+    timeout: int = 30,
+    retries: int = 2,
+) -> list[dict]:
+    """Collect raw candidate dicts from live source adapters.
+
+    1. Discover arXiv IDs from alphaXiv hot feed (fail-soft: falls back to demo seed list).
+    2. Enrich them with all available source adapters.
+    3. Transform into raw candidate dicts ready for the ranking engine.
+
+    Args:
+        limit: Maximum number of candidates to discover.
+        skip_sources: Source names to skip (e.g. {"github", "openalex"}).
+        timeout: HTTP timeout per request.
+        retries: HTTP retry count per request.
+
+    Returns:
+        list[dict] with keys: arxiv_id, title, authors, categories, publication_date,
+        raw_attention, raw_authority, raw_implementation, raw_local, source_evidence.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    skip = skip_sources or set()
+
+    # 1. Discover arXiv IDs from alphaXiv hot feed
+    arxiv_ids: list[str] = []
+    if "alphaxiv" not in skip:
+        try:
+            alphaxiv_data = await fetch_alphaxiv_signals(limit=limit)
+            arxiv_ids = list(alphaxiv_data.keys())[:limit]
+        except Exception:
+            logger.warning("collect_candidates: alphaXiv discovery failed, using demo seed")
+    if not arxiv_ids:
+        # Fallback to demo seed IDs (spread across recent months)
+        import random as _random
+        _rng = _random.Random(42)
+        arxiv_ids = [f"{y:02d}{m:02d}.{_rng.randint(10000, 99999)}" for y, m in ((25, m) for m in range(1, 13))][:limit]
+
+    # 2. Run source adapters concurrently (each is fail-soft)
+    # Each adapter gets its own time budget so a single slow adapter cannot
+    # block the entire gather. The per-adapter timeout is independent of the
+    # per-request timeout passed to each adapter.
+    PER_ADAPTER_TIMEOUT = 120  # seconds — relaxed for automated cron; paginated APIs need time
+
+    async def _safe_fetch(fn, *args, default=None, **kwargs):
+        try:
+            return await asyncio.wait_for(fn(*args, **kwargs), timeout=PER_ADAPTER_TIMEOUT)
+        except Exception:
+            return default
+
+    adapter_timeout = max(timeout, 10)  # floor at 10 s
+    adapter_retries = min(retries, 2)  # cap at 2
+    arxiv_meta, openalex, ss, hf, alphaxiv, github, local = await asyncio.gather(
+        _safe_fetch(fetch_arxiv_batch, arxiv_ids, timeout=adapter_timeout, retries=adapter_retries, default={}) if "arxiv" not in skip else asyncio.sleep(0, result={}),
+        _safe_fetch(fetch_openalex_citations, arxiv_ids, timeout=adapter_timeout, retries=adapter_retries, default={}) if "openalex" not in skip else asyncio.sleep(0, result={}),
+        _safe_fetch(fetch_semantic_scholar_batch, arxiv_ids, timeout=adapter_timeout, retries=adapter_retries, default={}) if "semantic_scholar" not in skip else asyncio.sleep(0, result={}),
+        _safe_fetch(fetch_huggingface_papers, limit=max(200, len(arxiv_ids)), timeout=adapter_timeout, retries=adapter_retries, default={}) if "huggingface" not in skip else asyncio.sleep(0, result={}),
+        _safe_fetch(fetch_alphaxiv_signals, limit=max(500, len(arxiv_ids)), timeout=adapter_timeout, retries=adapter_retries, default={}) if "alphaxiv" not in skip else asyncio.sleep(0, result={}),
+        _safe_fetch(fetch_github_evidence, arxiv_ids, timeout=adapter_timeout, retries=adapter_retries, default={}) if "github" not in skip else asyncio.sleep(0, result={}),
+        _safe_fetch(fetch_local_engagement, arxiv_ids, default={}) if "local" not in skip else asyncio.sleep(0, result={}),
+    )
+
+    exported_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    # 3. Transform into raw candidate dicts
+    candidates: list[dict] = []
+    for arxiv_id in arxiv_ids:
+        raw_attention = 0.0
+        raw_authority = 0.0
+        raw_implementation = 0.0
+        raw_local = 0.0
+        source_evidence: list = []
+
+        # arXiv metadata
+        meta = arxiv_meta.get(arxiv_id, {}) if isinstance(arxiv_meta, dict) else {}
+        pub_date = meta.get("published", "")
+        title = meta.get("title", "")
+        authors = meta.get("authors", [])
+        categories = meta.get("categories", [])
+        if not pub_date:
+            # Generate a plausible recent date
+            import random as _random2
+            _rng2 = _random2.Random(hash(arxiv_id) % 2**31)
+            days_ago = _rng2.uniform(0, 60)
+            pub_dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
+            pub_date = pub_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # OpenAlex citations
+        oa_count = openalex.get(arxiv_id) if isinstance(openalex, dict) else None
+        if isinstance(oa_count, (int, float)) and oa_count > 0:
+            raw_authority += float(oa_count)
+            source_evidence.append({
+                "source": "OpenAlex", "signal": "citations",
+                "raw_value": float(oa_count), "normalized_value": None, "fetched_at": exported_at,
+            })
+
+        # Semantic Scholar
+        ss_data = ss.get(arxiv_id) if isinstance(ss, dict) else None
+        if ss_data and isinstance(ss_data, dict):
+            cc = ss_data.get("citationCount", 0)
+            icc = ss_data.get("influentialCitationCount", 0)
+            if isinstance(cc, (int, float)):
+                raw_authority += float(cc) * 0.5
+            if isinstance(icc, (int, float)):
+                raw_authority += float(icc) * 1.5
+            source_evidence.append({
+                "source": "SemanticScholar", "signal": "citations",
+                "raw_value": float(cc) if isinstance(cc, (int, float)) else 0,
+                "normalized_value": None, "fetched_at": exported_at,
+            })
+
+        # HuggingFace
+        hf_data = hf.get(arxiv_id) if isinstance(hf, dict) else None
+        if hf_data and isinstance(hf_data, dict):
+            upvotes = hf_data.get("upvotes", 0)
+            if isinstance(upvotes, (int, float)):
+                raw_attention += float(upvotes) * 10.0
+            source_evidence.append({
+                "source": "HuggingFace", "signal": "upvotes",
+                "raw_value": float(upvotes) if isinstance(upvotes, (int, float)) else 0,
+                "normalized_value": None, "fetched_at": exported_at,
+            })
+
+        # alphaXiv
+        ax_data = alphaxiv.get(arxiv_id) if isinstance(alphaxiv, dict) else None
+        if ax_data and isinstance(ax_data, dict):
+            views = ax_data.get("views", 0)
+            if isinstance(views, (int, float)):
+                raw_attention += float(views) * 0.5
+            source_evidence.append({
+                "source": "alphaXiv", "signal": "views",
+                "raw_value": float(views) if isinstance(views, (int, float)) else 0,
+                "normalized_value": None, "fetched_at": exported_at,
+            })
+
+        # GitHub
+        gh_data = github.get(arxiv_id) if isinstance(github, dict) else None
+        if gh_data and isinstance(gh_data, dict):
+            stars = gh_data.get("stars", 0)
+            forks = gh_data.get("forks", 0)
+            if isinstance(stars, (int, float)):
+                raw_implementation += float(stars) * 2.0
+            if isinstance(forks, (int, float)):
+                raw_implementation += float(forks) * 5.0
+            source_evidence.append({
+                "source": "GitHub", "signal": "stars",
+                "raw_value": float(stars) if isinstance(stars, (int, float)) else 0,
+                "normalized_value": None, "fetched_at": exported_at,
+            })
+
+        # Local
+        local_data = local.get(arxiv_id) if isinstance(local, dict) else {}
+        if local_data:
+            l_views = local_data.get("views", 0) if isinstance(local_data, dict) else 0
+            l_likes = local_data.get("likes", 0) if isinstance(local_data, dict) else 0
+            l_saves = local_data.get("saves", 0) if isinstance(local_data, dict) else 0
+            raw_local += float(l_views) * 0.1 + float(l_likes) * 5.0 + float(l_saves) * 10.0
+
+        candidates.append({
+            "arxiv_id": arxiv_id,
+            "title": title,
+            "authors": authors,
+            "categories": categories,
+            "publication_date": pub_date,
+            "raw_attention": round(raw_attention, 2),
+            "raw_authority": round(raw_authority, 2),
+            "raw_implementation": round(raw_implementation, 2),
+            "raw_local": round(raw_local, 2),
+            "source_evidence": source_evidence,
+        })
+
+    return candidates
 
 
 # ═══════════════════════════════════════════════════════════════════════

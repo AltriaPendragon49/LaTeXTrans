@@ -34,7 +34,7 @@ export default function CommunityFeedSurface() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { items, total, hasMore, loading, loadingMore, error, loadMore, refetch } =
-    useCommunityPapers(activeTab, query)
+    useCommunityPapers(activeTab, query, hotWindow)
 
   useEffect(() => {
     inputRef.current?.focus()

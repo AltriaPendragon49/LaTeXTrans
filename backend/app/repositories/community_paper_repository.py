@@ -31,6 +31,7 @@ PAPER_COLUMNS = (
     "comment_count",
     "view_count",
     "download_count",
+    "hot_score",
     "arxiv_published_at",
     "official_published_at",
     "created_at",
@@ -582,7 +583,14 @@ class CommunityPaperRepository:
             " order by coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
             "coalesce(created_at, '') desc"
         )
-        if normalized_sort in ("views", "hot"):
+        if normalized_sort == "hot":
+            order_by = (
+                " order by coalesce(hot_score, 0) desc, "
+                "coalesce(view_count, 0) desc, "
+                "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
+                "coalesce(created_at, '') desc"
+            )
+        elif normalized_sort == "views":
             order_by = (
                 " order by coalesce(view_count, 0) desc, "
                 "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "

@@ -4650,6 +4650,15 @@ def _timestamp_key(value: Any) -> float:
         return 0.0
 
 
+def _hot_tuple(paper: Dict[str, Any]) -> Any:
+    return (
+        -(float(paper.get("hot_score") or 0)),
+        -(paper.get("view_count") or 0),
+        -_timestamp_key(_primary_published_timestamp_value(paper)),
+        -_timestamp_key(paper.get("created_at")),
+    )
+
+
 def _views_tuple(paper: Dict[str, Any]) -> Any:
     return (
         -(paper.get("view_count") or 0),
@@ -4684,7 +4693,10 @@ def _count_rank_score(*, count: Any, paper: Dict[str, Any]) -> float:
 
 def _paper_rank_score(paper: Dict[str, Any], sort: str) -> float:
     normalized_sort = str(sort or "latest").strip().lower()
-    if normalized_sort in ("views", "hot"):
+    if normalized_sort == "hot":
+        hot_score = float(paper.get("hot_score") or 0)
+        return float(hot_score * _PUBLIC_FEED_SCORE_FACTOR + int(_latest_rank_score(paper)))
+    if normalized_sort == "views":
         return _count_rank_score(count=paper.get("view_count"), paper=paper)
     if normalized_sort == "likes":
         return _count_rank_score(count=paper.get("like_count"), paper=paper)
@@ -4868,7 +4880,7 @@ async def _refresh_public_feed_rankings_for_paper(
 def _sort_papers(papers: List[Dict[str, Any]], sort: str) -> List[Dict[str, Any]]:
     key_map = {
         "latest": _latest_tuple,
-        "hot": _views_tuple,
+        "hot": _hot_tuple,
         "views": _views_tuple,
         "likes": _likes_tuple,
     }

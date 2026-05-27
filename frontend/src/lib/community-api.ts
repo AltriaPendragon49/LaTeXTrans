@@ -185,6 +185,7 @@ export async function getCommunityPapers(params: {
   q?: string
   limit?: number
   offset?: number
+  hotWindow?: string
 }): Promise<CommunityPaperListResponse> {
   const response = await retryOnTransientNetworkError(
     () =>
@@ -194,6 +195,7 @@ export async function getCommunityPapers(params: {
           ...(params.q ? { q: params.q } : {}),
           ...(params.limit ? { limit: params.limit } : {}),
           ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
+          ...(params.hotWindow && params.sort === "hot" ? { hot_window: params.hotWindow } : {}),
         },
       }),
     { attempts: 3, baseDelayMs: 150 },
