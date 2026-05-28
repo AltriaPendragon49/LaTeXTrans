@@ -777,10 +777,21 @@ async def collect_candidates_from_sources(
         _rng = _random.Random(42)
         arxiv_ids = [f"{y:02d}{m:02d}.{_rng.randint(10000, 99999)}" for y, m in ((25, m) for m in range(1, 13))][:limit]
 
-    # 2. Run source adapters concurrently (each is fail-soft)
+    # 2. Run source adapters concurrently (each is fail-soft). The cron is
+    # allowed to run for hours, but one source must not hold the whole batch
+    # forever when its upstream is unreachable.
+    per_adapter_timeout = 2 * 60 * 60
+
     async def _safe_fetch(fn, *args, default=None, **kwargs):
         try:
-            return await fn(*args, **kwargs)
+            return await asyncio.wait_for(fn(*args, **kwargs), timeout=per_adapter_timeout)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "collect_candidates: adapter %s exceeded %s seconds; using default",
+                getattr(fn, "__name__", str(fn)),
+                per_adapter_timeout,
+            )
+            return default
         except Exception:
             return default
 
