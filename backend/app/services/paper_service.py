@@ -7296,6 +7296,69 @@ def _build_completed_curation_job_update(published: Dict[str, Any]) -> Dict[str,
     }
 
 
+async def _try_reconcile_published_curation_job_after_failure(
+    *,
+    repository: Any,
+    job_id: str,
+    failure_message: str,
+) -> bool:
+    """Keep a curation job completed if the paper was already published.
+
+    Some admin-curation post-publish work is best-effort. If it raises after the
+    official paper and PDF have been persisted, the job should retain the
+    successful publish state and carry the late failure as an operator warning.
+    """
+    try:
+        latest_job = await _run_local_repo(lambda: repository.get_curation_job(job_id))
+    except Exception as exc:
+        logger.warning(
+            "Failed to reload curation job %s while reconciling publish failure: %s",
+            job_id,
+            exc,
+        )
+        return False
+
+    if not latest_job:
+        return False
+
+    published_paper_id = str(latest_job.get("published_paper_id") or "").strip()
+    candidate_paper_id = published_paper_id or str(latest_job.get("paper_id") or "").strip()
+    if not candidate_paper_id:
+        return False
+
+    paper = await _fetch_paper_by_id(candidate_paper_id)
+    if not paper:
+        return False
+
+    is_published = (
+        str(paper.get("community_status") or "").strip() == COMMUNITY_STATUS_OFFICIAL
+        and str(paper.get("trans_status") or "").strip() == "completed"
+        and bool(str(paper.get("trans_latest_asset_pdf_id") or "").strip())
+    )
+    if not is_published:
+        return False
+
+    warning = str(failure_message or "").strip()
+    if warning:
+        warning = f"Post-publish warning: {warning}"
+    published = dict(paper)
+    if warning:
+        published["_structured_insight_admin_warning"] = warning
+
+    await _run_local_repo(
+        lambda: repository.update_curation_job(
+            job_id,
+            _build_completed_curation_job_update(published),
+        )
+    )
+    logger.warning(
+        "Admin curation job %s had a post-publish failure but paper %s is official/completed; reconciled job as completed",
+        job_id,
+        candidate_paper_id,
+    )
+    return True
+
+
 async def _run_curation_job(job_id: str) -> None:
     repository = get_community_paper_repository()
     async with _get_curation_semaphore():
@@ -7461,6 +7524,13 @@ async def _run_curation_job(job_id: str) -> None:
         except Exception as exc:
             logger.warning("Admin curation job %s failed: %s", job_id, exc, exc_info=True)
             try:
+                reconciled = await _try_reconcile_published_curation_job_after_failure(
+                    repository=repository,
+                    job_id=job_id,
+                    failure_message=str(exc),
+                )
+                if reconciled:
+                    return
                 await _mark_admin_curation_job_failed(
                     repository=repository,
                     job_id=job_id,

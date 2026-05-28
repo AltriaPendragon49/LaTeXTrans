@@ -374,6 +374,51 @@ class TestHotRankingService:
         assert result["intaken"][0]["paper_id"] == "paper-1"
         assert result["intaken"][0]["hot_score"] == 90.0
 
+    @pytest.mark.asyncio
+    async def test_reconcile_published_curation_job_after_post_publish_failure(self):
+        """A post-publish failure should not leave a published paper's job failed."""
+        from backend.app.services import paper_service
+
+        repository = MagicMock()
+        repository.get_curation_job.return_value = {
+            "job_id": "job-1",
+            "paper_id": "paper-1",
+            "published_paper_id": "paper-1",
+            "status": "failed",
+        }
+        repository.update_curation_job.return_value = None
+
+        async def _run_local_repo(operation):
+            return operation()
+
+        published_paper = {
+            "id": "paper-1",
+            "community_status": "official",
+            "trans_status": "completed",
+            "trans_latest_asset_pdf_id": "asset-1",
+        }
+
+        with patch(
+            "backend.app.services.paper_service._run_local_repo",
+            side_effect=_run_local_repo,
+        ), patch(
+            "backend.app.services.paper_service._fetch_paper_by_id",
+            AsyncMock(return_value=published_paper),
+        ):
+            reconciled = await paper_service._try_reconcile_published_curation_job_after_failure(
+                repository=repository,
+                job_id="job-1",
+                failure_message="similar recommendation write failed",
+            )
+
+        assert reconciled is True
+        repository.update_curation_job.assert_called_once()
+        _, updates = repository.update_curation_job.call_args.args
+        assert updates["status"] == "completed"
+        assert updates["published_paper_id"] == "paper-1"
+        assert updates["terminal_task_status"] == "completed"
+        assert "Post-publish warning" in updates["error"]
+
     def test_generate_daily_summary(self):
         """generate_daily_summary should produce a valid DailyIntakeSummary."""
         import asyncio
