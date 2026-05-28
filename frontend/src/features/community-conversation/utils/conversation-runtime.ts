@@ -10,6 +10,10 @@ import type {
   CommunityConversationTurn,
 } from "@/types/community"
 
+/**
+ * 创建唯一的对话 ID
+ * 优先使用 crypto.randomUUID，回退到时间戳方案
+ */
 export function createConversationId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID()
@@ -17,6 +21,9 @@ export function createConversationId() {
   return `conversation-${Date.now()}`
 }
 
+/**
+ * 根据 Agent run 结果创建 assistant 对话轮次
+ */
 export function createAssistantTurnFromRun(
   run: CommunityAgentRun,
   id: string = `assistant-${Date.now()}`,
@@ -34,6 +41,9 @@ export function createAssistantTurnFromRun(
   }
 }
 
+/**
+ * 创建运行中的 assistant 轮次（用于流式输出时的占位）
+ */
 export function createRunningAssistantTurn(mode: CommunityAgentMode): CommunityConversationTurn {
   const createdAt = new Date().toISOString()
   return {
@@ -57,6 +67,9 @@ export function createRunningAssistantTurn(mode: CommunityAgentMode): CommunityC
   }
 }
 
+/**
+ * 更新或插入工具追踪记录
+ */
 function upsertTrace(
   currentTrace: CommunityAgentToolTrace[] | undefined,
   nextTrace: CommunityAgentToolTrace,
@@ -65,6 +78,9 @@ function upsertTrace(
   return [...existing.filter((trace) => trace.id !== nextTrace.id), nextTrace]
 }
 
+/**
+ * 更新或插入引文记录
+ */
 function upsertCitation(
   currentCitations: CommunityAgentCitation[] | undefined,
   nextCitation: CommunityAgentCitation,
@@ -73,6 +89,10 @@ function upsertCitation(
   return [...existing.filter((citation) => citation.id !== nextCitation.id), nextCitation]
 }
 
+/**
+ * 将流式事件应用到当前 Agent run 状态上
+ * 根据事件类型（status、assistant_delta、citation、tool_start/result、action、complete、error）更新对应字段
+ */
 export function applyStreamEventToRun(
   currentRun: CommunityAgentRun,
   event: CommunityAgentStreamEvent,
@@ -161,6 +181,9 @@ export function applyStreamEventToRun(
   }
 }
 
+/**
+ * 创建用户对话轮次
+ */
 export function createUserTurn(content: string): CommunityConversationTurn {
   return {
     id: `user-${Date.now()}`,
@@ -171,6 +194,10 @@ export function createUserTurn(content: string): CommunityConversationTurn {
   }
 }
 
+/**
+ * 从对话记录中获取作用域内的论文 ID
+ * 倒序遍历 assistant 轮次，查找 action.paper_id 或 citations 中的 paper_id
+ */
 export function getConversationScopedPaperId(
   record: CommunityConversationRecord,
 ): string | undefined {
@@ -196,6 +223,9 @@ export function getConversationScopedPaperId(
   return undefined
 }
 
+/**
+ * 获取意图徽章的本地化标签
+ */
 export function getIntentBadgeLabel(
   t: TFunction,
   run: CommunityAgentRun | null | undefined,
@@ -211,6 +241,9 @@ export function getIntentBadgeLabel(
   }
 }
 
+/**
+ * 获取模式徽章的本地化标签
+ */
 export function getModeBadgeLabel(
   t: TFunction,
   mode: CommunityAgentMode | null | undefined,
@@ -220,6 +253,10 @@ export function getModeBadgeLabel(
     : t("community.agent.mode.chat", "Chat")
 }
 
+/**
+ * 构建运行中进度步骤列表
+ * deep_research 模式包含额外的报告综合和最终化步骤
+ */
 export function buildRunningProgressSteps(
   t: (key: string) => string,
   externalSearchEnabled: boolean,

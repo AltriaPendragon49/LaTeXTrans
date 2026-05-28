@@ -16,22 +16,38 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { Button } from "@/ui/button/Button"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
+/** 桌面端 PDF 查看模式 */
 type ViewMode = "split" | "single"
+/** PDF 查看器模式 */
 type PdfViewerMode = "split" | "single"
+/** 移动端文档切换模式 */
 type MobileDocumentMode = "translated" | "source"
 
+/** PDF 查看器子组件的 Props */
 interface PdfViewerProps {
+  /** 无 PDF 时的空状态提示文案 */
   emptyMessage: string
+  /** 查看模式 */
   mode: PdfViewerMode
+  /** 查看器标题 */
   title: string
+  /** PDF 文件 URL，为 null 时显示空状态 */
   url: string | null
 }
 
+/**
+ * 构建带查看参数的 PDF.js 查看器 URL
+ * 添加 page=1&view=FitH&pagemode=none 等参数以优化嵌入显示效果
+ */
 function buildPdfViewerUrl(url: string) {
   const viewerParams = `page=1&view=FitH&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`
   return url.includes("#") ? `${url}&${viewerParams}` : `${url}#${viewerParams}`
 }
 
+/**
+ * PDF 查看器子组件
+ * 在 iframe 中嵌入 PDF 预览，无 URL 时显示空状态面板
+ */
 function PdfViewer({ emptyMessage, mode, title, url }: PdfViewerProps) {
   const { t } = useTranslation()
 
@@ -61,6 +77,11 @@ function PdfViewer({ emptyMessage, mode, title, url }: PdfViewerProps) {
   )
 }
 
+/**
+ * 对比工作台组件
+ * 左右分栏展示源 PDF 和翻译后的 PDF，支持分栏/单栏切换、
+ * 术语表查看、PDF 下载和新翻译操作。移动端自动切换为单栏模式
+ */
 export function ComparisonWorkbench() {
   const isMobile = useIsMobile()
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
@@ -71,18 +92,21 @@ export function ComparisonWorkbench() {
   const navigate = useNavigate()
   const { t } = useTranslation()
 
+  // 构建源 PDF 和翻译后 PDF 的 URL
   const sourceUrl = taskId
     ? `${API_BASE_URL}/api/preview/${taskId}/source-pdf`
     : (arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : null)
   const previewUrl = taskId ? `${API_BASE_URL}/api/preview/${taskId}/pdf` : null
   const downloadUrl = taskId ? `${API_BASE_URL}/api/download/${taskId}/pdf` : null
 
+  /** 下载翻译后的 PDF */
   const handleDownload = () => {
     if (downloadUrl) {
       window.open(downloadUrl, "_blank")
     }
   }
 
+  /** 发起新翻译，重置状态并跳转到翻译页面 */
   const handleNewTranslation = () => {
     resetTranslationState()
     navigate("/translate")
@@ -106,6 +130,7 @@ export function ComparisonWorkbench() {
   const mobileViewerTitle = mobileDocumentMode === "source" ? sourceTitle : translatedTitle
   const mobileViewerUrl = mobileDocumentMode === "source" ? sourceUrl : previewUrl
 
+  // 移动端强制使用单栏模式
   useEffect(() => {
     if (isMobile && viewMode !== "single") {
       setViewMode("single")

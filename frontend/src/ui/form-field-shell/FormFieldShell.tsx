@@ -1,8 +1,13 @@
+/**
+ * 表单字段外壳组件
+ * 渲染带标签、图标、描述的表单字段容器，支持不同色调和尺寸
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 表单字段外壳样式变体：panel / muted / danger */
 const formFieldShellVariants = cva(
   "rounded-[20px] border transition-colors duration-200",
   {
@@ -27,18 +32,27 @@ const formFieldShellVariants = cva(
   },
 )
 
+/** FormFieldShell 组件 Props */
 interface FormFieldShellProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "title">,
     VariantProps<typeof formFieldShellVariants> {
+  /** 字段标签 */
   label: ReactNode
+  /** 可选图标 */
   icon?: ReactNode
+  /** 可选描述文本 */
   description?: ReactNode
+  /** 头部右侧附加内容 */
   headerAside?: ReactNode
+  /** 标签额外样式 */
   labelClassName?: string
+  /** 描述额外样式 */
   descriptionClassName?: string
+  /** 主体区域额外样式 */
   bodyClassName?: string
 }
 
+/** 表单字段外壳，包含头部（图标+标签+描述）和主体内容区域 */
 export function FormFieldShell({
   label,
   icon,

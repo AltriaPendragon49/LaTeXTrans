@@ -32,14 +32,17 @@ _BOOLEAN_COLUMNS = {"generate_glossary", "use_author_api"}
 
 
 def _utc_now_naive() -> datetime:
+    """获取当前UTC时间，去除时区信息和微秒。"""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def _placeholder(_index: int) -> str:
+    """根据数据库方言返回对应的参数占位符（SQLite: ?，MySQL: %s）。"""
     return "?" if get_database_dialect() == "sqlite" else "%s"
 
 
 def _fetchone(cursor) -> Optional[dict[str, Any]]:
+    """从游标获取一行数据并转换为字典格式返回。"""
     row = cursor.fetchone()
     if row is None:
         return None
@@ -49,6 +52,7 @@ def _fetchone(cursor) -> Optional[dict[str, Any]]:
 
 
 def _decode_json(value: Any) -> Any:
+    """将存储的JSON数据解码为Python对象。"""
     if value in (None, ""):
         return None
     if isinstance(value, (dict, list)):
@@ -64,7 +68,10 @@ def _decode_json(value: Any) -> Any:
 
 
 class UserSettingsRepository:
+    """用户设置数据访问层，管理用户翻译偏好设置的查询和更新。"""
+
     def _normalize_settings_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的用户设置记录格式，并处理旧版模型兼容性。"""
         if row is None:
             return None
 
@@ -86,6 +93,7 @@ class UserSettingsRepository:
         return normalized
 
     def _serialize_updates(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """将更新载荷序列化为适合数据库存储的格式。"""
         serialized: dict[str, Any] = {}
         for key, value in updates.items():
             if key not in _USER_SETTINGS_COLUMNS:
@@ -97,6 +105,7 @@ class UserSettingsRepository:
         return serialized
 
     def get_user_settings(self, user_id: str) -> Optional[dict[str, Any]]:
+        """获取指定用户的翻译偏好设置。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -110,6 +119,7 @@ class UserSettingsRepository:
             return self._normalize_settings_row(_fetchone(cursor))
 
     def upsert_user_settings(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        """创建或更新用户设置记录（存在则更新，不存在则以默认值合并后插入）。"""
         serialized_updates = self._serialize_updates(updates)
         now = _utc_now_naive()
 

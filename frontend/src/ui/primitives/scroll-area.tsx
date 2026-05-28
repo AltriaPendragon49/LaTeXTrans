@@ -1,8 +1,13 @@
+/**
+ * 滚动区域组件 - 基于 Radix UI Scroll Area 封装
+ * 提供带自定义滚动条的可滚动容器
+ */
 import * as React from "react"
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
 import { cn } from "@/lib/utils"
 
+/** 滚动区域根组件，包裹可滚动内容 */
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
@@ -21,6 +26,7 @@ const ScrollArea = React.forwardRef<
 ))
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
 
+/** 自定义滚动条，支持 vertical / horizontal 方向 */
 const ScrollBar = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>

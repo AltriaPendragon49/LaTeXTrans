@@ -1,8 +1,13 @@
+/**
+ * 通知横幅组件
+ * 渲染带图标、标题、描述和操作的横幅通知，支持多种语义色调
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 通知横幅色调变体：neutral / info / warning / success / danger */
 const noticeBannerVariants = cva(
   "flex items-start gap-3 rounded-xl border px-4 py-3",
   {
@@ -26,15 +31,21 @@ const noticeBannerVariants = cva(
   },
 )
 
+/** NoticeBanner 组件 Props */
 interface NoticeBannerProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "title">,
     VariantProps<typeof noticeBannerVariants> {
+  /** 可选图标 */
   icon?: ReactNode
+  /** 可选标题 */
   title?: ReactNode
+  /** 可选描述 */
   description?: ReactNode
+  /** 可选操作按钮 */
   action?: ReactNode
 }
 
+/** 通知横幅，左侧图标+正文，右侧操作按钮 */
 export function NoticeBanner({
   icon,
   title,

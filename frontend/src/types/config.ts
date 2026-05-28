@@ -1,96 +1,97 @@
 /**
- * Translation Configuration Types
- * 
- * Type definitions for advanced translation configuration.
- * All configuration options are optional - users can translate without configuring anything.
+ * 翻译配置类型定义
+ *
+ * 翻译高级配置选项的类型定义。
+ * 所有配置项均为可选，用户无需任何配置即可开始翻译。
  */
 
-/** Translation mode options - 只保留全文翻译和快速筛查 */
+/** 翻译模式选项 —— 全文翻译 / 快速筛查 */
 export type TranslationMode = 'full' | 'quick_scan'
 
-/** LaTeX compile strategy options */
+/** LaTeX 编译策略选项 */
 export type CompileStrategy = 'pdflatex' | 'xelatex' | 'lualatex' | 'auto'
 
 const viteEnv = (import.meta.env ?? {}) as Record<string, string | undefined>
 
+/** 获取环境变量中的默认翻译模型名称 */
 export const getDefaultTranslationModel = (): string => viteEnv.VITE_LLM_MODEL?.trim() || ''
 
 /**
- * Typography formatting configuration.
- * All fields default to undefined (keep original LaTeX source).
+ * 排版格式化配置。
+ * 所有字段默认为 undefined（保持原始 LaTeX 源码）。
  */
 export interface FormattingConfig {
-    /** Line spacing multiplier, e.g. 1.5 */
+    /** 行间距倍数，如 1.5 */
     line_spacing?: number
-    /** Font size in pt, e.g. 12 */
+    /** 字号（pt），如 12 */
     font_size?: number
-    /** CJK font preset: 'songti' | 'heiti' */
+    /** CJK 字体预设：'songti' | 'heiti' */
     cjk_font?: string
-    /** Column layout: 'single' | 'double' */
+    /** 分栏模式：'single' | 'double' */
     column_mode?: string
-    /** Page margin preset: 'narrow' | 'normal' | 'wide' */
+    /** 页边距预设：'narrow' | 'normal' | 'wide' */
     margin?: string
-    /** Enable 2em paragraph indent (CJK convention) */
+    /** 启用 2 字符首行缩进（中文排版惯例） */
     paragraph_indent?: boolean
-    /** Bibliography style: 'gbt7714-numerical' | 'gbt7714-author-year' | 'ieeetr' | 'apalike' */
+    /** 参考文献格式：'gbt7714-numerical' | 'gbt7714-author-year' | 'ieeetr' | 'apalike' */
     bib_style?: string
-    /** Citation style: 'numbers' | 'super' | 'authoryear' */
+    /** 引用样式：'numbers' | 'super' | 'authoryear' */
     cite_style?: string
-    /** Localize figure/table captions */
+    /** 中文化图表标题（Figure/Table -> 图/表） */
     localize_captions?: boolean
 }
 
 /**
- * Advanced configuration options.
- * 
- * These options control translation behavior and API configuration.
- * All fields have sensible defaults.
+ * 高级翻译配置选项。
+ *
+ * 控制翻译行为和 API 配置。
+ * 所有字段都有合理的默认值。
  */
 export interface AdvancedConfig {
-    /** Translation mode: full document or quick_scan (abstract + conclusion only) */
+    /** 翻译模式：全文翻译或快速筛查（仅摘要+结论） */
     translation_mode: TranslationMode
-    /** LaTeX compile strategy */
+    /** LaTeX 编译策略 */
     compile_strategy: CompileStrategy
-    /** Generate terminology reference table (CSV) */
+    /** 生成术语参考表（CSV） */
     generate_terminology_table: boolean
-    /** Translation LLM model name */
+    /** 翻译 LLM 模型名称 */
     translation_model: string
-    /** Use author's API (default). When true, custom settings are ignored */
+    /** 使用作者提供的 API（默认）。为 true 时忽略自定义配置 */
     use_author_api: boolean
-    /** Custom API base URL (e.g., https://aicanapi.com) */
+    /** 自定义 API 基础 URL */
     custom_base_url?: string
-    /** Custom API key */
+    /** 自定义 API 密钥 */
     custom_api_key?: string
-    /** Typography formatting for LaTeX preamble injection */
+    /** 排版格式化配置（用于 LaTeX preamble 注入） */
     formatting?: FormattingConfig
-    /** Send email notification when task completes or fails */
+    /** 任务完成或失败时发送邮件通知 */
     email_notification?: boolean
-    /** Enable RAG-based terminology injection during translation */
+    /** 启用基于 RAG 的术语注入 */
     enable_rag_terminology?: boolean
-    /** Optional domain filter for RAG terminology (e.g. 'machine_learning', 'physics') */
+    /** RAG 术语领域过滤 */
     rag_terminology_domain?: string
 }
 
 /**
- * Complete translation configuration including language settings.
+ * 完整翻译配置，包含语言设置。
  */
 export interface TranslationConfig {
-    /** Source language code */
+    /** 源语言代码 */
     source_language: string
-    /** Target language code */
+    /** 目标语言代码 */
     target_language: string
-    /** Advanced configuration options */
+    /** 高级配置选项 */
     advanced_config: AdvancedConfig
 }
 
 /**
- * Default advanced configuration.
- * Users can start translating immediately without changing these.
+ * 默认高级配置。
+ * 用户无需更改即可立即开始翻译。
  */
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
     translation_mode: 'full',
     compile_strategy: 'auto',
-    generate_terminology_table: true,  // 默认启用术语表生成
+    generate_terminology_table: true,
     translation_model: getDefaultTranslationModel(),
     use_author_api: true,
     custom_base_url: undefined,
@@ -100,7 +101,7 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
 }
 
 /**
- * Default translation configuration.
+ * 默认翻译配置。
  */
 export const DEFAULT_CONFIG: TranslationConfig = {
     source_language: 'en',
@@ -109,12 +110,17 @@ export const DEFAULT_CONFIG: TranslationConfig = {
 }
 
 /**
- * LaTeX validation result from upload.
+ * 上传文件后返回的 LaTeX 验证结果。
  */
 export interface LatexValidation {
+    /** 是否为有效的 LaTeX 项目 */
     is_valid: boolean
+    /** 主 tex 文件路径 */
     main_file?: string
+    /** 所有 tex 文件列表 */
     tex_files: string[]
+    /** 警告信息列表 */
     warnings: string[]
+    /** 错误信息列表 */
     errors: string[]
 }

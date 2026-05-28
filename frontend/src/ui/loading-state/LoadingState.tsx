@@ -1,9 +1,14 @@
+/**
+ * 加载状态组件
+ * 渲染带旋转图标和文字的加载指示器，支持 inline 和 panel 两种布局
+ */
 import { Loader2 } from "lucide-react"
 import { cva, type VariantProps } from "class-variance-authority"
 import type { HTMLAttributes, ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** 加载状态布局变体：inline（行内） / panel（卡片） */
 const loadingStateVariants = cva("text-[color:var(--px-shell-muted)]", {
   variants: {
     layout: {
@@ -17,13 +22,17 @@ const loadingStateVariants = cva("text-[color:var(--px-shell-muted)]", {
   },
 })
 
+/** LoadingState 组件 Props */
 interface LoadingStateProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "title">,
     VariantProps<typeof loadingStateVariants> {
+  /** 加载提示文本 */
   label: ReactNode
+  /** 可选副文本 */
   description?: ReactNode
 }
 
+/** 加载状态组件，inline 横向排列，panel 居中卡片式，均包含旋转动画图标 */
 export function LoadingState({
   label,
   description,

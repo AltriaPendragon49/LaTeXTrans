@@ -1,7 +1,7 @@
 """
-arXiv API Routes
+arXiv API 路由
 
-Provides endpoints for downloading arXiv papers.
+提供下载 arXiv 论文的接口。
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -30,17 +30,17 @@ router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
 
-# Allow missing Authorization header (guest mode)
+# 允许缺失 Authorization 头（游客模式）
 security = HTTPBearer(auto_error=False)
 
 
 class ArxivRequest(BaseModel):
-    """arXiv download request"""
+    """arXiv 下载请求"""
     arxiv_id: str = Field(..., description="arXiv paper ID (e.g., '2508.18791' or URL)")
     
 
 class ArxivResponse(BaseModel):
-    """arXiv download response"""
+    """arXiv 下载响应"""
     task_id: str
     arxiv_id: str
     status: str
@@ -80,7 +80,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
                 delete_local=True,
             )
         
-        # Update task as completed
+        # 将任务状态标记为已完成
         task_manager.update_task(
             task_id=task_id,
             status=TaskStatus.PENDING.value,  # Ready for translation
@@ -94,7 +94,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
         logger.info(f"Successfully downloaded arXiv {arxiv_id} to {stored_source_path}")
         
     except ArxivNoSourceAvailableError as e:
-        # 404 - No TeX source available for this paper
+        # 404 - 该论文没有可用的 TeX 源码
         logger.warning(f"No TeX source for arXiv {arxiv_id}: {e}")
         task_manager.update_task(
             task_id=task_id,
@@ -104,7 +104,7 @@ async def _download_arxiv_background(arxiv_id: str, task_id: str):
         )
     
     except ArxivArchiveCorruptedError as e:
-        # 422 - Extraction failed (unprocessable)
+        # 422 - 解压失败（无法处理）
         logger.error(f"Failed to extract arXiv {arxiv_id}: {e}")
         task_manager.update_task(
             task_id=task_id,
@@ -141,21 +141,21 @@ async def download_arxiv(
     current_user: Optional[dict] = Depends(optional_current_user),
 ):
     """
-    Download arXiv paper source (asynchronous)
-    
+    下载 arXiv 论文源码（异步）
+
     立即返回 task_id，后台异步执行下载。
     前端通过 GET /api/task/{task_id} 轮询获取下载进度。
-    
+
     Args:
-        request: arXiv download request with paper ID
-    
+        request: 包含 arXiv 论文 ID 的下载请求
+
     Returns:
-        Task information with task_id for progress tracking
-    
+        包含 task_id 的任务信息，用于进度跟踪
+
     Raises:
-        HTTPException: If arXiv ID is invalid
+        HTTPException: arXiv ID 格式无效时抛出
     """
-    # Extract and validate arXiv ID
+    # 提取并验证 arXiv ID
     arxiv_ids = extract_arxiv_ids([request.arxiv_id])
     
     if not arxiv_ids:
@@ -171,7 +171,7 @@ async def download_arxiv(
     if user_id:
         logger.info(f"Authenticated user creating arXiv task: {user_id}")
     
-    # Create a new task
+    # 创建新任务
     task_id = task_manager.create_task(
         source_type="arxiv", 
         arxiv_id=arxiv_id,
@@ -189,10 +189,10 @@ async def download_arxiv(
         detail_code="download_source_starting",
     )
     
-    # Start background download task
+    # 启动后台下载任务
     asyncio.create_task(_download_arxiv_background(arxiv_id, task_id))
     
-    # Immediately return task_id for frontend polling
+    # 立即返回 task_id 供前端轮询
     return ArxivResponse(
         task_id=task_id,
         arxiv_id=arxiv_id,
@@ -204,13 +204,13 @@ async def download_arxiv(
 @router.get("/arxiv/validate/{arxiv_id}")
 async def validate_arxiv_id(arxiv_id: str):
     """
-    Validate arXiv ID format
-    
+    验证 arXiv ID 格式
+
     Args:
-        arxiv_id: arXiv paper ID to validate
-    
+        arxiv_id: 待验证的 arXiv 论文 ID
+
     Returns:
-        Validation result
+        验证结果
     """
     is_valid = is_valid_arxiv_id(arxiv_id)
     

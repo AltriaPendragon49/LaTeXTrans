@@ -9,18 +9,22 @@ from backend.app.db import db_connection, get_database_dialect
 
 
 def _utc_now_naive() -> datetime:
+    """获取当前UTC时间，去除时区信息和微秒。"""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def _placeholder(_index: int) -> str:
+    """根据数据库方言返回对应的参数占位符（SQLite: ?，MySQL: %s）。"""
     return "?" if get_database_dialect() == "sqlite" else "%s"
 
 
 def _placeholders(count: int) -> str:
+    """生成指定数量的参数占位符，用逗号分隔。"""
     return ", ".join(_placeholder(index) for index in range(count))
 
 
 def _fetchone(cursor) -> Optional[dict[str, Any]]:
+    """从游标获取一行数据并转换为字典格式返回。"""
     row = cursor.fetchone()
     if row is None:
         return None
@@ -30,6 +34,7 @@ def _fetchone(cursor) -> Optional[dict[str, Any]]:
 
 
 def _fetchall(cursor) -> list[dict[str, Any]]:
+    """从游标获取所有行数据并转换为字典列表返回。"""
     rows = cursor.fetchall() or []
     normalized: list[dict[str, Any]] = []
     for row in rows:
@@ -41,10 +46,14 @@ def _fetchall(cursor) -> list[dict[str, Any]]:
 
 
 class AuthRepository:
+    """认证相关的数据访问层，负责用户、会话和API密钥的增删改查操作。"""
+
     def __init__(self) -> None:
+        """初始化认证仓库，加载应用配置信息。"""
         self._settings = get_settings()
 
     def _ensure_admin_role_if_seeded(self, cursor, *, user_id: str, external_user_id: str) -> None:
+        """如果外部用户ID在预配置的管理员列表中，则确保该用户拥有admin角色。"""
         if external_user_id not in self._settings.local_admin_external_user_ids:
             return
 
@@ -64,6 +73,7 @@ class AuthRepository:
         )
 
     def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
+        """根据用户ID获取用户信息及其角色列表。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -93,6 +103,7 @@ class AuthRepository:
         email: Optional[str],
         display_name: Optional[str],
     ) -> dict[str, Any]:
+        """根据外部提供商信息查找用户，如果不存在则创建新用户并返回。"""
         now = _utc_now_naive()
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
@@ -182,6 +193,7 @@ class AuthRepository:
         client_ip: Optional[str],
         user_agent: Optional[str],
     ) -> str:
+        """为用户创建一个新的认证会话并返回会话ID。"""
         session_id = f"ses_{uuid4().hex}"
         issued_at = _utc_now_naive()
         with db_connection(commit=True) as connection:
@@ -206,6 +218,7 @@ class AuthRepository:
         return session_id
 
     def get_active_session(self, session_id: str) -> Optional[dict[str, Any]]:
+        """根据会话ID获取当前有效的会话信息，已撤销或非活跃状态的会话返回None。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -223,6 +236,7 @@ class AuthRepository:
             return session
 
     def mark_session_seen(self, session_id: str) -> None:
+        """更新会话的最后活跃时间。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -234,6 +248,7 @@ class AuthRepository:
             )
 
     def revoke_session(self, session_id: str) -> None:
+        """撤销指定的认证会话。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -245,6 +260,7 @@ class AuthRepository:
             )
 
     def store_encrypted_apikey(self, user_id: str, encrypted_apikey: Optional[str]) -> None:
+        """存储用户的加密API密钥。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -256,6 +272,7 @@ class AuthRepository:
             )
 
     def get_encrypted_apikey(self, user_id: str) -> Optional[str]:
+        """获取用户的加密API密钥。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(

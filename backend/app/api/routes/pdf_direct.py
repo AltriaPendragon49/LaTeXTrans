@@ -1,8 +1,8 @@
 """
-PDF Direct Translation API Routes
+PDF 直接翻译 API 路由
 
-Proxies NiuTrans paper-translation API endpoints through the backend.
-All endpoints require local authentication.
+通过后端代理 NiuTrans paper-translation API 接口。
+所有接口均需本地认证。
 """
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
@@ -25,10 +25,12 @@ router = APIRouter(prefix="/pdf-direct", tags=["PDF Direct Translation"])
 
 
 def _get_service() -> PdfDirectService:
+    """获取 PDF 直接翻译服务实例"""
     return PdfDirectService()
 
 
 def _get_quota_service() -> TranslationQuotaService:
+    """获取翻译配额服务实例"""
     return TranslationQuotaService()
 
 
@@ -39,6 +41,7 @@ async def upload_pdf(
     service: PdfDirectService = Depends(_get_service),
 ):
     user_id = resolve_current_user_id(current_user)
+    """上传 PDF 文件到 NiuTrans 并获取文档页数"""
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
 
@@ -79,6 +82,7 @@ async def start_translation(
     current_user: dict = Depends(require_current_user),
     service: PdfDirectService = Depends(_get_service),
 ):
+    """启动 PDF 直接翻译任务"""
     user_id = resolve_current_user_id(current_user)
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
@@ -96,6 +100,7 @@ async def get_task_status(
     current_user: dict = Depends(require_current_user),
     service: PdfDirectService = Depends(_get_service),
 ):
+    """查询 PDF 直接翻译任务状态"""
     user_id = resolve_current_user_id(current_user)
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
@@ -112,6 +117,7 @@ async def poll_task_status(
     current_user: dict = Depends(require_current_user),
     service: PdfDirectService = Depends(_get_service),
 ):
+    """向上游轮询 PDF 直接翻译任务的最新状态"""
     user_id = resolve_current_user_id(current_user)
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
@@ -128,6 +134,7 @@ async def cancel_task(
     current_user: dict = Depends(require_current_user),
     service: PdfDirectService = Depends(_get_service),
 ):
+    """取消 PDF 直接翻译任务"""
     user_id = resolve_current_user_id(current_user)
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
@@ -144,6 +151,7 @@ async def download_translated_pdf(
     current_user: dict = Depends(require_current_user),
     service: PdfDirectService = Depends(_get_service),
 ):
+    """下载翻译后的 PDF 文件"""
     user_id = resolve_current_user_id(current_user)
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
@@ -168,6 +176,7 @@ async def list_tasks(
     service: PdfDirectService = Depends(_get_service),
     quota_service: TranslationQuotaService = Depends(_get_quota_service),
 ):
+    """列出当前用户的 PDF 直接翻译任务列表及配额快照"""
     user_id = resolve_current_user_id(current_user)
     if not user_id:
         raise HTTPException(status_code=401, detail={"code": "AUTH_SESSION_INVALID", "message": "Authentication required."})
@@ -184,6 +193,7 @@ async def list_tasks(
 
 
 def _task_to_summary(task: dict) -> dict:
+    """将任务数据库记录转换为前端友好的摘要格式"""
     return {
         "task_id": task["id"],
         "file_name": task.get("file_name"),
@@ -199,6 +209,7 @@ def _task_to_summary(task: dict) -> dict:
 
 
 def _serialize(value) -> Optional[str]:
+    """将时间戳值转换为 UTC ISO 字符串，支持 datetime 和 str 类型"""
     if value is None:
         return None
     from datetime import datetime, timezone

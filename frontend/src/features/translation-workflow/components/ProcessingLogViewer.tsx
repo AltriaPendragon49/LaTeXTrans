@@ -4,15 +4,22 @@ import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
 
+/** 处理日志查看器的 Props，继承 HTML div 属性 */
 interface ProcessingLogViewerProps extends HTMLAttributes<HTMLDivElement> {
+  /** 日志行数组 */
   logs: string[]
   className?: string
 }
 
+/**
+ * 处理日志查看器组件
+ * 以终端风格展示翻译任务的实时日志，自动滚动到底部
+ */
 export function ProcessingLogViewer({ logs, className, ...props }: ProcessingLogViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation()
 
+  // 当日志更新时自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight

@@ -1,17 +1,30 @@
+/**
+ * 记录行组件
+ * 渲染一条数据记录，包含图标、标题、元信息、徽章、操作按钮和详情区域
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** RecordRow 组件 Props */
 interface RecordRowProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+  /** 可选图标 */
   icon?: ReactNode
+  /** 记录标题 */
   title: ReactNode
+  /** 可选元信息（如时间、大小等） */
   meta?: ReactNode
+  /** 可选徽章 */
   badge?: ReactNode
+  /** 右侧操作区域 */
   action?: ReactNode
+  /** 可展开的详情区域 */
   detail?: ReactNode
+  /** 可选警告信息 */
   alert?: ReactNode
 }
 
+/** 记录行，包含图标+标题+元信息、徽章、操作按钮、详情区和警告区 */
 export function RecordRow({
   icon,
   title,

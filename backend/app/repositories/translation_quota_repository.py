@@ -7,18 +7,22 @@ from backend.app.db import db_connection, get_database_dialect
 
 
 def _utc_now_naive() -> datetime:
+    """获取当前UTC时间，去除时区信息和微秒。"""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def _placeholder(_index: int) -> str:
+    """根据数据库方言返回对应的参数占位符（SQLite: ?，MySQL: %s）。"""
     return "?" if get_database_dialect() == "sqlite" else "%s"
 
 
 def _placeholders(count: int) -> str:
+    """生成指定数量的参数占位符，用逗号分隔。"""
     return ", ".join(_placeholder(index) for index in range(count))
 
 
 def _fetchone(cursor) -> Optional[dict[str, Any]]:
+    """从游标获取一行数据并转换为字典格式返回。"""
     row = cursor.fetchone()
     if row is None:
         return None
@@ -28,6 +32,8 @@ def _fetchone(cursor) -> Optional[dict[str, Any]]:
 
 
 class TranslationQuotaRepository:
+    """翻译配额数据访问层，管理用户每日翻译配额的分配、预留、释放和PDF直译快照操作。"""
+
     def ensure_daily_quota(
         self,
         *,
@@ -36,6 +42,7 @@ class TranslationQuotaRepository:
         quota_date: str,
         limit_count: int,
     ) -> dict[str, Any]:
+        """确保用户存在当日的配额记录，返回配额信息。"""
         now = _utc_now_naive()
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
@@ -63,6 +70,7 @@ class TranslationQuotaRepository:
         requested_count: int,
         limit_count: int,
     ) -> tuple[bool, dict[str, Any]]:
+        """预留每日配额（原子性检查并扣减），返回是否成功及当前配额信息。"""
         now = _utc_now_naive()
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
@@ -114,6 +122,7 @@ class TranslationQuotaRepository:
         count: int,
         limit_count: int,
     ) -> dict[str, Any]:
+        """释放已预留的每日配额（将使用量回退），返回当前配额信息。"""
         now = _utc_now_naive()
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
@@ -154,6 +163,7 @@ class TranslationQuotaRepository:
         source: str,
         fetched_at: Optional[datetime],
     ) -> dict[str, Any]:
+        """创建或更新小牛翻译（niutrans）余额快照记录。"""
         now = _utc_now_naive()
         fetched_value = _to_naive_utc(fetched_at) if fetched_at is not None else None
         with db_connection(commit=True) as connection:
@@ -186,11 +196,13 @@ class TranslationQuotaRepository:
             return self.get_pdf_direct_snapshot_for_user_with_cursor(cursor, user_id)
 
     def get_pdf_direct_snapshot_for_user(self, user_id: str) -> Optional[dict[str, Any]]:
+        """获取用户的PDF直译余额快照记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             return self.get_pdf_direct_snapshot_for_user_with_cursor(cursor, user_id)
 
     def get_pdf_direct_snapshot_for_user_with_cursor(self, cursor, user_id: str) -> Optional[dict[str, Any]]:
+        """使用已有游标获取用户的PDF直译余额快照记录。"""
         cursor.execute(
             (
                 "select user_id, unused_num_integral, unused_num_page, status, source, fetched_at, updated_at "
@@ -210,6 +222,7 @@ class TranslationQuotaRepository:
         limit_count: int,
         now: datetime,
     ) -> None:
+        """确保每日配额行存在（不存在则插入），并同步更新limit_count。"""
         dialect = get_database_dialect()
         if dialect == "sqlite":
             cursor.execute(
@@ -248,6 +261,7 @@ class TranslationQuotaRepository:
         quota_type: str,
         quota_date: str,
     ) -> dict[str, Any]:
+        """查询每日配额行，如果不存在则抛出RuntimeError异常。"""
         cursor.execute(
             (
                 "select user_id, quota_type, quota_date, limit_count, used_count, created_at, updated_at "
@@ -264,6 +278,7 @@ class TranslationQuotaRepository:
 
 
 def _to_naive_utc(value: datetime) -> datetime:
+    """将时间戳转换为UTC naive格式，去除时区信息，保留到秒。"""
     if value.tzinfo is None:
         return value.replace(microsecond=0)
     return value.astimezone(timezone.utc).replace(tzinfo=None, microsecond=0)

@@ -119,15 +119,15 @@ FAVORITE_FOLDER_COLUMNS = (
 
 
 class FavoriteFolderLimitError(ValueError):
-    """Raised when a user exceeds the folder cap."""
+    """当用户超出收藏夹数量上限时抛出。"""
 
 
 class FavoriteFolderNameConflictError(ValueError):
-    """Raised when a folder name already exists for the user."""
+    """当收藏夹名称对同一用户已存在时抛出。"""
 
 
 class FavoriteFolderNotFoundError(LookupError):
-    """Raised when a folder does not exist or is not owned by the user."""
+    """当收藏夹不存在或不属于当前用户时抛出。"""
 
 _PAPER_JSON_COLUMNS = {"authors", "categories"}
 _DELETE_JOB_INT_COLUMNS = {"attempt_count"}
@@ -141,18 +141,22 @@ _PAPER_INT_COLUMNS = {
 
 
 def _utc_now_naive() -> datetime:
+    """获取当前UTC时间，去除时区信息和微秒。"""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def _business_day_utc8() -> str:
+    """获取UTC+8时区的当前日期字符串（用于按天统计）。"""
     return datetime.now(timezone(timedelta(hours=8))).date().isoformat()
 
 
 def _placeholder(_index: int) -> str:
+    """根据数据库方言返回对应的参数占位符（SQLite: ?，MySQL: %s）。"""
     return "?" if get_database_dialect() == "sqlite" else "%s"
 
 
 def _fetchone(cursor) -> Optional[dict[str, Any]]:
+    """从游标获取一行数据并转换为字典格式返回。"""
     row = cursor.fetchone()
     if row is None:
         return None
@@ -162,6 +166,7 @@ def _fetchone(cursor) -> Optional[dict[str, Any]]:
 
 
 def _fetchall(cursor) -> list[dict[str, Any]]:
+    """从游标获取所有行数据并转换为字典列表返回。"""
     rows = cursor.fetchall() or []
     normalized: list[dict[str, Any]] = []
     for row in rows:
@@ -173,6 +178,7 @@ def _fetchall(cursor) -> list[dict[str, Any]]:
 
 
 def _decode_json_list(value: Any) -> list[Any]:
+    """将存储的JSON数据解码为列表格式。"""
     if value in (None, ""):
         return []
     if isinstance(value, list):
@@ -189,6 +195,7 @@ def _decode_json_list(value: Any) -> list[Any]:
 
 
 def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    """对字符串列表去重并保持原有顺序。"""
     ordered: list[str] = []
     seen: set[str] = set()
     for raw in values:
@@ -201,7 +208,10 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
 
 
 class CommunityPaperRepository:
+    """社区论文数据访问层，管理论文、资产、精选推荐、收藏夹及点赞浏览等操作。"""
+
     def _normalize_paper_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的论文记录格式，解析JSON字段和整数字段。"""
         if row is None:
             return None
 
@@ -217,6 +227,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _normalize_asset_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的论文资产记录格式。"""
         if row is None:
             return None
         normalized = dict(row)
@@ -224,6 +235,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _serialize_paper_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """将论文更新载荷序列化为适合数据库存储的格式（JSON列转为字符串）。"""
         serialized: dict[str, Any] = {}
         for key, value in payload.items():
             if key not in PAPER_COLUMNS:
@@ -237,6 +249,7 @@ class CommunityPaperRepository:
         return serialized
 
     def _serialize_asset_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """将资产更新载荷序列化为适合数据库存储的格式。"""
         serialized: dict[str, Any] = {}
         for key, value in payload.items():
             if key not in PAPER_ASSET_COLUMNS:
@@ -248,6 +261,7 @@ class CommunityPaperRepository:
         return serialized
 
     def _normalize_structured_insight_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的结构化洞察记录格式。"""
         if row is None:
             return None
 
@@ -257,6 +271,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _serialize_structured_insight_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """将结构化洞察更新载荷序列化为适合数据库存储的格式。"""
         serialized: dict[str, Any] = {}
         for key, value in payload.items():
             if key not in STRUCTURED_INSIGHT_COLUMNS:
@@ -265,6 +280,7 @@ class CommunityPaperRepository:
         return serialized
 
     def _normalize_similar_recommendation_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的相似推荐记录格式。"""
         if row is None:
             return None
 
@@ -278,6 +294,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _serialize_similar_recommendation_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """将相似推荐更新载荷序列化为适合数据库存储的格式。"""
         serialized: dict[str, Any] = {}
         for key, value in payload.items():
             if key not in SIMILAR_RECOMMENDATION_COLUMNS:
@@ -289,6 +306,7 @@ class CommunityPaperRepository:
         return serialized
 
     def _normalize_curation_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的策划任务记录格式，解析评分字段。"""
         if row is None:
             return None
         normalized = dict(row)
@@ -306,6 +324,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _serialize_curation_job_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """将策划任务更新载荷序列化为适合数据库存储的格式。"""
         serialized: dict[str, Any] = {}
         for key, value in payload.items():
             if key not in CURATION_JOB_COLUMNS:
@@ -319,6 +338,7 @@ class CommunityPaperRepository:
         return serialized
 
     def _normalize_delete_job_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的删除任务记录格式。"""
         if row is None:
             return None
         normalized = dict(row)
@@ -331,6 +351,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _serialize_delete_job_updates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """将删除任务更新载荷序列化为适合数据库存储的格式。"""
         serialized: dict[str, Any] = {}
         for key, value in payload.items():
             if key not in DELETE_JOB_COLUMNS:
@@ -342,6 +363,7 @@ class CommunityPaperRepository:
         return serialized
 
     def _normalize_favorite_folder_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的收藏夹记录格式。"""
         if row is None:
             return None
         normalized = dict(row)
@@ -352,6 +374,7 @@ class CommunityPaperRepository:
         return normalized
 
     def _refresh_like_count(self, cursor, *, paper_id: str) -> int:
+        """刷新指定论文的点赞计数，从paper_likes表重新计算并更新。"""
         cursor.execute(
             "select count(*) as total from paper_likes where paper_id = " + _placeholder(0),
             (paper_id,),
@@ -371,6 +394,7 @@ class CommunityPaperRepository:
         return total
 
     def _refresh_favorite_count(self, cursor, *, paper_id: str) -> int:
+        """刷新指定论文的收藏计数，从paper_favorites表重新计算并更新。"""
         cursor.execute(
             "select count(*) as total from paper_favorites where paper_id = " + _placeholder(0),
             (paper_id,),
@@ -390,6 +414,7 @@ class CommunityPaperRepository:
         return total
 
     def _sync_paper_favorite_marker(self, cursor, *, paper_id: str, user_id: str) -> bool:
+        """同步论文的收藏标记：如果用户在任意收藏夹中有此文则标记为已收藏，否则移除标记。"""
         cursor.execute(
             (
                 "select 1 from favorite_folder_papers membership "
@@ -440,6 +465,7 @@ class CommunityPaperRepository:
         return has_membership
 
     def get_paper_by_id(self, paper_id: str) -> Optional[dict[str, Any]]:
+        """根据论文ID获取论文记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -453,6 +479,7 @@ class CommunityPaperRepository:
             return self._normalize_paper_row(_fetchone(cursor))
 
     def get_paper_by_arxiv_id(self, arxiv_id: str) -> Optional[dict[str, Any]]:
+        """根据arXiv ID获取论文记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -471,6 +498,7 @@ class CommunityPaperRepository:
         title: str,
         source: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
+        """根据论文标题查找论文记录，可选的source参数用于过滤来源。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             params: list[Any] = [title, "removed"]
@@ -487,6 +515,7 @@ class CommunityPaperRepository:
             return self._normalize_paper_row(_fetchone(cursor))
 
     def list_public_papers(self) -> list[dict[str, Any]]:
+        """获取所有公开且未被移除的论文列表。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -507,6 +536,7 @@ class CommunityPaperRepository:
             ]
 
     def list_published_arxiv_papers_needing_metadata_repair(self, *, limit: int) -> list[dict[str, Any]]:
+        """获取已发布但元数据不完整需要修复的arXiv论文列表。"""
         normalized_limit = max(1, min(100, int(limit or 20)))
         if get_database_dialect() == "mysql":
             authors_empty_sql = "(authors is null or json_length(authors) = 0)"
@@ -568,6 +598,7 @@ class CommunityPaperRepository:
         query: Optional[str] = None,
         hot_window: Optional[str] = None,
     ) -> tuple[str, list[Any]]:
+        """构建公开论文查询的WHERE子句和参数。"""
         filters = [
             "visibility = " + _placeholder(0),
             "status <> " + _placeholder(1),
@@ -609,6 +640,7 @@ class CommunityPaperRepository:
         query: Optional[str] = None,
         hot_window: Optional[str] = None,
     ) -> int:
+        """统计公开论文总数，支持搜索关键词和热门时间窗口过滤。"""
         where_sql, params = self._public_paper_query_parts(query=query, hot_window=hot_window)
         with db_connection() as connection:
             cursor = connection.cursor()
@@ -625,6 +657,7 @@ class CommunityPaperRepository:
         offset: int,
         hot_window: Optional[str] = None,
     ) -> list[dict[str, Any]]:
+        """分页获取公开论文列表，支持按最新、热门、浏览量、点赞数排序，以及搜索和热门时间窗口过滤。"""
         normalized_sort = str(sort or "latest").strip().lower()
         where_sql, params = self._public_paper_query_parts(query=query, hot_window=hot_window)
         order_by = (
@@ -674,6 +707,7 @@ class CommunityPaperRepository:
             ]
 
     def insert_paper(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """插入一条新的论文记录。"""
         serialized = self._serialize_paper_updates(payload)
         if "id" not in serialized:
             raise ValueError("paper id is required")
@@ -692,6 +726,7 @@ class CommunityPaperRepository:
         return self.get_paper_by_id(str(serialized["id"])) or dict(payload)
 
     def update_paper(self, paper_id: str, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """更新指定论文记录。"""
         serialized = self._serialize_paper_updates(updates)
         if not serialized:
             return self.get_paper_by_id(paper_id)
@@ -716,6 +751,7 @@ class CommunityPaperRepository:
         return self.get_paper_by_id(paper_id)
 
     def list_latest_assets_for_paper(self, paper_id: str) -> list[dict[str, Any]]:
+        """获取指定论文的最新资产列表（标记为is_latest的资产）。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -737,6 +773,7 @@ class CommunityPaperRepository:
             ]
 
     def list_latest_assets_for_papers(self, paper_ids: list[str]) -> list[dict[str, Any]]:
+        """批量获取多篇论文的最新资产列表。"""
         normalized_ids = [str(paper_id or "").strip() for paper_id in paper_ids if str(paper_id or "").strip()]
         if not normalized_ids:
             return []
@@ -774,6 +811,7 @@ class CommunityPaperRepository:
         asset_id: Optional[str] = None,
         created_at: Optional[str] = None,
     ) -> dict[str, Any]:
+        """创建或更新论文的最新资产（先将旧的is_latest标记为False，再插入或更新新资产）。"""
         normalized_asset_id = str(asset_id or "").strip() or f"{paper_id}:{asset_type}:{task_id or 'none'}"
         normalized_created_at = created_at or _utc_now_naive().isoformat()
 
@@ -849,6 +887,7 @@ class CommunityPaperRepository:
         return payload
 
     def list_structured_insight_sections(self, paper_id: str) -> list[dict[str, Any]]:
+        """获取论文的所有结构化洞察章节。异常时返回空列表。"""
         try:
             with db_connection() as connection:
                 cursor = connection.cursor()
@@ -873,6 +912,7 @@ class CommunityPaperRepository:
             return []
 
     def upsert_structured_insight_section(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """创建或更新结构化洞察章节（先删后插）。"""
         serialized = self._serialize_structured_insight_updates(payload)
         paper_id = str(serialized.get("paper_id") or "").strip()
         section_key = str(serialized.get("section_key") or "").strip()
@@ -908,6 +948,7 @@ class CommunityPaperRepository:
         return payload
 
     def list_similar_recommendations(self, paper_id: str) -> list[dict[str, Any]]:
+        """获取论文的相似推荐列表。异常时返回空列表。"""
         try:
             with db_connection() as connection:
                 cursor = connection.cursor()
@@ -932,6 +973,7 @@ class CommunityPaperRepository:
             return []
 
     def replace_similar_recommendations(self, *, paper_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """替换论文的全部相似推荐（先删后批量插入）。"""
         normalized_paper_id = str(paper_id or "").strip()
         if not normalized_paper_id:
             raise ValueError("paper_id is required")
@@ -970,6 +1012,7 @@ class CommunityPaperRepository:
         return self.list_similar_recommendations(normalized_paper_id)
 
     def insert_curation_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """插入一条新的策划任务记录。"""
         serialized = self._serialize_curation_job_updates(payload)
         job_id = str(serialized.get("job_id") or "").strip()
         if not job_id:
@@ -990,6 +1033,7 @@ class CommunityPaperRepository:
         return self.get_curation_job(job_id) or dict(payload)
 
     def get_curation_job(self, job_id: str) -> Optional[dict[str, Any]]:
+        """根据任务ID获取策划任务记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1005,6 +1049,7 @@ class CommunityPaperRepository:
             return self._normalize_curation_job_row(_fetchone(cursor))
 
     def update_curation_job(self, job_id: str, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """更新指定策划任务记录。"""
         serialized = self._serialize_curation_job_updates(updates)
         if not serialized:
             return self.get_curation_job(job_id)
@@ -1029,6 +1074,7 @@ class CommunityPaperRepository:
         return self.get_curation_job(job_id)
 
     def list_curation_jobs_for_batch(self, batch_id: str) -> list[dict[str, Any]]:
+        """获取指定批次的所有策划任务列表。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1048,6 +1094,7 @@ class CommunityPaperRepository:
             ]
 
     def list_curation_jobs_for_arxiv_id(self, arxiv_id: str) -> list[dict[str, Any]]:
+        """获取指定arXiv ID的所有策划任务列表。"""
         normalized_arxiv_id = str(arxiv_id or "").strip()
         if not normalized_arxiv_id:
             return []
@@ -1070,6 +1117,7 @@ class CommunityPaperRepository:
             ]
 
     def list_pending_curation_jobs(self) -> list[dict[str, Any]]:
+        """获取所有待处理的策划任务列表（状态为排队中、处理中、翻译中、发布中）。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1100,6 +1148,7 @@ class CommunityPaperRepository:
         status_filter: Optional[str] = None,
         search: Optional[str] = None,
     ) -> list[dict[str, Any]]:
+        """条件查询策划任务列表，支持按状态过滤和arXiv ID/批次ID搜索。"""
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -1150,6 +1199,7 @@ class CommunityPaperRepository:
             ]
 
     def delete_curation_job(self, job_id: str) -> int:
+        """删除指定的策划任务记录，返回受影响的行数。"""
         normalized_job_id = str(job_id or "").strip()
         if not normalized_job_id:
             return 0
@@ -1162,6 +1212,7 @@ class CommunityPaperRepository:
             return int(cursor.rowcount or 0)
 
     def insert_delete_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """插入一条新的删除任务记录。"""
         serialized = self._serialize_delete_job_updates(payload)
         job_id = str(serialized.get("job_id") or "").strip()
         if not job_id:
@@ -1182,6 +1233,7 @@ class CommunityPaperRepository:
         return self.get_delete_job(job_id) or dict(payload)
 
     def get_delete_job(self, job_id: str) -> Optional[dict[str, Any]]:
+        """根据任务ID获取删除任务记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1197,6 +1249,7 @@ class CommunityPaperRepository:
             return self._normalize_delete_job_row(_fetchone(cursor))
 
     def get_delete_job_by_paper_id(self, paper_id: str) -> Optional[dict[str, Any]]:
+        """根据论文ID获取最新的删除任务记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1212,6 +1265,7 @@ class CommunityPaperRepository:
             return self._normalize_delete_job_row(_fetchone(cursor))
 
     def update_delete_job(self, job_id: str, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """更新指定删除任务记录。"""
         serialized = self._serialize_delete_job_updates(updates)
         if not serialized:
             return self.get_delete_job(job_id)
@@ -1236,6 +1290,7 @@ class CommunityPaperRepository:
         return self.get_delete_job(job_id)
 
     def list_pending_delete_jobs(self) -> list[dict[str, Any]]:
+        """获取所有待处理的删除任务列表（状态为排队中、运行中、重试中）。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1259,6 +1314,7 @@ class CommunityPaperRepository:
             ]
 
     def list_favorite_folders(self, *, user_id: str) -> list[dict[str, Any]]:
+        """获取用户的全部收藏夹列表，包含每个收藏夹的论文数量。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1284,6 +1340,7 @@ class CommunityPaperRepository:
             ]
 
     def create_favorite_folder(self, *, user_id: str, name: str) -> dict[str, Any]:
+        """为用户创建一个新的收藏夹（上限9个），名称不能重复。"""
         normalized_name = str(name or "").strip()
         if not normalized_name:
             raise ValueError("folder_name_required")
@@ -1335,6 +1392,7 @@ class CommunityPaperRepository:
         }
 
     def get_favorite_folder(self, *, folder_id: str, user_id: str) -> Optional[dict[str, Any]]:
+        """获取指定收藏夹详情，验证所有者身份，包含论文数量。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1358,6 +1416,7 @@ class CommunityPaperRepository:
             return self._normalize_favorite_folder_row(_fetchone(cursor))
 
     def rename_favorite_folder(self, *, folder_id: str, user_id: str, name: str) -> dict[str, Any]:
+        """重命名收藏夹，验证所有者身份且名称不能与其他收藏夹重复。"""
         normalized_name = str(name or "").strip()
         if not normalized_name:
             raise ValueError("folder_name_required")
@@ -1408,6 +1467,7 @@ class CommunityPaperRepository:
         return folder
 
     def delete_favorite_folder(self, *, folder_id: str, user_id: str) -> list[str]:
+        """删除收藏夹，返回受影响的论文ID列表（用于重新计算收藏计数）。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1441,6 +1501,7 @@ class CommunityPaperRepository:
         return affected_paper_ids
 
     def list_paper_favorite_folder_ids(self, *, paper_id: str, user_id: str) -> list[str]:
+        """获取某篇论文在用户收藏夹中的所有收藏夹ID。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1466,6 +1527,7 @@ class CommunityPaperRepository:
         user_id: str,
         folder_ids: list[str],
     ) -> dict[str, Any]:
+        """同步论文的收藏夹关联关系，返回更新后的收藏状态。"""
         normalized_folder_ids = _dedupe_preserve_order(list(folder_ids or []))
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
@@ -1568,6 +1630,7 @@ class CommunityPaperRepository:
         folder_id: str,
         user_id: str,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """获取指定收藏夹中的论文列表，返回收藏夹信息和论文列表的元组。"""
         folder = self.get_favorite_folder(folder_id=folder_id, user_id=user_id)
         if folder is None:
             raise FavoriteFolderNotFoundError("favorite_folder_not_found")
@@ -1598,6 +1661,7 @@ class CommunityPaperRepository:
         return folder, papers
 
     def like_paper(self, *, paper_id: str, user_id: str) -> int:
+        """用户点赞论文，返回更新后的点赞数。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1626,6 +1690,7 @@ class CommunityPaperRepository:
             return self._refresh_like_count(cursor, paper_id=paper_id)
 
     def unlike_paper(self, *, paper_id: str, user_id: str) -> int:
+        """用户取消点赞论文，返回更新后的点赞数。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1646,6 +1711,7 @@ class CommunityPaperRepository:
         user_id: str | None = None,
         anon_id: str | None = None,
     ) -> Optional[int]:
+        """记录论文的每日浏览次数（同一用户/匿名ID每天仅计一次），返回更新后的浏览数。"""
         principal_type: str | None = None
         principal_key: str | None = None
         if str(user_id or "").strip():
@@ -1720,6 +1786,7 @@ class CommunityPaperRepository:
         return int(row.get("view_count") or 0)
 
     def get_viewer_state(self, paper_ids: list[str], *, user_id: str) -> dict[str, dict[str, Any]]:
+        """获取用户对一组论文的查看状态（是否已点赞、是否已收藏、收藏夹数量）。"""
         normalized_ids = [str(paper_id or "").strip() for paper_id in paper_ids if str(paper_id or "").strip()]
         default_state = {
             paper_id: {"liked": False, "favorited": False, "favorite_folder_count": 0}
@@ -1792,12 +1859,15 @@ class CommunityPaperRepository:
         return default_state
 
     def increment_view_count(self, paper_id: str) -> Optional[int]:
+        """递增论文浏览次数计数器。"""
         return self._increment_counter(paper_id, "view_count")
 
     def increment_download_count(self, paper_id: str) -> Optional[int]:
+        """递增论文下载次数计数器。"""
         return self._increment_counter(paper_id, "download_count")
 
     def _increment_counter(self, paper_id: str, column: str) -> Optional[int]:
+        """递增指定论文的指定计数器字段（view_count或download_count）。"""
         if column not in {"view_count", "download_count"}:
             raise ValueError(f"unsupported counter column: {column}")
 
@@ -1823,6 +1893,7 @@ class CommunityPaperRepository:
         return int(value) if value is not None else 0
 
     def mark_translation_failed_by_task(self, task_id: str) -> int:
+        """将关联到指定翻译任务的论文翻译状态标记为失败。"""
         normalized_task_id = str(task_id or "").strip()
         if not normalized_task_id:
             return 0
@@ -1848,6 +1919,7 @@ class CommunityPaperRepository:
             return int(cursor.rowcount or 0)
 
     def list_inflight_translation_papers(self) -> list[dict[str, Any]]:
+        """获取所有正在进行翻译中（排队中/处理中）的论文列表。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -1869,6 +1941,7 @@ class CommunityPaperRepository:
             ]
 
     def list_purgeable_non_success_papers(self, statuses: list[str]) -> list[dict[str, Any]]:
+        """获取所有处于非成功状态的可清理论文列表。"""
         normalized_statuses = [str(status or "").strip() for status in statuses if str(status or "").strip()]
         if not normalized_statuses:
             return []
@@ -1892,6 +1965,7 @@ class CommunityPaperRepository:
             ]
 
     def list_asset_task_ids_for_papers(self, paper_ids: list[str]) -> list[str]:
+        """获取指定论文关联的所有资产中的翻译任务ID列表。"""
         normalized_ids = [str(paper_id or "").strip() for paper_id in paper_ids if str(paper_id or "").strip()]
         if not normalized_ids:
             return []
@@ -1913,6 +1987,7 @@ class CommunityPaperRepository:
             ]
 
     def list_comment_ids_for_papers(self, paper_ids: list[str]) -> list[str]:
+        """获取指定论文的所有评论ID列表。异常时返回空列表。"""
         normalized_ids = [str(paper_id or "").strip() for paper_id in paper_ids if str(paper_id or "").strip()]
         if not normalized_ids:
             return []
@@ -1937,6 +2012,7 @@ class CommunityPaperRepository:
             return []
 
     def list_report_ids_for_targets(self, *, target_type: str, target_ids: list[str]) -> list[str]:
+        """获取指定类型和目标ID的举报记录ID列表。异常时返回空列表。"""
         normalized_ids = [str(target_id or "").strip() for target_id in target_ids if str(target_id or "").strip()]
         if not normalized_ids:
             return []
@@ -1963,6 +2039,7 @@ class CommunityPaperRepository:
             return []
 
     def delete_rows_by_ids(self, table_name: str, *, id_column: str, row_ids: list[str]) -> int:
+        """按ID列表批量删除指定表中的行。仅支持reports和moderation_actions表。"""
         if table_name not in {"reports", "moderation_actions"}:
             raise ValueError(f"unsupported cleanup table: {table_name}")
         normalized_ids = [str(row_id or "").strip() for row_id in row_ids if str(row_id or "").strip()]
@@ -1981,6 +2058,7 @@ class CommunityPaperRepository:
             return 0
 
     def delete_rows_for_papers(self, table_name: str, paper_ids: list[str]) -> int:
+        """按论文ID列表批量删除指定关联表中的行。支持评论、资产、点赞、收藏等表。"""
         if table_name not in {
             "comments",
             "paper_assets",
@@ -2009,6 +2087,7 @@ class CommunityPaperRepository:
             return 0
 
     def delete_translation_tasks(self, task_ids: list[str]) -> int:
+        """按任务ID列表批量删除翻译任务记录。异常时返回0。"""
         normalized_ids = [str(task_id or "").strip() for task_id in task_ids if str(task_id or "").strip()]
         if not normalized_ids:
             return 0

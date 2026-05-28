@@ -1,8 +1,13 @@
+/**
+ * 开关组件 - 基于 Radix UI Switch 封装
+ * 渲染可切换 on/off 状态的开关控件
+ */
 import * as React from "react"
 import * as SwitchPrimitives from "@radix-ui/react-switch"
 
 import { cn } from "@/lib/utils"
 
+/** 开关组件，支持 checked/unchecked 状态切换，带滑动动画 */
 const Switch = React.forwardRef<
     React.ElementRef<typeof SwitchPrimitives.Root>,
     React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>

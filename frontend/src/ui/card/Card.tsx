@@ -1,8 +1,13 @@
+/**
+ * 卡片组件
+ * 渲染带标题、描述、内容和底部的卡片容器，支持多种面板风格
+ */
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 卡片样式变体配置：panel / strong / soft / ink / danger */
 const cardVariants = cva(
   "rounded-[28px] border shadow-[var(--px-shell-shadow)]",
   {
@@ -31,6 +36,7 @@ const cardVariants = cva(
 type CardProps = React.HTMLAttributes<HTMLDivElement> &
   VariantProps<typeof cardVariants>
 
+/** 卡片根容器 */
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant, padding, ...props }, ref) => (
     <div
@@ -43,6 +49,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
 
 Card.displayName = "Card"
 
+/** 卡片头部区域（标题 + 描述），带底部分隔线 */
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -56,6 +63,7 @@ const CardHeader = React.forwardRef<
 
 CardHeader.displayName = "CardHeader"
 
+/** 卡片标题 */
 const CardTitle = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -69,6 +77,7 @@ const CardTitle = React.forwardRef<
 
 CardTitle.displayName = "CardTitle"
 
+/** 卡片描述文本 */
 const CardDescription = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -82,6 +91,7 @@ const CardDescription = React.forwardRef<
 
 CardDescription.displayName = "CardDescription"
 
+/** 卡片内容区域 */
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -91,6 +101,7 @@ const CardContent = React.forwardRef<
 
 CardContent.displayName = "CardContent"
 
+/** 卡片底部操作区域，带顶部分隔线 */
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>

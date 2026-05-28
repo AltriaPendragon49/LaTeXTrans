@@ -1,3 +1,9 @@
+"""任务详情推断服务
+
+根据任务状态、阶段、消息和进度推断当前任务的详细状态码和参数，
+供前端展示精细化的任务进度信息。
+"""
+
 from __future__ import annotations
 
 import re
@@ -8,6 +14,7 @@ from backend.app.core.config import CompilationStage, TaskStatus
 
 StageDetail = tuple[Optional[str], Optional[dict[str, Any]]]
 
+# 进度消息正则匹配模式
 _TRANSLATED_RE = re.compile(r"Translated (\d+)/(\d+)", re.IGNORECASE)
 _RETRANSLATED_RE = re.compile(r"Retranslated (\d+)/(\d+) \(B:retry\)", re.IGNORECASE)
 _PROCESSED_A_RE = re.compile(r"Processed (\d+)/(\d+) \(A:[^)]+\)", re.IGNORECASE)
@@ -18,6 +25,7 @@ _RATE_LIMIT_WAIT_RE = re.compile(r"waiting\s+(?P<wait>\d+)s", re.IGNORECASE)
 
 
 def normalize_stage(stage: Optional[str]) -> Optional[str]:
+    """规范化阶段名称（如 'extracting' -> 'downloading'）"""
     if stage == "extracting":
         return "downloading"
     return stage
@@ -26,6 +34,7 @@ def normalize_stage(stage: Optional[str]) -> Optional[str]:
 def normalize_detail_params(
     params: Optional[dict[str, Any]],
 ) -> Optional[dict[str, Any]]:
+    """规范化详情参数，去除 None 值并确保值类型为基本类型"""
     if not params:
         return None
 
@@ -48,6 +57,18 @@ def infer_task_detail(
     progress: Optional[int],
     warnings: Optional[str] = None,
 ) -> StageDetail:
+    """根据任务状态推断当前详情码和参数
+
+    参数:
+        status: 任务状态（如 queued, processing, completed 等）
+        stage: 任务阶段（如 downloading, translating, compiling 等）
+        message: 状态消息
+        progress: 进度百分比 (0-100)
+        warnings: 警告信息
+
+    返回:
+        (detail_code, detail_params) 元组，code 为 None 表示无法推断
+    """
     normalized_stage = normalize_stage(stage)
     msg = (message or "").strip()
 

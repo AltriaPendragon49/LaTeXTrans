@@ -1,7 +1,12 @@
+/**
+ * 输入框组件
+ * 渲染带统一圆角、边框和焦点环样式的单行文本输入框
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** 输入框组件，基于原生 input，支持所有 HTML input 属性 */
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => (
     <input

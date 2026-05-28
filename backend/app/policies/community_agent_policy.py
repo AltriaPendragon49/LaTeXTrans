@@ -6,9 +6,12 @@ from backend.app.policies.base import BasePolicy, is_admin, is_authenticated
 
 
 class CommunityAgentPolicy(BasePolicy):
+    """社区Agent策略，控制社区对话资源的访问权限。"""
+
     resource_name = "community_conversation"
 
     def __init__(self, *, resource_name: str = "community_conversation") -> None:
+        """初始化策略，可自定义资源名称。"""
         self.resource_name = resource_name
 
     def allows(
@@ -17,6 +20,7 @@ class CommunityAgentPolicy(BasePolicy):
         action: str,
         context: Optional[Dict[str, Any]] = None,
     ):
+        """检查用户权限：管理员可访问所有资源；所有者可访问自己的资源；已认证用户可访问社区资源；访客禁止。"""
         ctx = context or {}
         owner_user_id = str(ctx.get("owner_user_id") or "").strip() or None
 

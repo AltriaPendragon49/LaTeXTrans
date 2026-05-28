@@ -1,11 +1,11 @@
 """
-Validator Agent
+验证器 Agent
 
-Adapted from prototype system with:
-- All Streamlit dependencies removed
-- Progress callback mechanism added
-- Python logging integrated
-- Validation logic completely preserved
+从原型系统适配而来，包含以下改动：
+- 移除所有 Streamlit 依赖
+- 添加进度回调机制
+- 集成 Python logging
+- 完全保留验证逻辑
 """
 
 from typing import Dict, Any, List, Optional, Callable
@@ -25,12 +25,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Error type constants
-ERROR_TYPE_A = "A"  # Resource/config missing - handle with degradation
-ERROR_TYPE_B = "B"  # Recoverable syntax errors - allow one retry
-ERROR_TYPE_C = "C"  # Structural consistency errors - algorithmic fix required (legacy alias)
-ERROR_TYPE_C1 = "C1"  # Structural: Local/Contained -- 1 LLM retry allowed
-ERROR_TYPE_C2 = "C2"  # Structural: Global/Structural -- NO LLM retry
+# 错误类型常量
+ERROR_TYPE_A = "A"  # 资源/配置缺失 —— 降级处理
+ERROR_TYPE_B = "B"  # 可恢复的语法错误 —— 允许一次重试
+ERROR_TYPE_C = "C"  # 结构一致性错误 —— 需要算法修复（旧版别名）
+ERROR_TYPE_C1 = "C1"  # 结构：局部/自包含 —— 允许 1 次 LLM 重试
+ERROR_TYPE_C2 = "C2"  # 结构：全局/结构性 —— 不允许 LLM 重试
 
 _LONG_ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z]{2,}(?:'[A-Za-z]{2,})?\b")
 _LONG_ENGLISH_GAP_RE = re.compile(r"^[\s,.;:!?()\[\]\"'`~\-–—/\\]+$")
@@ -67,6 +67,18 @@ _AUTHORISH_NAME_RE = re.compile(
 
 
 def find_long_english_prose_spans(text: str, *, min_words: int = 18) -> List[str]:
+    """检测翻译文本中残留的长英文散文片段。
+
+    通过过滤 LaTeX 命令、URL、邮箱和占位符等非正文内容，
+    查找连续英文字母单词超过 min_words 的片段。
+
+    Args:
+        text: 要检查的翻译文本
+        min_words: 触发检测的最小连续英文单词数
+
+    Returns:
+        检测到的英文片段列表
+    """
     normalized = text or ""
     if not normalized:
         return []
@@ -111,11 +123,13 @@ def find_long_english_prose_spans(text: str, *, min_words: int = 18) -> List[str
 
 
 def _is_front_matter_section(section_id: Any) -> bool:
+    """判断是否为前页部分（section_id 为 "-1" 或 "0"）。"""
     normalized = str(section_id or "").strip()
     return normalized in {"-1", "0"} or normalized.startswith("-1_chunk_")
 
 
 def _looks_like_reference_or_author_block(text: str) -> bool:
+    """判断文本是否类似于参考文献或作者信息块（允许保留英文）。"""
     normalized = text or ""
     if not normalized:
         return False
@@ -140,6 +154,7 @@ def _looks_like_reference_or_author_block(text: str) -> bool:
 
 
 def _allows_non_body_english(part: Dict[str, Any]) -> bool:
+    """判断某部分是否允许非正文英文（如前页、文档根、参考文献）。"""
     section_id = part.get("section")
     if _is_front_matter_section(section_id):
         return True
@@ -156,46 +171,46 @@ def _allows_non_body_english(part: Dict[str, Any]) -> bool:
 
 def classify_error(error_report: Dict[str, Any]) -> str:
     """
-    Classify validation error into A/B/C1/C2 types.
-    
-    Type A: Resource/config missing (e.g., files not found)
-           -> Handle with degradation, don't interrupt flow
-    Type B: Recoverable syntax errors (e.g., unescaped special chars)
-           -> Allow one translation retry
-    Type C1: Structural errors - Local/Contained
-            -> Single placeholder loss or isolated math mismatch (no global issue)
-            -> Allow exactly 1 targeted LLM retry with restoration instructions
-    Type C2: Structural errors - Global/Structural
-            -> Multiple placeholder losses, global stack mismatch, or env collapse
-            -> Deterministic fix only - NO LLM retry
-    
+    将验证错误分类为 A/B/C1/C2 类型。
+
+    类型 A: 资源/配置缺失（如文件未找到）
+           -> 降级处理，不中断流程
+    类型 B: 可恢复的语法错误（如未转义的特殊字符）
+           -> 允许一次翻译重试
+    类型 C1: 结构错误 - 局部/自包含
+            -> 单个占位符丢失或孤立的数学模式不匹配（无全局问题）
+            -> 允许恰好 1 次定向 LLM 重试及还原指令
+    类型 C2: 结构错误 - 全局/结构性
+            -> 多个占位符丢失、全局栈不匹配或环境折叠
+            -> 仅允许确定性修复 —— 不允许 LLM 重试
+
     Args:
-        error_report: Error report dictionary with command_error, ph_error, bracket_error
-        
+        error_report: 包含 command_error、ph_error、bracket_error 的错误报告字典
+
     Returns:
-        Error type string: "A", "B", "C1", or "C2"
+        错误类型字符串: "A"、"B"、"C1" 或 "C2"
     """
     command_error = str(error_report.get("command_error", ""))
     ph_error = str(error_report.get("ph_error", ""))
     bracket_error = str(error_report.get("bracket_error", ""))
     math_error = str(error_report.get("math_error", ""))
     global_ph_error = str(error_report.get("global_ph_error", ""))
-    
+
     all_errors = command_error + ph_error + bracket_error + math_error + global_ph_error
-    
-    # Type A: Resource/configuration missing
+
+    # 类型 A: 资源/配置缺失
     if "not found" in all_errors.lower():
         return ERROR_TYPE_A
-    
+
     # -------------------------------------------------------------------------
-    # Determine if this is a structural (C) error and C1 or C2.
+    # 判断是否为结构（C）错误以及属于 C1 还是 C2。
     # -------------------------------------------------------------------------
 
-    # C2 trigger: Global placeholder stack mismatch -> always C2
+    # C2 触发：全局占位符栈不匹配 -> 始终为 C2
     if global_ph_error:
         return ERROR_TYPE_C2
 
-    # Immutable placeholder mismatches are explicit structural signals.
+    # 不可变占位符不匹配是明确的结构信号。
     if "eqrow_placeholder_sequence_mismatch" in math_error:
         return ERROR_TYPE_C2
     if "item_anchor_sequence_mismatch" in math_error:
@@ -203,28 +218,28 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     if "list_env_item_order_mismatch" in math_error:
         return ERROR_TYPE_C1
 
-    # Count expected/found mismatch occurrences across ALL error fields
+    # 统计所有错误字段中的 expected/found 不匹配出现次数
     count_mismatches = re.findall(r"expected \d+, found \d+", all_errors)
     if count_mismatches:
-        # Multiple distinct command mismatches -> C2 (structural collapse)
+        # 多个不同的命令不匹配 -> C2（结构坍塌）
         if len(count_mismatches) > 1:
             return ERROR_TYPE_C2
-        # Single command mismatch, no global stack error -> C1
+        # 单个命令不匹配，无全局栈错误 -> C1
         return ERROR_TYPE_C1
 
-    # Count missing placeholders: C1 if exactly one, C2 if more
+    # 统计缺失的占位符：恰好一个为 C1，多个为 C2
     if "Missing placeholders:" in ph_error:
-        # Extract count of distinct missing placeholder names
+        # 提取不同缺失占位符名称的数量
         missing_section = ph_error.split("Missing placeholders:", 1)[1]
-        # Each missing placeholder is separated by ", "
+        # 每个缺失的占位符以 ", " 分隔
         missing_items = [p.strip() for p in missing_section.split(",") if p.strip()]
-        # Filter to only real placeholder tokens (start with <)
+        # 仅过滤真实的占位符令牌（以 < 开头）
         ph_tokens = [p for p in missing_items if p.startswith("<")]
         if len(ph_tokens) <= 1:
             return ERROR_TYPE_C1
         return ERROR_TYPE_C2
 
-    # Math-mode delimiter mismatch (isolated, no global error) -> C1
+    # 数学模式分隔符不匹配（孤立，无全局错误）-> C1
     if "level_a_env_placeholder_residual" in math_error:
         return ERROR_TYPE_C2
     if "env_boundary_mismatch" in math_error:
@@ -234,32 +249,32 @@ def classify_error(error_report: Dict[str, Any]) -> str:
     if "document_boundary_leak" in math_error:
         return ERROR_TYPE_C2
 
-    # Math-mode delimiter mismatch (isolated, no global error) -> C1
+    # 数学模式分隔符不匹配（孤立，无全局错误）-> C1
     if "math_delimiter_mismatch" in math_error:
         return ERROR_TYPE_C1
 
-    # Residual PROTECTED_CMD placeholder (isolated) -> C1
+    # 残留的 PROTECTED_CMD 占位符（孤立）-> C1
     if "protected_cmd_residual" in math_error:
         return ERROR_TYPE_C1
 
-    # Dollar sign escaped by LLM (e.g., $x$ -> \$x\$) -> C1, allow one retry
+    # LLM 错误转义的美元符（如 $x$ -> \$x\$）-> C1，允许一次重试
     if "escaped_dollar_leak" in math_error:
         return ERROR_TYPE_C1
 
-    # Type B: Default - recoverable errors (bracket issues, extra placeholders, etc.)
+    # 类型 B: 默认 —— 可恢复错误（括号问题、额外占位符等）
     return ERROR_TYPE_B
 
 
-
-
-
 class ValidatorAgent(BaseToolAgent):
-    def __init__(self, 
+    """验证器 Agent：验证翻译后的 LaTeX 内容，检测结构和内容错误。"""
+
+    def __init__(self,
                  config: Dict[str, Any],
                  project_dir: str = None,
                  output_dir: str = None,
                  on_progress: Optional[Callable[[str, int, str], None]] = None
                  ):
+        """初始化 ValidatorAgent。"""
         super().__init__(agent_name="ValidatorAgent", config=config, on_progress=on_progress)
         self.config = config
         self.project_dir = project_dir
@@ -269,18 +284,18 @@ class ValidatorAgent(BaseToolAgent):
 
     def execute(self, errors_report: Optional[List[Dict]] = None) -> List[Dict]:
         """
-        Validate translated LaTeX content
-        
+        验证已翻译的 LaTeX 内容。
+
         Args:
-            errors_report: Optional previous error report to re-validate specific parts
-            
+            errors_report: 可选的先前错误报告，用于重新验证特定部分
+
         Returns:
-            List of error reports for parts that failed validation
+            验证失败部分的错误报告列表
         """
         self.log(f"Starting validation for project: {os.path.basename(self.project_dir)}")
         self.update_progress(10, "Loading JSON maps")
         self.code_like_filtered_bare_tokens = 0
-        
+
         sections = self.read_file(Path(self.output_dir, "sections_map.json"), "json")
         captions = self.read_file(Path(self.output_dir, "captions_map.json"), "json")
         envs = self.read_file(Path(self.output_dir, "envs_map.json"), "json")
@@ -288,7 +303,7 @@ class ValidatorAgent(BaseToolAgent):
         inputs = [] if self.origin_cli_parity else self.read_file(inputs_path, "json") if inputs_path.exists() else []
 
         self.update_progress(30, "Extracting parts to validate")
-        
+
         if errors_report is None:
             if self.origin_cli_parity:
                 parts_need_val = self._extract_parts_need_validate_origin_cli_parity(
@@ -301,24 +316,24 @@ class ValidatorAgent(BaseToolAgent):
                                                                    caps=captions,
                                                                    envs=envs)
         else:
-            parts_need_val = self._extract_parts_from_report(secs=sections, 
+            parts_need_val = self._extract_parts_from_report(secs=sections,
                                                                caps=captions,
                                                                envs=envs,
                                                                errors_report=errors_report)
-        
+
         self.update_progress(50, f"Validating {len(parts_need_val)} parts")
-        
+
         errors_report = []
         for i, part in enumerate(parts_need_val):
             if i % 10 == 0:
                 progress = 50 + int(40 * (i / len(parts_need_val)))
                 self.update_progress(progress, f"Validating part {i+1}/{len(parts_need_val)}")
-            
+
             error_report = self._validate(part)
             if error_report:
                 errors_report.append(error_report)
 
-        # Global placeholder stack validation for input begin/end tags.
+        # 全局占位符栈验证：检查 input begin/end 标签。
         if not self.origin_cli_parity:
             global_placeholder_errors = self._validate_global_input_placeholder_stack(
                 sections=sections,
@@ -327,8 +342,7 @@ class ValidatorAgent(BaseToolAgent):
             if global_placeholder_errors:
                 errors_report.extend(global_placeholder_errors)
 
-        # Always overwrite errors_report.json to avoid stale residual errors from
-        # previous validation rounds.
+        # 总是覆盖 errors_report.json，避免前轮验证的残留陈旧错误。
         self.save_file(Path(self.output_dir, "errors_report.json"), "json", errors_report)
 
         if self.code_like_filtered_bare_tokens:
@@ -342,7 +356,11 @@ class ValidatorAgent(BaseToolAgent):
         return errors_report
 
     def _validate(self, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Validate a single part (section/caption/environment)"""
+        """验证单个部分（section/caption/environment）。
+
+        执行多种验证检查：命令完整性、占位符保留、括号匹配、
+        数学模式分隔符、环境边界、不可变占位符等。
+        """
         if self.origin_cli_parity:
             return self._validate_origin_cli_parity(part)
 
@@ -373,7 +391,7 @@ class ValidatorAgent(BaseToolAgent):
             and not completeness_error
         ):
             return None
-        else: 
+        else:
             if "section" in part:
                 error_report["part"] = "sec"
                 error_report["num_or_ph"] = part["section"]
@@ -390,7 +408,7 @@ class ValidatorAgent(BaseToolAgent):
                 error_report["ph_error"] = ph_error
             if bracket_error:
                 error_report["bracket_error"] = bracket_error
-            # Merge math and protected_cmd errors into math_error field
+            # 将数学和保护命令错误合并到 math_error 字段
             math_issues = [
                 e
                 for e in [
@@ -408,13 +426,14 @@ class ValidatorAgent(BaseToolAgent):
                 error_report["math_error"] = "\n".join(math_issues)
             if completeness_error:
                 error_report["completeness_error"] = completeness_error
-            
-            # Add error classification (A/B/C) for targeted handling
+
+            # 添加错误分类（A/B/C），供定向处理使用
             error_report["error_type"] = classify_error(error_report)
 
         return error_report
 
     def _validate_origin_cli_parity(self, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Origin CLI parity 模式的验证逻辑（精简版）。"""
         command_error = self._validate_command(part)
         ph_error = self._validate_placeholder_origin_cli_parity(part)
         bracket_error = self._validate_closed_brackets_origin_cli_parity(part)
@@ -443,13 +462,13 @@ class ValidatorAgent(BaseToolAgent):
         return error_report
 
     def _validate_command(self, part: Dict[str, Any]) -> Optional[str]:
-        """Validate LaTeX commands are preserved in translation"""
+        """验证翻译后 LaTeX 命令是否完整保留。"""
         content = part.get("content", "")
         trans = part.get("trans_content") or ""
 
         src_counter = self.extract_command_counts(content)
         trans_counter = self.extract_command_counts(trans)
-        
+
         if src_counter == trans_counter:
             return None
 
@@ -461,10 +480,10 @@ class ValidatorAgent(BaseToolAgent):
 
         if errors:
             return "LaTeX command translation error or is missing:\n" + "\n".join(errors)
-        return None        
+        return None
 
     def _validate_placeholder(self, part: Dict[str, Any]) -> Optional[str]:
-        """Validate placeholders are preserved in translation"""
+        """验证占位符在翻译中是否保留。"""
         original_placeholders = self._extract_placeholders(part.get("content") or "")
         translated_placeholders = self._extract_placeholders(part.get("trans_content") or "")
         missing = sorted(set(original_placeholders) - set(translated_placeholders))
@@ -484,6 +503,7 @@ class ValidatorAgent(BaseToolAgent):
         return "\n".join(errors) if errors else None
 
     def _validate_placeholder_origin_cli_parity(self, part: Dict[str, Any]) -> Optional[str]:
+        """Origin CLI parity 模式的占位符验证。"""
         original_placeholders = self._extract_placeholders_origin_cli_parity(part["content"])
         translated_placeholders = self._extract_placeholders_origin_cli_parity(part["trans_content"])
         missing = original_placeholders - translated_placeholders
@@ -494,23 +514,21 @@ class ValidatorAgent(BaseToolAgent):
         if extra:
             errors.append(f"Extra placeholders: {', '.join(sorted(extra))} translation error or is redundant")
         return "\n".join(errors) if errors else None
-        
+
     def _validate_escaped_dollar_leak(self, part: Dict[str, Any]) -> Optional[str]:
-        """Detect when LLM incorrectly escaped $ as \\$ outside math context.
-        
-        The LLM sometimes mistakes inline math delimiters for currency symbols
-        and escapes them: $x^2$ becomes \\$x^2\\$.  This produces 'Missing $
-        inserted' errors during LaTeX compilation.  Comparing the count of
-        literal ``\\$`` in the translation against the original is a reliable
-        symptom check.
+        """检测 LLM 是否在数学上下文之外错误地将 $ 转义为 \\$。
+
+        LLM 有时会将内联数学分隔符误认为货币符号并对其进行转义：
+        $x^2$ 变成 \\$x^2\\$。这会在 LaTeX 编译时产生 'Missing $ inserted' 错误。
+        比较翻译中文字 `\\$` 的计数与原文是一个可靠的症状检查。
         """
         trans = part.get("trans_content") or ""
-        # Fast exit: if there is no escaped dollar in the translation, no problem.
+        # 快速退出：如果翻译中没有转义美元符，则没有问题。
         if r"\$" not in trans:
             return None
 
         orig = part.get("content") or ""
-        # Count raw `\$` occurrences using a simple str.count — no false positives.
+        # 使用简单的 str.count 统计原始的 `\$` 出现次数 —— 无假阳性。
         orig_escaped = orig.count(r"\$")
         trans_escaped = trans.count(r"\$")
 
@@ -523,7 +541,7 @@ class ValidatorAgent(BaseToolAgent):
         return None
 
     def _validate_closed_brackets(self, part: Dict[str, Any]) -> Optional[str]:
-        """Validate brackets are properly closed"""
+        """验证括号是否正确闭合。"""
         content = part.get("content") or ""
         trans_content = part.get("trans_content") or ""
         org_errors = self._find_brackets_errors(content, org=1)
@@ -535,6 +553,7 @@ class ValidatorAgent(BaseToolAgent):
             return None
 
     def _validate_closed_brackets_origin_cli_parity(self, part: Dict[str, Any]) -> Optional[str]:
+        """Origin CLI parity 模式的括号闭合验证。"""
         content = part.get("content", "")
         trans_content = part.get("trans_content", "")
         org_errors = self._find_brackets_errors_origin_cli_parity(content, org=1)
@@ -543,12 +562,12 @@ class ValidatorAgent(BaseToolAgent):
         if errors and not org_errors:
             return "Brackets error:\n" + "\n".join(errors)
         return None
-        
+
     # ------------------------------------------------------------------ #
-    # Math-mode delimiter validation & repair (Task 1)                    #
+    # 数学模式分隔符验证与修复 (Task 1)                                    #
     # ------------------------------------------------------------------ #
 
-    # Bare math tokens that are illegal in text mode
+    # 文本模式中非法的裸露数学标记
     _BARE_MATH_TOKEN_RE = re.compile(
         r'(?<!\\)(?:_|\^)'
         r'|(?<!\\)\\(?:frac|sum|int|prod|sqrt|alpha|beta|gamma|delta|epsilon'
@@ -566,56 +585,56 @@ class ValidatorAgent(BaseToolAgent):
     @staticmethod
     def _extract_math_regions(text: str) -> List[tuple]:
         """
-        Extract all math regions bounded by $, $$, \[, \( or \begin{math_env}.
-        Returns list of (start, end, is_display) tuples.
+        提取所有由 $、$$、\\[、\\( 或 \\begin{math_env} 界定的数学区域。
+        返回 (start, end, is_display) 元组列表。
         """
         regions = []
-        # Pattern components
+        # 模式组件
         pat_display_dollar = r'(?<!\\)\$\$.*?(?<!\\)\$\$'
         pat_inline_dollar = r'(?<!\$)\$(?!\$).*?(?<!\\)\$(?!\$)'
         pat_display_bracket = r'(?<!\\)\\\[.*?(?<!\\)\\\]'
         pat_inline_paren = r'(?<!\\)\\\(.*?(?<!\\)\\\)'
         pat_env = r'\\begin\{(equation\*?|align\*?|multline\*?|gather\*?|math|displaymath|eqnarray\*?)\}.*?\\end\{\1\}'
-        
+
         regex = re.compile(f'{pat_display_dollar}|{pat_inline_dollar}|{pat_display_bracket}|{pat_inline_paren}|{pat_env}', re.DOTALL)
-        
+
         for m in regex.finditer(text):
             matched_text = m.group(0)
             is_display = matched_text.startswith('$$') or matched_text.startswith(r'\[') or matched_text.startswith(r'\begin')
             regions.append((m.start(), m.end(), is_display))
-            
+
         return regions
 
     @staticmethod
     def _extract_placeholder_spans(text: str) -> List[tuple]:
-        """Extract [start, end) spans for placeholders like <PLACEHOLDER_...>."""
+        """提取 <PLACEHOLDER_...> 占位符的 [start, end) 区间。"""
         return [(m.start(), m.end()) for m in ValidatorAgent._PLACEHOLDER_RE.finditer(text)]
 
     @staticmethod
     def _extract_math_placeholder_spans(text: str) -> List[tuple]:
-        """Extract [start, end) spans for inline-math placeholders."""
+        """提取内联数学占位符的 [start, end) 区间。"""
         return [(m.start(), m.end()) for m in ValidatorAgent._MATH_PLACEHOLDER_RE.finditer(text)]
 
     @staticmethod
     def _extract_env_placeholder_spans(text: str) -> List[tuple]:
-        """Extract [start, end) spans for environment placeholders."""
+        """提取环境占位符的 [start, end) 区间。"""
         return [(m.start(), m.end()) for m in ValidatorAgent._ENV_PLACEHOLDER_RE.finditer(text)]
 
     @staticmethod
     def _extract_item_placeholder_spans(text: str) -> List[tuple]:
-        """Extract [start, end) spans for list item placeholders."""
+        """提取列表项占位符的 [start, end) 区间。"""
         return [(m.start(), m.end()) for m in ValidatorAgent._ITEM_PLACEHOLDER_RE.finditer(text)]
 
     @staticmethod
     def _extract_eqrow_placeholder_spans(text: str) -> List[tuple]:
-        """Extract [start, end) spans for eqnarray row placeholders."""
+        """提取 eqnarray 行占位符的 [start, end) 区间。"""
         return [(m.start(), m.end()) for m in ValidatorAgent._EQROW_PLACEHOLDER_RE.finditer(text)]
 
     @staticmethod
     def _extract_safe_command_arg_spans(text: str) -> List[tuple]:
         """
-        Extract first-level {...} argument spans for safe cross-reference commands.
-        Underscores inside these arguments are valid text keys, not math leakage.
+        提取安全交叉引用命令的第一级 {...} 参数区间。
+        这些参数中的下划线是有效的文本键，不是数学泄漏。
         """
         safe_cmd_re = re.compile(
             r'\\(?:ref|eqref|label|pageref|autoref|cite|citet|citep|citealt|Cref|cref)\*?\s*\{'
@@ -642,10 +661,10 @@ class ValidatorAgent(BaseToolAgent):
     @staticmethod
     def _extract_code_like_spans(text: str) -> List[tuple]:
         """
-        Extract spans that are code-like (tikz/pgfplots style regions).
+        提取代码类区间（TikZ/pgfplots 样式区域）。
 
-        Bare `_`/`^` tokens in these spans are often valid plotting syntax and
-        should not be treated as leaked math delimiters.
+        这些区间中的裸露 `_`/`^` 标记通常是有效的绘图语法，
+        不应被视为泄漏的数学分隔符。
         """
         if not text:
             return []
@@ -660,7 +679,7 @@ class ValidatorAgent(BaseToolAgent):
         for m in env_re.finditer(text):
             spans.append((m.start(), m.end()))
 
-        # Typical pgfplots commands where `_` and `^` are data/expression syntax.
+        # 典型的 pgfplots 命令，其中 `_` 和 `^` 是数据/表达式语法。
         line_cmd_re = re.compile(r'\\(?:addplot\+?|addplot3\+?|addlegendimage)(?![A-Za-z])')
         for m in line_cmd_re.finditer(text):
             line_end = text.find("\n", m.start())
@@ -668,7 +687,7 @@ class ValidatorAgent(BaseToolAgent):
                 line_end = len(text)
             spans.append((m.start(), line_end))
 
-        # Commands with structured argument blocks.
+        # 具有结构化参数块的命令。
         head_cmd_re = re.compile(r'\\(?:pgfmathparse|pgfplotstableread|pgfplotsset|tikzset)(?![A-Za-z])')
 
         def _consume_balanced(src: str, start: int, open_ch: str, close_ch: str) -> int:
@@ -711,30 +730,30 @@ class ValidatorAgent(BaseToolAgent):
 
     @staticmethod
     def _index_in_spans(index: int, spans: List[tuple]) -> bool:
-        """Check whether an index belongs to any [start, end) span."""
+        """检查某个索引是否属于任意 [start, end) 区间。"""
         for s, e in spans:
             if s <= index < e:
                 return True
         return False
 
     def _validate_math_delimiters(self, part: Dict[str, Any]) -> Optional[str]:
-        """Validate that translation preserves math-mode delimiters.
+        """验证翻译是否保留了数学模式分隔符。
 
-        Checks that:
-        1. The number of $ delimiters in translation >= original.
-        2. No bare math tokens (_^\\frac etc.) appear outside $...$ in translation
-           when the original has them inside $...$.
+        检查：
+        1. 翻译中 $ 分隔符数量 >= 原文。
+        2. 翻译中没有裸露的数学标记（_、^、\\frac 等）出现在 $...$ 之外，
+           而原文中它们在 $...$ 之内。
 
-        Returns error string with 'math_delimiter_mismatch' if issue detected.
+        如果检测到问题，返回包含 'math_delimiter_mismatch' 的错误字符串。
         """
         original = part.get("content") or ""
         translated = part.get("trans_content") or ""
         if not original or not translated:
             return None
 
-        # Count $ characters (rough check, exclude $$)
+        # 统计 $ 字符（粗略检查，排除 $$）
         def _count_inline_dollars(text: str) -> int:
-            # Count standalone $ (not part of $$)
+            # 统计独立的 $（非 $$ 的一部分）
             return len(re.findall(r'(?<!\$)\$(?!\$)', text))
 
         orig_dollars = _count_inline_dollars(original)
@@ -747,10 +766,10 @@ class ValidatorAgent(BaseToolAgent):
                 f"translation has {trans_dollars}"
             )
 
-        # Check for bare math tokens outside $ in translation when original has them inside $
+        # 检查翻译中 $ 之外的裸露数学标记（原文中它们在 $ 之内）
         orig_regions = self._extract_math_regions(original)
         if orig_regions:
-            # Build a mask of positions inside math environments in translation
+            # 构建翻译中数学环境内部位置的掩码
             trans_regions = self._extract_math_regions(translated)
             placeholder_spans = self._extract_placeholder_spans(translated)
             math_placeholder_spans = self._extract_math_placeholder_spans(translated)
@@ -785,32 +804,25 @@ class ValidatorAgent(BaseToolAgent):
                         f"math_delimiter_mismatch: bare math token '{m.group()}' "
                         f"at pos {m.start()} is outside $...$ in translation"
                     )
-                    break  # One sample is enough to trigger repair
+                    break  # 一个样本就足以触发修复
 
             if filtered_code_like_tokens:
                 self.code_like_filtered_bare_tokens += filtered_code_like_tokens
 
-            # Severe corruption checks within translated math regions
+            # 翻译后数学区域内的严重损坏检查
             for s, e, _ in trans_regions:
                 math_text = translated[s:e]
-                # Check for unbalanced latex literal braces \{ and \}
+                # 检查不平衡的 latex 文字大括号 \{ 和 \}
                 left_braces = len(re.findall(r'\\\{', math_text))
                 right_braces = len(re.findall(r'\\\}', math_text))
                 if left_braces != right_braces:
                     errors.append(f"math_delimiter_mismatch: structural corruption detected (unbalanced \\{{ \\}}) in math block: {math_text[:40]}...")
                     break
-                    
-                # Check for massive English leakage (more than 3 consecutive words not in \text or similar)
-                # Quick heuristic: if we find 3 consecutive space-separated purely alphabetical words > 2 chars each
-                # This catches things like "$g$ fixes $x$" fused inside a math block incorrectly.
-                # But be careful not to trigger on valid math text.
-                # We will rely primarily on the unbalanced braces for now, as it covers the most severe destruction
-                # we've seen (e.g., `\\} = 0$`).
 
         return "\n".join(errors) if errors else None
 
     def _validate_env_boundaries(self, part: Dict[str, Any]) -> Optional[str]:
-        """Validate ENV placeholders are fully restored and boundary tags are balanced."""
+        """验证 ENV 占位符是否已完全还原且边界标签是否平衡。"""
         translated = part.get("trans_content") or ""
         if not translated:
             return None
@@ -855,10 +867,10 @@ class ValidatorAgent(BaseToolAgent):
 
     def _validate_immutable_placeholders(self, part: Dict[str, Any]) -> Optional[str]:
         """
-        Validate ITEM/EQROW immutable placeholders are not dropped/reordered.
+        验证 ITEM/EQROW 不可变占位符未被丢弃或重排。
 
-        For regular translated output, expected list is usually empty. This still
-        catches residual placeholder leakage (found != expected).
+        对于常规翻译输出，期望列表通常为空。此检查仍然能捕获
+        残留的占位符泄漏（found != expected）。
         """
         original = part.get("content") or ""
         translated = part.get("trans_content") or ""
@@ -879,7 +891,7 @@ class ValidatorAgent(BaseToolAgent):
         return "\n".join(errors) if errors else None
 
     def _validate_list_item_structure(self, part: Dict[str, Any]) -> Optional[str]:
-        """Validate enumerate/itemize structure and item anchors for list environments."""
+        """验证 enumerate/itemize 环境的结构和 item 锚点。"""
         env_name = str(part.get("env_name", "") or "").lower()
         if env_name not in {"enumerate", "enumerate*", "itemize", "itemize*"}:
             return None
@@ -939,22 +951,23 @@ class ValidatorAgent(BaseToolAgent):
 
     @staticmethod
     def repair_math_delimiters(original: str, translated: str) -> str:
-        """Spec invariant: speculative math delimiter repair must be unreachable."""
+        """规范不变量：推测性数学分隔符修复必须不可达。"""
         raise SpeculativeRepairForbiddenError(
             "forbidden: speculative repair in repair_math_delimiters"
         )
 
     def _validate_protected_cmd_residual(self, part: Dict[str, Any]) -> Optional[str]:
-        """Check for unreplaced PROTECTED_CMD placeholders in translation."""
+        """检查翻译中是否存在未替换的 PROTECTED_CMD 占位符。"""
         translated = part.get("trans_content") or ""
         if re.search(r'PROTECTED_CMD_\d+', translated):
             return (
                 "protected_cmd_residual: translation contains unreplaced "
-                "PROTECTED_CMD placeholder — unmask restoration may have failed"
+                "PROTECTED_CMD placeholder -- unmask restoration may have failed"
             )
         return None
 
     def _validate_long_english_prose(self, part: Dict[str, Any]) -> Optional[str]:
+        """检查翻译中是否残留长英文散文片段。"""
         if "section" not in part:
             return None
         if _allows_non_body_english(part):
@@ -973,6 +986,7 @@ class ValidatorAgent(BaseToolAgent):
         )
 
     def _validate_document_boundary_leak(self, part: Dict[str, Any]) -> Optional[str]:
+        """检查文档级边界令牌是否泄漏到节正文中。"""
         if "section" not in part:
             return None
         if str(part.get("chunk_role") or "") == "document_root":
@@ -1000,7 +1014,7 @@ class ValidatorAgent(BaseToolAgent):
         )
 
     def _validate_global_input_placeholder_stack(self, sections: List[Dict], inputs: List[Dict]) -> List[Dict]:
-        """Validate global begin/end placeholder stack for extracted \\input blocks."""
+        """验证提取的 \\input 块的全局 begin/end 占位符栈。"""
         if not sections or not inputs:
             return []
 
@@ -1084,11 +1098,11 @@ class ValidatorAgent(BaseToolAgent):
         return reports
 
     def _find_brackets_errors(self, content, org=None):
-        """Find unmatched brackets in content"""
-        # Only check [] and {} - parentheses () cause false positives
-        # with numbered lists like 1) 2) in enumerate environments
+        """查找内容中未匹配的括号。"""
+        # 仅检查 [] 和 {} —— 圆括号 () 会产生假阳性，
+        # 如 enumerate 环境中带编号的列表 1) 2)
         bracket_pairs = {'[': ']', '{': '}'}
-        
+
         opening_brackets = set(bracket_pairs.keys())
         closing_brackets = set(bracket_pairs.values())
 
@@ -1107,7 +1121,7 @@ class ValidatorAgent(BaseToolAgent):
                         fragment = content[open_idx: idx + 1]
                         errors.append(f"Bracket mismatch: '{last_open}' opened at {open_idx} does not match '{char}' at {idx}, fragment: {fragment}")
 
-        # Any unmatched opening brackets left in stack
+        # 栈中剩余的所有未匹配开括号
         for open_bracket, pos in stack:
             fragment = content[pos: pos + 20]
             errors.append(f"Unmatched opening bracket '{open_bracket}' at position {pos}, fragment: {fragment}")
@@ -1115,6 +1129,7 @@ class ValidatorAgent(BaseToolAgent):
         return errors
 
     def _find_brackets_errors_origin_cli_parity(self, content, org=None):
+        """Origin CLI parity 模式的括号检查。"""
         if org:
             bracket_pairs = {'[': ']', '{': '}'}
         else:
@@ -1145,11 +1160,11 @@ class ValidatorAgent(BaseToolAgent):
         return errors
 
     def extract_command_counts(self, latex_code: str) -> Counter:
-        """Extract and count LaTeX commands using AST"""
+        """使用 AST 解析提取并统计 LaTeX 命令。"""
         walker = LatexWalker(latex_code)
         nodes, _, _ = walker.get_latex_nodes()
         counter = Counter()
-        
+
         ignored_commands = {'eg', 'ie'}
 
         def recurse(nodes):
@@ -1185,7 +1200,7 @@ class ValidatorAgent(BaseToolAgent):
         return counter
 
     def _extract_placeholders(self, content):
-        """Extract all placeholders from content"""
+        """从内容中提取所有占位符。"""
         input_pattern = re.compile(r"<PLACEHOLDER_[^>]+?_begin>|<PLACEHOLDER_[^>]+?_end>")
         placeholder_pattern_cap = re.compile(r"<PLACEHOLDER_CAP_\d+>")
         placeholder_pattern_env = re.compile(r"<PLACEHOLDER_ENV_\d+>")
@@ -1198,6 +1213,7 @@ class ValidatorAgent(BaseToolAgent):
         return placeholders
 
     def _extract_placeholders_origin_cli_parity(self, content):
+        """Origin CLI parity 模式下提取占位符。"""
         input_pattern = re.compile(r"<PLACEHOLDER_[^>]+?_begin>|<PLACEHOLDER_[^>]+?_end>")
         placeholder_pattern_cap = re.compile(r"<PLACEHOLDER_CAP_\d+>")
         placeholder_pattern_env = re.compile(r"<PLACEHOLDER_ENV_\d+>")
@@ -1207,10 +1223,10 @@ class ValidatorAgent(BaseToolAgent):
         return placeholders
 
     def _extract_parts_need_validate(self, secs, caps, envs):
-        """Extract parts that need validation"""
+        """提取需要验证的部分（section、caption、environment）。"""
         secs_need_val = [sec for sec in secs if sec["section"] != "0" and sec["section"] != "-1"]
         caps_need_val = caps
-        
+
         if envs:
             if "need_trans" in envs[0]:
                 envs_need_val = [env for env in envs if env["need_trans"]]
@@ -1222,6 +1238,7 @@ class ValidatorAgent(BaseToolAgent):
         return secs_need_val + caps_need_val + envs_need_val
 
     def _extract_parts_need_validate_origin_cli_parity(self, secs, caps, envs):
+        """Origin CLI parity 模式下提取需要验证的部分。"""
         secs_need_val = [sec for sec in secs if sec["section"] != 0]
         caps_need_val = caps
         if envs:
@@ -1233,27 +1250,27 @@ class ValidatorAgent(BaseToolAgent):
             envs_need_val = []
 
         return secs_need_val + caps_need_val + envs_need_val
-    
+
     def _extract_parts_from_report(
         self,
         secs: List[Dict],
         caps: List[Dict],
         envs: List[Dict],
         errors_report: List[Dict]) -> List[Dict]:
-        """Extract specific parts from error report for re-validation"""
+        """从错误报告中提取特定部分用于重新验证。"""
         section_lookup = {s["section"]: s for s in secs}
         caption_lookup = {c["placeholder"]: c for c in caps}
         environment_lookup = {e["placeholder"]: e for e in envs}
-        
+
         parts_to_validate = []
-        
+
         for error in errors_report:
             part_type = error.get("part")
             identifier = error.get("num_or_ph")
-            
+
             if not part_type or not identifier:
                 continue
-                
+
             part = None
             if part_type == "sec":
                 part = section_lookup.get(identifier)
@@ -1261,8 +1278,8 @@ class ValidatorAgent(BaseToolAgent):
                 part = caption_lookup.get(identifier)
             elif part_type == "env":
                 part = environment_lookup.get(identifier)
-            
+
             if part:
                 parts_to_validate.append(part)
-                
+
         return parts_to_validate

@@ -1,7 +1,12 @@
+/**
+ * 多行文本输入组件
+ * 渲染带统一圆角和焦点环样式的多行文本域
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** 多行文本域组件，基于原生 textarea，最小高度 140px，禁止手动调整大小 */
 const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.ComponentProps<"textarea">

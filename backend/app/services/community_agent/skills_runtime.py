@@ -1,3 +1,5 @@
+"""技能提示加载与可见性控制"""
+
 from __future__ import annotations
 
 import json
@@ -9,14 +11,19 @@ from typing import Any, Dict, List
 
 from .runtime import AgentRuntimeState
 
+# SKILL.md 文件的前置元数据正则
 _FRONTMATTER_PATTERN = re.compile(r"\A---\s*\n(?P<body>.*?)\n---\s*\n?", re.DOTALL)
+# 技能合约文件根目录
 _SKILL_ROOT = Path(__file__).resolve().parent / "skills" / "contracts"
+# 排除在外的技能名称
 _EXCLUDED_SKILLS = {"compose_academic_answer"}
+# 需要论文上下文才有意义的技能
 _PAPER_AWARE_SKILLS = {"read_paper_context", "start_translation_kernel"}
 
 
 @dataclass(frozen=True)
 class PromptSkillPack:
+    """单个提示技能的元数据与内容包"""
     name: str
     description: str
     visibility: Dict[str, Any]
@@ -26,12 +33,14 @@ class PromptSkillPack:
 
 @dataclass(frozen=True)
 class PromptSkillBundle:
+    """可见技能的打包集合"""
     skill_names: List[str]
     skill_index_markdown: str
     prompt_markdown: str
 
 
 def _extract_frontmatter(text: str) -> Dict[str, str]:
+    """提取 SKILL.md 文件的 YAML 前置元数据"""
     match = _FRONTMATTER_PATTERN.match(text)
     if not match:
         return {}
@@ -47,6 +56,7 @@ def _extract_frontmatter(text: str) -> Dict[str, str]:
 
 
 def _extract_json_block(text: str, section_name: str) -> Dict[str, Any]:
+    """从 Markdown 文本中提取 JSON 代码块"""
     pattern = re.compile(
         rf"^##\s+{re.escape(section_name)}\s*\n(?P<body>.*?)(?=^##\s+|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -68,6 +78,7 @@ def _extract_json_block(text: str, section_name: str) -> Dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def load_prompt_skill_packs() -> List[PromptSkillPack]:
+    """从文件系统加载所有提示技能包（带缓存）"""
     packs: List[PromptSkillPack] = []
 
     for skill_dir in sorted(_SKILL_ROOT.iterdir(), key=lambda path: path.name):
@@ -100,6 +111,7 @@ def load_prompt_skill_packs() -> List[PromptSkillPack]:
 
 
 def _is_pack_visible(pack: PromptSkillPack, runtime_state: AgentRuntimeState) -> bool:
+    """根据运行时状态判断技能包是否可见"""
     if pack.name == "external_tavily_search":
         return bool((runtime_state.skill_toggles or {}).get("external_search"))
     if pack.name in _PAPER_AWARE_SKILLS:
@@ -108,6 +120,7 @@ def _is_pack_visible(pack: PromptSkillPack, runtime_state: AgentRuntimeState) ->
 
 
 def build_skill_prompt_bundle(runtime_state: AgentRuntimeState) -> PromptSkillBundle:
+    """根据当前运行时状态构建可见技能提示集"""
     visible_packs = [pack for pack in load_prompt_skill_packs() if _is_pack_visible(pack, runtime_state)]
 
     skill_index_lines = ["# Active Prompt Skills"]

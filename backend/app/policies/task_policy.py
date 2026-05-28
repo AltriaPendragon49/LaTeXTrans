@@ -6,6 +6,8 @@ from backend.app.policies.base import BasePolicy, is_admin, is_authenticated
 
 
 class TaskPolicy(BasePolicy):
+    """任务策略，控制翻译任务的查看、列表和删除权限。"""
+
     resource_name = "task"
 
     def allows(
@@ -14,6 +16,7 @@ class TaskPolicy(BasePolicy):
         action: str,
         context: Optional[Dict[str, Any]] = None,
     ):
+        """检查用户是否有权执行指定操作：查看/列表支持所有者和管理员；删除支持所有者和管理员。"""
         ctx = context or {}
         owner_id = ctx.get("owner_user_id")
 
@@ -38,6 +41,7 @@ class TaskPolicy(BasePolicy):
         return self._deny(action, "Action not supported by the task policy.")
 
     def _is_owner(self, user: Optional[Dict[str, Any]], owner_id: Optional[Any]) -> bool:
+        """检查用户是否为指定任务的拥有者。"""
         if not owner_id or not user:
             return False
         return str(user.get("id")) == str(owner_id)

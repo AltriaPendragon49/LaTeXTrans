@@ -18,15 +18,22 @@ import {
   DataTableRow,
 } from "@/ui/data-table/DataTable"
 
+/** 术语对：源语言术语与对应翻译 */
 interface TermPair {
   source: string
   target: string
 }
 
+/** 术语表组件的 Props */
 interface TerminologyTableProps {
+  /** 翻译任务 ID，用于从后端拉取术语 CSV */
   taskId: string | null
 }
 
+/**
+ * 解析后端返回的 CSV 文本为术语对数组
+ * 自动跳过标题行（包含"source term"的首行）
+ */
 function parseCSV(text: string): TermPair[] {
   const lines = text.split("\n")
   const pairs: TermPair[] = []
@@ -43,6 +50,7 @@ function parseCSV(text: string): TermPair[] {
       continue
     }
 
+    // 处理带引号的 CSV 字段
     const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)
     let source = ""
     let target = ""
@@ -66,6 +74,11 @@ function parseCSV(text: string): TermPair[] {
   return pairs
 }
 
+/**
+ * 术语表组件
+ * 以侧边抽屉（Sheet）形式展示翻译任务提取的术语对照表，
+ * 支持从后端 GET /api/download/{taskId}/terminology 拉取 CSV 数据并下载
+ */
 export function TerminologyTable({ taskId }: TerminologyTableProps) {
   const { t } = useTranslation()
   const [data, setData] = useState<TermPair[]>([])
@@ -75,6 +88,7 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
 
   const downloadUrl = taskId ? `${API_BASE_URL}/api/download/${taskId}/terminology` : null
 
+  /** 从后端拉取并解析术语 CSV 数据 */
   const fetchTerminology = useCallback(async () => {
     if (!taskId || !downloadUrl) {
       return
@@ -106,12 +120,14 @@ export function TerminologyTable({ taskId }: TerminologyTableProps) {
     }
   }, [downloadUrl, taskId, t])
 
+  // 当 Sheet 打开时自动拉取术语数据
   useEffect(() => {
     if (isOpen && taskId) {
       void fetchTerminology()
     }
   }, [fetchTerminology, isOpen, taskId])
 
+  /** 在新标签页中下载术语 CSV 文件 */
   function handleDownload() {
     if (downloadUrl) {
       window.open(downloadUrl, "_blank")

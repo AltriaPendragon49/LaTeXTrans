@@ -17,12 +17,19 @@ import { HotWindowFilter } from "@/features/community-paper/components/HotWindow
 import { FilterToolbar } from "@/ui/filter-toolbar/FilterToolbar"
 import { Pill } from "@/ui/pill/Pill"
 
+/** 排序选项 */
 interface FeedSortOption {
   value: CommunityFeedSort
   label: string
   icon: LucideIcon
 }
 
+/**
+ * 社区论文流主页面组件
+ * 展示社区论文列表，支持四种排序方式（hot/latest/views/likes）、搜索关键词过滤、
+ * 热榜时间窗口筛选、管理员删除和无限滚动加载。
+ * 使用 SSR Bootstrap 数据优化首屏渲染速度
+ */
 export default function CommunityFeedSurface() {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -64,6 +71,7 @@ export default function CommunityFeedSurface() {
     },
   ]
 
+  /** 提交搜索查询 */
   function handleSearchSubmit(nextValue: string) {
     const normalized = nextValue.trim()
     if (!normalized) {
@@ -72,6 +80,7 @@ export default function CommunityFeedSurface() {
     setQuery(normalized)
   }
 
+  /** 管理员删除论文 */
   async function handleDelete(paper: CommunityPaper) {
     const confirmed = window.confirm(
       t("community.admin.deleteConfirm", {

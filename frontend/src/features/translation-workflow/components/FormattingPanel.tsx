@@ -10,6 +10,7 @@ import { Label } from "@/ui/primitives/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitives/select"
 import type { FormattingConfig } from "@/types/config"
 
+/** 数值字段 Props */
 interface NumericFieldProps {
   id: string
   label: string
@@ -23,6 +24,10 @@ interface NumericFieldProps {
   tooltip?: string
 }
 
+/**
+ * 数值输入字段组件
+ * 带开关控制的数字输入，关闭时显示占位符"保持原文"，适用于行间距、字号等格式设置
+ */
 function NumericField({
   id,
   label,
@@ -74,6 +79,7 @@ function NumericField({
   )
 }
 
+/** 下拉选择字段 Props */
 interface SelectFieldProps {
   id: string
   label: string
@@ -83,6 +89,10 @@ interface SelectFieldProps {
   options: { value: string; label: string }[]
 }
 
+/**
+ * 下拉选择字段组件
+ * 用于列模式、边距、参考文献样式等格式项的下拉选择，默认选项为"保持原文"
+ */
 function SelectField({ id, label, icon, value, onChange, options }: SelectFieldProps) {
   const { t } = useTranslation()
 
@@ -108,6 +118,7 @@ function SelectField({ id, label, icon, value, onChange, options }: SelectFieldP
   )
 }
 
+/** 开关行字段 Props */
 interface ToggleRowProps {
   id: string
   label: string
@@ -117,6 +128,10 @@ interface ToggleRowProps {
   onChange: (value: boolean | null) => void
 }
 
+/**
+ * 开关行字段组件
+ * 用于首行缩进、本地化图表标题等布尔类型格式开关
+ */
 function ToggleRow({ id, label, description, icon, value, onChange }: ToggleRowProps) {
   return (
     <FormFieldShell
@@ -129,15 +144,25 @@ function ToggleRow({ id, label, description, icon, value, onChange }: ToggleRowP
   )
 }
 
+/** 格式化面板 Props */
 export interface FormattingPanelProps {
+  /** 当前格式化配置值 */
   value: FormattingConfig
+  /** 配置变更回调，接收部分更新 */
   onChange: (patch: Partial<FormattingConfig>) => void
+  /** 目标语言代码，用于判断是否显示中文字体选项 */
   targetLanguage?: string
   className?: string
 }
 
+/** 中日韩语言集合，用于判断是否需要显示中文字体选项 */
 const CJK_LANGS = new Set(["zh", "ja", "ko"])
 
+/**
+ * 格式化面板组件
+ * 提供行间距、字号、分栏、页边距、参考文献格式、引文格式、中文字体、
+ * 首行缩进和图表标题本地化等排版格式的配置界面
+ */
 export function FormattingPanel({ value, onChange, targetLanguage, className }: FormattingPanelProps) {
   const isCjk = targetLanguage ? CJK_LANGS.has(targetLanguage) : false
   const { t } = useTranslation()

@@ -25,10 +25,15 @@ import type {
   StructuredInsightsPayload,
 } from "@/types/community"
 
+/** localStorage 中存储分栏比例的 key */
 const SPLIT_STORAGE_KEY = "community-paper-reader-split-ratio-v3"
+/** 默认分栏比例（阅读器占比） */
 const DEFAULT_SPLIT_RATIO = 0.74
+/** 阅读器最小宽度 */
 const MIN_READER_WIDTH = 720
+/** 侧栏最小宽度 */
 const MIN_SIDEBAR_WIDTH = 260
+/** 洞察区域的标准排序 */
 const GUIDE_SECTION_ORDER = [
   "problem",
   "solution",
@@ -37,6 +42,7 @@ const GUIDE_SECTION_ORDER = [
   "future",
 ] as const
 
+/** 论文详情工作区 Props */
 interface PaperDetailWorkspaceProps {
   paper: CommunityPaper
   preview: CommunityPaperPreviewResponse | null
@@ -51,22 +57,26 @@ interface PaperDetailWorkspaceProps {
   mobileAnalysisJumpRequest?: number
 }
 
+/** 判断是否为翻译 PDF 模式 */
 function isTranslatedPdfMode(mode: CommunityPaperReaderMode) {
   return mode === "translated" || mode === "translated_pdf"
 }
 
+/** 判断是否为双语对比模式 */
 function isBilingualCompareMode(mode: CommunityPaperReaderMode) {
   return mode === "bilingual_compare"
 }
 
 type PdfViewerMode = "single" | "bilingual"
 
+/** 构建 PDF.js 查看器 URL（添加隐藏工具栏等参数） */
 function buildPdfViewerUrl(url: string, mode: PdfViewerMode = "single") {
   const view = mode === "bilingual" ? "FitH" : "FitH"
   const viewerParams = `page=1&view=${view}&pagemode=none&toolbar=0&navpanes=0&scrollbar=0`
   return url.includes("#") ? `${url}&${viewerParams}` : `${url}#${viewerParams}`
 }
 
+/** 解析 PDF 文档的最终 URL */
 function resolvePdfDocumentUrl(
   fallbackUrl: string,
   resource: { kind?: string | null; url?: string | null } | null | undefined,
@@ -85,6 +95,7 @@ function resolvePdfDocumentUrl(
   return fallbackUrl
 }
 
+/** 根据容器宽度限制分栏比例在有效范围内 */
 function clampSplitRatio(ratio: number, width: number) {
   if (!Number.isFinite(ratio) || !Number.isFinite(width) || width <= 0) {
     return DEFAULT_SPLIT_RATIO
@@ -96,10 +107,12 @@ function clampSplitRatio(ratio: number, width: number) {
   return Math.min(Math.max(ratio, minRatio), maxRatio)
 }
 
+/** 判断 section_key 是否属于 GUIDE_SECTION_ORDER */
 function isGuideSectionKey(sectionKey: string): sectionKey is StructuredInsightSectionKey {
   return GUIDE_SECTION_ORDER.includes(sectionKey as StructuredInsightSectionKey)
 }
 
+/** 获取洞察区域的本地化标签 */
 function getInsightLabel(sectionKey: StructuredInsightSectionKey, t: (key: string) => string) {
   switch (sectionKey) {
     case "problem":
@@ -115,6 +128,7 @@ function getInsightLabel(sectionKey: StructuredInsightSectionKey, t: (key: strin
   }
 }
 
+/** 解析后的洞察内容结构 */
 interface ParsedInsightContent {
   summary: string | null
   sections: Array<{
@@ -124,6 +138,7 @@ interface ParsedInsightContent {
   paragraphs: string[]
 }
 
+/** 内联洞察小标题的已知中文关键词集合 */
 const INLINE_INSIGHT_SECTION_TITLES = [
   "问题本质",
   "现有方法的局限",
@@ -160,10 +175,12 @@ const INLINE_INSIGHT_SECTION_TITLES = [
 
 const INLINE_INSIGHT_SECTION_TITLE_SET = new Set<string>(INLINE_INSIGHT_SECTION_TITLES)
 
+/** 转义正则表达式特殊字符 */
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/** 标准化洞察标题行，返回已知标题或 null */
 function normalizeInsightTitleLine(line: string) {
   const normalized = line
     .replace(/^[#*\-\s>\d.)]+/, "")
@@ -173,6 +190,7 @@ function normalizeInsightTitleLine(line: string) {
   return INLINE_INSIGHT_SECTION_TITLE_SET.has(normalized) ? normalized : null
 }
 
+/** 试探性提取短标题块（首行长度 <= 14 且不含标点） */
 function extractHeuristicTitledBlock(block: string) {
   const lines = block
     .split(/\r?\n/g)
@@ -199,6 +217,7 @@ function extractHeuristicTitledBlock(block: string) {
   }
 }
 
+/** 标准化结构化洞察块 */
 function normalizeStructuredInsightBlock(block: StructuredInsightBlock | null | undefined) {
   const heading = block?.heading?.trim()
   const content = block?.content?.trim()
@@ -211,6 +230,7 @@ function normalizeStructuredInsightBlock(block: StructuredInsightBlock | null | 
   }
 }
 
+/** 解析洞察区域内容为结构化数据 */
 function resolveInsightContent(section: StructuredInsightSection): ParsedInsightContent | null {
   const normalizedBlocks = (section.blocks ?? [])
     .map((block) => normalizeStructuredInsightBlock(block))
@@ -229,7 +249,9 @@ function resolveInsightContent(section: StructuredInsightSection): ParsedInsight
   return fallbackContent ? parseInsightContent(fallbackContent) : null
 }
 
+/** 按行提取标题-正文段落 */
 function extractLineTitledSections(block: string) {
+  // ... (保持原有实现不变)
   const lines = block
     .split(/\r?\n/g)
     .map((line) => line.trim())
@@ -285,7 +307,9 @@ function extractLineTitledSections(block: string) {
   }
 }
 
+/** 内联标题提取（如"问题本质：..."） */
 function extractInlineTitledSections(block: string) {
+  // ... (保持原有实现不变)
   const titlePattern = INLINE_INSIGHT_SECTION_TITLES
     .slice()
     .sort((left, right) => right.length - left.length)
@@ -321,7 +345,9 @@ function extractInlineTitledSections(block: string) {
   return { lead, sections }
 }
 
+/** 将自然语言文本解析为洞察结构化内容 */
 function parseInsightContent(content: string): ParsedInsightContent {
+  // ... (保持原有实现不变)
   const normalized = content
     .split(/\r?\n\s*\r?\n/g)
     .map((block) => block.trim())
@@ -384,6 +410,12 @@ function parseInsightContent(content: string): ParsedInsightContent {
   }
 }
 
+/**
+ * 论文详情工作区组件
+ * 展示论文的核心内容区，包含阅读器面板（PDF/HTML）和右侧分析面板（洞察/相似论文）。
+ * 支持桌面端可拖拽分栏和移动端折叠切换。
+ * 相似论文通过 GET /api/papers/{paperId}/similar 获取
+ */
 export function PaperDetailWorkspace({
   paper,
   preview: _preview,
@@ -422,12 +454,14 @@ export function PaperDetailWorkspace({
   const [mobileReaderCollapsed, setMobileReaderCollapsed] = useState(false)
   const analysisPanelRef = useRef<HTMLElement | null>(null)
 
+  // 持久化分栏比例到 localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SPLIT_STORAGE_KEY, String(splitRatio))
     }
   }, [splitRatio])
 
+  // 监听窗口尺寸变化
   useEffect(() => {
     if (typeof window === "undefined") {
       return undefined
@@ -442,6 +476,7 @@ export function PaperDetailWorkspace({
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
+  /** 处理分栏拖拽开始 */
   function handleResizeStart(event: ReactPointerEvent<HTMLDivElement>) {
     const container = containerRef.current
     if (!container) {
@@ -466,6 +501,7 @@ export function PaperDetailWorkspace({
     window.addEventListener("pointerup", handlePointerUp)
   }
 
+  // 切换到相似论文标签时加载数据
   useEffect(() => {
     if (activeTab !== "similar" || similarState !== "loading") {
       return
@@ -494,6 +530,7 @@ export function PaperDetailWorkspace({
     }
   }, [activeTab, paper.id, similarState])
 
+  // 移动端自动滚动到阅读器面板
   useEffect(() => {
     if (isDesktop || autoFocusedPaperIdRef.current === paper.id) {
       return
@@ -517,12 +554,14 @@ export function PaperDetailWorkspace({
     }
   }, [isDesktop, paper.id])
 
+  // 桌面端解除移动端折叠状态
   useEffect(() => {
     if (isDesktop) {
       setMobileReaderCollapsed(false)
     }
   }, [isDesktop])
 
+  // 响应移动端跳转分析面板请求
   useEffect(() => {
     if (isDesktop || mobileAnalysisJumpRequest === 0) {
       return
@@ -538,6 +577,7 @@ export function PaperDetailWorkspace({
     }
   }, [isDesktop, mobileAnalysisJumpRequest])
 
+  // 构建各种 PDF 查看器 URL
   const sourceHtmlContent =
     preferredMode === "source" && reader?.source?.kind === "source_html"
       ? (reader.source.html_content ?? null)

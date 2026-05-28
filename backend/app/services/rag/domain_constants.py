@@ -1,8 +1,7 @@
-"""Domain constants for RAG terminology classification.
+"""RAG 术语分类领域常量
 
-Provides canonical domain identifiers, human-readable labels,
-grouping helpers, and arXiv category-to-domain mapping used
-throughout the terminology system.
+提供规范化的领域标识符、人类可读标签、分组辅助函数，
+以及 arXiv 类别到领域的映射，供整个术语系统使用。
 """
 
 from __future__ import annotations
@@ -13,9 +12,9 @@ from typing import Final
 
 
 class TermDomain(str, Enum):
-    """Canonical domain identifiers for terminology entries."""
+    """术语条目的规范化领域标识符"""
 
-    # Computer Science & AI
+    # 计算机科学 & AI
     COMPUTER_SCIENCE = "computer_science"
     ARTIFICIAL_INTELLIGENCE = "artificial_intelligence"
     MACHINE_LEARNING = "machine_learning"
@@ -30,7 +29,7 @@ class TermDomain(str, Enum):
     DATABASE = "database"
     NETWORKING = "networking"
 
-    # Mathematics
+    # 数学
     MATHEMATICS = "mathematics"
     STATISTICS = "statistics"
     LINEAR_ALGEBRA = "linear_algebra"
@@ -39,7 +38,7 @@ class TermDomain(str, Enum):
     OPTIMIZATION = "optimization"
     GRAPH_THEORY = "graph_theory"
 
-    # Physics
+    # 物理
     PHYSICS = "physics"
     QUANTUM_MECHANICS = "quantum_mechanics"
     THERMODYNAMICS = "thermodynamics"
@@ -47,7 +46,7 @@ class TermDomain(str, Enum):
     CONDENSED_MATTER = "condensed_matter"
     ASTROPHYSICS = "astrophysics"
 
-    # Biology & Medicine
+    # 生物学 & 医学
     BIOLOGY = "biology"
     MOLECULAR_BIOLOGY = "molecular_biology"
     GENETICS = "genetics"
@@ -57,7 +56,7 @@ class TermDomain(str, Enum):
     NEUROSCIENCE = "neuroscience"
     BIOINFORMATICS = "bioinformatics"
 
-    # Engineering
+    # 工程
     ENGINEERING = "engineering"
     ELECTRICAL_ENGINEERING = "electrical_engineering"
     MECHANICAL_ENGINEERING = "mechanical_engineering"
@@ -68,21 +67,21 @@ class TermDomain(str, Enum):
     CONTROL_THEORY = "control_theory"
     SIGNAL_PROCESSING = "signal_processing"
 
-    # Chemistry
+    # 化学
     CHEMISTRY = "chemistry"
     ORGANIC_CHEMISTRY = "organic_chemistry"
     INORGANIC_CHEMISTRY = "inorganic_chemistry"
     PHYSICAL_CHEMISTRY = "physical_chemistry"
     ANALYTICAL_CHEMISTRY = "analytical_chemistry"
 
-    # Other
+    # 其他
     ECONOMICS = "economics"
     LINGUISTICS = "linguistics"
     PHILOSOPHY = "philosophy"
     EDUCATION = "education"
 
 
-# Human-readable labels (Chinese) for frontend display
+# 前端展示用中文标签
 DOMAIN_LABELS_ZH: Final[dict[str, str]] = {
     TermDomain.COMPUTER_SCIENCE.value: "计算机科学",
     TermDomain.ARTIFICIAL_INTELLIGENCE.value: "人工智能",
@@ -138,7 +137,7 @@ DOMAIN_LABELS_ZH: Final[dict[str, str]] = {
     TermDomain.ANALYTICAL_CHEMISTRY.value: "分析化学",
 }
 
-# Human-readable labels (English)
+# 英文标签
 DOMAIN_LABELS_EN: Final[dict[str, str]] = {
     TermDomain.COMPUTER_SCIENCE.value: "Computer Science",
     TermDomain.ARTIFICIAL_INTELLIGENCE.value: "Artificial Intelligence",
@@ -195,7 +194,7 @@ DOMAIN_LABELS_EN: Final[dict[str, str]] = {
 }
 
 
-# Parent grouping: high-level domain -> list of sub-domain values
+# 父级分组: 顶级领域 -> 子领域值列表
 DOMAIN_GROUPS: Final[dict[str, list[str]]] = {
     "computer_science": [
         TermDomain.COMPUTER_SCIENCE.value,
@@ -261,25 +260,25 @@ DOMAIN_GROUPS: Final[dict[str, list[str]]] = {
 
 
 def get_domain_label(domain: str, lang: str = "zh") -> str:
-    """Return human-readable label for a domain identifier."""
+    """返回领域标识符的人类可读标签"""
     labels = DOMAIN_LABELS_ZH if lang == "zh" else DOMAIN_LABELS_EN
     return labels.get(domain, domain)
 
 
 def get_domain_group(domain: str) -> str | None:
-    """Return the parent group for a sub-domain, or None if it's a top-level domain."""
+    """返回子领域的父级分组，如果是顶级领域则返回 None"""
     for group, members in DOMAIN_GROUPS.items():
         if domain in members:
             return group
     return None
 
 
-# ---- arXiv Category to Domain Mapping ----
+# ── arXiv 类别到领域映射 ─────────────────────────────────────────────
 
-# Mapping from arXiv category prefix patterns to TermDomain values.
-# Patterns are matched in order; the first match wins.
+# 从 arXiv 类别前缀模式到 TermDomain 值的映射。
+# 模式按顺序匹配，第一个命中有效。
 _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
-    # Computer Science & AI
+    # 计算机科学 & AI
     (r"^cs\.AI$", "artificial_intelligence"),
     (r"^cs\.LG$", "machine_learning"),
     (r"^cs\.NE$", "machine_learning"),
@@ -297,13 +296,13 @@ _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
     (r"^cs\.RO$", "robotics"),
     (r"^cs\.SY$", "systems"),
     (r"^cs\.IT$", "information_retrieval"),
-    (r"^cs\.[A-Z]{2}$", "computer_science"),  # Generic CS catch-all
+    (r"^cs\.[A-Z]{2}$", "computer_science"),  # 通用 CS 兜底
 
-    # Mathematics
+    # 数学
     (r"^math\.[A-Z]{2}$", "mathematics"),
     (r"^math$", "mathematics"),
 
-    # Statistics
+    # 统计学
     (r"^stat\.ML$", "machine_learning"),
     (r"^stat\.TH$", "statistics"),
     (r"^stat\.ME$", "statistics"),
@@ -312,7 +311,7 @@ _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
     (r"^stat\.OT$", "statistics"),
     (r"^stat$", "statistics"),
 
-    # Physics
+    # 物理
     (r"^physics\.[a-z-]+$", "physics"),
     (r"^physics$", "physics"),
     (r"^quant-ph$", "quantum_mechanics"),
@@ -327,7 +326,7 @@ _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
     (r"^cond-mat\.[a-z-]+$", "condensed_matter"),
     (r"^physics\.flu-dyn$", "engineering"),
 
-    # Biology & Medicine
+    # 生物学 & 医学
     (r"^q-bio\.[A-Z]{2}$", "biology"),
     (r"^q-bio$", "biology"),
     (r"^q-bio\.BM$", "biochemistry"),
@@ -337,11 +336,11 @@ _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
     (r"^q-bio\.QM$", "bioinformatics"),
     (r"^q-bio\.TO$", "biology"),
 
-    # Chemistry
+    # 化学
     (r"^chem-ph$", "physical_chemistry"),
     (r"^physics\.chem-ph$", "physical_chemistry"),
 
-    # Engineering
+    # 工程
     (r"^eess\.[A-Z]{2}$", "engineering"),
     (r"^eess\.SP$", "signal_processing"),
     (r"^eess\.SY$", "control_theory"),
@@ -349,7 +348,7 @@ _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
     (r"^eess\.AS$", "signal_processing"),
     (r"^eess$", "engineering"),
 
-    # Economics
+    # 经济学
     (r"^econ\.[A-Z]{2}$", "economics"),
     (r"^q-fin\.[A-Z]{2}$", "economics"),
     (r"^q-fin$", "economics"),
@@ -357,16 +356,15 @@ _ARXIV_CATEGORY_DOMAIN_MAP: Final[list[tuple[str, str]]] = [
 
 
 def map_arxiv_category_to_domain(arxiv_cat: str) -> str | None:
-    """Map a single arXiv category string to a TermDomain value.
+    """将单个 arXiv 类别字符串映射为 TermDomain 值。
 
-    Args:
-        arxiv_cat: An arXiv category string, e.g. ``"cs.CL"``, ``"math.OC"``,
-                   ``"quant-ph"``, ``"physics.optics"``.
+    参数:
+        arxiv_cat: arXiv 类别字符串，如 ``"cs.CL"``, ``"math.OC"``,
+                   ``"quant-ph"``, ``"physics.optics"``。
 
-    Returns:
-        The corresponding ``TermDomain`` value (e.g. ``"natural_language_processing"``,
-        ``"mathematics"``, ``"quantum_mechanics"``), or ``None`` if no mapping
-        is found.
+    返回:
+        对应的 ``TermDomain`` 值（如 ``"natural_language_processing"``,
+        ``"mathematics"``, ``"quantum_mechanics"``），未找到映射时返回 ``None``。
     """
     if not arxiv_cat or not isinstance(arxiv_cat, str):
         return None
@@ -382,18 +380,17 @@ def map_arxiv_category_to_domain(arxiv_cat: str) -> str | None:
 
 
 def map_arxiv_categories_to_domain(categories: list[str]) -> str | None:
-    """Map a list of arXiv categories to the most specific TermDomain value.
+    """将 arXiv 类别列表映射为最具体的 TermDomain 值。
 
-    When a paper has multiple categories, this function uses the first
-    non-generic match found.  "Generic" here means top-level domains like
-    ``"computer_science"``, ``"mathematics"``, ``"biology"`` – more specific
-    sub-domains are preferred.
+    当论文有多个类别时，此函数使用第一个找到的非通用匹配。
+    "通用" 指顶级领域如 ``"computer_science"``, ``"mathematics"``,
+    ``"biology"`` —— 更具体的子领域优先。
 
-    Args:
-        categories: List of arXiv category strings, e.g. ``["cs.CL", "cs.AI"]``.
+    参数:
+        categories: arXiv 类别字符串列表，如 ``["cs.CL", "cs.AI"]``。
 
-    Returns:
-        A ``TermDomain`` value, or ``None`` if no mapping is found.
+    返回:
+        ``TermDomain`` 值，未找到映射时返回 ``None``。
     """
     if not categories:
         return None
@@ -404,13 +401,13 @@ def map_arxiv_categories_to_domain(categories: list[str]) -> str | None:
         "biochemistry", "signal_processing",
     }
 
-    # First pass: look for a specific (non-generic) match
+    # 第一轮: 查找具体（非通用）匹配
     for cat in categories:
         domain = map_arxiv_category_to_domain(cat)
         if domain and domain not in generic_domains:
             return domain
 
-    # Second pass: fall back to any match
+    # 第二轮: 回退到任意匹配
     for cat in categories:
         domain = map_arxiv_category_to_domain(cat)
         if domain:

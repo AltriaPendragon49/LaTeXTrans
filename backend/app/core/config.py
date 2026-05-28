@@ -1,8 +1,8 @@
 """
-Backend Configuration Module
+后端配置模块
 
-Loads settings from environment variables and TOML config files.
-Provides configuration for LLM API, storage paths, and task status enums.
+从环境变量和 TOML 配置文件中加载设置。
+提供 LLM API、存储路径和任务状态枚举等配置。
 """
 
 import json
@@ -16,7 +16,7 @@ import toml
 
 
 class TaskStatus(str, Enum):
-    """Task status enumeration"""
+    """任务状态枚举"""
     PENDING = "pending"
     QUEUED = "queued"
     PROCESSING = "processing"
@@ -28,7 +28,7 @@ class TaskStatus(str, Enum):
 
 
 class CompilationStage(str, Enum):
-    """Compilation stage enumeration"""
+    """编译阶段枚举"""
     IDLE = "idle"
     PARSING = "parsing"
     TRANSLATING = "translating"
@@ -38,9 +38,9 @@ class CompilationStage(str, Enum):
 
 
 class Settings(BaseSettings):
-    """Application settings"""
-    
-    # Application Info
+    """应用程序全局设置"""
+
+    # 应用基本信息
     app_name: str = "PaperX Backend"
     version: str = "0.1.0"
     
@@ -56,27 +56,27 @@ class Settings(BaseSettings):
     llm_system_pool_groups_json: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("LLM_SYSTEM_POOL_GROUPS_JSON", "llm_system_pool_groups_json"),
-        description="Optional JSON array describing system-managed LLM pool groups: [{base_url, api_keys: []}, ...]",
+        description="可选的 JSON 数组，描述系统管理的 LLM 池组: [{base_url, api_keys: []}, ...]",
     )
     llm_members_json: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("LLM_MEMBERS_JSON", "llm_members_json"),
-        description="Optional JSON array describing LLM members: [{member_id, base_url, api_key, account_id, quota_scope, concurrency, reserve}, ...]",
+        description="可选的 JSON 数组，描述 LLM 成员: [{member_id, base_url, api_key, account_id, quota_scope, concurrency, reserve}, ...]",
     )
     llm_pool_reserve_count: int = Field(
         default=1,
         validation_alias=AliasChoices("LLM_POOL_RESERVE_COUNT", "llm_pool_reserve_count"),
-        description="Healthy LLM members to reserve for failover/spikes when computing community task capacity.",
+        description="计算社区任务容量时保留的健康 LLM 成员数量，用于故障转移/流量突增",
     )
     llm_member_default_concurrency: int = Field(
         default=1,
         validation_alias=AliasChoices("LLM_MEMBER_DEFAULT_CONCURRENCY", "llm_member_default_concurrency"),
-        description="Default per-member outbound LLM request concurrency.",
+        description="每个成员的默认出站 LLM 请求并发数",
     )
     llm_shared_pool_concurrency: Optional[int] = Field(
         default=None,
         validation_alias=AliasChoices("LLM_SHARED_POOL_CONCURRENCY", "llm_shared_pool_concurrency"),
-        description="Optional shared pool concurrency limit across configured LLM members.",
+        description="可选的所有 LLM 成员共享池并发限制",
     )
     llm_timeout: int = Field(
         default=120,
@@ -91,11 +91,11 @@ class Settings(BaseSettings):
         validation_alias="PROMPT_RESERVE_TOKENS"
     )
     
-    # Translation Settings
+    # 翻译设置
     target_language: str = "ch"
     source_language: str = "en"
-    
-    # Legacy import-source configuration
+
+    # 遗留导入源配置
     migration_source_url: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("MIGRATION_SOURCE_URL", "IMPORT_SOURCE_URL"),
@@ -103,49 +103,49 @@ class Settings(BaseSettings):
     migration_source_anon_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("MIGRATION_SOURCE_ANON_KEY", "IMPORT_SOURCE_ANON_KEY"),
-        description="Legacy import-source public key retained only for migration tooling.",
+        description="仅用于迁移工具的遗留导入源公钥",
     )
     migration_source_service_role_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("MIGRATION_SOURCE_SERVICE_ROLE_KEY", "IMPORT_SOURCE_SERVICE_ROLE_KEY"),
-        description="Legacy import-source privileged key retained only for migration tooling.",
+        description="仅用于迁移工具的遗留导入源特权密钥",
     )
 
-    # Local auth / MySQL configuration
+    # 本地认证 / MySQL 配置
     database_url: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("DATABASE_URL", "MYSQL_DATABASE_URL"),
-        description="Business database URL. MySQL is the target for runtime migration.",
+        description="业务数据库 URL，MySQL 是运行时迁移的目标",
     )
     mysql_host: Optional[str] = Field(
         default=None,
         validation_alias="MYSQL_HOST",
-        description="Optional dedicated host-side MySQL host for migration scripts.",
+        description="可选的专用主机端 MySQL 主机地址，用于迁移脚本",
     )
     mysql_port: int = Field(
         default=3306,
         validation_alias="MYSQL_PORT",
-        description="Optional dedicated host-side MySQL port for migration scripts.",
+        description="可选的专用主机端 MySQL 端口，用于迁移脚本",
     )
     mysql_user: Optional[str] = Field(
         default=None,
         validation_alias="MYSQL_USER",
-        description="Optional dedicated host-side MySQL user for migration scripts.",
+        description="可选的专用主机端 MySQL 用户名，用于迁移脚本",
     )
     mysql_password: Optional[str] = Field(
         default=None,
         validation_alias="MYSQL_PASSWORD",
-        description="Optional dedicated host-side MySQL password for migration scripts.",
+        description="可选的专用主机端 MySQL 密码，用于迁移脚本",
     )
     mysql_database: Optional[str] = Field(
         default=None,
         validation_alias="MYSQL_DATABASE",
-        description="Optional dedicated host-side MySQL database for migration scripts.",
+        description="可选的专用主机端 MySQL 数据库名，用于迁移脚本",
     )
     mysql_connect_timeout: int = Field(
         default=10,
         validation_alias="MYSQL_CONNECT_TIMEOUT",
-        description="Optional dedicated host-side MySQL connect timeout in seconds for migration scripts.",
+        description="可选的专用主机端 MySQL 连接超时时间（秒），用于迁移脚本",
     )
     auth_provider_mode: str = Field(
         default="niutrans_local",
@@ -154,7 +154,7 @@ class Settings(BaseSettings):
     auth_jwt_keys: str = Field(
         default="v1:change-me-local-dev-secret",
         validation_alias="AUTH_JWT_KEYS",
-        description="Comma-separated versioned signing keys, e.g. v3:secret3,v2:secret2",
+        description="逗号分隔的版本化签名密钥，格式如 v3:secret3,v2:secret2",
     )
     auth_jwt_issuer: str = Field(
         default="latextrans-local",
@@ -187,37 +187,37 @@ class Settings(BaseSettings):
     niutrans_user_info_url: str = Field(
         default="https://niutrans.com/NiuTransConsole/user/getUserInfo",
         validation_alias="NIUTRANS_USER_INFO_URL",
-        description="NiuTrans account user-info endpoint used only for safe PDF direct credit snapshots.",
+        description="NiuTrans 账户用户信息端点，仅用于安全的 PDF 直译积分快照",
     )
     pdf_direct_translation_enabled: bool = Field(
         default=False,
         validation_alias="PDF_DIRECT_TRANSLATION_ENABLED",
-        description="Enable the PDF direct translation workspace and API routes.",
+        description="启用 PDF 直译工作区和 API 路由",
     )
     niutrans_doc_api_base_url: str = Field(
         default="https://api-doc.niutrans.com/documentTransApi",
         validation_alias="NIUTRANS_DOC_API_BASE_URL",
-        description="NiuTrans document translation API base URL for paper translation endpoints.",
+        description="NiuTrans 文档翻译 API 基础 URL，用于论文翻译端点",
     )
     niutrans_doc_api_app_id: Optional[str] = Field(
         default=None,
         validation_alias="NIUTRANS_DOC_API_APP_ID",
-        description="Product-level document translation API application ID for NiuTrans request signing.",
+        description="产品级文档翻译 API 应用 ID，用于 NiuTrans 请求签名",
     )
     pdf_direct_poll_interval_seconds: float = Field(
         default=2.0,
         validation_alias="PDF_DIRECT_POLL_INTERVAL_SECONDS",
-        description="Polling interval in seconds for PDF direct task status checks.",
+        description="PDF 直译任务状态检查的轮询间隔（秒）",
     )
     daily_latex_translation_quota_limit: int = Field(
         default=3,
         validation_alias="DAILY_LATEX_TRANSLATION_QUOTA_LIMIT",
-        description="Daily local LaTeX translation items per authenticated user.",
+        description="每位认证用户每日本地 LaTeX 翻译限额",
     )
     daily_latex_translation_quota_timezone: str = Field(
         default="Asia/Shanghai",
         validation_alias="DAILY_LATEX_TRANSLATION_QUOTA_TIMEZONE",
-        description="Natural-day timezone for local daily LaTeX translation quota reset.",
+        description="本地每日 LaTeX 翻译配额重置的自然日时区",
     )
     local_admin_external_user_ids: list[str] = Field(
         default_factory=list,
@@ -233,99 +233,99 @@ class Settings(BaseSettings):
     )
 
     
-    # Encryption Configuration
+    # 加密配置
     encryption_key: Optional[str] = Field(
         default=None,
         validation_alias="ENCRYPTION_KEY",
-        description="Key for encrypting sensitive data like API keys"
+        description="用于加密 API 密钥等敏感数据的密钥"
     )
     community_download_token_secret: Optional[str] = Field(
         default=None,
         validation_alias="COMMUNITY_DOWNLOAD_TOKEN_SECRET",
-        description="Signing secret for short-lived community paper download tokens",
+        description="用于短期社区论文下载令牌的签名密钥",
     )
     community_agent_tavily_api_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("COMMUNITY_AGENT_TAVILY_API_KEY", "COMMUNITY_AGENT_SEARCH_API_KEY"),
-        description="API key for Tavily-backed external search in the community agent runtime.",
+        description="社区 Agent 运行时基于 Tavily 的外部搜索 API 密钥",
     )
     community_agent_tavily_base_url: str = Field(
         default="https://api.tavily.com",
         validation_alias=AliasChoices("COMMUNITY_AGENT_TAVILY_BASE_URL", "COMMUNITY_AGENT_SEARCH_API_URL"),
-        description="Base URL for Tavily-backed external search in the community agent runtime.",
+        description="社区 Agent 运行时基于 Tavily 的外部搜索基础 URL",
     )
     community_baseline_seed_path: Optional[Path] = Field(
         default=None,
         validation_alias="COMMUNITY_BASELINE_SEED_PATH",
-        description="Optional JSON seed file used as a baseline public community feed when no public papers exist.",
+        description="可选的 JSON 种子文件，在没有公开论文时作为基准公共社区信息流",
     )
     community_feed_redis_url: Optional[str] = Field(
         default=None,
         validation_alias="COMMUNITY_FEED_REDIS_URL",
-        description="Optional Redis URL used for shared public community feed indexes and cache.",
+        description="可选的 Redis URL，用于共享公共社区信息流索引和缓存",
     )
     community_feed_redis_prefix: str = Field(
         default="feed",
         validation_alias="COMMUNITY_FEED_REDIS_PREFIX",
-        description="Key prefix for shared public community feed Redis state.",
+        description="共享公共社区信息流 Redis 状态的键前缀",
     )
     community_feed_cache_ttl_seconds: int = Field(
         default=60,
         validation_alias="COMMUNITY_FEED_CACHE_TTL_SECONDS",
-        description="TTL in seconds for shared anonymous public feed response cache entries.",
+        description="共享匿名公共信息流响应缓存条目的 TTL（秒）",
     )
     community_feed_rebuild_lock_ttl_seconds: int = Field(
         default=30,
         validation_alias="COMMUNITY_FEED_REBUILD_LOCK_TTL_SECONDS",
-        description="TTL in seconds for the shared Redis rebuild lock guarding public feed index refreshes.",
+        description="保护公共信息流索引刷新的共享 Redis 重建锁 TTL（秒）",
     )
     community_feed_rebuild_interval_seconds: float = Field(
         default=300.0,
         validation_alias="COMMUNITY_FEED_REBUILD_INTERVAL_SECONDS",
-        description="Periodic worker-side interval for full Redis public feed index repair/rebuild runs; set to 0 to disable.",
+        description="定期 Worker 端全量 Redis 公共信息流索引修复/重建运行的间隔；设为 0 禁用",
     )
     community_arxiv_metadata_repair_interval_seconds: float = Field(
         default=1800.0,
         validation_alias="COMMUNITY_ARXIV_METADATA_REPAIR_INTERVAL_SECONDS",
-        description="Periodic worker-side interval for repairing published arXiv papers whose metadata fell back after a transient fetch failure; set to 0 to disable.",
+        description="定期 Worker 端修复已发布 arXiv 论文元数据的间隔，用于元数据因临时获取失败而回退的情况；设为 0 禁用",
     )
     community_arxiv_metadata_repair_limit: int = Field(
         default=20,
         validation_alias="COMMUNITY_ARXIV_METADATA_REPAIR_LIMIT",
-        description="Maximum published arXiv papers to scan per metadata repair pass.",
+        description="每次元数据修复扫描的已发布 arXiv 论文最大数量",
     )
     pipeline_timeout_seconds: float = Field(
         default=1800.0,
         validation_alias="PIPELINE_TIMEOUT_SECONDS",
-        description="Global translation pipeline timeout in seconds; set to 0 to disable.",
+        description="全局翻译流水线超时时间（秒）；设为 0 禁用",
     )
     admin_curation_task_wait_timeout_seconds: int = Field(
         default=1800,
         validation_alias="ADMIN_CURATION_TASK_WAIT_TIMEOUT_SECONDS",
-        description="Legacy admin curation task wait timeout in seconds; set to 0 to disable stage wait timeouts.",
+        description="遗留管理员策展任务等待超时时间（秒）；设为 0 禁用阶段等待超时",
     )
     admin_curation_admission_timeout_seconds: int = Field(
         default=1800,
         validation_alias="ADMIN_CURATION_ADMISSION_TIMEOUT_SECONDS",
-        description="Admin curation queued/admission-stage wait timeout in seconds; set to 0 to disable.",
+        description="管理员策展排队/准入阶段等待超时时间（秒）；设为 0 禁用",
     )
     admin_curation_execution_timeout_seconds: int = Field(
         default=7200,
         validation_alias="ADMIN_CURATION_EXECUTION_TIMEOUT_SECONDS",
-        description="Admin curation processing/execution-stage wait timeout in seconds; set to 0 to disable.",
+        description="管理员策展处理/执行阶段等待超时时间（秒）；设为 0 禁用",
     )
     community_agent_product_enabled: bool = Field(
         default=False,
         validation_alias="COMMUNITY_AGENT_PRODUCT_ENABLED",
-        description="Whether the retained community-agent product routes are directly usable in the current product mode.",
+        description="当前产品模式中是否可直接使用保留的社区 Agent 产品路由",
     )
     community_curation_max_concurrent: int = Field(
         default=2,
         validation_alias="COMMUNITY_CURATION_MAX_CONCURRENT",
-        description="Maximum concurrent admin community curation jobs.",
+        description="最大并发的管理员社区策展任务数",
     )
 
-    # Hot Ranking Cron
+    # 热门排行定时任务
     hot_ranking_cron_enabled: bool = Field(
         default=True,
         validation_alias="HOT_RANKING_CRON_ENABLED",
@@ -343,7 +343,7 @@ class Settings(BaseSettings):
         validation_alias="HOT_RANKING_CRON_LOCK_TTL_SECONDS",
     )
 
-    # Auto-Intake
+    # 自动收录
     hot_ranking_auto_intake_enabled: bool = Field(
         default=True,
         validation_alias="HOT_RANKING_AUTO_INTAKE_ENABLED",
@@ -372,12 +372,12 @@ class Settings(BaseSettings):
     backend_runtime_role: str = Field(
         default="all",
         validation_alias="BACKEND_RUNTIME_ROLE",
-        description="Runtime role for the current backend process: all|web|worker.",
+        description="当前后端进程的运行时角色: all|web|worker",
     )
     worker_runtime_api_base_url: str = Field(
         default="http://127.0.0.1:9002/api",
         validation_alias=AliasChoices("WORKER_RUNTIME_API_BASE_URL", "worker_runtime_api_base_url"),
-        description="Loopback API base URL used by the web runtime to signal worker runtime task cancellation.",
+        description="Web 运行时用于通知 Worker 运行时取消任务的回环 API 基础 URL",
     )
     internal_runtime_request_max_age_seconds: int = Field(
         default=60,
@@ -385,36 +385,36 @@ class Settings(BaseSettings):
             "INTERNAL_RUNTIME_REQUEST_MAX_AGE_SECONDS",
             "internal_runtime_request_max_age_seconds",
         ),
-        description="Maximum clock skew accepted for signed internal runtime control requests.",
+        description="签名内部运行时控制请求所接受的最大时钟偏差",
     )
     admin_job_poll_interval_seconds: float = Field(
         default=5.0,
         validation_alias="ADMIN_JOB_POLL_INTERVAL_SECONDS",
-        description="Polling interval used by worker/background runtimes to claim queued admin jobs.",
+        description="Worker/后台运行时用于认领排队管理任务的轮询间隔",
     )
     frontend_pressure_grace_seconds: float = Field(
         default=15.0,
         validation_alias="FRONTEND_PRESSURE_GRACE_SECONDS",
-        description="How long worker backfill admission should defer after recent frontend traffic.",
+        description="在最近前端流量之后，Worker 回填准入应推迟的时长",
     )
     frontend_pressure_write_interval_seconds: float = Field(
         default=1.0,
         validation_alias="FRONTEND_PRESSURE_WRITE_INTERVAL_SECONDS",
-        description="Minimum interval between persisted frontend-pressure heartbeats from the web runtime.",
+        description="Web 运行时持久化前端压力心跳的最小间隔",
     )
     worker_process_nice_increment: int = Field(
         default=10,
         validation_alias="WORKER_PROCESS_NICE_INCREMENT",
-        description="Additional niceness applied to worker runtimes where the platform supports it.",
+        description="在支持该功能的平台上应用于 Worker 运行时的额外 nice 增量",
     )
-    
-    # LaTeX Compiler Settings
+
+    # LaTeX 编译器设置
     latex_bin_dir: Optional[str] = Field(
         default=None,
         validation_alias="LATEX_BIN_DIR"
     )
-    
-    # Storage Paths (relative to project root)
+
+    # 存储路径（相对于项目根目录）
     base_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent)
     data_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data")
     uploads_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "uploads")
@@ -427,7 +427,7 @@ class Settings(BaseSettings):
     storage_temp_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent / "data" / "tmp_storage",
         validation_alias="STORAGE_TEMP_DIR",
-        description="Temporary staging directory for storage-backed workflows such as COS uploads.",
+        description="用于 COS 上传等存储驱动工作流的临时暂存目录",
     )
     cos_bucket: Optional[str] = Field(default=None, validation_alias="COS_BUCKET")
     cos_region: Optional[str] = Field(default=None, validation_alias="COS_REGION")
@@ -441,14 +441,14 @@ class Settings(BaseSettings):
         validation_alias="ARXIV_RAW_CACHE_SIGNED_URL_EXPIRES_SECONDS",
     )
     enable_task_config_capture: bool = Field(default=True, validation_alias="ENABLE_TASK_CONFIG_CAPTURE")
-    
-    # File Upload Settings
-    max_upload_size: int = 50 * 1024 * 1024  # 50MB in bytes
+
+    # 文件上传设置
+    max_upload_size: int = 50 * 1024 * 1024  # 50MB（以字节为单位）
     allowed_extensions: set = {".zip", ".tex", ".tar", ".tar.gz", ".tgz", ".rar"}
-    
-    # CORS Settings
-    # Supports comma-separated CORS_ORIGINS env.
-    # Wildcard is intentionally disallowed for production safety.
+
+    # CORS 设置
+    # 支持逗号分隔的 CORS_ORIGINS 环境变量。
+    # 出于生产环境安全考虑，通配符被有意禁止。
     cors_origins: list[str] = Field(
     default_factory=lambda: [
         "http://localhost:5173",
@@ -465,8 +465,8 @@ class Settings(BaseSettings):
     validation_alias="CORS_ORIGINS",
 )
 
-    
-    # Task Queue Settings
+
+    # 任务队列设置
     max_concurrent_translations: int = Field(
         default=3,
         validation_alias="MAX_CONCURRENT_TRANSLATIONS"
@@ -480,7 +480,7 @@ class Settings(BaseSettings):
         validation_alias="GUEST_TASK_TTL_HOURS"
     )
 
-    # SMTP / Email Notification Settings (all optional)
+    # SMTP / 邮件通知设置（全部可选）
     smtp_host: Optional[str] = Field(default=None, validation_alias="SMTP_HOST")
     smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
     smtp_user: Optional[str] = Field(default=None, validation_alias="SMTP_USER")
@@ -488,83 +488,83 @@ class Settings(BaseSettings):
     smtp_from: Optional[str] = Field(
         default=None,
         validation_alias="SMTP_FROM",
-        description="Sender address; defaults to SMTP_USER if not set"
+        description="发件人地址；未设置时默认使用 SMTP_USER"
     )
 
-    # Global LLM API concurrency limit (across all tasks and all users)
-    # Set this to the max concurrent requests your LLM provider allows.
-    # - NVIDIA NIM free tier: ~40 RPM → use 30
-    # - OpenAI Tier 1: ~500 RPM → use 50-100
-    # - Self-hosted Triton NIM: no hard limit → use 100-200
+    # 全局 LLM API 并发限制（跨所有任务和所有用户）
+    # 将此值设置为 LLM 提供商允许的最大并发请求数。
+    # - NVIDIA NIM 免费层：~40 RPM → 使用 30
+    # - OpenAI Tier 1：~500 RPM → 使用 50-100
+    # - 自托管 Triton NIM：无硬限制 → 使用 100-200
     llm_max_concurrent_requests: int = Field(
         default=10,
         validation_alias="LLM_MAX_CONCURRENT_REQUESTS",
-        description="Hard ceiling on total concurrent outbound LLM API requests (global, all tasks)"
+        description="总并发出站 LLM API 请求的硬上限（全局，所有任务）"
     )
     community_translation_llm_max_concurrent_requests: int = Field(
         default=10,
         validation_alias="COMMUNITY_TRANSLATION_LLM_MAX_CONCURRENT_REQUESTS",
-        description="Per-task outbound LLM request cap for production community/admin curation translations.",
+        description="生产环境社区/管理员策展翻译的每任务出站 LLM 请求上限",
     )
     max_concurrent_compilations: int = Field(
         default=1,
         validation_alias="MAX_CONCURRENT_COMPILATIONS",
-        description="Hard ceiling on concurrent LaTeX compilation subprocesses in a single worker."
+        description="单个 Worker 中并发的 LaTeX 编译子进程硬上限"
     )
     async_blocking_wrappers_enabled: bool = Field(
         default=True,
         validation_alias="ASYNC_BLOCKING_WRAPPERS_ENABLED",
-        description="Enable asyncio.to_thread wrappers for blocking operations in async paths."
+        description="在异步路径中为阻塞操作启用 asyncio.to_thread 包装器"
     )
     db_execution_mode: str = Field(
         default="per_call_client",
         validation_alias="DB_EXECUTION_MODE",
-        description="DB threaded execution strategy: per_call_client|shared_client"
+        description="数据库线程执行策略: per_call_client|shared_client"
     )
 
-    # RAG Terminology Settings
+    # RAG 术语设置
     rag_terminology_enabled: bool = Field(
         default=False,
         validation_alias="RAG_TERMINOLOGY_ENABLED",
-        description="Enable the RAG terminology pipeline globally. When disabled, user opt-in is ignored."
+        description="全局启用 RAG 术语流水线。禁用时，用户的选择加入将被忽略"
     )
     rag_terminology_top_n: int = Field(
         default=10,
         validation_alias="RAG_TERMINOLOGY_TOP_N",
-        description="Maximum number of glossary terms to inject per chunk."
+        description="每个分块注入的术语表最大数量"
     )
     rag_terminology_milvus_uri: str | None = Field(
         default=None,
         validation_alias="RAG_TERMINOLOGY_MILVUS_URI",
-        description="Milvus server URI (e.g. http://localhost:19530). Required for vector retrieval."
+        description="Milvus 服务器 URI（如 http://localhost:19530）。向量检索必需"
     )
     rag_terminology_milvus_collection: str = Field(
         default="terminology_terms",
         validation_alias="RAG_TERMINOLOGY_MILVUS_COLLECTION",
-        description="Milvus collection name for approved term embeddings."
+        description="用于存储已审核术语嵌入向量的 Milvus 集合名"
     )
     rag_terminology_embedding_model: str = Field(
         default="sentence-transformers/all-MiniLM-L6-v2",
         validation_alias="RAG_TERMINOLOGY_EMBEDDING_MODEL",
-        description="Embedding model for generating term and query vectors."
+        description="生成术语和查询向量的嵌入模型"
     )
     rag_terminology_rerank_model: str = Field(
         default="cross-encoder/ms-marco-MiniLM-L-6-v2",
         validation_alias="RAG_TERMINOLOGY_RERANK_MODEL",
-        description="Cross-Encoder model for reranking retrieved terms."
+        description="对检索到的术语进行重排序的 Cross-Encoder 模型"
     )
     rag_terminology_bm25_refresh_interval: int = Field(
         default=60,
         validation_alias="RAG_TERMINOLOGY_BM25_REFRESH_INTERVAL",
-        description="BM25 index refresh interval in seconds."
+        description="BM25 索引刷新间隔（秒）"
     )
     rag_terminology_max_upload_size_mb: int = Field(
         default=5,
         validation_alias="RAG_TERMINOLOGY_MAX_UPLOAD_SIZE_MB",
-        description="Maximum upload file size in MB for CSV/BibTeX terminology files."
+        description="CSV/BibTeX 术语文件的最大上传大小（MB）"
     )
 
-    # Server Settings
+    # 服务器设置
     host: str = "0.0.0.0"
     port: int = 8000
     reload: bool = True
@@ -580,6 +580,7 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, value):
+        """解析 CORS 来源配置，支持字符串、列表、元组和集合格式"""
         if value is None:
             return value
 
@@ -609,6 +610,7 @@ class Settings(BaseSettings):
     @field_validator("db_execution_mode", mode="before")
     @classmethod
     def _parse_db_execution_mode(cls, value):
+        """解析数据库执行模式，仅支持 per_call_client 和 shared_client"""
         mode = str(value or "per_call_client").strip().lower()
         if mode not in {"per_call_client", "shared_client"}:
             return "per_call_client"
@@ -617,6 +619,7 @@ class Settings(BaseSettings):
     @field_validator("backend_runtime_role", mode="before")
     @classmethod
     def _parse_backend_runtime_role(cls, value):
+        """解析后端运行时角色，仅支持 all、web 和 worker"""
         role = str(value or "all").strip().lower()
         if role not in {"all", "web", "worker"}:
             return "all"
@@ -625,6 +628,7 @@ class Settings(BaseSettings):
     @field_validator("local_admin_external_user_ids", mode="before")
     @classmethod
     def _parse_local_admin_external_user_ids(cls, value):
+        """解析本地管理员外部用户 ID 列表，支持逗号分隔字符串、列表、元组和集合格式"""
         if value is None:
             return []
         if isinstance(value, str):
@@ -634,9 +638,9 @@ class Settings(BaseSettings):
         return []
     
     def __init__(self, **kwargs):
+        """初始化设置并确保所有必要目录存在"""
         super().__init__(**kwargs)
-        # Ensure all directories exist
-        self.uploads_dir.mkdir(parents=True, exist_ok=True)
+        # 确保所有目录存在
         self.outputs_dir.mkdir(parents=True, exist_ok=True)
         self.community_papers_dir.mkdir(parents=True, exist_ok=True)
         self.terms_dir.mkdir(parents=True, exist_ok=True)
@@ -646,11 +650,11 @@ class Settings(BaseSettings):
 
     @property
     def local_storage_root(self) -> Path:
-        """Expose the durable root the local disk backend uses for dev/local fallback."""
+        """暴露本地磁盘后端用于开发/本地回退的持久化根路径"""
         return self.base_dir
-    
+
     def get_llm_config(self) -> Dict[str, Any]:
-        """Get LLM API configuration as a dictionary"""
+        """获取 LLM API 配置，以字典形式返回"""
         config: Dict[str, Any] = {
             "api_key": self.llm_api_key,
             "base_url": self.llm_base_url,
@@ -680,6 +684,7 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _normalize_chat_completions_url(value: Optional[str]) -> str:
+        """将给定的 URL 标准化为完整的 /chat/completions 端点路径"""
         normalized = str(value or "").strip().rstrip("/")
         if not normalized:
             return ""
@@ -690,6 +695,7 @@ class Settings(BaseSettings):
         return f"{normalized}/v1/chat/completions"
 
     def get_llm_system_pool_groups(self) -> list[dict[str, Any]]:
+        """从配置中解析 LLM 系统池组列表"""
         raw = str(self.llm_system_pool_groups_json or "").strip()
         if not raw:
             return []
@@ -727,6 +733,7 @@ class Settings(BaseSettings):
         return groups
 
     def get_llm_system_pool_members(self) -> list[dict[str, Any]]:
+        """从配置中解析 LLM 系统池成员列表，优先使用直接成员配置，回退到池组配置"""
         raw_members = str(self.llm_members_json or "").strip()
         if raw_members:
             try:
@@ -774,6 +781,7 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _compute_llm_pool_routing_key(members: list[dict[str, Any]]) -> str:
+        """基于成员列表的归一化哈希值计算 LLM 池路由键"""
         normalized = [
             (
                 str(member.get("member_id") or "").strip(),
@@ -791,13 +799,13 @@ class Settings(BaseSettings):
     
     def load_toml_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """
-        Load additional configuration from TOML file
-        
-        Args:
-            config_path: Path to TOML config file. Defaults to 'config/default.toml'
-        
-        Returns:
-            Configuration dictionary
+        从 TOML 文件中加载额外的配置
+
+        参数：
+            config_path: TOML 配置文件的路径，默认为 'config/default.toml'
+
+        返回：
+            配置字典
         """
         if config_path is None:
             config_path = self.base_dir / "prototype_system" / "config" / "default.toml"
@@ -808,22 +816,20 @@ class Settings(BaseSettings):
             return {}
 
 
-# Global settings instance
+# 全局设置实例
 settings = Settings()
 
 
-# Helper function to get settings
 def get_settings() -> Settings:
-    """Get application settings"""
+    """获取应用程序全局设置"""
     return settings
 
 
-# Helper function to get LLM config
 def get_llm_config() -> Dict[str, Any]:
-    """Get LLM API configuration as a dictionary"""
+    """获取 LLM API 配置字典"""
     return settings.get_llm_config()
 
 
 def get_default_translation_model() -> str:
-    """Get the default translation model from the runtime LLM config."""
+    """从运行时 LLM 配置中获取默认翻译模型名称"""
     return settings.llm_model

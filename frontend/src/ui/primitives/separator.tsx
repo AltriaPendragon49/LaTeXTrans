@@ -1,3 +1,7 @@
+/**
+ * 分隔线组件 - 基于 Radix UI Separator 封装
+ * 渲染水平或垂直的分隔线
+ */
 "use client"
 
 import * as React from "react"
@@ -5,6 +9,7 @@ import * as SeparatorPrimitive from "@radix-ui/react-separator"
 
 import { cn } from "@/lib/utils"
 
+/** 分隔线组件，支持 horizontal（水平）和 vertical（垂直）方向 */
 const Separator = React.forwardRef<
   React.ElementRef<typeof SeparatorPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>

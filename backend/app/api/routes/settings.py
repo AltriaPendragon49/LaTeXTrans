@@ -1,4 +1,4 @@
-"""Settings API routes backed by local user settings persistence."""
+"""用户设置 API 路由，基于本地用户设置持久化。"""
 
 from typing import Optional, Dict, Any
 
@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 class UserSettingsResponse(BaseModel):
-    """Response model for user settings."""
+    """用户设置响应模型"""
 
     default_source_language: str = "en"
     default_target_language: str = "zh"
@@ -31,7 +31,7 @@ class UserSettingsResponse(BaseModel):
 
 
 class UserSettingsUpdate(BaseModel):
-    """Update model for user settings."""
+    """用户设置更新请求模型"""
 
     default_source_language: Optional[str] = None
     default_target_language: Optional[str] = None
@@ -49,14 +49,17 @@ SYSTEM_DEFAULTS = dict(USER_SETTINGS_DEFAULTS)
 
 
 def get_user_settings_repository() -> UserSettingsRepository:
+    """获取用户设置仓库实例"""
     return UserSettingsRepository()
 
 
 def _resolve_user_settings_repository() -> UserSettingsRepository:
+    """解析用户设置仓库（用于 FastAPI 依赖注入）"""
     return get_user_settings_repository()
 
 
 def _build_response(settings: dict[str, Any]) -> UserSettingsResponse:
+    """将数据库设置字典转换为 API 响应模型"""
     return UserSettingsResponse(
         default_source_language=settings.get("default_source_language", "en"),
         default_target_language=settings.get("default_target_language", "zh"),
@@ -72,6 +75,7 @@ def _build_response(settings: dict[str, Any]) -> UserSettingsResponse:
 
 
 def _ensure_settings_authorized(current_user: Dict[str, Any], action: str) -> None:
+    """校验用户对设置的操作权限，未授权时抛出 403"""
     decision = authorize(current_user, "settings", action)
     if decision.allowed:
         return
@@ -86,7 +90,7 @@ async def get_user_settings(
     current_user: Dict[str, Any] = Depends(require_current_user),
     repository: UserSettingsRepository = Depends(_resolve_user_settings_repository),
 ):
-    """Get the current user's saved settings or project defaults."""
+    """获取当前用户的已保存设置或项目默认值"""
     _ensure_settings_authorized(current_user, "read")
 
     try:
@@ -107,7 +111,7 @@ async def update_user_settings(
     current_user: Dict[str, Any] = Depends(require_current_user),
     repository: UserSettingsRepository = Depends(_resolve_user_settings_repository),
 ):
-    """Update the current user's saved settings."""
+    """更新当前用户的已保存设置"""
     _ensure_settings_authorized(current_user, "update")
 
     try:

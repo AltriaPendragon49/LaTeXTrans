@@ -12,6 +12,7 @@ import { Label } from "@/ui/primitives/label"
 
 import styles from "./LoginWorkspace.module.css"
 
+/** 打开外部 URL（小牛翻译注册/账户管理页面） */
 function openExternalUrl(url: string) {
   if (typeof window === "undefined") {
     return
@@ -19,6 +20,14 @@ function openExternalUrl(url: string) {
   window.location.assign(url)
 }
 
+/**
+ * 登录工作区组件
+ * 提供邮箱/手机号+密码的登录表单，支持：
+ * - 表单验证
+ * - 登录成功后导航回来源页面
+ * - 跳转到小牛翻译注册和账户管理页面
+ * - 游客模式继续浏览
+ */
 export function LoginWorkspace() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -34,6 +43,7 @@ export function LoginWorkspace() {
   const registerUrl = getNiuTransRegisterUrl()
   const accountUrl = getNiuTransAccountUrl()
 
+  /** 表单验证 */
   const validateForm = (): boolean => {
     setLocalError(null)
 
@@ -50,6 +60,7 @@ export function LoginWorkspace() {
     return true
   }
 
+  /** 提交登录 */
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     clearError()

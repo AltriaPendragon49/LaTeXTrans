@@ -18,12 +18,20 @@ import {
 import type { MatchLogEntry } from "@/features/rag-terminology/types"
 import { getMatchLogs } from "@/features/rag-terminology/services/rag-terminology-api"
 
+/** 术语匹配日志组件 Props */
 interface TerminologyMatchLogProps {
+  /** 翻译任务 ID */
   taskId: string
-  /** Optional initial data for SSR or prefetch scenarios */
+  /** 可选的初始数据（用于 SSR 或预取场景） */
   initialData?: MatchLogEntry[]
 }
 
+/**
+ * 术语匹配日志组件
+ * 展示翻译任务中 RAG 术语检索的匹配日志，包括源术语、目标术语、
+ * 所在 chunk 索引、检索来源、是否注入和重排序分数。
+ * 调用 GET /terminology/tasks/{taskId}/matches
+ */
 export function TerminologyMatchLog({ taskId, initialData }: TerminologyMatchLogProps) {
   const { t } = useTranslation()
   const [logs, setLogs] = useState<MatchLogEntry[]>(initialData ?? [])

@@ -1,3 +1,9 @@
+"""社区内容池服务
+
+管理和编排社区内容池中论文候选的完整生命周期：
+发现 -> 准入 -> 源文件就绪 -> 翻译 -> 预览 -> 推广。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,25 +19,30 @@ from backend.app.services import paper_service
 
 logger = logging.getLogger(__name__)
 
+# 内容池预热流水线的阶段列表
 _PREWARM_STAGES = ("discover", "admit", "source", "translate", "preview", "promote")
 
 
 def _utc_now_iso() -> str:
+    """获取当前 UTC 时间的 ISO 格式字符串"""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _normalize_text(value: Any) -> str:
+    """规范化文本：去多余空白、换行符"""
     return " ".join(str(value or "").split()).strip()
 
 
 @dataclass(frozen=True)
 class PoolCandidate:
+    """内容池论文候选"""
     arxiv_id: str
     source: str = "unknown"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "PoolCandidate":
+        """从字典载荷创建候选对象"""
         arxiv_id = _normalize_text(payload.get("arxiv_id"))
         if not arxiv_id:
             raise ValueError("candidate arxiv_id is required")
@@ -42,6 +53,7 @@ class PoolCandidate:
 
 @dataclass
 class ContentPoolDependencies:
+    """内容池外部依赖（可注入以实现测试和自定义行为）"""
     discover_candidates: Callable[[], Awaitable[List[Dict[str, Any]]]] | None = None
     admit_candidate: Callable[[str], Awaitable[Dict[str, Any]]] | None = None
     ensure_source_ready: Callable[[str, str], Awaitable[Dict[str, Any]]] | None = None
@@ -52,6 +64,7 @@ class ContentPoolDependencies:
 
 @dataclass
 class _CandidateState:
+    """候选论文在处理流水线中的追踪状态"""
     arxiv_id: str
     source: str
     status: str = "discovered"
@@ -65,6 +78,7 @@ class _CandidateState:
     updated_at: str = field(default_factory=_utc_now_iso)
 
     def to_public_dict(self) -> Dict[str, Any]:
+        """导出为公开可序列化的字典"""
         return {
             "arxiv_id": self.arxiv_id,
             "source": self.source,
@@ -81,14 +95,17 @@ class _CandidateState:
 
 
 async def _default_discover_candidates() -> List[Dict[str, Any]]:
+    """默认候选发现实现（返回空列表）"""
     return []
 
 
 async def _default_admit_candidate(arxiv_id: str) -> Dict[str, Any]:
+    """默认候选准入实现：导入或复用论文"""
     return await paper_service.import_or_reuse_paper(source="arxiv", arxiv_id=arxiv_id)
 
 
 async def _default_ensure_source_ready(paper_id: str, arxiv_id: str) -> Dict[str, Any]:
+    """默认源文件就绪检查实现"""
     del arxiv_id
     detail = await paper_service.get_community_paper_detail(
         paper_id=paper_id,
@@ -101,6 +118,7 @@ async def _default_ensure_source_ready(paper_id: str, arxiv_id: str) -> Dict[str
 
 
 async def _default_start_translation(paper_id: str) -> Dict[str, Any]:
+    """默认翻译启动实现"""
     return await paper_service.start_paper_translation(
         paper_id=paper_id,
         request=TranslateRequest(source_language="en", target_language="zh"),
@@ -109,6 +127,7 @@ async def _default_start_translation(paper_id: str) -> Dict[str, Any]:
 
 
 async def _default_ensure_preview_ready(paper_id: str, task_id: str | None) -> Dict[str, Any]:
+    """默认预览就绪检查实现"""
     del task_id
     try:
         payload = await paper_service.get_paper_preview(paper_id=paper_id)
@@ -120,6 +139,7 @@ async def _default_ensure_preview_ready(paper_id: str, task_id: str | None) -> D
 
 
 async def _default_promote_translated_evidence(paper_id: str) -> Dict[str, Any]:
+    """默认翻译证据推广实现"""
     detail = await paper_service.get_community_paper_detail(
         paper_id=paper_id,
         viewer_user_id=None,
@@ -134,6 +154,12 @@ async def _default_promote_translated_evidence(paper_id: str) -> Dict[str, Any]:
 
 
 class CommunityContentPoolService:
+    """社区内容池服务
+
+    管理论文候选从发现到翻译就绪的整个流水线，
+    支持并发控制、频率限制和重试。
+    """
+
     def __init__(
         self,
         *,
@@ -142,6 +168,14 @@ class CommunityContentPoolService:
         max_retries: int = 1,
         source_fetch_min_interval_seconds: float = 0.2,
     ) -> None:
+        """初始化内容池服务
+
+        参数:
+            dependencies: 外部依赖注入（可选）
+            max_concurrency: 最大并发处理数
+            max_retries: 最大重试次数
+            source_fetch_min_interval_seconds: 源文件获取最小间隔（秒）
+        """
         deps = dependencies or ContentPoolDependencies()
         self._dependencies = ContentPoolDependencies(
             discover_candidates=deps.discover_candidates or _default_discover_candidates,
@@ -161,6 +195,7 @@ class CommunityContentPoolService:
         self._last_source_fetch_ts = 0.0
 
     async def _throttle_source_fetch(self) -> None:
+        """对源文件获取进行频率限制"""
         if self._source_fetch_min_interval_seconds <= 0:
             return
 
@@ -182,6 +217,7 @@ class CommunityContentPoolService:
         payload: Dict[str, Any] | None = None,
         error: str | None = None,
     ) -> None:
+        """记录流水线事件，保留最近 4000 条"""
         event = {
             "timestamp": _utc_now_iso(),
             "arxiv_id": arxiv_id,
@@ -197,6 +233,7 @@ class CommunityContentPoolService:
 
     @staticmethod
     def _normalize_candidates(raw_candidates: Iterable[PoolCandidate | Dict[str, Any]]) -> List[PoolCandidate]:
+        """规范化候选列表：去重、转换为 PoolCandidate 对象"""
         normalized: List[PoolCandidate] = []
         seen: set[str] = set()
         for item in raw_candidates:
@@ -217,6 +254,14 @@ class CommunityContentPoolService:
         *,
         candidates: Iterable[PoolCandidate | Dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
+        """执行一次内容池流水线周期
+
+        参数:
+            candidates: 候选论文列表（可选，不传则自动发现）
+
+        返回:
+            就绪状态快照
+        """
         raw_candidates = (
             candidates
             if candidates is not None
@@ -246,6 +291,7 @@ class CommunityContentPoolService:
         return self.get_readiness_snapshot()
 
     async def _run_candidate(self, candidate: PoolCandidate) -> None:
+        """处理单个候选论文的完整流水线（带重试）"""
         async with self._semaphore:
             state = self._states.get(candidate.arxiv_id)
             if state is None:
@@ -273,6 +319,7 @@ class CommunityContentPoolService:
                 current_stage = "admit"
 
                 try:
+                    # 阶段 1: 准入
                     self._record_event(
                         arxiv_id=candidate.arxiv_id,
                         stage="admit",
@@ -292,6 +339,7 @@ class CommunityContentPoolService:
                         payload={"paper_id": paper_id, "reused": bool(admitted.get("reused"))},
                     )
 
+                    # 阶段 2: 源文件就绪
                     current_stage = "source"
                     self._record_event(
                         arxiv_id=candidate.arxiv_id,
@@ -311,6 +359,7 @@ class CommunityContentPoolService:
                         attempt=state.attempts,
                     )
 
+                    # 阶段 3: 翻译
                     current_stage = "translate"
                     self._record_event(
                         arxiv_id=candidate.arxiv_id,
@@ -332,6 +381,7 @@ class CommunityContentPoolService:
                         },
                     )
 
+                    # 阶段 4: 预览
                     current_stage = "preview"
                     self._record_event(
                         arxiv_id=candidate.arxiv_id,
@@ -349,6 +399,7 @@ class CommunityContentPoolService:
                         attempt=state.attempts,
                     )
 
+                    # 阶段 5: 推广
                     current_stage = "promote"
                     self._record_event(
                         arxiv_id=candidate.arxiv_id,
@@ -399,10 +450,12 @@ class CommunityContentPoolService:
                     await asyncio.sleep(min(0.2 * (2**attempt), 1.0))
 
     def get_candidate_state(self, arxiv_id: str) -> Dict[str, Any] | None:
+        """获取指定候选的状态"""
         state = self._states.get(_normalize_text(arxiv_id))
         return state.to_public_dict() if state else None
 
     def get_job_log(self, *, arxiv_id: str | None = None, limit: int = 200) -> List[Dict[str, Any]]:
+        """获取流水线作业日志"""
         normalized_arxiv_id = _normalize_text(arxiv_id)
         events = self._events
         if normalized_arxiv_id:
@@ -412,6 +465,7 @@ class CommunityContentPoolService:
         return [dict(event) for event in events]
 
     def get_readiness_snapshot(self) -> Dict[str, Any]:
+        """获取当前内容池就绪状态快照"""
         states = list(self._states.values())
         stage_totals = {stage: 0 for stage in _PREWARM_STAGES}
         for event in self._events:
@@ -436,6 +490,7 @@ class CommunityContentPoolService:
         }
 
 
+# 默认全局单例实例
 _default_service = CommunityContentPoolService()
 
 
@@ -443,14 +498,17 @@ async def run_content_pool_cycle(
     *,
     candidates: Iterable[PoolCandidate | Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
+    """运行一次内容池预热周期（使用默认服务实例）"""
     return await _default_service.run_once(candidates=candidates)
 
 
 def get_content_pool_readiness_snapshot() -> Dict[str, Any]:
+    """获取内容池就绪状态快照（使用默认服务实例）"""
     return _default_service.get_readiness_snapshot()
 
 
 def get_content_pool_job_log(*, arxiv_id: str | None = None, limit: int = 200) -> List[Dict[str, Any]]:
+    """获取内容池作业日志（使用默认服务实例）"""
     return _default_service.get_job_log(arxiv_id=arxiv_id, limit=limit)
 
 

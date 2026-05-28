@@ -11,11 +11,13 @@ router = APIRouter(prefix="/auth")
 
 
 class LoginRequest(BaseModel):
+    """登录请求体"""
     identifier: str = Field(min_length=1)
     password: str = Field(min_length=1)
 
 
 class LocalUserPayload(BaseModel):
+    """本地用户信息载荷"""
     id: str
     external_provider: str
     external_user_id: str
@@ -26,6 +28,7 @@ class LocalUserPayload(BaseModel):
 
 
 class LatexTranslationQuotaPayload(BaseModel):
+    """LaTeX 翻译配额信息载荷"""
     limit: int
     used: int
     remaining: int
@@ -34,6 +37,7 @@ class LatexTranslationQuotaPayload(BaseModel):
 
 
 class PdfDirectQuotaPayload(BaseModel):
+    """PDF 直接翻译配额信息载荷"""
     unused_integral: int | None = None
     source: str
     status: str
@@ -41,11 +45,13 @@ class PdfDirectQuotaPayload(BaseModel):
 
 
 class QuotaSnapshotPayload(BaseModel):
+    """配额快照载荷"""
     latex_translation: LatexTranslationQuotaPayload
     pdf_direct: PdfDirectQuotaPayload
 
 
 class LoginResponse(BaseModel):
+    """登录响应体"""
     access_token: str
     token_type: str = "Bearer"
     expires_in: int
@@ -54,19 +60,23 @@ class LoginResponse(BaseModel):
 
 
 class MeResponse(BaseModel):
+    """当前用户信息响应体"""
     user: LocalUserPayload
     quota_snapshot: QuotaSnapshotPayload
 
 
 class QuotaResponse(BaseModel):
+    """配额查询响应体"""
     quota_snapshot: QuotaSnapshotPayload
 
 
 def get_auth_service() -> LocalAuthService:
+    """获取本地认证服务实例"""
     return LocalAuthService()
 
 
 def _error_response(exc: AuthServiceError) -> JSONResponse:
+    """将认证服务异常转换为 JSON 错误响应"""
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message},
@@ -75,6 +85,7 @@ def _error_response(exc: AuthServiceError) -> JSONResponse:
 
 @router.post("/login", response_model=LoginResponse)
 async def login(request: Request, payload: LoginRequest):
+    """用户登录接口，返回访问令牌和配额快照"""
     auth_service = get_auth_service()
     try:
         result = await auth_service.login(
@@ -90,6 +101,7 @@ async def login(request: Request, payload: LoginRequest):
 
 @router.get("/me", response_model=MeResponse)
 async def current_user(request: Request):
+    """获取当前登录用户信息与配额快照"""
     auth_service = get_auth_service()
     token = extract_bearer_token(request)
     if not token:
@@ -108,6 +120,7 @@ async def current_user(request: Request):
 
 @router.get("/quota", response_model=QuotaResponse)
 async def current_quota(request: Request):
+    """获取当前用户的配额快照"""
     auth_service = get_auth_service()
     token = extract_bearer_token(request)
     if not token:
@@ -126,6 +139,7 @@ async def current_quota(request: Request):
 
 @router.post("/logout")
 async def logout(request: Request):
+    """用户登出接口，销毁当前会话"""
     auth_service = get_auth_service()
     token = extract_bearer_token(request)
     if not token:

@@ -28,8 +28,17 @@ import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
 import { getDailyLatexQuotaExceededDetail } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
+/** 工作区模式在 localStorage 中的 key */
 const WORKSPACE_MODE_KEY = "latextrans.translation.workspaceMode"
 
+/**
+ * 翻译工作区组件（主入口）
+ * 提供三种翻译方式：
+ * 1. LaTeX 翻译：支持 arXiv ID 下载、本地上传和批量翻译三个子标签页
+ * 2. PDF 直接翻译：上传 PDF 文件通过小牛翻译 API 直接翻译
+ *
+ * 包含高级配置面板（折叠），支持开始翻译、下载源文件和批量提交等操作
+ */
 export function TranslationWorkspace() {
   const navigate = useNavigate()
   const { refreshQuotaSnapshot, user } = useAuth()
@@ -63,11 +72,13 @@ export function TranslationWorkspace() {
     canSubmit: false,
   })
 
+  /** 切换工作区模式（LaTeX / PDF 直接翻译），持久化到 localStorage */
   function handleWorkspaceModeChange(mode: string) {
     setWorkspaceMode(mode)
     try { localStorage.setItem(WORKSPACE_MODE_KEY, mode) } catch { /* noop */ }
   }
 
+  /** arXiv 下载各阶段的中文描述映射 */
   const stageMap: Record<string, string> = {
     downloading: t("dashboard.downloading_source_files_from_arxiv"),
     extracting: t("dashboard.extracting_source_files_2"),
@@ -75,6 +86,7 @@ export function TranslationWorkspace() {
     validating: t("dashboard.validating_latex_structure_2"),
   }
 
+  /** arXiv 下载各阶段的标题映射 */
   const stageTitleMap: Record<string, string> = {
     downloading: t("task.steps.downloadSource"),
     extracting: t("dashboard.extracting_source_files"),
@@ -82,10 +94,15 @@ export function TranslationWorkspace() {
     validating: t("dashboard.validating_latex_structure"),
   }
 
+  // 组件挂载时加载用户设置
   useEffect(() => {
     loadUserSettings()
   }, [loadUserSettings])
 
+  /**
+   * 从 arXiv 下载源文件
+   * 调用 startArxivDownload 触发下载流程，通过 store 反应下载进度
+   */
   async function handleLoadArxiv() {
     if (!localArxivId.trim()) {
       return
@@ -100,6 +117,11 @@ export function TranslationWorkspace() {
     }
   }
 
+  /**
+   * 开始翻译
+   * 调用 startTranslation 并传入当前语言和高级配置，
+   * 成功后跳转到 /processing 页面查看进度
+   */
   async function handleStart() {
     if (!taskId) {
       return
@@ -123,7 +145,7 @@ export function TranslationWorkspace() {
   return (
     <div className="mx-auto w-full max-w-[1400px] px-6 py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       <div className="space-y-8 animate-in fade-in duration-500">
-        {/* First-level workspace mode selector */}
+        {/* 一级工作区模式选择器：LaTeX 翻译 / PDF 直接翻译 */}
         <EditorialTabs value={workspaceMode} onValueChange={handleWorkspaceModeChange} className="space-y-6">
         <div className="flex justify-start">
           <EditorialTabsList className="gap-1">
@@ -138,7 +160,7 @@ export function TranslationWorkspace() {
           </EditorialTabsList>
         </div>
 
-        {/* LaTeX Translation content */}
+        {/* LaTeX 翻译内容区域 */}
         <TabsContent value="latex" className="mt-0">
           <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex justify-start">
@@ -157,6 +179,7 @@ export function TranslationWorkspace() {
 
         <div className="overflow-visible">
           <div className="py-6 sm:py-8">
+            {/* arXiv ID 标签页 */}
             <TabsContent value="arxiv" className="mt-0 space-y-6">
               <div className="max-w-2xl">
                 <div className="mb-2 flex items-center gap-3">
@@ -204,6 +227,7 @@ export function TranslationWorkspace() {
                   </div>
                 ) : null}
 
+                {/* 下载进度条 */}
                 {isLoadingSource || isDownloading ? (
                   <PanelShell
                     tone="glass"
@@ -229,10 +253,12 @@ export function TranslationWorkspace() {
               </div>
             </TabsContent>
 
+            {/* 本地上传标签页 */}
             <TabsContent value="upload" className="mt-0">
               <DropZone />
             </TabsContent>
 
+            {/* 批量翻译标签页 */}
             <TabsContent value="batch" className="mt-0">
               {isAuthenticated ? (
                 <BatchTranslation
@@ -251,6 +277,7 @@ export function TranslationWorkspace() {
               )}
             </TabsContent>
 
+            {/* 源文件就绪提示 */}
             {taskId && status === "ready" && activeTab !== "batch" ? (
               <NoticeBanner
                 tone="success"
@@ -317,6 +344,7 @@ export function TranslationWorkspace() {
           </div>
         </div>
 
+        {/* 高级配置折叠面板 */}
         <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen} className="group border-t border-[color:var(--px-shell-line)]">
           <CollapsibleTrigger asChild>
             <div className="flex cursor-pointer select-none items-center justify-center gap-2 py-4 text-sm font-bold text-[color:var(--px-shell-muted)] transition-colors hover:bg-[color:var(--px-shell-panel-strong)] hover:text-[color:var(--px-shell-ink)]">
@@ -343,7 +371,7 @@ export function TranslationWorkspace() {
       </div>
         </TabsContent>
 
-        {/* PDF Direct Translation content */}
+        {/* PDF 直接翻译内容区域 */}
         <TabsContent value="pdf" className="mt-0">
           <PdfDirectWorkspace />
         </TabsContent>

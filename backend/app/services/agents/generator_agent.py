@@ -1,4 +1,4 @@
-"""Generator agent for the production origin CLI parity kernel."""
+"""生成器 Agent —— 负责 LaTeX 文档重建和 PDF 编译。"""
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 class GeneratorAgent(BaseToolAgent):
+    """生成器 Agent：重建 LaTeX 文档结构并使用 origin CLI parity 编译 PDF。"""
+
     def __init__(
         self,
         config: Dict[str, Any],
@@ -30,12 +32,14 @@ class GeneratorAgent(BaseToolAgent):
         output_dir: Optional[str] = None,
         on_progress: Optional[Callable[[str, int, str], None]] = None,
     ):
+        """初始化 GeneratorAgent。"""
         super().__init__(agent_name="GeneratorAgent", config=config, on_progress=on_progress)
         self.config = config
         self.project_dir = project_dir
         self.output_dir = output_dir
 
     def _update_replay_bundle(self, **fields: Any) -> Optional[str]:
+        """更新或创建 replay_bundle.json 文件，用于调试和复现。"""
         if not self.output_dir:
             return None
         replay_path = Path(self.output_dir) / "replay_bundle.json"
@@ -53,6 +57,7 @@ class GeneratorAgent(BaseToolAgent):
         return str(replay_path)
 
     def _read_maps(self) -> tuple[list, list, list, list, list]:
+        """读取所有 JSON 映射文件（sections、captions、envs、newcommands、inputs）。"""
         self.update_progress(10, "Reading JSON maps")
         sections = self.read_file(Path(self.output_dir, "sections_map.json"), "json")
         self.update_progress(20, "Loading sections")
@@ -67,6 +72,7 @@ class GeneratorAgent(BaseToolAgent):
         return sections, captions, envs, newcommands, inputs
 
     def _construct_latex(self) -> str:
+        """同步重建 LaTeX 文档结构。"""
         sections, captions, envs, newcommands, inputs = self._read_maps()
         self.update_progress(65, "Creating translation project directory")
         transed_latex_dir = self._create_transed_latex_folder(self.project_dir)
@@ -88,6 +94,7 @@ class GeneratorAgent(BaseToolAgent):
         return transed_latex_dir
 
     async def _construct_latex_async(self) -> str:
+        """异步重建 LaTeX 文档结构（在线程池中运行同步重建逻辑）。"""
         sections, captions, envs, newcommands, inputs = self._read_maps()
         self.update_progress(65, "Creating translation project directory")
         transed_latex_dir = self._create_transed_latex_folder(self.project_dir)
@@ -109,6 +116,7 @@ class GeneratorAgent(BaseToolAgent):
 
     @staticmethod
     def _main_tex_failure(transed_latex_dir: str) -> Dict[str, Any]:
+        """当找不到主 .tex 文件时，返回失败结果。"""
         return {
             "status": "failed_compilation",
             "pdf_path": None,
@@ -126,6 +134,7 @@ class GeneratorAgent(BaseToolAgent):
         compile_queue_wait_ms: Optional[int] = None,
         compile_exec_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """构建编译成功的标准结果字典。"""
         payload = {
             "status": result.get("status", "completed"),
             "pdf_path": pdf_file,
@@ -152,6 +161,7 @@ class GeneratorAgent(BaseToolAgent):
         compile_queue_wait_ms: Optional[int] = None,
         compile_exec_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """构建编译失败的标准结果字典。"""
         payload = {
             "status": "failed_compilation",
             "pdf_path": None,
@@ -172,7 +182,7 @@ class GeneratorAgent(BaseToolAgent):
         return payload
 
     def execute(self) -> Dict[str, Any]:
-        """Reconstruct LaTeX and compile using the origin CLI parity sequence."""
+        """同步重建 LaTeX 并使用 origin CLI parity 编译 PDF。"""
         self.log(f"Starting generation for project: {os.path.basename(self.project_dir)}")
         self.update_progress(5, "Starting generation")
 
@@ -216,7 +226,7 @@ class GeneratorAgent(BaseToolAgent):
         return self._failure_result(result)
 
     async def execute_async(self) -> Dict[str, Any]:
-        """Async wrapper around the same origin CLI parity compile path."""
+        """异步构建 LaTeX 并使用 origin CLI parity 编译 PDF（含编译信号量控制）。"""
         self.log(f"Starting generation for project: {os.path.basename(self.project_dir)}")
         self.update_progress(5, "Starting generation")
 
@@ -283,6 +293,7 @@ class GeneratorAgent(BaseToolAgent):
         )
 
     def _create_transed_latex_folder(self, src_dir: str) -> str:
+        """复制源 LaTeX 项目目录到输出目录，用于后续编译。"""
         if not os.path.isdir(src_dir):
             raise NotADirectoryError(f"The path {src_dir} is not a valid directory.")
 

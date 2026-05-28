@@ -1,22 +1,37 @@
+/**
+ * 筛选工具栏组件
+ * 渲染一组可切换的筛选按钮，用于在不同选项间切换数据视图
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 
 import { Button } from "@/ui/button/Button"
 import { cn } from "@/lib/utils"
 
+/** 单个筛选选项 */
 interface FilterToolbarOption {
+  /** 选项值 */
   value: string
+  /** 选项标签 */
   label: ReactNode
+  /** 可选的图标 */
   icon?: ReactNode
 }
 
+/** FilterToolbar 组件 Props */
 interface FilterToolbarProps extends HTMLAttributes<HTMLDivElement> {
+  /** 可选筛选选项列表 */
   options: FilterToolbarOption[]
+  /** 当前选中的值 */
   value: string
+  /** 值变更回调 */
   onValueChange: (value: string) => void
+  /** 右侧元信息区域 */
   meta?: ReactNode
+  /** 额外操作按钮 */
   actions?: ReactNode
 }
 
+/** 筛选工具栏，以药丸形按钮组切换视图，可选附加操作和元信息 */
 export function FilterToolbar({
   options,
   value,

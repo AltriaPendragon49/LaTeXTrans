@@ -1,3 +1,5 @@
+"""BM25 关键词检索器 - 基于内存的文本检索"""
+
 from __future__ import annotations
 
 import logging
@@ -6,54 +8,52 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Default tokenizer
-# ---------------------------------------------------------------------------
+# ── 默认分词器 ───────────────────────────────────────────────────────
 
 _WORD_SPLIT_RE = re.compile(r"[^\w]+")
 
 
 def _default_tokenize(text: str) -> list[str]:
-    """Lower-case tokenisation on whitespace and common punctuation."""
+    """基于空白和常见标点的小写分词"""
     return [t for t in _WORD_SPLIT_RE.split(text.lower()) if t]
 
 
-# ---------------------------------------------------------------------------
-# Retriever
-# ---------------------------------------------------------------------------
+# ── 检索器 ───────────────────────────────────────────────────────────
 
 
 class Bm25Retriever:
-    """In-memory BM25 keyword retriever for approved terminology terms.
+    """基于内存的 BM25 关键词检索器，用于已批准术语检索。
 
-    Uses the ``rank_bm25`` library (BM25Okapi variant) under the hood.
+    底层使用 ``rank_bm25`` 库（BM25Okapi 变体）。
 
-    Parameters
+    参数
     ----------
-    tokenizer : callable, optional
-        Callable ``(str) -> list[str]`` used to tokenise both index terms
-        and queries.  Defaults to a lower-case split on non-word characters.
+    tokenizer : callable, 可选
+        可调用对象 ``(str) -> list[str]``，用于对索引词和查询进行分词。
+        默认使用基于非单词字符的小写分词。
     """
 
     def __init__(self, tokenizer=None) -> None:
+        """初始化 BM25 检索器
+
+        参数:
+            tokenizer: 自定义分词器（可选）
+        """
         self._tokenizer = tokenizer or _default_tokenize
         self._terms: list[dict] = []
         self._bm25 = None
         self._ready = False
 
-    # ------------------------------------------------------------------
-    # Index building / refresh
-    # ------------------------------------------------------------------
+    # ── 索引构建 / 刷新 ──────────────────────────────────────────────
 
     def build_index(self, terms: list[dict]) -> None:
-        """Tokenise ``source_term`` from each entry and build the BM25 index.
+        """对每个条目的 ``source_term`` 进行分词并构建 BM25 索引。
 
-        Parameters
+        参数
         ----------
         terms : list[dict]
-            Each dict **must** contain the keys ``id`` and ``source_term``.
-            Additional keys (``target_term``, ``language_pair``, …) are
-            preserved as-is in the internal term store.
+            每个字典必须包含 ``id`` 和 ``source_term`` 键。
+            其他键（``target_term``, ``language_pair`` 等）将原样保留在内部存储中。
         """
         try:
             from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
@@ -83,30 +83,28 @@ class Bm25Retriever:
         logger.info("BM25 index built with %d terms", len(self._terms))
 
     def refresh(self, terms: list[dict]) -> None:
-        """Rebuild the BM25 index from scratch.
+        """从头重建 BM25 索引。
 
-        Equivalent to calling :meth:`build_index` with the new term list.
+        等效于用新术语列表调用 :meth:`build_index`。
         """
         self.build_index(terms)
 
-    # ------------------------------------------------------------------
-    # Retrieval
-    # ------------------------------------------------------------------
+    # ── 检索 ──────────────────────────────────────────────────────────
 
     def search(self, query: str, top_n: int = 20) -> list[dict]:
-        """Score every indexed term against *query* and return top ``top_n``.
+        """根据 *query* 对每个索引词评分，返回前 ``top_n`` 个结果。
 
-        Parameters
+        参数
         ----------
         query : str
-            Free-text query (e.g. a LaTeX chunk).
+            自由文本查询（如 LaTeX 文本块）。
         top_n : int
-            Maximum number of candidate terms to return.
+            返回的最大候选词数量。
 
-        Returns
+        返回
         -------
         list[dict]
-            Each dict has the shape::
+            每个字典格式如下::
 
                 {
                     "term_id": …,
@@ -116,7 +114,7 @@ class Bm25Retriever:
                     "retrieval_source": "bm25",
                 }
 
-            Returns an empty list when not ready or on error.
+            未就绪或出错时返回空列表。
         """
         if not self._ready or self._bm25 is None or not self._terms:
             return []
@@ -147,11 +145,9 @@ class Bm25Retriever:
         candidates.sort(key=lambda c: c["bm25_score"], reverse=True)
         return candidates[:top_n]
 
-    # ------------------------------------------------------------------
-    # Properties
-    # ------------------------------------------------------------------
+    # ── 属性 ──────────────────────────────────────────────────────────
 
     @property
     def is_ready(self) -> bool:
-        """``True`` when the BM25 index has been successfully built."""
+        """BM25 索引是否已成功构建"""
         return self._ready

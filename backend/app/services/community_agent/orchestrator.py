@@ -676,6 +676,17 @@ def _finalize_payload(runtime_state: AgentRuntimeState, message: str) -> Dict[st
 
 
 class CommunityReactAgent:
+    """社区 ReAct Agent 编排器
+
+    实现基于 LLM 的 ReAct（推理-行动）循环：
+    1. 自动检测论文上下文并加载
+    2. 规划阶段：LLM 决定调用哪些工具
+    3. 工具执行：通过 ToolRegistry 调用社区工具
+    4. 最终答案生成：流式输出自然语言回答
+    5. 深度研究模式：多轮证据检索与综合报告
+    6. 回退模式：当 LLM 不可用时使用确定性规则回答
+    """
+
     def __init__(
         self,
         *,
@@ -1363,6 +1374,14 @@ class CommunityReactAgent:
         return _finalize_payload(self.runtime_state, message)
 
     async def run(self) -> Dict[str, Any]:
+        """运行 Agent 的完整推理循环
+
+        流程:
+        1. 引导加载论文上下文
+        2. 深度研究模式: 多轮检索 -> 综合报告
+        3. 标准模式: 规划器 -> 上下文桥接 -> 最终流式输出
+        4. 回退模式: LLM 不可用时的确定性回答
+        """
         await self._bootstrap_paper_context()
         if self.runtime_state.run_mode == "deep_research":
             return await self._run_deep_research_mode()
@@ -1390,6 +1409,18 @@ async def run_agent(
     run_mode: str = "chat",
     event_callback: EventCallback | None = None,
 ) -> Dict[str, Any]:
+    """运行社区 Agent 的顶层入口函数
+
+    参数:
+        input_text: 用户输入文本
+        context: 上下文信息（paper_id, history 等）
+        skill_toggles: 技能开关配置
+        run_mode: 运行模式（chat / deep_research）
+        event_callback: 流式事件回调
+
+    返回:
+        包含 status, intent, message, citations 等字段的结果字典
+    """
     return await CommunityReactAgent(
         input_text=input_text,
         context=context,

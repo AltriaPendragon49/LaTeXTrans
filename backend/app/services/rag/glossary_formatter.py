@@ -1,12 +1,12 @@
+"""术语表格式化工具 - 将检索到的术语渲染为 <Glossary> XML 块"""
+
 from __future__ import annotations
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Glossary block formatting
-# ---------------------------------------------------------------------------
+# ── 术语表块格式 ─────────────────────────────────────────────────────
 
 _GLOSSARY_OPEN = "<Glossary>"
 _GLOSSARY_CLOSE = "</Glossary>"
@@ -14,24 +14,24 @@ _GLOSSARY_LINE_TPL = "{source_term} -> {target_term}"
 
 
 def format_glossary_block(terms: list[dict]) -> str:
-    """Format a list of term dicts into a compact ``<Glossary>`` block.
+    """将术语字典列表格式化为紧凑的 ``<Glossary>`` 块。
 
-    Parameters
+    参数
     ----------
     terms : list[dict]
-        Each dict must have ``"source_term"`` and ``"target_term"`` keys.
+        每个字典必须包含 ``"source_term"`` 和 ``"target_term"`` 键。
 
-    Returns
+    返回
     -------
     str
-        Formatted block::
+        格式化后的块::
 
             <Glossary>
             source_term_1 -> target_term_1
             source_term_2 -> target_term_2
             </Glossary>
 
-        If *terms* is empty, returns an empty string (no block).
+        如果 *terms* 为空，返回空字符串（无块输出）。
     """
     if not terms:
         return ""
@@ -44,7 +44,7 @@ def format_glossary_block(terms: list[dict]) -> str:
             lines.append(_GLOSSARY_LINE_TPL.format(source_term=source, target_term=target))
     lines.append(_GLOSSARY_CLOSE)
 
-    # If all entries were empty, return empty string.
+    # 如果所有条目均为空，返回空字符串。
     if len(lines) <= 2:
         return ""
 
@@ -52,20 +52,19 @@ def format_glossary_block(terms: list[dict]) -> str:
 
 
 def estimate_token_count(glossary_block: str) -> int:
-    """Roughly estimate the token count of a glossary block.
+    """粗略估计术语表块的 token 数量。
 
-    Uses ``len(text) // 4`` as a coarse heuristic suitable for context
-    budget checks.
+    使用 ``len(text) // 4`` 作为粗略启发式估计，适用于上下文预算检查。
 
-    Parameters
+    参数
     ----------
     glossary_block : str
-        The formatted glossary block (or empty string).
+        已格式化的术语表块（或空字符串）。
 
-    Returns
+    返回
     -------
     int
-        Estimated token count (``0`` for empty input).
+        估计的 token 数量（空输入返回 ``0``）。
     """
     if not glossary_block:
         return 0
@@ -73,24 +72,22 @@ def estimate_token_count(glossary_block: str) -> int:
 
 
 def truncate_glossary(glossary_block: str, max_tokens: int) -> str:
-    """Truncate a glossary block to fit within a token budget.
+    """截断术语表块以适应 token 预算。
 
-    Keeps as many complete term lines as possible while staying within
-    ``max_tokens``.  The ``<Glossary>`` and ``</Glossary>`` delimiters
-    are always included when at least one term line fits the budget.
+    在不超过 ``max_tokens`` 的前提下尽可能保留完整的术语行。
+    只要至少有一行术语能放入预算，``<Glossary>`` 和 ``</Glossary>`` 分隔符始终包含。
 
-    Parameters
+    参数
     ----------
     glossary_block : str
-        The formatted glossary block.
+        已格式化的术语表块。
     max_tokens : int
-        Maximum allowed token count.
+        最大允许的 token 数量。
 
-    Returns
+    返回
     -------
     str
-        Possibly truncated glossary block, or an empty string if the
-        delimiters alone exceed the budget.
+        可能被截断的术语表块，如果仅分隔符就超出预算则返回空字符串。
     """
     if not glossary_block or max_tokens <= 0:
         return ""
@@ -99,14 +96,14 @@ def truncate_glossary(glossary_block: str, max_tokens: int) -> str:
     if len(lines) < 2:
         return ""
 
-    # Start with just the delimiters.
+    # 仅保留分隔符。
     kept = [_GLOSSARY_OPEN, _GLOSSARY_CLOSE]
     delimiters_block = "\n".join(kept)
     if estimate_token_count(delimiters_block) > max_tokens:
         return ""
 
-    # Add content lines one by one while staying within budget.
-    content_lines = lines[1:-1]  # everything between open and close
+    # 在预算内逐条添加内容行。
+    content_lines = lines[1:-1]  # 开闭标签之间的所有内容
     for line in content_lines:
         candidate_block = "\n".join(kept[:-1] + [line, _GLOSSARY_CLOSE])
         if estimate_token_count(candidate_block) > max_tokens:

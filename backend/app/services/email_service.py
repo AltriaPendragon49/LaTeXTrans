@@ -1,9 +1,7 @@
-"""
-Email Service
+"""邮件通知服务
 
-Sends HTML email notifications via SMTP (e.g. QQ Mail, Gmail, SMTP2Go).
-Configured entirely through environment variables – if SMTP_HOST is not set
-the service silently no-ops so existing functionality is never disrupted.
+通过 SMTP 发送 HTML 邮件通知（支持 QQ 邮箱、Gmail、SMTP2Go 等）。
+完全通过环境变量配置——如果 SMTP_HOST 未设置，服务会静默跳过，不影响现有功能。
 """
 
 import logging
@@ -18,10 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    """
-    SMTP-based email notification service.
+    """基于 SMTP 的邮件通知服务
 
-    Usage::
+    用法::
 
         svc = EmailService.from_settings()
         svc.send_task_completed_email(
@@ -39,20 +36,29 @@ class EmailService:
         smtp_password: Optional[str],
         smtp_from: Optional[str],
     ):
+        """初始化邮件服务
+
+        参数:
+            smtp_host: SMTP 服务器主机名
+            smtp_port: SMTP 端口（465 SSL / 587 STARTTLS）
+            smtp_user: SMTP 认证用户名
+            smtp_password: SMTP 认证密码
+            smtp_from: 发件人地址（未设置时回退到 smtp_user）
+        """
         self._host     = smtp_host
         self._port     = smtp_port
         self._user     = smtp_user
         self._password = smtp_password
-        self._from     = smtp_from or smtp_user  # fall back to user address
+        self._from     = smtp_from or smtp_user  # 回退到用户地址
 
     @property
     def is_configured(self) -> bool:
-        """Return True only if the minimum SMTP settings are present."""
+        """仅当最低 SMTP 配置齐全时返回 True"""
         return bool(self._host and self._user and self._password)
 
     @classmethod
     def from_settings(cls) -> "EmailService":
-        """Instantiate from the application settings singleton."""
+        """从应用配置单例实例化邮件服务"""
         from backend.app.core.config import get_settings
         s = get_settings()
         return cls(
@@ -70,17 +76,16 @@ class EmailService:
         status: str,
         title: Optional[str] = None,
     ) -> bool:
-        """
-        Send a task-completion (or failure) notification email.
+        """发送任务完成（或失败）通知邮件
 
-        Args:
-            to_email:  Recipient email address.
-            task_id:   The translation task ID.
-            status:    Final task status string, e.g. "completed" / "failed".
-            title:     Optional human-friendly task title / paper name.
+        参数:
+            to_email: 收件人邮箱地址
+            task_id: 翻译任务 ID
+            status: 最终任务状态字符串，如 "completed" / "failed"
+            title: 可选的人类可读任务标题/论文名称
 
-        Returns:
-            True if the email was sent successfully, False otherwise.
+        返回:
+            邮件发送成功返回 True，否则返回 False
         """
         if not self.is_configured:
             logger.info(
@@ -139,20 +144,19 @@ class EmailService:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
         try:
-            # Extract plain email address for SMTP envelope (display name
-            # like "Name <addr>" triggers 501 on some servers).
+            # 提取纯邮件地址用于 SMTP 信封（某些服务器拒绝带显示名的格式，如 "Name <addr>"）
             _, envelope_from = parseaddr(self._from)
             if not envelope_from:
-                envelope_from = self._from  # fallback
+                envelope_from = self._from  # 回退
 
             context = ssl.create_default_context()
             if self._port == 465:
-                # SSL
+                # SSL 直连模式
                 with smtplib.SMTP_SSL(self._host, self._port, context=context) as server:
                     server.login(self._user, self._password)
                     server.sendmail(envelope_from, [to_email], msg.as_string())
             else:
-                # STARTTLS (587) or plain (25)
+                # STARTTLS 模式 (587) 或明文模式 (25)
                 with smtplib.SMTP(self._host, self._port, timeout=10) as server:
                     server.ehlo()
                     if self._port != 25:
@@ -175,13 +179,13 @@ class EmailService:
             return False
 
 
-# ── Module-level singleton (initialised lazily) ──────────────────────────────
+# ── 模块级单例（延迟初始化）──────────────────────────────────────────
 
 _email_service: Optional[EmailService] = None
 
 
 def get_email_service() -> EmailService:
-    """Return (or create) the module-level EmailService singleton."""
+    """返回（或创建）模块级 EmailService 单例"""
     global _email_service
     if _email_service is None:
         _email_service = EmailService.from_settings()

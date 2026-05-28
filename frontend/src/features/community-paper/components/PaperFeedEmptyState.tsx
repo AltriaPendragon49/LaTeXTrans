@@ -5,6 +5,10 @@ import { Link } from "react-router-dom"
 import { Button } from "@/ui/button/Button"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
+/**
+ * 论文列表空状态组件
+ * 当社区论文列表没有数据时显示，引导用户前往翻译页面提交论文
+ */
 export function PaperFeedEmptyState() {
   const { t } = useTranslation()
 

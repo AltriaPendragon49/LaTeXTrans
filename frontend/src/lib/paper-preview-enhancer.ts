@@ -1,11 +1,17 @@
+/**
+ * 论文预览增强器
+ * 使用 KaTeX 对论文预览 HTML 中的 LaTeX 数学公式进行渲染
+ */
 type KatexModule = typeof import("katex")
 type RenderMathInElement = typeof import("katex/contrib/auto-render").default
 
+/** 论文预览增强上下文 */
 export interface PaperPreviewEnhancementContext {
   previewAssetId?: string
   previewSignature: string
 }
 
+/** 论文预览增强器接口 */
 interface PaperPreviewEnhancer {
   enhance: (element: HTMLElement, context: PaperPreviewEnhancementContext) => void
 }
@@ -13,6 +19,7 @@ interface PaperPreviewEnhancer {
 let paperPreviewEnhancerPromise: Promise<PaperPreviewEnhancer> | null = null
 let paperPreviewEnhancerStylesPromise: Promise<unknown> | null = null
 
+/** KaTeX 渲染时的 LaTeX 宏定义 */
 const READER_MATH_MACROS = {
   "\\mean": "\\operatorname{mean}",
   "\\argmax": "\\operatorname*{arg\\,max}",
@@ -22,6 +29,9 @@ const READER_MATH_MACROS = {
   "\\Re": "\\mathbb{R}",
 } as const
 
+/**
+ * 规范化块级数学公式的源码，去除外围 $$ 定界符
+ */
 function normalizeDisplayMathSource(source: string): string {
   const trimmed = source.trim()
   if (trimmed.startsWith("$$") && trimmed.endsWith("$$")) {
@@ -30,6 +40,7 @@ function normalizeDisplayMathSource(source: string): string {
   return trimmed
 }
 
+/** 获取 auto-render 渲染配置，包括各种 LaTeX 环境定界符 */
 function getPaperPreviewEnhancerOptions() {
   return {
     delimiters: [
@@ -59,6 +70,7 @@ function getPaperPreviewEnhancerOptions() {
   } as Parameters<RenderMathInElement>[1]
 }
 
+/** 懒加载 KaTeX 并构建增强器 */
 async function loadPaperPreviewEnhancer(): Promise<PaperPreviewEnhancer> {
   if (!paperPreviewEnhancerStylesPromise) {
     paperPreviewEnhancerStylesPromise = import("katex/dist/katex.min.css")
@@ -76,6 +88,7 @@ async function loadPaperPreviewEnhancer(): Promise<PaperPreviewEnhancer> {
 
       return {
         enhance(element: HTMLElement) {
+          // 先渲染预先标记的块级数学公式
           element.querySelectorAll<HTMLElement>(".paper-preview__math-block").forEach((block) => {
             const source = normalizeDisplayMathSource(block.textContent || "")
             if (!source) {
@@ -89,6 +102,7 @@ async function loadPaperPreviewEnhancer(): Promise<PaperPreviewEnhancer> {
               throwOnError: false,
             })
           })
+          // 再使用 auto-render 扫描内联和标准定界符公式
           renderMathInElement(element, options)
         },
       }
@@ -98,10 +112,19 @@ async function loadPaperPreviewEnhancer(): Promise<PaperPreviewEnhancer> {
   return paperPreviewEnhancerPromise
 }
 
+/**
+ * 预加载论文预览增强器（KaTeX 和样式表），提前启动加载
+ * @returns 返回一个解析为 PaperPreviewEnhancer 的 Promise
+ */
 export function preloadPaperPreviewEnhancer(): Promise<PaperPreviewEnhancer> {
   return loadPaperPreviewEnhancer()
 }
 
+/**
+ * 对指定 DOM 元素中的 LaTeX 数学公式进行渲染增强
+ * @param element - 包含 LaTeX 公式的 DOM 元素
+ * @param context - 增强上下文（asset ID 和签名等）
+ */
 export async function enhancePaperPreviewElement(
   element: HTMLElement,
   context: PaperPreviewEnhancementContext,

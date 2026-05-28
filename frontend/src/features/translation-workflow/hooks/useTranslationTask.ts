@@ -1,5 +1,10 @@
 import { useTranslationStore } from "@/features/translation-workflow/store/useTranslationStore"
 
+/**
+ * 翻译任务 Hook
+ * 从全局 Zustand store 中选取与当前翻译任务相关的状态和操作方法
+ * @returns 包含 taskId、status、stage、logs、轮询控制、下载进度等任务相关数据和方法
+ */
 export function useTranslationTask() {
   const taskId = useTranslationStore((state) => state.taskId)
   const arxivId = useTranslationStore((state) => state.arxivId)

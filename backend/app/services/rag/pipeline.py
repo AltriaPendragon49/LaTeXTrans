@@ -1,3 +1,5 @@
+"""RAG 术语检索流水线 - 混合检索 + 重排序 + 术语表格式化"""
+
 from __future__ import annotations
 
 import logging
@@ -16,23 +18,21 @@ from backend.app.services.rag.vector_retriever import VectorRetriever
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
+# ── 流水线 ───────────────────────────────────────────────────────────
 
 
 class RagTerminologyPipeline:
-    """Orchestrate the three-stage RAG terminology pipeline.
+    """编排三阶段 RAG 术语流水线。
 
-    Stages
+    阶段
     ------
-    1. Query transformation (extract plain-text key phrases from a chunk).
-    2. Hybrid retrieval (BM25 keyword + optional Milvus vector).
-    3. Cross-Encoder reranking.
-    4. Glossary formatting for prompt injection.
+    1. 查询变换（从文本块中提取纯文本关键词）。
+    2. 混合检索（BM25 关键词 + 可选 Milvus 向量）。
+    3. Cross-Encoder 重排序。
+    4. 术语表格式化（用于注入提示）。
 
-    Every stage is fault-tolerant: failures log a warning and fall through
-    so translation is never blocked.
+    每个阶段都是容错的：失败时记录警告并继续执行，
+    确保翻译永远不会被阻塞。
     """
 
     def __init__(
@@ -41,21 +41,26 @@ class RagTerminologyPipeline:
         vector_retriever: Optional[VectorRetriever],
         reranker: Optional[CrossEncoderReranker],
         embedding_client: Optional[EmbeddingClient],
-        # TerminologyRepository is injected here but may be None until the
-        # repository layer is implemented (task 2.3).  It is used for
-        # optional MySQL exact/prefix lookups that complement the hybrid
-        # retrieval.
+        # TerminologyRepository 可在此注入，但在仓库层实现之前可为 None。
+        # 用于可选的 MySQL 精确/前缀查找，补充混合检索。
         terminology_repository: Optional[Any] = None,
     ) -> None:
+        """初始化 RAG 术语流水线
+
+        参数:
+            bm25_retriever: BM25 关键词检索器
+            vector_retriever: 向量检索器（可选）
+            reranker: Cross-Encoder 重排序器（可选）
+            embedding_client: 嵌入客户端（可选）
+            terminology_repository: 术语仓库（可选）
+        """
         self._bm25 = bm25_retriever
         self._vector = vector_retriever
         self._reranker = reranker
         self._embedding = embedding_client
         self._repo = terminology_repository
 
-    # ------------------------------------------------------------------
-    # Main entry point
-    # ------------------------------------------------------------------
+    # ── 主入口点 ─────────────────────────────────────────────────────
 
     def run_pipeline(
         self,
@@ -66,24 +71,22 @@ class RagTerminologyPipeline:
         top_n: int = 10,
         max_glossary_tokens: int = 512,
     ) -> dict:
-        """Run the full RAG terminology pipeline for a single chunk.
+        """为单个文本块运行完整的 RAG 术语流水线。
 
-        Parameters
+        参数
         ----------
         chunk_text : str
-            Plain text (or lightly-cleaned LaTeX) of the chunk being
-            translated.
+            待翻译的纯文本（或轻度清洗的 LaTeX）文本块。
         source_lang : str
-            Source language code (unused in this basic implementation but
-            reserved for future language-aware retrieval).
+            源语言代码（当前实现未使用，保留供未来语言感知检索）。
         target_lang : str
-            Target language code (reserved).
+            目标语言代码（保留）。
         top_n : int
-            How many final terms to include in the glossary block.
+            术语表块中包含的最终术语数量。
         max_glossary_tokens : int
-            Maximum token budget for the formatted glossary block.
+            格式化术语表块的最大 token 预算。
 
-        Returns
+        返回
         -------
         dict
             ``{
@@ -93,28 +96,28 @@ class RagTerminologyPipeline:
                 "retrieval_sources": list[str],
             }``
 
-            Returns an empty glossary on any unrecoverable failure.
+            任何不可恢复的失败时返回空术语表。
         """
-        # -- Stage 1: Query transformation --------------------------------
+        # -- 阶段 1: 查询变换 ------------------------------------------
         query = self._transform_query(chunk_text)
         if not query:
             return self._empty_result()
 
         retrieval_sources: list[str] = []
 
-        # -- Stage 2a: BM25 retrieval ------------------------------------
+        # -- 阶段 2a: BM25 检索 ---------------------------------------
         bm25_candidates = self._safe_bm25_search(query, top_n=top_n * 2)
         if bm25_candidates:
             retrieval_sources.append("bm25")
 
-        # -- Stage 2b: Vector retrieval ----------------------------------
+        # -- 阶段 2b: 向量检索 ----------------------------------------
         vector_candidates: list[dict] = []
         if self._vector is not None and self._embedding is not None:
             vector_candidates = self._safe_vector_search(query, top_n=top_n * 2)
             if vector_candidates:
                 retrieval_sources.append("vector")
 
-        # -- Optional MySQL exact/prefix lookup ---------------------------
+        # -- 可选: MySQL 精确/前缀查找 ---------------------------------
         repo_candidates: list[dict] = []
         if self._repo is not None:
             try:
@@ -126,7 +129,7 @@ class RagTerminologyPipeline:
             except Exception:
                 logger.warning("Repository search failed; skipping.", exc_info=True)
 
-        # -- Stage 3: Merge & deduplicate ---------------------------------
+        # -- 阶段 3: 合并与去重 ----------------------------------------
         merged = self._merge_candidates(bm25_candidates, vector_candidates)
         merged = self._merge_candidates(merged, repo_candidates)
 
@@ -135,7 +138,7 @@ class RagTerminologyPipeline:
 
         total_candidates = len(merged)
 
-        # -- Stage 4: Cross-Encoder reranking -----------------------------
+        # -- 阶段 4: Cross-Encoder 重排序 ------------------------------
         if self._reranker is not None and self._reranker.is_available():
             try:
                 reranked = self._reranker.rerank(query, merged, top_n=top_n)
@@ -149,10 +152,10 @@ class RagTerminologyPipeline:
 
         selected_terms = reranked[:top_n]
 
-        # -- Stage 5: Format glossary ------------------------------------
+        # -- 阶段 5: 格式化术语表 --------------------------------------
         glossary_block = format_glossary_block(selected_terms)
 
-        # Apply token budget truncation if needed.
+        # 如有需要，应用 token 预算截断。
         if glossary_block and max_glossary_tokens > 0:
             estimated = estimate_token_count(glossary_block)
             if estimated > max_glossary_tokens:
@@ -165,18 +168,15 @@ class RagTerminologyPipeline:
             "retrieval_sources": retrieval_sources,
         }
 
-    # ------------------------------------------------------------------
-    # Index maintenance
-    # ------------------------------------------------------------------
+    # ── 索引维护 ─────────────────────────────────────────────────────
 
     def refresh_indexes(self, approved_terms: list[dict]) -> None:
-        """Rebuild the BM25 index from a fresh list of approved terms.
+        """从新的已批准术语列表重建 BM25 索引。
 
-        Parameters
+        参数
         ----------
         approved_terms : list[dict]
-            List of approved term dicts, each with at least ``id`` and
-            ``source_term``.
+            已批准术语字典列表，每个至少包含 ``id`` 和 ``source_term``。
         """
         try:
             self._bm25.refresh(approved_terms)
@@ -184,33 +184,28 @@ class RagTerminologyPipeline:
         except Exception as exc:
             logger.warning("Failed to refresh BM25 index: %s", exc)
 
-    # ------------------------------------------------------------------
-    # Properties
-    # ------------------------------------------------------------------
+    # ── 属性 ─────────────────────────────────────────────────────────
 
     @property
     def is_ready(self) -> bool:
-        """``True`` when the BM25 index is built and ready for retrieval."""
+        """BM25 索引是否已构建并可用于检索"""
         return self._bm25.is_ready
 
-    # ------------------------------------------------------------------
-    # Internal: query transformation
-    # ------------------------------------------------------------------
+    # ── 内部: 查询变换 ───────────────────────────────────────────────
 
     @staticmethod
     def _transform_query(chunk_text: str) -> str:
-        """Extract a plain-text query from a LaTeX chunk.
+        """从 LaTeX 文本块中提取纯文本查询。
 
-        Currently strips minimal LaTeX constructs and returns the cleaned
-        text as-is.  Future versions may extract key phrases or noun
-        chunks.
+        当前去除最简 LaTeX 结构并原样返回清洗后的文本。
+        未来版本可能提取关键词短语或名词块。
         """
         if not chunk_text or not chunk_text.strip():
             return ""
 
         text = chunk_text.strip()
 
-        # Remove common LaTeX commands and braces for cleaner query text.
+        # 去除常见 LaTeX 命令和大括号以获得更干净的查询文本。
         text = re.sub(r"\\(?:textbf|textit|emph|textsf|texttt)\{([^}]*)\}", r"\1", text)
         text = re.sub(r"\\[a-zA-Z]+(?:\{[^}]*\})?", "", text)
         text = re.sub(r"[{}]", " ", text)
@@ -218,11 +213,10 @@ class RagTerminologyPipeline:
 
         return text
 
-    # ------------------------------------------------------------------
-    # Internal: safe wrappers
-    # ------------------------------------------------------------------
+    # ── 内部: 安全包装器 ─────────────────────────────────────────────
 
     def _safe_bm25_search(self, query: str, top_n: int) -> list[dict]:
+        """安全的 BM25 搜索（捕获异常）"""
         try:
             return self._bm25.search(query, top_n=top_n)
         except Exception as exc:
@@ -230,6 +224,7 @@ class RagTerminologyPipeline:
             return []
 
     def _safe_vector_search(self, query: str, top_n: int) -> list[dict]:
+        """安全的向量搜索（捕获异常）"""
         try:
             embedding = self._embedding.encode([query])
             if not embedding:
@@ -246,11 +241,10 @@ class RagTerminologyPipeline:
         target_lang: str,
         top_n: int,
     ) -> list[dict]:
-        """Delegate to TerminologyRepository.exact_search if available.
+        """委托给 TerminologyRepository.exact_search（如果可用）。
 
-        The repository interface is expected to expose an ``exact_search``
-        method that returns a list of candidate dicts with the same shape
-        as BM25/vector results.
+        仓库接口预期暴露一个 ``exact_search`` 方法，返回与
+        BM25/向量结果相同格式的候选字典列表。
         """
         if not hasattr(self._repo, "search_approved_terms"):
             return []
@@ -260,19 +254,16 @@ class RagTerminologyPipeline:
             target_lang=target_lang,
         )[:top_n]
 
-    # ------------------------------------------------------------------
-    # Internal: merging & sorting
-    # ------------------------------------------------------------------
+    # ── 内部: 合并与排序 ─────────────────────────────────────────────
 
     @staticmethod
     def _merge_candidates(
         *candidate_lists: list[dict],
     ) -> list[dict]:
-        """Deduplicate candidates by ``term_id``, keeping the higher score.
+        """按 ``term_id`` 去重候选项，保留更高评分。
 
-        Score preference order: ``rerank_score`` > ``vector_score`` >
-        ``bm25_score``.  When a term appears from multiple sources the
-        entry with the highest effective score is kept.
+        评分优先级: ``rerank_score`` > ``vector_score`` > ``bm25_score``。
+        当同一术语从多个来源出现时，保留有效评分最高的条目。
         """
         merged: dict[str, dict] = {}
 
@@ -284,7 +275,7 @@ class RagTerminologyPipeline:
 
                 if tid in merged:
                     existing = merged[tid]
-                    # Pick the candidate with a better effective score.
+                    # 选择有效评分更高的候选项。
                     if _effective_score(c) > _effective_score(existing):
                         merged[tid] = c
                 else:
@@ -294,12 +285,13 @@ class RagTerminologyPipeline:
 
     @staticmethod
     def _score_merge_sort(candidates: list[dict]) -> list[dict]:
-        """Sort candidates by the best available relevance score."""
+        """按最佳可用相关性评分排序候选项"""
         candidates.sort(key=_effective_score, reverse=True)
         return candidates
 
     @staticmethod
     def _empty_result() -> dict:
+        """返回空结果字典"""
         return {
             "glossary_block": "",
             "selected_terms": [],
@@ -308,13 +300,11 @@ class RagTerminologyPipeline:
         }
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
+# ── 模块级辅助函数 ──────────────────────────────────────────────────
 
 
 def _effective_score(candidate: dict) -> float:
-    """Return the highest available relevance score for a candidate."""
+    """返回候选项的最高可用相关性评分"""
     return max(
         float(candidate.get("rerank_score", 0.0) or 0.0),
         float(candidate.get("vector_score", 0.0) or 0.0),

@@ -1,10 +1,15 @@
-﻿import axios from "axios"
+/**
+ * API 客户端
+ * 基于 Axios 封装的后端 API 调用模块，包含认证拦截器和所有业务接口
+ */
+import axios from "axios"
 import type { AdvancedConfig, LatexValidation } from "@/types/config"
 import { API_BASE_URL } from "@/api-base"
 import { getAccessToken } from "./local-auth"
 
 const DAILY_LATEX_QUOTA_EXCEEDED_CODE = "DAILY_LATEX_QUOTA_EXCEEDED"
 
+/** 每日 LaTeX 配额超出错误详情 */
 export interface DailyLatexQuotaExceededDetail {
     code: typeof DAILY_LATEX_QUOTA_EXCEEDED_CODE
     requested_count: number
@@ -15,6 +20,7 @@ export interface DailyLatexQuotaExceededDetail {
     reset_timezone: string
 }
 
+/** arXiv 下载接口响应 */
 export interface ArxivResponse {
     task_id: string
     arxiv_id: string
@@ -23,21 +29,21 @@ export interface ArxivResponse {
     source_path?: string
 }
 
-/**
- * Translation request with full advanced configuration.
- */
+/** 翻译请求，包含完整的高级配置 */
 export interface TranslateRequest {
     target_language: string
     source_language: string
     advanced_config?: AdvancedConfig
 }
 
+/** 翻译接口响应 */
 export interface TranslateResponse {
     task_id: string
     status: string
     message: string
 }
 
+/** 任务状态查询响应 */
 export interface TaskStatusResponse {
     task_id: string
     status: string
@@ -59,9 +65,7 @@ export interface TaskStatusResponse {
     persist_failed?: boolean
 }
 
-/**
- * Upload response with LaTeX validation result.
- */
+/** 上传响应，包含 LaTeX 验证结果 */
 export interface UploadResponse {
     task_id: string
     status: string
@@ -70,14 +74,21 @@ export interface UploadResponse {
     latex_validation?: LatexValidation
 }
 
+/** 判断输入是否为 Record 类型 */
 function isRecord(input: unknown): input is Record<string, unknown> {
     return Boolean(input && typeof input === "object")
 }
 
+/** 标准化数值：非有限数值返回 null */
 function normalizeNumber(input: unknown): number | null {
     return typeof input === "number" && Number.isFinite(input) ? input : null
 }
 
+/**
+ * 从 Axios 错误对象中提取每日 LaTeX 配额超出详情
+ * @param error - Axios 错误对象
+ * @returns 配额详情，若非配额错误则返回 null
+ */
 export function getDailyLatexQuotaExceededDetail(error: unknown): DailyLatexQuotaExceededDetail | null {
     if (!isRecord(error) || !isRecord(error.response)) {
         return null
@@ -113,6 +124,12 @@ export function getDailyLatexQuotaExceededDetail(error: unknown): DailyLatexQuot
     }
 }
 
+/**
+ * 从错误对象生成每日配额超出的国际化消息
+ * @param error - Axios 错误对象
+ * @param translate - i18n 翻译函数
+ * @returns 翻译后的消息，若非配额错误则返回 null
+ */
 export function getDailyLatexQuotaExceededMessage(
     error: unknown,
     translate: (key: string, values?: Record<string, unknown>) => string,
@@ -132,6 +149,7 @@ export function getDailyLatexQuotaExceededMessage(
     })
 }
 
+/** 创建 Axios 实例 */
 const api = axios.create({
     baseURL: `${API_BASE_URL}/api`,
     headers: {
@@ -139,7 +157,7 @@ const api = axios.create({
     },
 })
 
-// Request interceptor to add auth token
+/** 请求拦截器：自动附加 Bearer Token */
 api.interceptors.request.use(async (config) => {
     const token = await getAccessToken()
 
@@ -150,33 +168,39 @@ api.interceptors.request.use(async (config) => {
     return config
 })
 
+/**
+ * 通过 arXiv ID 下载论文
+ * @param arxivId - arXiv 论文 ID
+ */
 export const downloadArxiv = async (arxivId: string): Promise<ArxivResponse> => {
     const response = await api.post<ArxivResponse>("/arxiv", { arxiv_id: arxivId })
     return response.data
 }
 
 /**
- * Start translation with full configuration.
- * 
- * @param taskId - Task ID from upload or arxiv endpoint
- * @param config - Translation configuration including advanced options
+ * 发起翻译任务
+ * @param taskId - 上传或 arXiv 下载返回的任务 ID
+ * @param config - 翻译配置（含高级选项）
  */
 export const startTranslation = async (taskId: string, config: TranslateRequest): Promise<TranslateResponse> => {
     const response = await api.post<TranslateResponse>(`/translate/${taskId}`, config)
     return response.data
 }
 
+/**
+ * 查询单个任务状态
+ * @param taskId - 任务 ID
+ */
 export const getTaskStatus = async (taskId: string): Promise<TaskStatusResponse> => {
     const response = await api.get<TaskStatusResponse>(`/task/${taskId}`)
     return response.data
 }
 
+/**
+ * 获取任务日志
+ * @param taskId - 任务 ID
+ */
 export const getTaskLogs = async (taskId: string): Promise<string[]> => {
-    // Assuming there is an endpoint for logs, or it comes with status
-    // Based on previous reading, task endpoint might return logs or separate
-    // Let's assume separate or part of status for now.
-    // If not implemented in backend, we might need to rely on polling status message or adding a log endpoint.
-    // For MVP, using message updates as logs is fine, or check if /task/{taskId}/logs exists
     try {
         const response = await api.get<{ logs: string[] }>(`/task/${taskId}/logs`)
         return response.data.logs
@@ -186,10 +210,9 @@ export const getTaskLogs = async (taskId: string): Promise<string[]> => {
 }
 
 /**
- * Upload a file (ZIP, TAR.GZ, RAR, or .tex) for translation.
- * 
- * @param file - File to upload
- * @returns Upload response with task ID and LaTeX validation
+ * 上传文件（ZIP、TAR.GZ、RAR 或 .tex）
+ * @param file - 待上传文件
+ * @returns 上传响应，包含任务 ID 和 LaTeX 验证结果
  */
 export const uploadFile = async (file: File): Promise<UploadResponse> => {
     const formData = new FormData()
@@ -204,30 +227,26 @@ export const uploadFile = async (file: File): Promise<UploadResponse> => {
 }
 
 /**
- * Get download URL for translated PDF.
- * 
- * @param taskId - Task ID
- * @returns URL to download the PDF
+ * 获取翻译后 PDF 的下载地址
+ * @param taskId - 任务 ID
+ * @returns PDF 下载 URL
  */
 export const getDownloadUrl = (taskId: string): string => {
     return `${API_BASE_URL}/api/download/${taskId}`
 }
 
 /**
- * Get preview URL for translated PDF (inline display).
- * 
- * @param taskId - Task ID
- * @returns URL to preview the PDF
+ * 获取翻译后 PDF 的预览地址（内联显示）
+ * @param taskId - 任务 ID
+ * @returns PDF 预览 URL
  */
 export const getPreviewUrl = (taskId: string): string => {
     return `${API_BASE_URL}/api/preview/${taskId}`
 }
 
 /**
- * Delete a single task from history.
- * 
- * @param taskId - Task ID to delete
- * @returns Deletion result with deleted directories and errors
+ * 删除单条历史任务
+ * @param taskId - 待删除的任务 ID
  */
 export const deleteTask = async (taskId: string): Promise<{
     message: string
@@ -240,10 +259,8 @@ export const deleteTask = async (taskId: string): Promise<{
 }
 
 /**
- * Delete multiple tasks in batch.
- * 
- * @param taskIds - Array of task IDs to delete
- * @returns Batch deletion results
+ * 批量删除历史任务
+ * @param taskIds - 待删除的任务 ID 数组
  */
 export const deleteTasksBatch = async (taskIds: string[]): Promise<{
     message: string
@@ -261,6 +278,7 @@ export const deleteTasksBatch = async (taskIds: string[]): Promise<{
     return response.data
 }
 
+/** 批量 arXiv 翻译请求 */
 export interface BatchTranslateRequest {
     arxiv_ids: string[]
     target_language: string
@@ -268,6 +286,7 @@ export interface BatchTranslateRequest {
     advanced_config?: AdvancedConfig
 }
 
+/** 批量翻译响应 */
 export interface BatchTranslateResponse {
     batch_id: string
     task_ids: string[]
@@ -275,6 +294,7 @@ export interface BatchTranslateResponse {
     queued_count: number
 }
 
+/** 批量上传翻译请求 */
 export interface BatchUploadTranslateRequest {
     files: File[]
     target_language: string
@@ -282,6 +302,7 @@ export interface BatchUploadTranslateRequest {
     advanced_config?: AdvancedConfig
 }
 
+/** 队列状态响应 */
 export interface QueueStatusResponse {
     active_count: number
     queue_size: number
@@ -292,7 +313,7 @@ export interface QueueStatusResponse {
 }
 
 /**
- * Start batch translation for multiple arXiv IDs (authenticated users only).
+ * 发起批量 arXiv 翻译（仅限已认证用户）
  */
 export const startBatchTranslation = async (
     request: BatchTranslateRequest
@@ -302,7 +323,7 @@ export const startBatchTranslation = async (
 }
 
 /**
- * Start batch translation for multiple uploaded files (authenticated users only).
+ * 发起批量上传文件翻译（仅限已认证用户）
  */
 export const startBatchUploadTranslation = async (
     request: BatchUploadTranslateRequest
@@ -326,7 +347,7 @@ export const startBatchUploadTranslation = async (
 }
 
 /**
- * Get current task queue status.
+ * 获取当前任务队列状态
  */
 export const getQueueStatus = async (): Promise<QueueStatusResponse> => {
     const response = await api.get<QueueStatusResponse>('/queue/status')
@@ -334,5 +355,3 @@ export const getQueueStatus = async (): Promise<QueueStatusResponse> => {
 }
 
 export default api
-
-

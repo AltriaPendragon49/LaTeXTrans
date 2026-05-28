@@ -41,6 +41,7 @@ import {
   DataTableRow,
 } from '@/ui/data-table/DataTable'
 
+/** 翻译历史条目 */
 interface TaskHistoryItem {
   task_id: string
   source_type: string
@@ -59,6 +60,7 @@ interface TaskHistoryItem {
   formatting?: Record<string, unknown> | null
 }
 
+/** 历史列表响应 */
 interface HistoryResponse {
   tasks: TaskHistoryItem[]
   total: number
@@ -67,6 +69,7 @@ interface HistoryResponse {
   has_more: boolean
 }
 
+/** 任务状态对应的徽章色调 */
 const statusTones: Record<string, "warning" | "info" | "success" | "danger"> = {
   pending: 'warning',
   processing: 'info',
@@ -77,8 +80,17 @@ const statusTones: Record<string, "warning" | "info" | "success" | "danger"> = {
   structure_invalid: 'danger',
 }
 
+/** 终端失败状态集合 */
 const TERMINAL_FAIL_STATUSES = new Set(['failed', 'failed_compilation', 'structure_invalid'])
 
+/**
+ * 翻译历史工作区组件
+ * 展示用户所有的翻译任务历史记录，支持：
+ * - 分页加载（GET /api/history）
+ * - 展开查看翻译配置详情
+ * - 批量选择删除
+ * - 点击跳转到预览或处理页面
+ */
 export function HistoryWorkspace() {
   const navigate = useNavigate()
   const { isAuthenticated, loading: authLoading, session } = useAuth()
@@ -124,6 +136,7 @@ export function HistoryWorkspace() {
     })
   }
 
+  /** 从后端获取历史记录，支持自动重试 */
   const fetchHistory = useCallback(async (pageNum: number, append = false, attempt = 0) => {
     clearScheduledRetry()
     setLoading(true)
@@ -517,101 +530,39 @@ export function HistoryWorkspace() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 pb-2 text-sm md:grid-cols-2">
-                      <InfoTile
-                        icon={<Languages className="h-4 w-4" />}
-                        title={t('history.language')}
-                        value={`${task.source_language} → ${task.target_language}`}
-                      />
-
-                      <InfoTile
-                        icon={<Wrench className="h-4 w-4" />}
-                        title={t('history.compile_strategy')}
-                        value={getCompileStrategyLabel(t, task.compile_strategy)}
-                        valueClassName="capitalize"
-                      />
+                      <InfoTile icon={<Languages className="h-4 w-4" />} title={t('history.language')} value={`${task.source_language} → ${task.target_language}`} />
+                      <InfoTile icon={<Wrench className="h-4 w-4" />} title={t('history.compile_strategy')} value={getCompileStrategyLabel(t, task.compile_strategy)} valueClassName="capitalize" />
 
                       {task.translation_model ? (
                         <div className="md:col-span-2 mt-2">
-                          <InfoTile
-                            icon={<Sparkles className="h-4 w-4" />}
-                            title={t('history.translation_model')}
-                            value={task.translation_model}
-                            valueClassName="font-mono text-xs"
-                          />
+                          <InfoTile icon={<Sparkles className="h-4 w-4" />} title={t('history.translation_model')} value={task.translation_model} valueClassName="font-mono text-xs" />
                         </div>
                       ) : null}
 
                       <div className="md:col-span-2 mt-1 flex flex-wrap gap-2">
                         <Pill className="px-3 py-1.5 text-[11px] font-bold normal-case tracking-normal">
-                          {task.generate_glossary ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
-                          ) : (
-                            <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />
-                          )}
+                          {task.generate_glossary ? (<CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />) : (<XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />)}
                           <span className="text-[11px] font-bold text-[color:var(--px-shell-ink)]">{t('common.generate_glossary')}</span>
                         </Pill>
-
                         <Pill className="px-3 py-1.5 text-[11px] font-bold normal-case tracking-normal">
-                          {task.use_author_api ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
-                          ) : (
-                            <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />
-                          )}
+                          {task.use_author_api ? (<CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />) : (<XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-muted)]" />)}
                           <span className="text-[11px] font-bold text-[color:var(--px-shell-ink)]">{t('history.use_author_api')}</span>
                         </Pill>
                       </div>
 
                       {task.formatting && Object.keys(task.formatting).length > 0 ? (
                         <div className="md:col-span-2 mt-3 rounded-2xl bg-[color:var(--px-shell-panel-strong)]/30 px-5 py-4">
-                          <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)]">
-                            {t('history.formatting_settings')}
-                          </div>
+                          <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)]">{t('history.formatting_settings')}</div>
                           <div className="flex flex-wrap gap-2">
-                            {task.formatting.line_spacing != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.line_spacing', { value: String(task.formatting.line_spacing) })}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.font_size != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.font_size_pt', { value: String(task.formatting.font_size) })}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.column_mode != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {getFormattingValueLabel(t, 'column_mode', String(task.formatting.column_mode))}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.margin != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.margins', { value: getFormattingValueLabel(t, 'margin', String(task.formatting.margin)) })}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.cjk_font != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.font', { value: getFormattingValueLabel(t, 'cjk_font', String(task.formatting.cjk_font)) })}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.paragraph_indent === true ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('formatting.firstLineIndent')}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.localize_captions === true ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.localize_figures_tables')}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.bib_style != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.bibliography', { value: String(task.formatting.bib_style) })}
-                              </Pill>
-                            ) : null}
-                            {task.formatting.cite_style != null ? (
-                              <Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">
-                                {t('history.citation', { value: getFormattingValueLabel(t, 'cite_style', String(task.formatting.cite_style)) })}
-                              </Pill>
-                            ) : null}
+                            {task.formatting.line_spacing != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.line_spacing', { value: String(task.formatting.line_spacing) })}</Pill>) : null}
+                            {task.formatting.font_size != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.font_size_pt', { value: String(task.formatting.font_size) })}</Pill>) : null}
+                            {task.formatting.column_mode != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{getFormattingValueLabel(t, 'column_mode', String(task.formatting.column_mode))}</Pill>) : null}
+                            {task.formatting.margin != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.margins', { value: getFormattingValueLabel(t, 'margin', String(task.formatting.margin)) })}</Pill>) : null}
+                            {task.formatting.cjk_font != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.font', { value: getFormattingValueLabel(t, 'cjk_font', String(task.formatting.cjk_font)) })}</Pill>) : null}
+                            {task.formatting.paragraph_indent === true ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('formatting.firstLineIndent')}</Pill>) : null}
+                            {task.formatting.localize_captions === true ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.localize_figures_tables')}</Pill>) : null}
+                            {task.formatting.bib_style != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.bibliography', { value: String(task.formatting.bib_style) })}</Pill>) : null}
+                            {task.formatting.cite_style != null ? (<Pill tone="accent" className="rounded-md px-2.5 py-1 text-[11px] font-bold normal-case tracking-normal">{t('history.citation', { value: getFormattingValueLabel(t, 'cite_style', String(task.formatting.cite_style)) })}</Pill>) : null}
                           </div>
                         </div>
                       ) : null}
@@ -627,14 +578,7 @@ export function HistoryWorkspace() {
       {hasMore ? (
         <div className="flex justify-center pt-2">
           <Button variant="outline" onClick={loadMore} disabled={loading} className="rounded-full shadow-sm">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('common.status.loading')}
-              </>
-            ) : (
-              t('common.actions.loadMore')
-            )}
+            {loading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('common.status.loading')}</>) : (t('common.actions.loadMore'))}
           </Button>
         </div>
       ) : null}

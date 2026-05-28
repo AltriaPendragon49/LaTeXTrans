@@ -1,3 +1,5 @@
+"""Agent 输出格式化 - 将结构化槽位渲染为自然语言摘要"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -12,6 +14,17 @@ def format_summary(
     citation_ids: List[str],
     language: str = "en",
 ) -> str:
+    """将结构化槽位和引用格式化为人类可读的摘要文本
+
+    参数:
+        slots: 结构化答案槽位（current_status, background_answer 等）
+        citations: 引用条目列表
+        citation_ids: 引用 ID 列表（决定引用顺序）
+        language: 输出语言
+
+    返回:
+        格式化后的多段文本
+    """
     labels = summary_labels(language)
     sections: List[str] = [
         f"{labels['current_status']}: {str(slots.get('current_status') or '').strip()}",

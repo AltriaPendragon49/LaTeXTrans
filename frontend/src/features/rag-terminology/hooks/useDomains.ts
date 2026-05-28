@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react"
 import type { DomainInfo, DomainsResponse } from "@/features/rag-terminology/types"
 import { listDomains } from "@/features/rag-terminology/services/rag-terminology-api"
 
+/** 内存缓存：避免重复请求 */
 let cachedDomains: DomainsResponse | null = null
 
+/** useDomains 返回值接口 */
 interface UseDomainsResult {
   domains: DomainInfo[]
   groups: Record<string, { label_zh: string; members: string[] }>
@@ -13,8 +15,9 @@ interface UseDomainsResult {
 }
 
 /**
- * Custom hook to fetch available terminology domains from the API.
- * Results are cached in memory; call `reload` to force a refresh.
+ * 获取可用术语领域的 Hook
+ * 调用 GET /terminology/domains，结果缓存到内存中。
+ * 使用 reload() 可强制刷新缓存
  */
 export function useDomains(): UseDomainsResult {
   const [domains, setDomains] = useState<DomainInfo[]>(cachedDomains?.domains ?? [])

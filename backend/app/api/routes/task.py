@@ -1,4 +1,4 @@
-"""Task status routes with guest-safe access and authenticated ownership checks."""
+"""任务状态路由，支持游客观看和认证所有权校验。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -27,7 +27,7 @@ task_manager = get_task_manager()
 
 
 class TaskStatusResponse(BaseModel):
-    """Task status response"""
+    """任务状态响应体"""
     task_id: str
     status: str
     progress: int
@@ -138,16 +138,16 @@ async def get_task_status(
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
     """
-    Get task status and progress
-    
+    获取任务状态和进度
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        Task status information
-    
+        任务状态信息
+
     Raises:
-        HTTPException: If task not found
+        HTTPException: 任务不存在时抛出
     """
     logger.info(f"Getting status for task: {task_id}")
     
@@ -180,10 +180,10 @@ async def get_task_status(
 @router.get("/tasks")
 async def list_all_tasks():
     """
-    List all tasks (for debugging)
-    
+    列出所有任务（用于调试）
+
     Returns:
-        Dictionary of all tasks
+        所有任务的字典
     """
     logger.info("Listing all tasks")
     return task_manager.get_all_tasks()
@@ -197,16 +197,16 @@ async def delete_task(
     repository: TranslationTaskRepository = Depends(_resolve_translation_task_repository),
 ):
     """
-    Delete a task
-    
+    删除任务及其关联文件
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        Deletion status
-    
+        删除状态
+
     Raises:
-        HTTPException: If task not found
+        HTTPException: 任务不存在时抛出
     """
     logger.info(f"Deleting task: {task_id}")
     
@@ -276,29 +276,29 @@ async def stream_task_status(
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
     """
-    SSE endpoint for real-time task status updates.
-    
-    Streams task status updates to the client using Server-Sent Events.
-    Automatically closes when task reaches terminal state (completed/failed).
-    
+    SSE 接口，用于实时推送任务状态更新。
+
+    通过 Server-Sent Events 将任务状态更新流式推送给客户端。
+    当任务到达终端状态（completed/failed）时自动关闭。
+
     Args:
-        task_id: Task ID to monitor
-        
+        task_id: 需要监控的任务 ID
+
     Returns:
-        StreamingResponse with SSE events
-        
+        包含 SSE 事件的 StreamingResponse
+
     Raises:
-        HTTPException: If task not found
+        HTTPException: 任务不存在时抛出
     """
-    # Validate task exists
+    # 验证任务是否存在
     _load_authorized_task(task_id=task_id, current_user=current_user, action="view")
-    
+
     async def event_generator():
-        """Generate SSE events for task status updates."""
+        """生成 SSE 事件用于任务状态更新推送。"""
         last_progress = -1
         last_status = ""
-        heartbeat_interval = 15  # seconds
-        poll_interval = 0.5  # seconds
+        heartbeat_interval = 15  # 心跳间隔（秒）
+        poll_interval = 0.5  # 轮询间隔（秒）
         heartbeat_counter = 0
         
         try:
@@ -325,7 +325,7 @@ async def stream_task_status(
                 current_stage = task.get("stage", "")
                 current_message = task.get("message", "")
                 
-                # Send update if progress or status changed
+                # 当进度或状态变化时发送更新
                 if current_progress != last_progress or current_status != last_status:
                     event_data = {
                         "type": "update",
@@ -351,9 +351,9 @@ async def stream_task_status(
                     
                     last_progress = current_progress
                     last_status = current_status
-                    heartbeat_counter = 0  # Reset heartbeat after update
+                    heartbeat_counter = 0  # 更新后重置心跳计数器
                 
-                # Check for terminal states
+                # 检查是否到达终端状态
                 if current_status in ("completed", "completed_with_warnings", "failed_compilation", "structure_invalid", "failed"):
                     event_data = {
                         "type": "complete",

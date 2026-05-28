@@ -13,8 +13,16 @@ import { EditorialTabs, EditorialTabsList, EditorialTabsTrigger } from "@/ui/tab
 import { UploadCard } from "@/ui/upload-card/UploadCard"
 import { TabsContent } from "@/ui/primitives/tabs"
 
+/** 提交模式 */
 type SubmitMode = "arxiv" | "upload"
 
+/**
+ * 社区论文提交面板组件
+ * 支持两种提交方式：
+ * 1. arXiv ID 提交：调用 submitCommunityPaperFromArxiv API
+ * 2. 本地上传：调用 submitCommunityPaperFromUpload API
+ * 未登录用户显示登录提示
+ */
 export function CommunitySubmitPanel() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -39,6 +47,7 @@ export function CommunitySubmitPanel() {
   const isArxivDisabled = isSubmitting || !arxivId.trim()
   const isUploadDisabled = isSubmitting || !selectedFile
 
+  /** 提交 arXiv ID */
   async function handleArxivSubmit() {
     if (isArxivDisabled) {
       return
@@ -61,6 +70,7 @@ export function CommunitySubmitPanel() {
     }
   }
 
+  /** 提交本地文件 */
   async function handleUploadSubmit() {
     if (isUploadDisabled || !selectedFile) {
       return

@@ -1,23 +1,40 @@
+/**
+ * 分段控制器组件
+ * 渲染一组互斥的切换按钮，选中项有卡片高亮效果（类似 iOS SegmentedControl）
+ */
 import type { ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** 分段控制器中的单个选项 */
 interface SegmentedControlItem<T extends string> {
+  /** 选项值 */
   value: T
+  /** 选项标签 */
   label: ReactNode
+  /** 可选图标 */
   icon?: ReactNode
+  /** 是否禁用 */
   disabled?: boolean
+  /** 测试 ID */
   testId?: string
 }
 
+/** SegmentedControl 组件 Props */
 interface SegmentedControlProps<T extends string> {
+  /** 当前选中值 */
   value: T
+  /** 选项列表 */
   items: SegmentedControlItem<T>[]
+  /** 值变更回调 */
   onValueChange: (value: T) => void
+  /** 额外样式 */
   className?: string
+  /** 选项按钮额外样式 */
   itemClassName?: string
 }
 
+/** 分段控制器，等分宽度，选中项浮起高亮，类似 iOS 风格 */
 export function SegmentedControl<T extends string>({
   value,
   items,

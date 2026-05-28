@@ -3,18 +3,22 @@ import type { TFunction } from "i18next"
 import { Bookmark, Compass, PenTool, Sparkles } from "lucide-react"
 import userLogo from "../../userlogo.png"
 
+/** 移动端底部导航栏中的账户图标（使用用户 logo 图片） */
 function MobileAccountNavIcon({ className, alt }: { className?: string; alt: string }) {
   return <img src={userLogo} alt={alt} className={className ? `${className} rounded-full object-cover` : "rounded-full object-cover"} />
 }
 
+/** i18n 翻译辅助函数，当 i18n key 不存在时回退到默认文案 */
 function translate(t: TFunction, key: string, fallback: string) {
   return t(key, { defaultValue: fallback })
 }
 
+/** 判断当前路径是否为社区首页或论文详情路由 */
 function isCommunityRoute(pathname: string) {
   return pathname === "/" || pathname.startsWith("/paper/")
 }
 
+/** 判断当前路径是否为论文工具类路由（翻译、处理、预览、历史、术语库） */
 function isPaperToolRoute(pathname: string) {
   return (
     pathname === "/tools" ||
@@ -26,18 +30,22 @@ function isPaperToolRoute(pathname: string) {
   )
 }
 
+/** 判断当前路径是否属于收藏页面 */
 function isFavoritesRoute(pathname: string) {
   return pathname === "/favorites" || pathname.startsWith("/favorites/")
 }
 
+/** 判断当前路径是否属于个人资料或设置页面 */
 function isProfileRoute(pathname: string) {
   return pathname === "/profile" || pathname.startsWith("/workspace/settings")
 }
 
+/** 判断当前路径是否属于 Paper Copilot（AI 对话）页面 */
 export function isPaperCopilotRoute(pathname: string) {
   return pathname === "/agent" || pathname.startsWith("/agent/")
 }
 
+/** 壳导航项的接口定义 */
 export interface ShellNavItem {
   key: string
   to: string
@@ -47,6 +55,7 @@ export interface ShellNavItem {
   active: boolean
 }
 
+/** 获取桌面端侧边栏导航项列表，根据认证状态和管理员角色动态增删 */
 export function getDesktopShellNavItems({
   pathname,
   isAuthenticated,
@@ -98,6 +107,7 @@ export function getDesktopShellNavItems({
   return items
 }
 
+/** 获取移动端底部导航项列表，始终包含社区、收藏、工具、个人资料四项 */
 export function getMobilePrimaryNavItems({
   pathname,
   t,
@@ -137,6 +147,7 @@ export function getMobilePrimaryNavItems({
   ]
 }
 
+/** 渲染导航项的图标：优先使用图片图标（如用户头像），其次使用 Icon 组件 */
 export function renderShellNavItemIcon(item: ShellNavItem, className: string) {
   if (item.imageAlt) {
     return <MobileAccountNavIcon className={className} alt={item.imageAlt} />
@@ -146,6 +157,7 @@ export function renderShellNavItemIcon(item: ShellNavItem, className: string) {
   return Icon ? <Icon className={className} /> : null
 }
 
+/** 根据当前路径返回移动端页面对应的标题文案 */
 export function getMobileShellTitle(pathname: string, t: TFunction) {
   if (pathname === "/" || pathname.startsWith("/paper/")) {
     return translate(t, "community.nav.community", "Community")

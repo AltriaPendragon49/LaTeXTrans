@@ -1,24 +1,22 @@
 """
-PDF Sanitizer Module — Environmental Fallback (Image Sanitizer)
-================================================================
+PDF 净化模块 —— 环境回退（图片净化器）
+=============================================
 
-Provides non-destructive detection and repair of byte-level corrupted PDF
-image files.  This is designed exclusively for the "translate published
-papers" use-case: source PDFs are historical artefacts that cannot be
-changed upstream, so automatic repair is both safe and user-friendly.
+提供对字节级损坏的 PDF 图片文件进行无损检测和修复的功能。
+本模块专门为"翻译已发表论文"用例设计：源 PDF 是历史产物，无法在上游更改，
+因此自动修复既安全又用户友好。
 
-Design invariants
------------------
-* The **original file is never overwritten**.
-* The sanitized file is written to ``<original_stem>.sanitized.pdf`` in the
-  same directory.
-* All repair actions are logged explicitly. Nothing is silent.
-* If Ghostscript is not installed the sanitizer degrades gracefully (no-op).
+设计不变量
+----------
+* 原始文件永远不会被覆盖。
+* 净化后的文件写入同目录下的 ``<原始文件名>.sanitized.pdf``。
+* 所有修复操作都会被明确记录，没有任何静默操作。
+* 如果未安装 Ghostscript，净化器会优雅降级（无操作）。
 
-Trigger conditions (caller is responsible for deciding when to call)
----------------------------------------------------------------------
-* LaTeX compilation error lines contain: ``pdf inclusion: reading image failed``
-* AND ``pdfinfo`` reports a Syntax Error on the same file.
+触发条件（调用方负责决定何时调用）
+----------------------------------------------
+* LaTeX 编译错误行包含：``pdf inclusion: reading image failed``
+* 同时对同一文件 ``pdfinfo`` 报告语法错误。
 """
 
 import re
@@ -31,29 +29,27 @@ from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Packages known to crash or degrade modern CJK engines (XeLaTeX/LuaLaTeX).
-# These are typically accessibility or PDF-metadata packages relying on
-# pdfTeX-only primitives.
+# 已知会导致现代 CJK 引擎（XeLaTeX/LuaLaTeX）崩溃或降级的包。
+# 这些通常是依赖 pdfTeX 专用原语的可访问性或 PDF 元数据包。
 _CONFLICT_PACKAGES = {
-    "axessibility": "Incompatible with XeLaTeX/LuaLaTeX (uses pdfTeX primitives)",
-    "accsupp": "Known to cause CJK character mapping issues",
-    "pdfcomment": "Relies on pdfTeX-only specials",
+    "axessibility": "与 XeLaTeX/LuaLaTeX 不兼容（使用 pdfTeX 原语）",
+    "accsupp": "已知会导致 CJK 字符映射问题",
+    "pdfcomment": "依赖 pdfTeX 专用特设命令",
 }
 
 
 def apply_precompile_sanitization(tex_content: str) -> Tuple[str, List[str]]:
-    """
-    Stage 0 Sanitization: Remove/Comment out incompatible packages before compilation.
+    """第 0 阶段净化：编译前移除/注释掉不兼容的包。
 
-    Scans for \\usepackage{...} and matches against _CONFLICT_PACKAGES.
-    Returns (sanitized_content, list_of_warnings).
+    扫描 \\usepackage{...} 并与 _CONFLICT_PACKAGES 进行匹配。
+    返回 (净化后的内容, 警告列表)。
     """
     warnings = []
     sanitized_lines = []
 
-    # Regex to capture \usepackage[options]{package1,package2...}
-    # Group 1: optional arguments [..]
-    # Group 2: package list
+    # 匹配 \usepackage[options]{package1,package2...} 的正则表达式
+    # 组 1: 可选参数 [..]
+    # 组 2: 包列表
     pkg_pattern = re.compile(r"\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
 
     for line in tex_content.splitlines():
@@ -71,11 +67,11 @@ def apply_precompile_sanitization(tex_content: str) -> Tuple[str, List[str]]:
         conflicts = [p for p in packages if p in _CONFLICT_PACKAGES]
 
         if conflicts:
-            # Comment out the entire line and add a reason
+            # 注释掉整行并添加原因说明
             reasons = "; ".join(set(_CONFLICT_PACKAGES[p] for p in conflicts))
-            sanitized_line = f"% {line} % Sanitized: {reasons}"
+            sanitized_line = f"% {line} % 净化处理: {reasons}"
             sanitized_lines.append(sanitized_line)
-            msg = f"Stage 0 (pre-compile): commented out incompatible package(s) {conflicts}. Reason: {reasons}"
+            msg = f"阶段 0 (预编译): 注释掉了不兼容的包 {conflicts}。原因: {reasons}"
             warnings.append(msg)
             logger.info(msg)
         else:
@@ -85,11 +81,11 @@ def apply_precompile_sanitization(tex_content: str) -> Tuple[str, List[str]]:
 
 
 def _find_ghostscript() -> Optional[str]:
-    """Return the Ghostscript executable name available on this system.
+    """返回当前系统上可用的 Ghostscript 可执行文件名称。
 
-    On Windows the binary is typically ``gswin64c`` or ``gswin32c``;
-    on Linux/macOS it is simply ``gs``.
-    Returns *None* if no Ghostscript installation is found.
+    在 Windows 上，二进制文件通常是 ``gswin64c`` 或 ``gswin32c``；
+    在 Linux/macOS 上，则是 ``gs``。
+    如果未找到 Ghostscript 安装，返回 None。
     """
     candidates = ["gswin64c", "gswin32c", "gs"] if sys.platform == "win32" else ["gs"]
     for name in candidates:
@@ -97,16 +93,15 @@ def _find_ghostscript() -> Optional[str]:
         if loc:
             return loc
 
-    # Windows specific: fallback to common installation directories if not in PATH
+    # Windows 特有：如果不在 PATH 中，回退到公共安装目录
     if sys.platform == "win32":
-        # Check D:\apps, C:\Program Files, C:\Program Files (x86)
         roots = [Path("D:/apps"), Path("C:/Program Files"), Path("C:/Program Files (x86)")]
         for root in roots:
             if not root.exists():
                 continue
             gs_root = root / "gs"
             if gs_root.exists() and gs_root.is_dir():
-                # Find the latest version folder like gs10.06.0
+                # 查找最新版本文件夹，如 gs10.06.0
                 versions = sorted(list(gs_root.glob("gs*")), reverse=True)
                 for v in versions:
                     bin_dir = v / "bin"
@@ -114,36 +109,33 @@ def _find_ghostscript() -> Optional[str]:
                         for name in ["gswin64c.exe", "gswin32c.exe"]:
                             gs_path = bin_dir / name
                             if gs_path.exists():
-                                logger.info(f"Ghostscript found via path-fallback: {gs_path}")
+                                logger.info(f"通过路径回退找到 Ghostscript: {gs_path}")
                                 return str(gs_path)
     return None
 
-# ---------------------------------------------------------------------------
-# Pattern to extract "(file …)" from a LaTeX log error line
-# Example: ./sec/5_experiments.tex:58: error:  (file imgs/HOTA.pdf)
-# ---------------------------------------------------------------------------
+
+# 用于从 LaTeX 日志错误行中提取 "(file ...)" 的正则表达式
+# 示例: ./sec/5_experiments.tex:58: error:  (file imgs/HOTA.pdf)
 _PDF_INCLUSION_RE = re.compile(
     r'\(file\s+([^)]+\.pdf)\)',
     re.IGNORECASE,
 )
 
-# LaTeX \includegraphics path pattern for a specific PDF stem
+# 用于匹配特定 PDF 词干的 LaTeX \includegraphics 路径模式
 _INCLUDEGRAPHICS_RE = re.compile(
     r'(\\includegraphics(?:\[[^\]]*\])?\{)([^}]*?)(\})',
 )
 
 
 def extract_failed_pdf_paths(error_lines: List[str], tex_dir: Path) -> List[Path]:
-    """
-    Parse compiled LaTeX error lines and return absolute paths of PDF files
-    that triggered a PDF inclusion failure.
+    """解析编译后的 LaTeX 错误行，返回触发 PDF 包含失败的 PDF 文件绝对路径。
 
-    Matches on either ``reading image failed`` or ``pdf inclusion`` as trigger
-    phrases.  This handles cases where LaTeX splits the error text across log
-    lines (the continuation-merge in ``parse_log_errors`` should join them, but
-    we stay resilient to partial matches too).
+    匹配 ``reading image failed`` 或 ``pdf inclusion`` 作为触发短语。
+    这可以处理 LaTeX 将错误文本拆分到多行日志中的情况
+    （``parse_log_errors`` 中的续行合并应该将它们连接起来，
+    但我们对部分匹配也保持弹性）。
 
-    Only returns paths that actually exist on disk.
+    仅返回磁盘上实际存在的路径。
     """
     _TRIGGER_PHRASES = ["reading image failed", "pdf inclusion"]
     failed: List[Path] = []
@@ -163,14 +155,13 @@ def extract_failed_pdf_paths(error_lines: List[str], tex_dir: Path) -> List[Path
 
 
 def check_pdf_syntax_error(pdf_path: Path) -> bool:
-    """
-    Use ``pdfinfo`` to check whether a PDF has byte-level syntax errors.
+    """使用 ``pdfinfo`` 检查 PDF 是否具有字节级语法错误。
 
-    Returns True if a Syntax Error or Illegal character is detected.
-    Returns False if the file is fine.
+    如果检测到语法错误或非法字符，返回 True。
+    如果文件正常，返回 False。
 
     Raises:
-        RuntimeError: when pdfinfo is unavailable or cannot execute.
+        RuntimeError: 当 pdfinfo 不可用或无法执行时。
     """
     try:
         result = subprocess.run(
@@ -183,31 +174,29 @@ def check_pdf_syntax_error(pdf_path: Path) -> bool:
         combined = result.stdout + result.stderr
         return "Syntax Error" in combined or "Illegal character" in combined
     except FileNotFoundError:
-        raise RuntimeError("pdfinfo is required but not installed")
+        raise RuntimeError("pdfinfo 是必需的但未安装")
     except Exception as exc:
-        raise RuntimeError(f"pdfinfo check failed for {pdf_path.name}: {exc}") from exc
+        raise RuntimeError(f"pdfinfo 检查失败 {pdf_path.name}: {exc}") from exc
 
 
 def sanitize_pdf(pdf_path: Path) -> Optional[Path]:
-    """
-    Use Ghostscript to distil a corrupted PDF into a clean structural clone.
+    """使用 Ghostscript 将损坏的 PDF 蒸馏为干净的结构副本。
 
-    The original file is **never modified**.  The sanitized clone is written
-    to ``<stem>.sanitized.pdf`` in the same directory.
+    原始文件永远不会被修改。净化后的副本写入同目录下的
+    ``<词干>.sanitized.pdf``。
 
-    Returns the path to the sanitized PDF on success, or None on failure.
+    成功时返回净化后 PDF 的路径，失败时返回 None。
     """
     sanitized_path = pdf_path.with_name(pdf_path.stem + ".sanitized.pdf")
 
-    # Warn if output already exists (idempotent: we overwrite it)
+    # 如果输出已存在则警告（幂等：我们将覆盖它）
     existed = sanitized_path.exists()
 
     gs_bin = _find_ghostscript()
     if gs_bin is None:
         logger.warning(
-            "Ghostscript not found (tried gs/gswin64c/gswin32c); "
-            "cannot sanitize %s.  Install Ghostscript to enable "
-            "automatic PDF repair.",
+            "未找到 Ghostscript（尝试了 gs/gswin64c/gswin32c）；"
+            "无法净化 %s。安装 Ghostscript 以启用自动 PDF 修复。",
             pdf_path.name,
         )
         return None
@@ -229,68 +218,67 @@ def sanitize_pdf(pdf_path: Path) -> Optional[Path]:
             timeout=60,
         )
         if sanitized_path.exists() and sanitized_path.stat().st_size > 0:
-            action = "Overwrote" if existed else "Created"
+            action = "覆盖了" if existed else "创建了"
             logger.warning(
-                "⚠️  IMAGE SANITIZER: Detected graphic file '%s' is structurally "
-                "corrupted at the byte level.  %s sanitized instance '%s' for "
-                "compilation.  Original file preserved.  (using %s)",
+                "图片净化器: 检测到图形文件 '%s' 在字节级存在结构损坏。"
+                " %s净化后的实例 '%s' 用于编译。"
+                " 原始文件已保留。（使用 %s）",
                 pdf_path.name,
                 action,
                 sanitized_path.name,
                 gs_bin,
             )
             print(
-                f"\n⚠️  IMAGE SANITIZER\n"
-                f"   Source PDF:    {pdf_path}\n"
-                f"   Status:        byte-level syntax error detected\n"
-                f"   Sanitized to:  {sanitized_path}\n"
-                f"   Original file: preserved (not modified)\n"
+                f"\n  图片净化器\n"
+                f"   源 PDF:    {pdf_path}\n"
+                f"   状态:       检测到字节级语法错误\n"
+                f"   净化到:  {sanitized_path}\n"
+                f"   原始文件: 已保留（未修改）\n"
             )
             return sanitized_path
         else:
-            logger.error("Ghostscript produced empty/missing output for %s", pdf_path.name)
+            logger.error("Ghostscript 为 %s 生成了空/缺失的输出", pdf_path.name)
             return None
 
     except FileNotFoundError:
         logger.warning(
-            "Ghostscript (%s) not found; cannot sanitize %s.  "
-            "Install Ghostscript to enable automatic PDF repair.",
+            "未找到 Ghostscript（%s）；无法净化 %s。"
+            "安装 Ghostscript 以启用自动 PDF 修复。",
             gs_bin, pdf_path.name,
         )
         return None
     except subprocess.CalledProcessError as exc:
-        logger.error("Ghostscript failed for %s: %s", pdf_path.name, exc)
+        logger.error("Ghostscript 对 %s 处理失败: %s", pdf_path.name, exc)
         if sanitized_path.exists():
             sanitized_path.unlink(missing_ok=True)
         return None
     except subprocess.TimeoutExpired:
-        logger.error("Ghostscript timed out for %s", pdf_path.name)
+        logger.error("Ghostscript 对 %s 处理超时", pdf_path.name)
         sanitized_path.unlink(missing_ok=True)
         return None
     except Exception as exc:
-        logger.error("Unexpected sanitizer error for %s: %s", pdf_path.name, exc)
+        logger.error("净化器对 %s 出现意外错误: %s", pdf_path.name, exc)
         return None
 
 
 def patch_tex_includegraphics(tex_content: str, original: Path, sanitized: Path) -> Tuple[str, int]:
-    """
-    Replace ``\\includegraphics{...original.pdf...}`` with the sanitized
-    filename in the TeX source string.
+    """在 TeX 源代码字符串中将 ``\\includegraphics{...original.pdf...}``
+    替换为净化后的文件名。
 
-    Returns (patched_content, replacement_count).
+    返回 (打补丁后的内容, 替换次数)。
     """
-    orig_stem = original.stem          # e.g. "HOTA"
-    san_name  = sanitized.name         # e.g. "HOTA.sanitized.pdf"
-    orig_name = original.name          # e.g. "HOTA.pdf"
+    orig_stem = original.stem
+    san_name  = sanitized.name
+    orig_name = original.name
     count = 0
 
     def _replace(m: re.Match) -> str:
         nonlocal count
         prefix, inner, suffix = m.group(1), m.group(2), m.group(3)
-        # Match if inner path ends with original filename (with or without directory prefix)
+        # 如果内部路径以原始文件名结尾（带或不带目录前缀）则匹配
         inner_stripped = inner.replace("\\", "/")
         if inner_stripped.endswith("/" + orig_name) or inner_stripped == orig_name:
-            # Replace just the filename component, keep directory prefix intact
+            # 仅替换文件名部分，保留目录前缀
             dir_part = inner_stripped[: -(len(orig_name))]
             count += 1
             return prefix + dir_part.replace("/", "/") + san_name + suffix
@@ -305,21 +293,20 @@ def try_sanitize_images_in_errors(
     tex_dir: Path,
     already_sanitized: Optional[set] = None,
 ) -> Tuple[List[Path], bool, set]:
-    """Sanitize corrupted PDFs and recursively patch ALL .tex files.
+    """净化损坏的 PDF 并递归修补所有 .tex 文件。
 
     Args:
-        error_lines: Lines from the LaTeX compilation log to scan for image errors.
-        tex_dir: Root directory of the LaTeX project.
-        already_sanitized: Set of PDF paths that have already been repaired in
-            previous rounds of the iterative loop.  Files present in this set
-            will be skipped — each PDF is distilled at most once.
+        error_lines: 从 LaTeX 编译日志中扫描图片错误的行。
+        tex_dir: LaTeX 项目的根目录。
+        already_sanitized: 在之前迭代轮次中已经修复过的 PDF 路径集合。
+            此集合中的文件将被跳过 —— 每个 PDF 最多蒸馏一次。
 
     Returns:
-        (newly_sanitized_list, any_newly_sanitized, newly_sanitized_set)
-        *newly_sanitized_list*  — sanitized output paths produced this round.
-        *any_newly_sanitized*   — True if at least one new PDF was repaired.
-        *newly_sanitized_set*   — Set of original PDF paths repaired this round
-                                  (to be merged into the caller's accumulator).
+        (新净化列表, 是否有新净化, 新净化集合)
+        newly_sanitized_list —— 本轮产生的净化输出路径。
+        any_newly_sanitized —— 如果至少有一个新 PDF 被修复则为 True。
+        newly_sanitized_set —— 本轮修复的原始 PDF 路径集合
+                              （将合并到调用方的累加器中）。
     """
     if already_sanitized is None:
         already_sanitized = set()
@@ -328,12 +315,11 @@ def try_sanitize_images_in_errors(
     if not failed_pdfs:
         return [], False, set()
 
-    # Only process PDFs that have NOT been sanitized in a previous round.
+    # 仅处理在之前轮次中尚未被净化的 PDF。
     new_failed_pdfs = [p for p in failed_pdfs if p not in already_sanitized]
     if not new_failed_pdfs:
         logger.info(
-            "Stage 3: all %d detected corrupted PDF(s) were already sanitized in previous rounds; "
-            "short-circuiting.",
+            "阶段 3: 所有 %d 个检测到的损坏 PDF 在之前轮次中已被净化；短路退出。",
             len(failed_pdfs),
         )
         return [], False, set()
@@ -341,12 +327,12 @@ def try_sanitize_images_in_errors(
     sanitized_list: List[Path] = []
     newly_sanitized_originals: set = set()
 
-    # Identify which new PDFs need patching
+    # 识别哪些新 PDF 需要修补
     pdf_to_sanitized = {}
     for pdf_path in new_failed_pdfs:
         if not check_pdf_syntax_error(pdf_path):
             logger.info(
-                "PDF %s triggered reading failure but pdfinfo reports no syntax error; skipping sanitizer.",
+                "PDF %s 触发了读取失败但 pdfinfo 报告无语法错误；跳过净化器。",
                 pdf_path.name,
             )
             continue
@@ -360,9 +346,9 @@ def try_sanitize_images_in_errors(
     if not sanitized_list:
         return [], False, set()
 
-    # Recursively find and patch ALL .tex files in the project
+    # 递归查找并修补项目中所有 .tex 文件
     tex_files = list(tex_dir.rglob("*.tex"))
-    logger.info("Stage 3: scanning %d .tex file(s) for image reference patching...", len(tex_files))
+    logger.info("阶段 3: 扫描 %d 个 .tex 文件以进行图片引用修补...", len(tex_files))
 
     for tex_file in tex_files:
         try:
@@ -376,8 +362,8 @@ def try_sanitize_images_in_errors(
 
             if total_patches > 0 and content != original_content:
                 tex_file.write_text(content, encoding="utf-8")
-                logger.info("Stage 3: patched %d reference(s) in %s", total_patches, tex_file.relative_to(tex_dir))
+                logger.info("阶段 3: 在 %s 中修补了 %d 个引用", total_patches, tex_file.relative_to(tex_dir))
         except Exception as e:
-            logger.warning("Stage 3: failed to patch %s: %s", tex_file, e)
+            logger.warning("阶段 3: 修补 %s 失败: %s", tex_file, e)
 
     return sanitized_list, len(sanitized_list) > 0, newly_sanitized_originals

@@ -13,6 +13,7 @@ import type {
   StructuredInsightsPayload,
 } from "@/types/community"
 
+/** 论文详情页的远程数据状态 */
 interface PaperDetailRemoteState {
   paperId: string | null
   paper: CommunityPaper | null
@@ -37,6 +38,15 @@ const EMPTY_REMOTE_STATE: PaperDetailRemoteState = {
   structuredInsights: null,
 }
 
+/**
+ * 论文详情 Hook
+ * 获取和缓存社区论文的详细信息，包括论文元数据、预览、阅读器状态和结构化洞察。
+ * 优先使用缓存数据（从列表页预加载），若无缓存则从后端 GET /api/papers/{paperId} 拉取。
+ * 自动记录首次查看事件（POST view 记录）。
+ *
+ * @param paperId - 论文 ID
+ * @returns 论文详情数据、加载/错误状态、refetch 方法
+ */
 export function usePaperDetail(paperId: string | undefined) {
   const cachedDetail = paperId ? getCachedCommunityPaperDetail(paperId) : null
   const viewedPaperIdRef = useRef<string | null>(null)
@@ -68,6 +78,7 @@ export function usePaperDetail(paperId: string | undefined) {
           structuredInsights: response.structured_insights ?? null,
         })
 
+        // 首次查看时记录浏览事件
         if (viewedPaperIdRef.current !== paperId) {
           viewedPaperIdRef.current = paperId
           void recordCommunityPaperView(paperId).catch(() => undefined)
@@ -99,6 +110,7 @@ export function usePaperDetail(paperId: string | undefined) {
     }
   }, [paperId])
 
+  // 优先使用缓存数据，其次使用远程数据
   const effectiveState = useMemo<PaperDetailRemoteState>(() => {
     if (!paperId) {
       return {
@@ -138,6 +150,7 @@ export function usePaperDetail(paperId: string | undefined) {
     reader: effectiveState.reader,
     experience: effectiveState.experience,
     structuredInsights: effectiveState.structuredInsights,
+    /** 强制重新从后端拉取论文详情 */
     refetch: async () => {
       if (!paperId) {
         return

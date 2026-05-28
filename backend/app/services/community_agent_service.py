@@ -1,4 +1,10 @@
-﻿from __future__ import annotations
+"""社区 Agent 运行管理服务
+
+管理 Agent 运行的生命周期：创建、查询、流式事件获取和对话管理。
+支持异步后台执行和运行记录持久化。
+"""
+
+from __future__ import annotations
 
 import asyncio
 import threading
@@ -14,15 +20,17 @@ from backend.app.repositories import CommunityAgentConversationRepository
 from backend.app.repositories.community_agent_repository import CommunityAgentRunRepository
 from backend.app.utils.async_blocking import run_blocking
 
+# 内存中活跃的 Agent 运行记录
 _RUNTIME_AGENT_RUNS: Dict[str, "_RunRecord"] = {}
 
 
 class RunNotFoundError(KeyError):
-    """Raised when an agent run cannot be found."""
+    """Agent 运行未找到时抛出的异常"""
 
 
 @dataclass
 class _RunRecord:
+    """Agent 运行的内部状态记录"""
     run_id: str
     owner_user_id: str | None
     conversation_id: str | None = None
@@ -47,10 +55,12 @@ class _RunRecord:
 
 
 def _now_iso() -> str:
+    """获取当前 UTC 时间的 ISO 格式字符串"""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _default_provider_state() -> Dict[str, str]:
+    """返回默认的服务提供方状态"""
     return {
         "internal_search": "enabled",
         "external_search": "unknown",
@@ -60,6 +70,7 @@ def _default_provider_state() -> Dict[str, str]:
 
 
 def _should_persist_run(record: _RunRecord) -> bool:
+    """判断该运行记录是否需要持久化到仓库（仅已认证用户）"""
     return bool(record.owner_user_id)
 
 
@@ -69,6 +80,7 @@ def _authorize_run_access(
     owner_user_id: str | None,
     action: str,
 ) -> None:
+    """对 Agent 运行记录进行访问权限授权检查"""
     actor = {"id": actor_user_id, "roles": []} if actor_user_id else None
     context: Dict[str, Any] = {}
     if owner_user_id:
@@ -84,6 +96,7 @@ def _authorize_run_access(
 
 
 def _save_run_to_repository(record: _RunRecord) -> None:
+    """将运行记录持久化到仓库（失败时静默忽略）"""
     if not _should_persist_run(record):
         return
     with record.lock:
@@ -109,6 +122,7 @@ def _save_run_to_repository(record: _RunRecord) -> None:
 
 
 def _save_event_to_repository(record: _RunRecord, event: Dict[str, Any]) -> None:
+    """将流式事件追加持久化到仓库（失败时静默忽略）"""
     if not _should_persist_run(record):
         return
     try:
@@ -126,6 +140,7 @@ def _load_run_record_from_repository(
     *,
     owner_user_id: str | None,
 ) -> _RunRecord | None:
+    """从仓库恢复运行记录（需权限验证）"""
     if not owner_user_id:
         return None
 
@@ -150,6 +165,7 @@ def _load_run_record_from_repository(
     except Exception:
         events = []
 
+    # 从最后一个 complete 事件中提取快照
     snapshot: Dict[str, Any] | None = None
     for event in reversed(events):
         if str(event.get("type") or "") != "complete":
@@ -194,6 +210,7 @@ def _load_run_record_from_repository(
 
 
 def _build_snapshot(record: _RunRecord, *, include_urls: bool = False) -> Dict[str, Any]:
+    """构建运行记录的快照（包含流式 URL 时可包含 stream_url 和 result_url）"""
     with record.lock:
         payload = {
             "run_id": record.run_id,
@@ -216,6 +233,7 @@ def _build_snapshot(record: _RunRecord, *, include_urls: bool = False) -> Dict[s
 
 
 def _publish_stream_event(record: _RunRecord, event: Dict[str, Any]) -> Dict[str, Any]:
+    """发布流式事件：追加到事件列表并持久化"""
     with record.lock:
         payload = {
             "type": str(event.get("type") or "status"),
@@ -230,6 +248,7 @@ def _publish_stream_event(record: _RunRecord, event: Dict[str, Any]) -> Dict[str
 
 
 def _set_status(record: _RunRecord, status: str, *, phase: str | None = None) -> None:
+    """设置运行状态并自动处理完成时间戳"""
     with record.lock:
         record.status = status
         record.updated_at = _now_iso()
@@ -249,6 +268,7 @@ def _require_run_record(
     owner_user_id: str | None = None,
     access_token: str | None = None,
 ) -> _RunRecord:
+    """获取运行记录（优先内存缓存，回退仓库恢复），并进行权限验证"""
     del access_token
     record = _RUNTIME_AGENT_RUNS.get(run_id)
     if record is None:
@@ -278,6 +298,7 @@ async def _run_agent_once(
     skill_toggles: Dict[str, Any] | None,
     run_mode: str,
 ) -> None:
+    """执行一次 Agent 运行，将结果写入运行记录"""
     try:
         _set_status(record, "running", phase="planner")
         payload = await run_agent(
@@ -332,6 +353,7 @@ def _start_background_run(
     skill_toggles: Dict[str, Any] | None,
     run_mode: str,
 ) -> None:
+    """在后台线程中启动 Agent 运行"""
     def _runner() -> None:
         asyncio.run(
             _run_agent_once(
@@ -358,6 +380,20 @@ async def create_agent_run(
     owner_user_id: str | None = None,
     access_token: str | None = None,
 ) -> Dict[str, Any]:
+    """创建新的 Agent 运行
+
+    参数:
+        input_text: 用户输入文本
+        context: 上下文信息
+        skill_toggles: 技能开关配置
+        execution_mode: 执行模式，'blocking' 或 'async'
+        run_mode: 运行模式
+        owner_user_id: 所有者用户 ID
+        access_token: 访问令牌
+
+    返回:
+        包含运行快照的字典（包含 stream_url 和 result_url）
+    """
     del access_token
     run_id = f"run-{uuid.uuid4().hex[:10]}"
     trusted_context = dict(context or {})
@@ -410,6 +446,17 @@ async def get_agent_run(
     access_token: str | None = None,
     strict: bool = False,
 ) -> Dict[str, Any]:
+    """获取 Agent 运行的当前快照
+
+    参数:
+        run_id: 运行 ID
+        owner_user_id: 所有者用户 ID
+        access_token: 访问令牌
+        strict: 是否严格模式（找不到时抛异常）
+
+    返回:
+        运行快照字典
+    """
     try:
         record = _require_run_record(
             run_id,
@@ -442,6 +489,7 @@ async def stream_agent_events(
     owner_user_id: str | None = None,
     access_token: str | None = None,
 ) -> List[Dict[str, Any]]:
+    """获取 Agent 运行的所有事件流"""
     record = _require_run_record(
         run_id,
         owner_user_id=owner_user_id,
@@ -459,6 +507,18 @@ async def wait_for_new_events(
     access_token: str | None = None,
     timeout: float = 15.0,
 ) -> List[Dict[str, Any]]:
+    """等待并获取 Agent 运行的新事件（支持长轮询）
+
+    参数:
+        run_id: 运行 ID
+        last_sequence: 上次获取的最后事件序号
+        owner_user_id: 所有者用户 ID
+        access_token: 访问令牌
+        timeout: 等待超时（秒）
+
+    返回:
+        新事件列表，超时或已完成时返回空列表
+    """
     record = _require_run_record(
         run_id,
         owner_user_id=owner_user_id,
@@ -476,6 +536,7 @@ async def wait_for_new_events(
 
 
 def _normalize_turn(entry: Any) -> Dict[str, Any] | None:
+    """规范化对话轮次条目"""
     if not isinstance(entry, dict):
         return None
 
@@ -496,6 +557,7 @@ def _normalize_turn(entry: Any) -> Dict[str, Any] | None:
 
 
 def _normalize_conversation_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    """规范化对话记录"""
     turns = [
         normalized
         for normalized in (_normalize_turn(entry) for entry in (record.get("turns") or []))
@@ -511,11 +573,13 @@ def _normalize_conversation_record(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def list_conversations(*, owner_user_id: str) -> List[Dict[str, Any]]:
+    """列出用户的所有对话"""
     repository = CommunityAgentConversationRepository()
     return await run_blocking(lambda: repository.list_conversations_for_user(owner_user_id))
 
 
 async def upsert_conversation(*, owner_user_id: str, record: Dict[str, Any]) -> Dict[str, Any]:
+    """创建或更新对话记录"""
     normalized = _normalize_conversation_record(record)
     if not normalized["id"]:
         raise ValueError("conversation id is required")
@@ -526,6 +590,7 @@ async def upsert_conversation(*, owner_user_id: str, record: Dict[str, Any]) -> 
 
 
 async def delete_conversation(*, owner_user_id: str, conversation_id: str) -> Dict[str, Any]:
+    """删除对话记录"""
     normalized_id = str(conversation_id or "").strip()
     if not normalized_id:
         raise ValueError("conversation id is required")

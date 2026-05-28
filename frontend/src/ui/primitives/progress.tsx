@@ -1,8 +1,13 @@
+/**
+ * 进度条组件 - 基于 Radix UI Progress 封装
+ * 渲染可视化的进度指示器
+ */
 import * as React from "react"
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 
 import { cn } from "@/lib/utils"
 
+/** 进度条组件，通过 value 属性（0-100）控制进度填充比例 */
 const Progress = React.forwardRef<
     React.ElementRef<typeof ProgressPrimitive.Root>,
     React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>

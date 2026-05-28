@@ -26,6 +26,7 @@ const WorkspaceSettingsPage = lazy(() => import("./pages/workspace-settings"))
 const WorkspaceGlossaryPage = lazy(() => import("./pages/workspace-glossary"))
 const ToolsHubPage = lazy(() => import("./pages/tools-hub"))
 
+/** 路由懒加载时的全局加载占位组件，展示居中的加载提示 */
 function RouteLoading() {
   const { t } = useTranslation()
 
@@ -34,10 +35,12 @@ function RouteLoading() {
   )
 }
 
+/** 为懒加载组件包裹 Suspense 边界，异步加载时显示 RouteLoading */
 function withSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>
 }
 
+/** 管理员路由守卫：未登录或非管理员用户重定向到指定路径 */
 function AdminRoute({ children, redirectTo = "/" }: { children: ReactNode; redirectTo?: string }) {
   const { user, loading, isAuthenticated } = useAuth()
 
@@ -53,6 +56,7 @@ function AdminRoute({ children, redirectTo = "/" }: { children: ReactNode; redir
   return <>{children}</>
 }
 
+/** 已登录用户路由守卫：未登录则重定向到登录页 */
 function AuthenticatedWorkspaceRoute({ children }: { children: ReactNode }) {
   const { user, loading, isAuthenticated } = useAuth()
 
@@ -65,6 +69,7 @@ function AuthenticatedWorkspaceRoute({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+/** 应用根组件：挂载主题、认证上下文和路由系统 */
 function App() {
   return (
     <ThemeProvider>

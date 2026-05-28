@@ -5,15 +5,26 @@ import { Lock, LogIn } from "lucide-react"
 import { Button } from "@/ui/button/Button"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
+/** 登录提示组件 Props */
 interface LoginPromptProps {
+  /** 提示消息的 i18n key */
   messageKey?: string
+  /** 提示描述的 i18n key */
   descriptionKey?: string
+  /** 操作按钮文案的 i18n key */
   actionLabelKey?: string
+  /** 消息插值参数 */
   messageValues?: Record<string, unknown>
+  /** 描述插值参数 */
   descriptionValues?: Record<string, unknown>
   className?: string
 }
 
+/**
+ * 登录提示组件
+ * 当用户未登录时，展示锁图标、提示文案和"前往登录"按钮。
+ * 可在各功能模块中复用作为未登录状态的标准 UI
+ */
 export function LoginPrompt({
   messageKey = "auth.loginRequiredForThisFeature",
   descriptionKey,

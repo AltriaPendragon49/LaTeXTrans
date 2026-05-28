@@ -1,4 +1,4 @@
-"""LaTeX reconstruction for the production origin CLI parity kernel."""
+"""LaTeX 重建模块 —— 用于生产环境 origin CLI 兼容内核。"""
 from __future__ import annotations
 
 import logging
@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _add_ctex_package_origin_cli_parity(latex_code: str) -> str:
+    """为 origin CLI 兼容模式添加 ctex 包以支持中文编译。"""
     if "\\usepackage[UTF8]{ctex}" in latex_code:
         return latex_code
     match = get_command_pattern(r"documentclass").search(latex_code)
@@ -22,6 +23,8 @@ def _add_ctex_package_origin_cli_parity(latex_code: str) -> str:
 
 
 class LatexConstructor:
+    """LaTeX 重建器 —— 将翻译后的各节、环境、标题、输入文件和新命令重组为完整文档。"""
+
     def __init__(
         self,
         sections: List[Dict[str, Any]],
@@ -33,6 +36,18 @@ class LatexConstructor:
         target_language: str = "en",
         origin_cli_parity: bool = True,
     ):
+        """初始化 LaTeX 重建器。
+
+        Args:
+            sections: 翻译后的各节列表
+            captions: 翻译后的标题/图题列表
+            envs: 翻译后的环境列表
+            inputs: 输入文件占位符映射
+            newcommands: 自定义命令定义列表
+            output_latex_dir: 输出目录
+            target_language: 目标语言代码
+            origin_cli_parity: 是否启用 origin CLI 兼容模式
+        """
         self.sections = sections
         self.captions = captions
         self.envs = envs
@@ -43,6 +58,14 @@ class LatexConstructor:
         self.origin_cli_parity = True
 
     def construct(self, on_progress: Optional[Callable[[str, int, str], None]] = None) -> None:
+        """执行 LaTeX 文档重建流程。
+
+        依次合并各节、还原环境、标题、新命令和输入文件占位符，
+        最后写出完整的 .tex 文件。
+
+        Args:
+            on_progress: 可选的进度回调函数(stage, percentage, message)
+        """
         logger.info("Starting LaTeX reconstruction")
         if on_progress:
             on_progress("reconstructing", 10, "Merging sections...")
@@ -58,22 +81,26 @@ class LatexConstructor:
         logger.info("LaTeX reconstruction complete")
 
     def _merge_sections(self) -> str:
+        """将所有翻译后的节合并为一个完整的 LaTeX 字符串。"""
         logger.debug("Merging %d sections", len(self.sections))
         return "".join(f"{section['trans_content']}\n" for section in self.sections)
 
     def _revert_envs(self, tex: str) -> str:
+        """将环境占位符还原为翻译后的环境内容。"""
         logger.debug("Reverting %d environments", len(self.envs))
         for env in self.envs:
             tex = tex.replace(env["placeholder"], env["trans_content"])
         return tex
 
     def _revert_captions(self, tex: str) -> str:
+        """将标题占位符还原为翻译后的标题内容。"""
         logger.debug("Reverting %d captions", len(self.captions))
         for caption in self.captions:
             tex = tex.replace(caption["placeholder"], caption["trans_content"])
         return tex
 
     def _revert_newcommands(self, tex: str) -> str:
+        """将新命令占位符还原为原始定义内容。"""
         logger.debug("Reverting %d newcommands", len(self.newcommands))
         for newcommand in self.newcommands:
             placeholder = newcommand["placeholder"]
@@ -87,6 +114,7 @@ class LatexConstructor:
         return tex
 
     def _revert_inputs(self, tex: str) -> None:
+        """将输入文件占位符还原，并将内部内容写出为独立的 .tex 文件。"""
         begin_map = {sec["begin"]: sec for sec in self.inputs}
         end_map = {sec["end"]: sec for sec in self.inputs}
         pattern = re.compile(r"<PLACEHOLDER_[^>]+?_begin>|<PLACEHOLDER_[^>]+?_end>")

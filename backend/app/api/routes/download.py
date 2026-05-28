@@ -1,7 +1,7 @@
 """
-Download API Routes
+下载 API 路由
 
-Provides endpoints for downloading translated PDFs and source files.
+提供下载翻译后的 PDF 和源文件的接口。
 """
 
 from fastapi import APIRouter, HTTPException, Request
@@ -35,7 +35,7 @@ TERMINAL_SUCCESS_STATUSES = {
 
 
 def _validate_pdf_with_pdfinfo(pdf_path: Path) -> bool:
-    """Hard PDF structure gate using pdfinfo."""
+    """使用 pdfinfo 进行 PDF 结构完整性检查。"""
     try:
         result = subprocess.run(
             ["pdfinfo", str(pdf_path)],
@@ -55,13 +55,13 @@ def _validate_pdf_with_pdfinfo(pdf_path: Path) -> bool:
 
 def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
     """
-    Locate translated PDF with strict rules to avoid selecting copied source PDFs.
+    定位翻译后的 PDF，使用严格规则避免误选复制来的源 PDF。
 
-    Priority:
-    1. task_log.json events: compilation_completed / compilation_completed_with_warnings
-       - Support both output root and its direct child directories.
-    2. Root-level *_translated.pdf
-    3. Convention path: output_dir/<subdir>/<subdir>.pdf (direct child only)
+    优先级：
+    1. task_log.json 事件中的 compilation_completed / compilation_completed_with_warnings
+       - 同时支持输出根目录及其直接子目录。
+    2. 根级 *_translated.pdf 文件
+    3. 约定路径: output_dir/<subdir>/<subdir>.pdf（仅直接子目录）
     """
 
     def _iter_log_files(root: Path):
@@ -107,12 +107,12 @@ def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
         if resolved:
             return resolved
 
-    # 2) Explicit translated naming in root.
+    # 2) 根级目录查找显式命名的翻译 PDF。
     pdf_files = list(output_dir.glob("*_translated.pdf"))
     if pdf_files:
         return pdf_files[0]
 
-    # 3) Strict convention: direct child folder with same-name PDF.
+    # 3) 严格约定：直接子目录中包含同名 PDF 文件。
     for child in output_dir.iterdir():
         if not child.is_dir():
             continue
@@ -124,7 +124,7 @@ def _find_translated_pdf(output_dir: Path) -> Optional[Path]:
 
 
 def _candidate_output_dirs(task_id: str, task: Optional[dict]) -> list[Path]:
-    """Return output directory candidates in descending confidence order."""
+    """按可信度降序返回输出目录候选列表。"""
     candidates: list[Path] = []
     seen: set[str] = set()
 
@@ -157,7 +157,7 @@ def _candidate_output_dirs(task_id: str, task: Optional[dict]) -> list[Path]:
 
 
 def _find_translated_pdf_in_community_library(task_id: str) -> Optional[Path]:
-    """Best-effort fallback when task outputs are unavailable but assets exist."""
+    """当任务输出不可用但资源文件存在时的尽力回退方案。"""
     root = settings.community_papers_dir
     if not root.exists():
         return None
@@ -212,40 +212,40 @@ def _pick_best_source_pdf(source_dir: Path, candidates: list[Path], preferred_st
 
 def _find_source_pdf_in_community_library(task_id: str, preferred_arxiv_id: Optional[str] = None) -> Optional[Path]:
     """
-    Resolve source PDF from community library assets to avoid unnecessary network fetches.
-    Prioritizes local file resolution over remote fetches.
+    从社区库资源中解析源 PDF，避免不必要的网络请求。
+    优先使用本地文件，而非远程获取。
     """
     root = settings.community_papers_dir
     if not root.exists():
         return None
 
-    # Strategy 1 (Highest Priority): Global search by ArXiv ID in ALL community collections.
-    # This ensures that if ANY community paper has the original source PDF, we use it.
+    # 策略 1（最高优先级）：在所有社区集合中按 ArXiv ID 全局搜索。
+    # 确保只要任一社区论文存在原始源 PDF，就优先使用它。
     preferred_id = str(preferred_arxiv_id or "").strip()
     if preferred_id:
         for paper_dir in sorted(root.iterdir()):
             if not paper_dir.is_dir():
                 continue
             
-            # Check source directory
+            # 检查源目录
             source_dir = paper_dir / "source"
             if source_dir.exists() and source_dir.is_dir():
-                # Direct match for <arxiv_id>.pdf
+                # 直接匹配 <arxiv_id>.pdf
                 expected = f"{preferred_id}.pdf"
                 for candidate in source_dir.rglob(expected):
                     if candidate.is_file() and candidate.stat().st_size > 0:
                         return candidate
                 
-                # Heuristic match: If this paper_dir belongs to this arxiv_id, pick its best PDF.
-                # Many papers are stored as directories named after their arxiv_id.
+                # 启发式匹配：若此 paper_dir 属于该 arxiv_id，选取最佳 PDF。
+                # 许多论文以 arxiv_id 命名的目录形式存储。
                 if preferred_id in paper_dir.name:
                     candidates = _collect_original_pdf_candidates(source_dir)
                     best = _pick_best_source_pdf(source_dir, candidates, preferred_id)
                     if best:
                         return best
 
-    # Strategy 2: Task-correlated resolution (fallback)
-    # Finding papers that were translated as part of the same task cluster.
+    # 策略 2：按任务关联解析（回退方案）
+    # 查找与同一任务集群关联的论文。
     task_prefix = f"{task_id}-"
     matched_papers: list[Path] = []
 
@@ -290,7 +290,7 @@ async def _proxy_arxiv_pdf(
     content_disposition: str = "inline",
 ) -> StreamingResponse:
     """
-    Stream arXiv PDF through backend to avoid frontend CORS issues.
+    通过后端代理流式传输 arXiv PDF，避免前端 CORS 问题。
     """
     raw_cache_url = arxiv_raw_cache.build_pdf_download_url(
         arxiv_id,
@@ -414,20 +414,20 @@ async def _proxy_remote_pdf_asset(
 @router.get("/download/{task_id}/pdf")
 async def download_pdf(task_id: str):
     """
-    Download translated PDF
-    
+    下载翻译后的 PDF 文件
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        PDF file as download attachment
-    
+        作为下载附件的 PDF 文件
+
     Raises:
-        HTTPException: If task not found or PDF not available
+        HTTPException: 任务不存在或 PDF 不可用时抛出
     """
     logger.info(f"PDF download request for task: {task_id}")
-    
-    # Get task
+
+    # 获取任务
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(
@@ -435,7 +435,7 @@ async def download_pdf(task_id: str):
             detail=f"Task not found: {task_id}"
         )
     
-    # Check if task is completed
+    # 检查任务是否已完成
     if task["status"] not in [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_WITH_WARNINGS.value]:
         raise HTTPException(
             status_code=400,
@@ -455,7 +455,7 @@ async def download_pdf(task_id: str):
             raise HTTPException(status_code=404, detail="Translated PDF not found")
         return RedirectResponse(url=signed_url, status_code=307)
     
-    # Find PDF file in output directory
+    # 在输出目录中查找 PDF 文件
     output_dir = Path(task.get("output_path", ""))
     if not output_dir.exists():
         raise HTTPException(
@@ -463,26 +463,26 @@ async def download_pdf(task_id: str):
             detail="Output directory not found"
         )
     
-    # Search for PDF files
+    # 搜索 PDF 文件
     pdf_file = _find_translated_pdf(output_dir)
-    
+
     if not pdf_file:
         raise HTTPException(
             status_code=404,
             detail="Translated PDF not found"
         )
-    
-    # Return the first PDF found
-    # Already found via helper
-    
-    # Verify PDF file integrity before download
+
+    # 返回第一个找到的 PDF
+    # 已通过辅助函数找到
+
+    # 下载前验证 PDF 文件完整性
     if pdf_file.stat().st_size == 0:
         raise HTTPException(
             status_code=503,
             detail="PDF generation in progress, please retry"
         )
     
-    # Verify PDF header
+    # 验证 PDF 文件头
     try:
         with open(pdf_file, 'rb') as f:
             header = f.read(5)
@@ -517,16 +517,16 @@ async def download_pdf(task_id: str):
 @router.get("/preview/{task_id}/pdf")
 async def preview_pdf(task_id: str):
     """
-    Preview translated PDF (inline display for iframe)
-    
+    预览翻译后的 PDF（内联显示，供 iframe 使用）
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        PDF file for inline display
-    
+        用于内联显示的 PDF 文件
+
     Raises:
-        HTTPException: If task not found or PDF not available
+        HTTPException: 任务不存在或 PDF 不可用时抛出
     """
     logger.info(f"PDF preview request for task: {task_id}")
     
@@ -569,18 +569,18 @@ async def preview_pdf(task_id: str):
             detail="Translated PDF not found"
         )
     
-    # Return the first PDF found with inline content disposition for preview
-    # Already found via helper
-    
-    # Verify PDF file integrity
-    # Check file size
+    # 返回第一个找到的 PDF，设置 inline 内容处置以用于预览
+    # 已通过辅助函数找到
+
+    # 验证 PDF 文件完整性
+    # 检查文件大小
     if pdf_file.stat().st_size == 0:
         raise HTTPException(
             status_code=503,
             detail="PDF generation in progress, please retry"
         )
     
-    # Verify PDF header
+    # 验证 PDF 文件头
     try:
         with open(pdf_file, 'rb') as f:
             header = f.read(5)
@@ -621,22 +621,22 @@ async def _serve_source_pdf(
     content_disposition: str = "inline",
 ):
     """
-    Preview original source PDF (inline display for iframe)
-    
-    Strategy:
-    1. Resolve source PDF from local community library assets (fast path, no network)
-    2. Check arxiv_id and proxy arXiv PDF when local source is unavailable
-    3. Look for existing original PDF in task source directory
-    4. Fallback: compile source tex to generate source PDF
-    
+    预览原始源 PDF（内联显示，供 iframe 使用）
+
+    策略：
+    1. 从本地社区库资源解析源 PDF（快速路径，无网络请求）
+    2. 检查 arxiv_id 并在本地源不可用时代理 arXiv PDF
+    3. 在任务源目录中查找已有的原始 PDF
+    4. 回退方案：编译源 tex 生成源 PDF
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        Original PDF file for inline display, or redirect to arxiv.org
-    
+        用于内联显示的原始 PDF 文件，或重定向到 arxiv.org
+
     Raises:
-        HTTPException: If task not found or source PDF not available
+        HTTPException: 任务不存在或源 PDF 不可用时抛出
     """
     import re
 
@@ -644,10 +644,10 @@ async def _serve_source_pdf(
 
     task = task_manager.get_task(task_id) or {}
 
-    # ArXiv ID pattern: YYMM.NNNNN or YYMM.NNNNNvN
+    # ArXiv ID 格式: YYMM.NNNNN 或 YYMM.NNNNNvN
     arxiv_pattern = re.compile(r'(\d{4}\.\d{4,5})(v\d+)?')
 
-    # Strategy 1: local community-library source PDF first.
+    # 策略 1：优先使用本地社区库源 PDF。
     inferred_arxiv_id = _extract_arxiv_id_from_text(task_id)
     arxiv_id = task.get("arxiv_id") or inferred_arxiv_id
     local_source_pdf = _find_source_pdf_in_community_library(task_id, preferred_arxiv_id=arxiv_id)
@@ -661,7 +661,7 @@ async def _serve_source_pdf(
             },
         )
 
-    # Strategy 2: Check if task has arxiv_id stored, fallback to task-id inference.
+    # 策略 2：检查任务是否有存储的 arxiv_id，回退到 task-id 推断。
     if arxiv_id:
         match = arxiv_pattern.search(arxiv_id)
         if match:
@@ -674,7 +674,7 @@ async def _serve_source_pdf(
                 content_disposition=content_disposition,
             )
 
-    # Get source path with fallback to deterministic uploads location.
+    # 获取源码路径，回退到确定的 uploads 位置。
     source_path = str(task.get("source_path") or "").strip()
     source_candidates: list[Path] = []
     if source_path:
@@ -697,21 +697,21 @@ async def _serve_source_pdf(
             detail="Source path not available for this task"
         )
     
-    # Strategy 3: Try to extract arxiv ID from directory name or file names
+    # 策略 3：尝试从目录名或文件名中提取 arxiv ID
     extracted_arxiv_id = None
     
-    # Check directory name
+    # 检查目录名
     dir_match = arxiv_pattern.search(source_dir.name)
     if dir_match:
         extracted_arxiv_id = dir_match.group(1)
     
-    # Check parent directory name
+    # 检查父目录名
     if not extracted_arxiv_id:
         parent_match = arxiv_pattern.search(source_dir.parent.name)
         if parent_match:
             extracted_arxiv_id = parent_match.group(1)
     
-    # Check file names in directory
+    # 检查目录中的文件名
     if not extracted_arxiv_id:
         for file_path in source_dir.iterdir():
             file_match = arxiv_pattern.search(file_path.name)
@@ -728,7 +728,7 @@ async def _serve_source_pdf(
             content_disposition=content_disposition,
         )
     
-    # Strategy 4: Look for existing original PDF in source directory
+    # 策略 4：在源目录中查找已有的原始 PDF
     original_pdfs = _collect_original_pdf_candidates(source_dir)
     selected_source_pdf = _pick_best_source_pdf(
         source_dir,
@@ -748,8 +748,8 @@ async def _serve_source_pdf(
                 }
             )
     
-    # Strategy 5: Fallback - compile source tex to generate source PDF
-    # Look for main tex file
+    # 策略 5：回退方案 - 编译源 tex 生成源 PDF
+    # 查找主 tex 文件
     tex_files = list(source_dir.rglob("*.tex"))
     if not tex_files:
         raise HTTPException(
@@ -757,7 +757,7 @@ async def _serve_source_pdf(
             detail="No source files available for preview. Upload from arxiv for automatic source PDF."
         )
     
-    # Find main tex file (look for main.tex or file with \documentclass)
+    # 查找主 tex 文件（寻找 main.tex 或包含 \documentclass 的文件）
     main_tex = None
     for tex_file in tex_files:
         if tex_file.name.lower() == "main.tex":
@@ -765,7 +765,7 @@ async def _serve_source_pdf(
             break
     
     if not main_tex:
-        # Search for file with \documentclass
+        # 搜索包含 \documentclass 的文件
         for tex_file in tex_files:
             try:
                 content = tex_file.read_text(encoding='utf-8', errors='ignore')
@@ -776,10 +776,10 @@ async def _serve_source_pdf(
                 pass
     
     if not main_tex:
-        main_tex = tex_files[0]  # Fallback to first tex file
+        main_tex = tex_files[0]  # 回退到第一个 tex 文件
     
-    # Check if we already compiled a source PDF
-    # Use fixed name for shared uploads (no task_id dependency)
+    # 检查是否已编译过源 PDF
+    # 对共享上传使用固定文件名（不依赖 task_id）
     compiled_pdf_path = source_dir / "source_compiled.pdf"
     if compiled_pdf_path.exists() and compiled_pdf_path.stat().st_size > 0:
         if _validate_pdf_with_pdfinfo(compiled_pdf_path):
@@ -793,13 +793,13 @@ async def _serve_source_pdf(
         logger.error("Cached source PDF failed validation, removing: %s", compiled_pdf_path)
         compiled_pdf_path.unlink(missing_ok=True)
     
-    # Compile the source tex via unified compiler executor
+    # 通过统一编译器执行器编译源 tex
     logger.info(f"Compiling source PDF from: {main_tex}")
     try:
         result = compile_with_intelligent_fallback(str(main_tex), str(source_dir))
         generated_pdf = Path(result.get("pdf_path") or "")
         if generated_pdf.is_file() and generated_pdf.stat().st_size > 0:
-            # Rename to our standard name
+            # 重命名为标准文件名
             shutil.copy(str(generated_pdf), str(compiled_pdf_path))
             logger.info(f"Compiled and cached source PDF: {compiled_pdf_path}")
             return FileResponse(
@@ -830,20 +830,20 @@ async def preview_source_pdf(task_id: str, request: Request):
 @router.get("/download/{task_id}/source")
 async def download_source(task_id: str):
     """
-    Download translated source files as .zip
-    
+    将翻译后的源文件打包为 .zip 下载
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        ZIP archive as download attachment
-    
+        作为下载附件的 ZIP 压缩包
+
     Raises:
-        HTTPException: If task not found or source not available
+        HTTPException: 任务不存在或源文件不可用时抛出
     """
     logger.info(f"Source download request for task: {task_id}")
     
-    # Get task
+    # 获取任务
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(
@@ -851,7 +851,7 @@ async def download_source(task_id: str):
             detail=f"Task not found: {task_id}"
         )
     
-    # Check if task is completed
+    # 检查任务是否已完成
     if task["status"] not in [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_WITH_WARNINGS.value]:
         raise HTTPException(
             status_code=400,
@@ -871,7 +871,7 @@ async def download_source(task_id: str):
             raise HTTPException(status_code=404, detail="Source archive not found")
         return RedirectResponse(url=signed_url, status_code=307)
     
-    # Get output directory
+    # 获取输出目录
     output_dir = Path(task.get("output_path", ""))
     if not output_dir.exists():
         raise HTTPException(
@@ -879,14 +879,14 @@ async def download_source(task_id: str):
             detail="Output directory not found"
         )
     
-    # Create temporary zip file
+    # 创建临时 zip 文件
     temp_dir = Path(tempfile.gettempdir())
     zip_path = temp_dir / f"translated_source_{task_id}.zip"
     
     try:
-        # Create zip archive
+        # 创建 zip 压缩包
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Add all .tex files and related files
+            # 添加所有 .tex 文件及相关文件
             for file_path in output_dir.rglob("*"):
                 if file_path.is_file() and file_path.suffix in [".tex", ".bib", ".cls", ".sty", ".bst"]:
                     arcname = file_path.relative_to(output_dir)
@@ -895,18 +895,18 @@ async def download_source(task_id: str):
         
         logger.info(f"Created zip archive: {zip_path}")
         
-        # Return zip file
+        # 返回 zip 文件
         return FileResponse(
             path=str(zip_path),
             media_type="application/zip",
             filename=f"translated_source_{task_id}.zip",
-            # Clean up temp file after sending
+            # 发送后清理临时文件
             background=None
         )
     
     except Exception as e:
         logger.error(f"Failed to create zip archive: {e}")
-        # Clean up temp file on error
+        # 错误时清理临时文件
         if zip_path.exists():
             zip_path.unlink()
         raise HTTPException(
@@ -918,20 +918,20 @@ async def download_source(task_id: str):
 @router.get("/download/{task_id}/logs")
 async def download_logs(task_id: str):
     """
-    Download compilation logs
-    
+    下载编译日志文件
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        Log file as download attachment
-    
+        作为下载附件的日志文件
+
     Raises:
-        HTTPException: If task not found or logs not available
+        HTTPException: 任务不存在或日志不可用时抛出
     """
     logger.info(f"Logs download request for task: {task_id}")
     
-    # Get task
+    # 获取任务
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(
@@ -952,7 +952,7 @@ async def download_logs(task_id: str):
             raise HTTPException(status_code=404, detail="Log files not found")
         return RedirectResponse(url=signed_url, status_code=307)
     
-    # Get output directory
+    # 获取输出目录
     output_dir = Path(task.get("output_path", ""))
     if not output_dir.exists():
         raise HTTPException(
@@ -960,7 +960,7 @@ async def download_logs(task_id: str):
             detail="Output directory not found"
         )
     
-    # Search for .log files
+    # 搜索 .log 文件
     log_files = list(output_dir.rglob("*.log"))
     if not log_files:
         raise HTTPException(
@@ -968,7 +968,7 @@ async def download_logs(task_id: str):
             detail="Log files not found"
         )
     
-    # Return the main log file
+    # 返回主日志文件
     log_file = log_files[0]
     logger.info(f"Returning log: {log_file}")
     
@@ -982,20 +982,20 @@ async def download_logs(task_id: str):
 @router.get("/download/{task_id}/terminology")
 async def download_terminology(task_id: str):
     """
-    Download terminology table CSV
-    
+    下载术语表 CSV 文件
+
     Args:
-        task_id: Task ID
-    
+        task_id: 任务 ID
+
     Returns:
-        CSV file as download attachment
-    
+        作为下载附件的 CSV 文件
+
     Raises:
-        HTTPException: If task not found or terminology table not available
+        HTTPException: 任务不存在或术语表不可用时抛出
     """
     logger.info(f"Terminology table download request for task: {task_id}")
     
-    # Get task
+    # 获取任务
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(
@@ -1003,7 +1003,7 @@ async def download_terminology(task_id: str):
             detail=f"Task not found: {task_id}"
         )
     
-    # Check if task is completed
+    # 检查任务是否已完成
     if task["status"] not in [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_WITH_WARNINGS.value]:
         raise HTTPException(
             status_code=400,
@@ -1026,7 +1026,7 @@ async def download_terminology(task_id: str):
             )
         return RedirectResponse(url=signed_url, status_code=307)
     
-    # Get output directory
+    # 获取输出目录
     output_dir = Path(task.get("output_path", ""))
     if not output_dir.exists():
         raise HTTPException(
@@ -1034,10 +1034,10 @@ async def download_terminology(task_id: str):
             detail="Output directory not found"
         )
     
-    # Look for terminology table CSV
+    # 查找术语表 CSV 文件
     terminology_file = output_dir / "terminology_table.csv"
     
-    # Try to find it in subdirectories as well
+    # 同时在子目录中查找
     if not terminology_file.exists():
         found_files = list(output_dir.rglob("terminology_table.csv"))
         if found_files:

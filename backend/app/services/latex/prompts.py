@@ -1,3 +1,11 @@
+"""
+LaTeX 翻译系统提示词模块。
+
+管理所有翻译 Agent 使用的系统提示词模板，
+包括章节翻译、标题翻译、环境翻译、术语提取、摘要生成等场景。
+提示词根据源语言和目标语言动态生成，存储在模块级全局变量中。
+"""
+
 import threading
 
 caption_system_prompt = None
@@ -19,6 +27,15 @@ section_system_prompt_with_terms_prev = None
 
 
 def init_prompts(source_lang: str, target_lang: str):
+    """初始化所有翻译系统提示词模板。
+
+    根据源语言和目标语言生成各种场景下的提示词，
+    存储在模块级全局变量中以便后续使用。
+
+    Args:
+        source_lang: 源语言代码（如 "en", "zh"）
+        target_lang: 目标语言代码（如 "zh", "ja"）
+    """
     global caption_system_prompt, section_system_prompt, env_system_prompt, caption_system_prompt_with_dict, section_system_prompt_with_dict, \
         env_system_prompt_with_dict, set_need_trans_for_envs_system_prompt, retrans_error_parts_system_prompt, extract_terminology_system_prompt, \
         get_summary_system_prompt, refine_summary_system_prompt, section_system_prompt_with_sum, caption_system_prompt_with_sum, env_system_prompt_with_sum, \
@@ -528,9 +545,9 @@ def init_prompts(source_lang: str, target_lang: str):
     """
 
 
-# Module-level lock to serialize access to global prompt variables.
-# create_prompts() holds this lock while calling init_prompts() and reading
-# back the results, preventing another concurrent call from overwriting them.
+# 模块级锁，用于序列化对全局提示词变量的访问。
+# create_prompts() 在调用 init_prompts() 和读取结果期间持有此锁，
+# 防止另一个并发调用覆盖它们。
 _prompts_lock = threading.Lock()
 
 _PROMPT_KEYS = (
@@ -555,11 +572,12 @@ _PROMPT_KEYS = (
 
 
 def _snapshot_prompt_module(module) -> dict:
+    """从提示词模块中获取所有提示词变量的快照字典。"""
     return {key: getattr(module, key) for key in _PROMPT_KEYS}
 
 
 def create_origin_cli_parity_prompts(source_lang: str, target_lang: str) -> dict:
-    """Snapshot prompt globals from the backend-owned legacy CLI prompt copy."""
+    """从后端拥有的旧版 CLI 提示词副本中获取提示词快照。"""
     from backend.app.services.latex import origin_cli_prompts
 
     with _prompts_lock:
@@ -568,15 +586,14 @@ def create_origin_cli_parity_prompts(source_lang: str, target_lang: str) -> dict
 
 
 def create_prompts(source_lang: str, target_lang: str) -> dict:
-    """Create a prompt dictionary for the given language pair.
-    
-    Unlike init_prompts(), this function is thread-safe. It returns a
-    task-specific dict so that each concurrent translation task holds its
-    own immutable copy of the prompts configured for its language pair.
-    
-    Usage in agents:
+    """为给定的语言对创建提示词字典。
+
+    与 init_prompts() 不同，此函数是线程安全的。它返回一个任务特定的字典，
+    以便每个并发翻译任务持有自己的、为其语言对配置的不可变提示词副本。
+
+    在 Agent 中的用法：
         self.prompts = pm.create_prompts(source_lang, target_lang)
-        # then access via: self.prompts["section_system_prompt"] etc.
+        # 然后通过以下方式访问：self.prompts["section_system_prompt"] 等
     """
     with _prompts_lock:
         # Under the lock: set globals for this language pair, then immediately

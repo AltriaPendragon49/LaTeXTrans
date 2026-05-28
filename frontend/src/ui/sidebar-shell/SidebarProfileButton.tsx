@@ -1,13 +1,24 @@
+/**
+ * 侧边栏用户信息按钮组件
+ * 渲染用户的头像首字母、名称和副标题的可点击按钮
+ */
 import type { MouseEventHandler } from "react"
 
+/** SidebarProfileButton 组件 Props */
 interface SidebarProfileButtonProps {
+  /** 用户首字母 */
   initial: string
+  /** 用户名称 */
   label: string
+  /** 副标题（如邮箱） */
   subtitle: string
+  /** 点击回调 */
   onClick: MouseEventHandler<HTMLButtonElement>
+  /** 是否折叠模式 */
   collapsed?: boolean
 }
 
+/** 侧边栏用户信息按钮，折叠时仅显示头像首字母，展开时显示完整信息 */
 export function SidebarProfileButton({
   initial,
   label,

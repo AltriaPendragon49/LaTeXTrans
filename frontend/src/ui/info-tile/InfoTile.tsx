@@ -1,8 +1,13 @@
+/**
+ * 信息卡片组件
+ * 渲染带图标、标题、描述和数值的信息展示卡片，支持多种色调
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 信息卡片样式变体：panel / muted / accent / warning / success / danger */
 const infoTileVariants = cva(
   "rounded-[22px] border",
   {
@@ -33,18 +38,27 @@ const infoTileVariants = cva(
   },
 )
 
+/** InfoTile 组件 Props */
 interface InfoTileProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "title">,
     VariantProps<typeof infoTileVariants> {
+  /** 可选图标 */
   icon?: ReactNode
+  /** 标题（大写标签样式） */
   title: ReactNode
+  /** 可选描述 */
   description?: ReactNode
+  /** 可选数值 */
   value?: ReactNode
+  /** 右侧尾部操作区域 */
   trailing?: ReactNode
+  /** 标题额外样式 */
   titleClassName?: string
+  /** 数值额外样式 */
   valueClassName?: string
 }
 
+/** 信息卡片组件，左侧图标+标题/描述，右侧数值+操作 */
 export function InfoTile({
   icon,
   title,

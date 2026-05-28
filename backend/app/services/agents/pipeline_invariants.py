@@ -1,3 +1,7 @@
+"""管线不变量检查模块。
+
+定义在翻译管线中必须强制遵守的硬性不变量异常类及断言函数。
+"""
 from __future__ import annotations
 
 import os
@@ -7,7 +11,7 @@ from typing import Optional
 
 
 class PipelineInvariantViolation(RuntimeError):
-    """Raised when a hard pipeline invariant is violated."""
+    """当硬性管线不变量被违反时抛出。"""
 
     def __init__(self, message: str, *, error_code: str) -> None:
         super().__init__(message)
@@ -15,33 +19,34 @@ class PipelineInvariantViolation(RuntimeError):
 
 
 class SpeculativeRepairForbiddenError(PipelineInvariantViolation):
-    """Raised when forbidden speculative structure repair is invoked."""
+    """当禁止的推测性结构修复被调用时抛出。"""
 
     def __init__(self, message: str = "forbidden: speculative repair") -> None:
         super().__init__(message, error_code="SPEC_REPAIR_FORBIDDEN")
 
 
 class RawStructurePayloadViolation(PipelineInvariantViolation):
-    """Raised when raw structure tokens are found in an LLM payload."""
+    """当 LLM 载荷中发现原始结构标记时抛出。"""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, error_code="RAW_STRUCTURE_EXPOSED")
 
 
 class RawContentLeakageViolation(PipelineInvariantViolation):
-    """Raised when a long contiguous raw source span leaks into payload."""
+    """当连续的长原始源文本泄漏到载荷中时抛出。"""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, error_code="RAW_ENV_BODY_EXPOSED")
 
 
 class HardFreezeProtocolViolation(PipelineInvariantViolation):
-    """Raised when hard-freeze transport tokens are mutated by the model."""
+    """当硬冻结传输令牌被模型修改时抛出。"""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, error_code="HARD_FREEZE_PROTOCOL_VIOLATION")
 
 
+# 原始结构标记的正则表达式模式
 _RAW_STRUCTURE_PATTERNS = (
     (re.compile(r"\\begin\{"), r"\begin{"),
     (re.compile(r"\\end\{"), r"\end{"),
@@ -50,7 +55,7 @@ _RAW_STRUCTURE_PATTERNS = (
 
 
 def assert_no_raw_structure(payload_text: str, *, context: str = "") -> None:
-    """Hard-fail if structural delimiters leak into LLM payload."""
+    """如果结构分隔符泄漏到 LLM 载荷中，则硬性失败。"""
     text = payload_text or ""
     for pattern, label in _RAW_STRUCTURE_PATTERNS:
         hit = pattern.search(text)
@@ -71,7 +76,7 @@ def assert_no_long_raw_span(
     min_span: int = 200,
     context: str = "",
 ) -> None:
-    """Hard-fail if long contiguous source text leaks into payload."""
+    """如果连续长源文本泄漏到载荷中，则硬性失败。"""
     payload = payload_text or ""
     source = source_text or ""
     if min_span <= 0 or len(payload) < min_span or len(source) < min_span:
@@ -91,6 +96,7 @@ def assert_no_long_raw_span(
 
 
 def is_absolute_path_like(value: str) -> bool:
+    """判断给定字符串是否类似于绝对路径。"""
     if not isinstance(value, str) or not value.strip():
         return False
     if os.path.isabs(value):

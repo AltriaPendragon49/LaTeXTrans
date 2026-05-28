@@ -51,6 +51,7 @@ const ADMIN_LINKS = [
   },
 ] as const
 
+/** 工具中心页面：展示翻译、历史、术语库等工具入口卡片，管理员额外展示管理入口 */
 export default function ToolsHubPage() {
   const { t } = useTranslation()
   const { user } = useAuth()

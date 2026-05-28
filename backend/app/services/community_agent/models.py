@@ -1,3 +1,5 @@
+"""Agent 数据模型 - Pydantic 规划与应答模型"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
@@ -9,6 +11,7 @@ IntentKind = Literal["search", "answer", "translate"]
 
 
 class AnswerSlots(BaseModel):
+    """结构化答案槽位"""
     current_status: str
     background_answer: str
     paper_overview: str = ""
@@ -17,6 +20,7 @@ class AnswerSlots(BaseModel):
 
 
 class PlannerStep(BaseModel):
+    """规划器单步决策"""
     mode: Literal["call_skill", "finalize"]
     intent: IntentKind
     skill_name: Optional[str] = None

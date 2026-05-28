@@ -1,5 +1,9 @@
 import type { CommunityPaperReaderMode } from "@/types/community"
 
+/**
+ * 判断论文是否拥有翻译后的 PDF 资源
+ * 综合检查 assets.translated_pdf、reader.translated.kind、latest_asset 和 trans_status
+ */
 function hasTranslatedPdfResource(
   paper: {
     assets?: { translated_pdf?: unknown } | null
@@ -18,6 +22,10 @@ function hasTranslatedPdfResource(
   )
 }
 
+/**
+ * 判断论文是否拥有源 PDF 资源
+ * 检查 reader.source.kind 或 arxiv_id
+ */
 function hasSourcePdfResource(
   paper: {
     arxiv_id?: string | null
@@ -29,6 +37,10 @@ function hasSourcePdfResource(
   return Boolean(reader?.source?.kind === "source_pdf" || paper?.arxiv_id)
 }
 
+/**
+ * 根据论文资源和阅读器状态，解析出当前可用的阅读模式列表
+ * 可用模式：source（原文）、translated_pdf（翻译 PDF）、bilingual_compare（双语对比）
+ */
 export function resolveAvailableModes(
   paper: {
     arxiv_id?: string | null
@@ -61,6 +73,11 @@ export function resolveAvailableModes(
   return modes
 }
 
+/**
+ * 根据用户偏好、可用模式和设备类型，确定首选的阅读模式
+ * 移动端优先 translated_pdf → source
+ * 桌面端优先级：用户偏好 → bilingual_compare → source → translated_pdf
+ */
 export function resolvePreferredMode(
   preferredMode: CommunityPaperReaderMode | undefined,
   availableModes: CommunityPaperReaderMode[],
@@ -101,6 +118,9 @@ export function resolvePreferredMode(
   return "source"
 }
 
+/**
+ * 根据翻译状态和阅读器状态返回对应的中文阶段标签
+ */
 export function resolveStageLabel(
   transStatus: string | undefined,
   readerState: "ready" | "warming" | "unavailable",

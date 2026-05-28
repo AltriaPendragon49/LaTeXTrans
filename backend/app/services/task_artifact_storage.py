@@ -1,3 +1,9 @@
+"""任务产物持久化与分发服务
+
+管理翻译任务输出目录的文件级持久化、还原和下载 URL 构建。
+支持本地磁盘和对象存储两种后端。
+"""
+
 from __future__ import annotations
 
 import json
@@ -20,20 +26,26 @@ from backend.app.services.storage_backend import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# 输出目录清单文件名
 OUTPUT_MANIFEST_FILENAME = "storage_manifest.json"
+# 翻译后源文件打包的相对路径
 TRANSLATED_SOURCE_ARCHIVE_RELATIVE_PATH = "_downloads/translated_source.zip"
+# 需要打包的源文件后缀
 TRANSLATED_SOURCE_SUFFIXES = {".tex", ".bib", ".cls", ".sty", ".bst"}
 
 
 def _get_storage_backend() -> StorageBackend:
+    """获取存储后端实例"""
     return build_storage_backend(settings)
 
 
 def _storage_uses_object_store(backend: StorageBackend) -> bool:
+    """判断存储后端是否为对象存储（非本地磁盘）"""
     return not isinstance(backend, LocalDiskStorageBackend)
 
 
 def _normalize_stored_path(stored_path: str | Path) -> str:
+    """规范化存储路径：处理绝对路径、正斜杠等"""
     candidate = Path(stored_path)
     if candidate.is_absolute():
         try:
@@ -44,10 +56,12 @@ def _normalize_stored_path(stored_path: str | Path) -> str:
 
 
 def normalize_stored_task_path(path: str | Path) -> str:
+    """规范化任务存储路径（公开 API）"""
     return _normalize_stored_path(path)
 
 
 def resolve_local_task_path(stored_path: str | Path) -> Path:
+    """将存储路径解析为本地绝对路径"""
     candidate = Path(stored_path)
     if candidate.is_absolute():
         return candidate
@@ -60,6 +74,16 @@ def persist_task_directory(
     stored_path: str,
     delete_local: bool = False,
 ) -> str:
+    """将本地任务目录持久化到存储后端
+
+    参数:
+        local_dir: 本地目录路径
+        stored_path: 存储目标路径前缀
+        delete_local: 是否在持久化后删除本地副本
+
+    返回:
+        规范化后的存储路径
+    """
     backend = _get_storage_backend()
     local_dir = Path(local_dir)
     normalized_root = _normalize_stored_path(stored_path)
@@ -93,6 +117,16 @@ def materialize_task_directory(
     destination: Path,
     force: bool = False,
 ) -> Path:
+    """从存储后端还原任务目录到本地
+
+    参数:
+        stored_path: 存储路径
+        destination: 本地目标目录
+        force: 是否强制覆盖已存在的目标目录
+
+    返回:
+        还原后的本地目录路径
+    """
     backend = _get_storage_backend()
     normalized_root = _normalize_stored_path(stored_path)
     destination = Path(destination)
@@ -140,6 +174,17 @@ def materialize_task_output_asset(
     destination_dir: Path,
     force: bool = False,
 ) -> Optional[Path]:
+    """从任务输出还原单个资产文件
+
+    参数:
+        output_path: 任务输出存储路径
+        asset_name: 资产名称（如 'translated_pdf'）
+        destination_dir: 本地目标目录
+        force: 是否强制覆盖
+
+    返回:
+        还原后的文件路径，失败时返回 None
+    """
     manifest = read_task_output_manifest(output_path)
     relative_path = _manifest_relative_path_for_asset(manifest, asset_name)
     if not relative_path:
@@ -170,6 +215,7 @@ def materialize_task_output_asset(
 
 
 def _iter_task_log_candidates(output_dir: Path) -> list[Path]:
+    """遍历任务输出目录中的 task_log.json 候选文件"""
     candidates: list[Path] = []
     root_log = output_dir / "task_log.json"
     if root_log.is_file():
@@ -184,6 +230,7 @@ def _iter_task_log_candidates(output_dir: Path) -> list[Path]:
 
 
 def _find_translated_pdf_relative_path(output_dir: Path) -> Optional[str]:
+    """在任务输出目录中查找翻译后 PDF 的相对路径"""
     for log_path in _iter_task_log_candidates(output_dir):
         try:
             entries = json.loads(log_path.read_text(encoding="utf-8"))
@@ -219,6 +266,11 @@ def _find_translated_pdf_relative_path(output_dir: Path) -> Optional[str]:
 
 
 def _create_translated_source_archive(output_dir: Path) -> Optional[str]:
+    """将翻译后的源文件（.tex, .bib 等）打包为 ZIP
+
+    返回:
+        打包文件的相对路径，无可打包文件时返回 None
+    """
     archive_path = output_dir / TRANSLATED_SOURCE_ARCHIVE_RELATIVE_PATH
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     added = False
@@ -245,6 +297,7 @@ def _create_translated_source_archive(output_dir: Path) -> Optional[str]:
 
 
 def _build_output_manifest(output_dir: Path) -> dict[str, Any]:
+    """构建任务输出清单，包含翻译 PDF、术语表、日志等文件路径信息"""
     terminology_file = output_dir / "terminology_table.csv"
     if not terminology_file.exists():
         matches = sorted(path.relative_to(output_dir).as_posix() for path in output_dir.rglob("terminology_table.csv"))
@@ -268,6 +321,16 @@ def persist_task_output_directory(
     local_output_dir: Path,
     delete_local: bool = False,
 ) -> str:
+    """持久化任务输出目录及其清单
+
+    参数:
+        task_id: 任务 ID
+        local_output_dir: 本地输出目录
+        delete_local: 是否在持久化后删除本地副本
+
+    返回:
+        规范化后的存储路径
+    """
     output_dir = Path(local_output_dir)
     manifest = _build_output_manifest(output_dir)
     manifest["translated_source_archive"] = _create_translated_source_archive(output_dir)
@@ -280,6 +343,7 @@ def persist_task_output_directory(
 
 
 def read_task_output_manifest(output_path: str) -> dict[str, Any]:
+    """读取任务输出清单"""
     backend = _get_storage_backend()
     manifest_rel_path = f"{_normalize_stored_path(output_path)}/{OUTPUT_MANIFEST_FILENAME}"
 
@@ -294,6 +358,7 @@ def read_task_output_manifest(output_path: str) -> dict[str, Any]:
 
 
 def _manifest_relative_path_for_asset(manifest: dict[str, Any], asset_name: str) -> Optional[str]:
+    """从清单中提取指定资产的相对路径"""
     if asset_name == "logs":
         logs = manifest.get("logs") or []
         return str(logs[0]).strip() if logs else None
@@ -313,6 +378,19 @@ def build_task_output_download_url(
     inline: bool = False,
     expires_in: int = 600,
 ) -> Optional[str]:
+    """构建任务输出资产的签名下载 URL
+
+    参数:
+        output_path: 任务输出存储路径
+        asset_name: 资产名称
+        filename: 下载文件名
+        content_type: MIME 类型
+        inline: 是否内联显示（否则作为附件下载）
+        expires_in: 签名 URL 有效期（秒）
+
+    返回:
+        签名下载 URL，本地存储时返回 None
+    """
     backend = _get_storage_backend()
     if not _storage_uses_object_store(backend):
         return None

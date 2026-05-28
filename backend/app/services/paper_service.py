@@ -1,4 +1,10 @@
-﻿from __future__ import annotations
+"""论文服务层
+
+核心业务逻辑：论文导入、翻译任务管理、社区发布、预览渲染、
+相似推荐、结构化洞察、热门排序等。
+"""
+
+from __future__ import annotations
 
 import asyncio
 import base64
@@ -4790,6 +4796,7 @@ async def rebuild_public_feed_indexes_if_enabled() -> bool:
 
 
 async def run_hot_ranking_daily_cron() -> dict[str, Any]:
+    """执行每日热门排序定时任务（供外部调度调用）"""
     """Bridge function called by the cron loop in main.py.
 
     Acquires a Redis lock, instantiates HotRankingService, and runs a full cycle.
@@ -4964,6 +4971,7 @@ async def resolve_community_admission(
     source_type: str,
     arxiv_id: Optional[str],
 ) -> Dict[str, Any]:
+    """解析社区准入条件：检查用户权限、来源类型和 arXiv ID 有效性"""
     is_admin = submitter_context["is_admin"]
     if source_type == "upload" or not arxiv_id:
         return {
@@ -5281,6 +5289,7 @@ async def _watch_task_and_sync_asset(
 
 
 async def mark_paper_translation_failed_by_task(task_id: str) -> int:
+    """将指定任务的论文翻译状态标记为失败"""
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
         return 0
@@ -5378,6 +5387,7 @@ async def submit_uploaded_paper(
     source_language: str = "en",
     target_language: str = "zh",
 ) -> Dict[str, Any]:
+    """提交本地上传的论文文件进行翻译"""
     context = await resolve_submitter_context(current_user)
     upload_response = await upload_route.upload_file(
         file=file,
@@ -5437,6 +5447,7 @@ async def submit_arxiv_paper(
     source_language: str = "en",
     target_language: str = "zh",
 ) -> Dict[str, Any]:
+    """提交 arXiv 论文进行翻译"""
     del source_language, target_language
 
     if current_user is None:
@@ -7942,6 +7953,7 @@ async def start_paper_translation(
     submitter_user_id: Optional[str] = None,
     current_user: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """启动论文翻译任务"""
     if submitter_user_id:
         context = await resolve_submitter_context_by_user_id(submitter_user_id)
     elif current_user is None:
@@ -8045,6 +8057,7 @@ async def start_paper_translation(
 
 
 async def get_paper_preview(*, paper_id: str) -> Dict[str, Any]:
+    """获取论文的 HTML 翻译预览"""
     paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
     preview_asset = asset_map.get("preview_html")
@@ -8132,6 +8145,7 @@ async def create_paper_download_session(*, paper_id: str) -> Dict[str, Any]:
 
 
 async def resolve_paper_translated_pdf_preview(*, paper_id: str) -> Dict[str, Any]:
+    """获取论文翻译后的 PDF 预览（支持签名 URL 和内联显示）"""
     paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
     translated_asset = await _ensure_translated_pdf_asset(paper=paper, asset_map=asset_map)
@@ -8173,6 +8187,7 @@ async def resolve_paper_source_pdf_preview(
     paper_id: str,
     content_disposition: str = "inline",
 ) -> Dict[str, Any]:
+    """获取论文原始 PDF 预览（支持签名 URL）"""
     paper = await _ensure_public_paper(paper_id)
     asset_map = await _fetch_asset_map_for_paper(paper_id=paper_id)
     task_id = str(paper.get("community_selected_task_id") or paper.get("trans_latest_task_id") or "").strip()
@@ -8434,6 +8449,7 @@ async def list_community_papers(
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> Dict[str, Any]:
+    """列出社区论文（支持排序、搜索过滤、热门窗口和缓存）"""
     repository = get_community_paper_repository()
     normalized_limit = int(limit) if limit is not None and int(limit) > 0 else None
     normalized_offset = max(0, int(offset or 0))
@@ -8551,6 +8567,7 @@ async def get_community_paper_detail(
     viewer_user_id: Optional[str] = None,
     fast_path: bool = False,
 ) -> Dict[str, Any]:
+    """获取社区论文详情（含元数据、阅读体验、资产等）"""
     paper = await _fetch_paper_by_id(paper_id)
     if not _is_public_community_paper(paper):
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -8658,6 +8675,7 @@ async def get_community_paper_detail(
 
 
 async def get_community_paper_similar(*, paper_id: str) -> Dict[str, Any]:
+    """获取与指定论文相似的推荐列表"""
     await _ensure_public_paper(paper_id)
     return {"items": await _fetch_persisted_similar_recommendations(paper_id)}
 
@@ -8808,6 +8826,7 @@ async def get_favorite_folder_papers(*, folder_id: str, user_id: str) -> Dict[st
 
 
 async def like_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
+    """用户点赞论文"""
     await _ensure_public_paper(paper_id)
     repository = get_community_paper_repository()
     try:
@@ -8822,6 +8841,7 @@ async def like_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
 
 
 async def unlike_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
+    """用户取消点赞论文"""
     await _ensure_public_paper(paper_id)
     repository = get_community_paper_repository()
     try:
@@ -8836,11 +8856,10 @@ async def unlike_paper(*, paper_id: str, user_id: str) -> Dict[str, Any]:
 
 
 async def import_or_reuse_paper(*, source: str, arxiv_id: str) -> Dict[str, Any]:
-    """
-    Import an external paper into the community library, or reuse an existing one.
+    """将外部论文导入社区库，或复用已有论文。
 
-    This is a minimal bridge for the community agent / homepage agent to perform
-    鈥滈潤榛樺鍏モ€? It prefers reusing existing papers when possible.
+    这是社区 Agent / 首页 Agent 执行静默导入的最小桥接方法。
+    如果存在对应 arxiv_id 的论文，优先复用。
     """
     # 濡傛灉宸叉湁瀵瑰簲 arxiv_id 鐨?paper锛屽垯鐩存帴澶嶇敤
     existing = await _fetch_paper_by_arxiv_id(arxiv_id)
@@ -8874,6 +8893,7 @@ async def record_community_paper_view(
     user_id: Optional[str] = None,
     anon_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """记录论文浏览次数（支持用户或匿名标识）"""
     repository = get_community_paper_repository()
     try:
         if hasattr(repository, "record_daily_view"):

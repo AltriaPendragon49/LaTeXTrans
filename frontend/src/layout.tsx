@@ -6,6 +6,7 @@ import { AppSidebar } from "@/layout/AppSidebar"
 import { getMobilePrimaryNavItems, renderShellNavItemIcon } from "@/layout/shell-navigation"
 import { Toaster } from "@/ui/primitives/sonner"
 
+/** 主布局组件：根据设备类型展示桌面侧边栏或移动端底部导航，包含 Outlet 路由出口 */
 export default function Layout() {
   const isMobile = useIsMobile()
   const location = useLocation()

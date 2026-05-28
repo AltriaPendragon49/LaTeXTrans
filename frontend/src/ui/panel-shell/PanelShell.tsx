@@ -1,8 +1,13 @@
+/**
+ * 面板外壳组件
+ * 渲染通用的面板容器，支持多种视觉风格（panel / glass / hero / accent / success / warning / danger）
+ */
 import { createElement, type HTMLAttributes } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 面板外壳样式变体 */
 const panelShellVariants = cva(
   "border text-[color:var(--px-shell-ink)]",
   {
@@ -36,12 +41,15 @@ const panelShellVariants = cva(
   },
 )
 
+/** PanelShell 组件 Props */
 interface PanelShellProps
   extends HTMLAttributes<HTMLElement>,
     VariantProps<typeof panelShellVariants> {
+  /** 渲染的 HTML 标签名，可选 div / section / aside */
   as?: "div" | "section" | "aside"
 }
 
+/** 通用面板外壳，通过 as 属性自由切换渲染标签 */
 export function PanelShell({
   as = "div",
   tone,

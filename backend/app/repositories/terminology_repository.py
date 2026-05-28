@@ -36,18 +36,22 @@ _BOOLEAN_COLUMNS: set[str] = set()
 
 
 def _utc_now_naive() -> datetime:
+    """获取当前UTC时间，去除时区信息和微秒。"""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def _placeholder(_index: int) -> str:
+    """根据数据库方言返回对应的参数占位符（SQLite: ?，MySQL: %s）。"""
     return "?" if get_database_dialect() == "sqlite" else "%s"
 
 
 def _placeholders(count: int) -> str:
+    """生成指定数量的参数占位符，用逗号分隔。"""
     return ", ".join(_placeholder(index) for index in range(count))
 
 
 def _fetchone(cursor) -> Optional[dict[str, Any]]:
+    """从游标获取一行数据并转换为字典格式返回。"""
     row = cursor.fetchone()
     if row is None:
         return None
@@ -57,6 +61,7 @@ def _fetchone(cursor) -> Optional[dict[str, Any]]:
 
 
 def _fetchall(cursor) -> list[dict[str, Any]]:
+    """从游标获取所有行数据并转换为字典列表返回。"""
     rows = cursor.fetchall() or []
     normalized: list[dict[str, Any]] = []
     for row in rows:
@@ -68,6 +73,7 @@ def _fetchall(cursor) -> list[dict[str, Any]]:
 
 
 def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
+    """标准化行数据，解析JSON字段并转换布尔字段。"""
     for col in _JSON_COLUMNS:
         val = row.get(col)
         if isinstance(val, str):
@@ -87,6 +93,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _serialize_updates(updates: dict[str, Any]) -> dict[str, Any]:
+    """序列化更新载荷，将JSON字段转为字符串，布尔字段转为整数。"""
     serialized = dict(updates)
     for col in _JSON_COLUMNS:
         val = serialized.get(col)
@@ -100,21 +107,25 @@ def _serialize_updates(updates: dict[str, Any]) -> dict[str, Any]:
 
 
 def _new_id() -> str:
+    """生成一个新的UUID十六进制字符串作为ID。"""
     return uuid4().hex
 
 
 class TerminologyRepository:
-    """Repository for RAG terminology term CRUD, search, and review workflows."""
+    """术语数据访问层，负责RAG术语的增删改查、检索和审核工作流。"""
 
     def _row(self, row: dict[str, Any]) -> dict[str, Any]:
+        """标准化单行数据。"""
         return _normalize_row(dict(row))
 
     def _rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """标准化多行数据。"""
         return [self._row(r) for r in rows]
 
     # ---- CRUD ----
 
     def insert_term(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """插入一条新的术语记录。"""
         now = _utc_now_naive()
         term_id = payload.get("id") or _new_id()
         record = {
@@ -150,6 +161,7 @@ class TerminologyRepository:
         return self.get_term(term_id) or record
 
     def get_term(self, term_id: str) -> Optional[dict[str, Any]]:
+        """根据术语ID获取术语记录。"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -160,6 +172,7 @@ class TerminologyRepository:
         return self._row(row) if row else None
 
     def update_term(self, term_id: str, updates: dict[str, Any]) -> bool:
+        """更新指定术语记录，返回是否更新成功。"""
         updates["updated_at"] = _utc_now_naive()
         serialized = _serialize_updates(updates)
         set_clause = ", ".join(f"{k} = {_placeholder(i)}" for i, k in enumerate(serialized))
@@ -173,6 +186,7 @@ class TerminologyRepository:
             return cursor.rowcount > 0
 
     def delete_term(self, term_id: str) -> bool:
+        """删除指定术语记录，返回是否删除成功。"""
         with db_connection(commit=True) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -191,6 +205,7 @@ class TerminologyRepository:
         domain: Optional[str] = None,
         query: Optional[str] = None,
     ) -> list[dict[str, Any]]:
+        """搜索已审核通过的术语，支持按语言对、领域和源术语关键词模糊搜索，按术语长度升序排列。"""
         conditions = ["status = 'approved'", f"source_lang = {_placeholder(0)}", f"target_lang = {_placeholder(1)}"]
         params: list[Any] = [source_lang, target_lang]
         if domain:
@@ -210,6 +225,7 @@ class TerminologyRepository:
         return self._rows(rows) if rows else []
 
     def get_all_approved_terms(self, *, source_lang: str = "en", domain: Optional[str] = None) -> list[dict[str, Any]]:
+        """获取所有已审核通过的术语，支持按源语言和领域过滤。"""
         conditions = [f"status = 'approved'", f"source_lang = {_placeholder(0)}"]
         params: list[Any] = [source_lang]
         if domain:
@@ -227,7 +243,7 @@ class TerminologyRepository:
         return self._rows(rows) if rows else []
 
     def get_approved_system_terms(self, *, source_lang: str = "en", domain: Optional[str] = None) -> list[dict[str, Any]]:
-        """Return approved system terms only (source_type='system')."""
+        """获取已审核通过的系统术语（source_type='system'）。"""
         conditions = ["source_type = 'system'", "status = 'approved'", f"source_lang = {_placeholder(0)}"]
         params: list[Any] = [source_lang]
         if domain:
@@ -245,7 +261,7 @@ class TerminologyRepository:
         return self._rows(rows) if rows else []
 
     def get_approved_terms_by_owner(self, owner_user_id: str, *, source_lang: str = "en", domain: Optional[str] = None) -> list[dict[str, Any]]:
-        """Return approved terms owned by a specific user."""
+        """获取指定用户所有的已审核通过术语。"""
         conditions = [f"owner_user_id = {_placeholder(0)}", "status = 'approved'", f"source_lang = {_placeholder(1)}"]
         params: list[Any] = [owner_user_id, source_lang]
         if domain:
@@ -263,7 +279,7 @@ class TerminologyRepository:
         return self._rows(rows) if rows else []
 
     def find_existing_system_terms(self, source_terms: list[str]) -> set[str]:
-        """Return the subset of source_terms that already exist in the system library."""
+        """查找在系统词库中已存在的源术语集合。"""
         if not source_terms:
             return set()
         placeholders_list = ", ".join(_placeholder(i) for i in range(len(source_terms)))
@@ -279,6 +295,7 @@ class TerminologyRepository:
 
     def get_terms_by_owner(self, owner_user_id: str, *, page: int = 1, page_size: int = 20,
                            status: Optional[str] = None) -> tuple[list[dict[str, Any]], int]:
+        """分页获取指定用户的术语列表，支持按状态过滤。"""
         conditions = [f"owner_user_id = {_placeholder(0)}"]
         params = [owner_user_id]
         if status:
@@ -309,6 +326,7 @@ class TerminologyRepository:
         source_lang: Optional[str] = None,
         domain: Optional[str] = None,
     ) -> tuple[list[dict[str, Any]], int]:
+        """分页获取待审核的术语列表，支持按源语言和领域过滤。"""
         conditions = ["status = 'pending_review'"]
         params: list[Any] = []
         if source_lang:
@@ -332,6 +350,7 @@ class TerminologyRepository:
         return self._rows(rows) if rows else [], total
 
     def approve_term(self, term_id: str, reviewed_by_user_id: str) -> bool:
+        """审核通过指定术语，设置审核人和审核时间。"""
         updates = {
             "status": "approved",
             "reviewed_by_user_id": reviewed_by_user_id,
@@ -342,6 +361,7 @@ class TerminologyRepository:
         return self.update_term(term_id, updates)
 
     def reject_term(self, term_id: str, reviewed_by_user_id: str, reason: Optional[str] = None) -> bool:
+        """驳回指定术语，可附带驳回原因。"""
         updates = {
             "status": "rejected",
             "reviewed_by_user_id": reviewed_by_user_id,
@@ -354,7 +374,7 @@ class TerminologyRepository:
     # ---- Batch operations ----
 
     def batch_approve_terms(self, term_ids: list[str], reviewed_by_user_id: str) -> int:
-        """Approve multiple terms in a single SQL statement. Returns count of affected rows."""
+        """批量审核通过术语（单条SQL），返回受影响的行数。"""
         if not term_ids:
             return 0
         now = _utc_now_naive()
@@ -374,7 +394,7 @@ class TerminologyRepository:
             return cursor.rowcount
 
     def batch_reject_terms(self, term_ids: list[str], reviewed_by_user_id: str, reason: Optional[str] = None) -> int:
-        """Reject multiple terms in a single SQL statement. Returns count of affected rows."""
+        """批量驳回术语（单条SQL），返回受影响的行数。"""
         if not term_ids:
             return 0
         now = _utc_now_naive()
@@ -394,7 +414,7 @@ class TerminologyRepository:
             return cursor.rowcount
 
     def batch_delete_terms(self, term_ids: list[str]) -> int:
-        """Delete multiple terms in a single SQL statement. Returns count of affected rows."""
+        """批量删除术语（单条SQL），返回受影响的行数。"""
         if not term_ids:
             return 0
         placeholders = ", ".join(_placeholder(i) for i in range(len(term_ids)))
@@ -408,6 +428,7 @@ class TerminologyRepository:
 
     def set_embedding_status(self, term_id: str, status: str, *, model: Optional[str] = None,
                              collection: Optional[str] = None, vector_term_id: Optional[str] = None) -> bool:
+        """设置术语的向量嵌入状态及相关元信息。"""
         updates: dict[str, Any] = {"embedding_status": status}
         if model:
             updates["embedding_model"] = model
@@ -420,6 +441,7 @@ class TerminologyRepository:
     # ---- Bulk Operations ----
 
     def insert_terms_batch(self, terms: list[dict[str, Any]]) -> list[str]:
+        """批量插入术语记录，返回新创建的术语ID列表。"""
         ids: list[str] = []
         now = _utc_now_naive()
         with db_connection(commit=True) as conn:
@@ -471,33 +493,20 @@ class TerminologyRepository:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Search terms with flexible filters and SQL-level pagination.
+        """通用术语搜索方法，支持多条件过滤和SQL级别分页。
 
-        Parameters
-        ----------
-        status : str, optional
-            Filter by term status (e.g. ``"approved"``, ``"pending_review"``).
-        source_lang : str, optional
-            Filter by source language.
-        target_lang : str, optional
-            Filter by target language.
-        domain : str, optional
-            Filter by domain.
-        query : str, optional
-            LIKE search on ``source_term``.
-        source_type : str, optional
-            Filter by source type (e.g. ``"system"``, ``"imported"``).
-        source_type : str, optional
-            Filter by source type (e.g. ``"system"``, ``"imported"``).
-        page : int
-            Page number (1-based).
-        page_size : int
-            Items per page.
+        Args:
+            status: 按术语状态过滤（如 ``"approved"``、``"pending_review"``）。
+            source_lang: 按源语言过滤。
+            target_lang: 按目标语言过滤。
+            domain: 按领域过滤。
+            query: 对 ``source_term`` 进行模糊搜索。
+            source_type: 按来源类型过滤（如 ``"system"``、``"imported"``）。
+            page: 页码（从1开始）。
+            page_size: 每页条目数。
 
-        Returns
-        -------
-        (list[dict], int)
-            Tuple of (rows, total_count).
+        Returns:
+            (list[dict], int): 结果行列表与总行数的元组。
         """
         conditions: list[str] = []
         params: list[Any] = []
@@ -547,6 +556,7 @@ class TerminologyRepository:
     # ---- Match Log ----
 
     def insert_match_log(self, payload: dict[str, Any]) -> str:
+        """插入一条术语匹配日志记录，返回日志ID。"""
         log_id = _new_id()
         now = _utc_now_naive()
         record = {
@@ -569,6 +579,7 @@ class TerminologyRepository:
         return log_id
 
     def get_match_logs_for_task(self, task_id: str) -> list[dict[str, Any]]:
+        """获取指定翻译任务的术语匹配日志列表，包含术语原文和译文。"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(

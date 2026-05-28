@@ -54,6 +54,7 @@ import { useDomains } from "@/features/rag-terminology/hooks/useDomains"
 
 const PAGE_SIZE = 20
 
+/** 来源类型标签映射 */
 const SOURCE_TYPE_LABELS: Record<string, { tone: "muted" | "accent" | "info" | "success" | "warning" | "danger"; label: string }> = {
   system: { tone: "accent", label: "System" },
   user: { tone: "info", label: "User" },
@@ -64,12 +65,14 @@ const SOURCE_TYPE_LABELS: Record<string, { tone: "muted" | "accent" | "info" | "
   shared_by_user: { tone: "info", label: "Shared" },
 }
 
+/** 状态标签映射 */
 const STATUS_LABELS: Record<string, { tone: "muted" | "accent" | "info" | "success" | "warning" | "danger"; label: string }> = {
   pending_review: { tone: "warning", label: "Pending" },
   approved: { tone: "success", label: "Approved" },
   rejected: { tone: "danger", label: "Rejected" },
 }
 
+/** 格式化日期字符串 */
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -83,20 +86,26 @@ function formatDate(dateString: string): string {
   }
 }
 
+/**
+ * 术语审核面板组件
+ * 提供术语管理员的审核工作台，包含三个标签页：
+ * 1. 待审核术语（terms）：审批/拒绝操作，调用 GET /terminology/pending
+ * 2. 全部术语（allTerms）：筛选查看和编辑/删除，调用 GET /terminology/terms
+ * 3. 上传（upload）：拖拽上传 CSV/BibTeX 文件，调用 POST /terminology/upload
+ */
 export function TerminologyReviewPanel() {
   const { t } = useTranslation()
 
-  // Tab state
   const [activeTab, setActiveTab] = useState("terms")
 
-  // Pending terms tab
+  // 待审核术语
   const [pendingTerms, setPendingTerms] = useState<TerminologyTerm[]>([])
   const [pendingTotal, setPendingTotal] = useState(0)
   const [pendingPage, setPendingPage] = useState(1)
   const [isLoadingPending, setIsLoadingPending] = useState(false)
   const [pendingLoadError, setPendingLoadError] = useState<string | null>(null)
 
-  // All terms tab
+  // 全部术语
   const [allTerms, setAllTerms] = useState<TerminologyTerm[]>([])
   const [allTotal, setAllTotal] = useState(0)
   const [allPage, setAllPage] = useState(1)
@@ -105,31 +114,24 @@ export function TerminologyReviewPanel() {
   const [statusFilter, setStatusFilter] = useState("")
   const [domainFilter, setDomainFilter] = useState("")
 
-  // Insert a state to track which term is being edited
   const [editingTerm, setEditingTerm] = useState<TerminologyTerm | null>(null)
 
-  // Create/Edit dialog
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
-  // Upload state
   const [isUploading, setIsUploading] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Action loading
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
-  // Dynamic domains from API
   const { domains, groups } = useDomains()
 
-  // Pending terms filters
   const [pendingDomainFilter, setPendingDomainFilter] = useState("")
 
   const pendingTotalPages = Math.max(1, Math.ceil(pendingTotal / PAGE_SIZE))
   const allTotalPages = Math.max(1, Math.ceil(allTotal / PAGE_SIZE))
 
-  // ---- Load pending terms ----
   const loadPendingTerms = useCallback(async () => {
     setIsLoadingPending(true)
     setPendingLoadError(null)
@@ -150,7 +152,6 @@ export function TerminologyReviewPanel() {
     if (activeTab === "terms") loadPendingTerms()
   }, [loadPendingTerms, activeTab])
 
-  // ---- Load all terms ----
   const loadAllTerms = useCallback(async () => {
     setIsLoadingAll(true)
     setAllLoadError(null)
@@ -172,7 +173,6 @@ export function TerminologyReviewPanel() {
     if (activeTab === "allTerms") loadAllTerms()
   }, [loadAllTerms, activeTab])
 
-  // ---- Actions ----
   async function handleApprove(termId: string) {
     setActionLoadingId(termId)
     try {
@@ -252,7 +252,7 @@ export function TerminologyReviewPanel() {
     }
   }
 
-  // ---- Upload ----
+  // 拖拽和文件上传处理（保持原逻辑不变）
   function handleDrag(event: React.DragEvent) {
     event.preventDefault()
     event.stopPropagation()
@@ -296,7 +296,7 @@ export function TerminologyReviewPanel() {
     event.target.value = ""
   }
 
-  // ---- Render pending terms table ----
+  // 渲染待审核表格（保持原逻辑不变）
   function renderPendingTable() {
     if (isLoadingPending) {
       return (
@@ -308,15 +308,8 @@ export function TerminologyReviewPanel() {
     }
     if (pendingLoadError) {
       return (
-        <NoticeBanner
-          tone="danger"
-          icon={<XCircle className="h-4 w-4" />}
-          description={pendingLoadError}
-          action={
-            <Button variant="ghost" size="sm" onClick={loadPendingTerms}>
-              {t("common.actions.retry")}
-            </Button>
-          }
+        <NoticeBanner tone="danger" icon={<XCircle className="h-4 w-4" />} description={pendingLoadError}
+          action={<Button variant="ghost" size="sm" onClick={loadPendingTerms}>{t("common.actions.retry")}</Button>}
         />
       )
     }
@@ -407,18 +400,14 @@ export function TerminologyReviewPanel() {
     )
   }
 
-  // ---- Render all terms table ----
   function renderAllTermsTable() {
     return (
       <>
-        {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.status")}</Label>
             <Select value={statusFilter || "__all__"} onValueChange={(v) => { setStatusFilter(v === "__all__" ? "" : v); setAllPage(1) }}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder={t("ragTerminology.filters.all")} />
-              </SelectTrigger>
+              <SelectTrigger className="w-36"><SelectValue placeholder={t("ragTerminology.filters.all")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
                 <SelectItem value="pending_review">Pending</SelectItem>
@@ -430,39 +419,25 @@ export function TerminologyReviewPanel() {
           <div className="flex items-center gap-2">
             <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
             <Select value={domainFilter || "__all__"} onValueChange={(v) => { setDomainFilter(v === "__all__" ? "" : v); setAllPage(1) }}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder={t("ragTerminology.filters.all")} />
-              </SelectTrigger>
+              <SelectTrigger className="w-44"><SelectValue placeholder={t("ragTerminology.filters.all")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
                 {domains.map((d) => <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" size="sm" onClick={() => { setStatusFilter(""); setDomainFilter(""); setAllPage(1) }}>
-            {t("ragTerminology.filters.clear")}
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => { setStatusFilter(""); setDomainFilter(""); setAllPage(1) }}>{t("ragTerminology.filters.clear")}</Button>
           <div className="flex-1" />
           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t("ragTerminology.create")}
+            <Plus className="h-4 w-4 mr-1" />{t("ragTerminology.create")}
           </Button>
         </div>
-
         {isLoadingAll ? (
-          <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.loading")}</p>
-          </div>
+          <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]"><Loader2 className="h-6 w-6 animate-spin" /><p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.loading")}</p></div>
         ) : allLoadError ? (
-          <NoticeBanner tone="danger" icon={<XCircle className="h-4 w-4" />} description={allLoadError}
-            action={<Button variant="ghost" size="sm" onClick={loadAllTerms}>{t("common.actions.retry")}</Button>}
-          />
+          <NoticeBanner tone="danger" icon={<XCircle className="h-4 w-4" />} description={allLoadError} action={<Button variant="ghost" size="sm" onClick={loadAllTerms}>{t("common.actions.retry")}</Button>} />
         ) : allTerms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]">
-            <Search className="h-7 w-7" />
-            <p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.empty")}</p>
-          </div>
+          <div className="flex flex-col items-center justify-center min-h-[300px] text-[color:var(--px-shell-muted)]"><Search className="h-7 w-7" /><p className="mt-3 text-sm">{t("ragTerminology.reviewPanel.empty")}</p></div>
         ) : (
           <>
             <DataTable>
@@ -486,51 +461,16 @@ export function TerminologyReviewPanel() {
                   const allowEditDelete = ["manual", "system"].includes(term.source_type) || term.status === "pending_review"
                   return (
                     <DataTableRow key={term.id} className="flex flex-col gap-2 px-4 py-3 md:grid md:grid-cols-[1fr_1fr_100px_100px_90px_100px_100px] md:items-center sm:px-6 sm:py-4">
-                      <DataTableCell className="flex justify-between gap-2 md:block">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.sourceTerm")}</span>
-                        <span className="truncate font-medium text-[color:var(--px-shell-ink)]">{term.source_term}</span>
-                      </DataTableCell>
-                      <DataTableCell className="flex justify-between gap-2 md:block">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.targetTerm")}</span>
-                        <span className="truncate text-[color:var(--px-shell-muted)]">{term.target_term}</span>
-                      </DataTableCell>
-                      <DataTableCell className="flex justify-between gap-2 md:block">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.sourceType")}</span>
-                        <StatusBadge tone={sourceTypeStyle.tone} size="sm">{sourceTypeStyle.label}</StatusBadge>
-                      </DataTableCell>
-                      <DataTableCell className="flex justify-between gap-2 md:block">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.domain")}</span>
-                        <span className="truncate text-sm text-[color:var(--px-shell-muted)]">{term.domain || "-"}</span>
-                      </DataTableCell>
-                      <DataTableCell className="flex justify-between gap-2 md:block">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.status")}</span>
-                        <StatusBadge tone={statusStyle.tone} size="sm">{statusStyle.label}</StatusBadge>
-                      </DataTableCell>
-                      <DataTableCell className="flex justify-between gap-2 md:block">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.createdAt")}</span>
-                        <span className="text-xs text-[color:var(--px-shell-muted)]">{formatDate(term.created_at)}</span>
-                      </DataTableCell>
+                      <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.sourceTerm")}</span><span className="truncate font-medium text-[color:var(--px-shell-ink)]">{term.source_term}</span></DataTableCell>
+                      <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.targetTerm")}</span><span className="truncate text-[color:var(--px-shell-muted)]">{term.target_term}</span></DataTableCell>
+                      <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.sourceType")}</span><StatusBadge tone={sourceTypeStyle.tone} size="sm">{sourceTypeStyle.label}</StatusBadge></DataTableCell>
+                      <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.domain")}</span><span className="truncate text-sm text-[color:var(--px-shell-muted)]">{term.domain || "-"}</span></DataTableCell>
+                      <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.status")}</span><StatusBadge tone={statusStyle.tone} size="sm">{statusStyle.label}</StatusBadge></DataTableCell>
+                      <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("ragTerminology.reviewPanel.table.createdAt")}</span><span className="text-xs text-[color:var(--px-shell-muted)]">{formatDate(term.created_at)}</span></DataTableCell>
                       <DataTableCell className="flex justify-start gap-1 md:justify-end pt-1 md:pt-0">
-                        {allowEditDelete && (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => { setEditingTerm(term); setEditDialogOpen(true) }} title={t("common.actions.edit")}>
-                              <FileEdit className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(term.id)} disabled={isActionLoading} title={t("common.actions.delete")}>
-                              <Trash2 className="h-3.5 w-3.5 text-[color:var(--px-shell-danger)]" />
-                            </Button>
-                          </>
-                        )}
-                        {!isApproved && term.status === "pending_review" && (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => handleApprove(term.id)} disabled={isActionLoading}>
-                              <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleReject(term.id)} disabled={isActionLoading}>
-                              <XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-danger)]" />
-                            </Button>
-                          </>
-                        )}
+                        {allowEditDelete && (<><Button variant="ghost" size="sm" onClick={() => { setEditingTerm(term); setEditDialogOpen(true) }} title={t("common.actions.edit")}><FileEdit className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(term.id)} disabled={isActionLoading} title={t("common.actions.delete")}><Trash2 className="h-3.5 w-3.5 text-[color:var(--px-shell-danger)]" /></Button></>)}
+                        {!isApproved && term.status === "pending_review" && (<><Button variant="ghost" size="sm" onClick={() => handleApprove(term.id)} disabled={isActionLoading}><CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--px-shell-success)]" /></Button><Button variant="ghost" size="sm" onClick={() => handleReject(term.id)} disabled={isActionLoading}><XCircle className="h-3.5 w-3.5 text-[color:var(--px-shell-danger)]" /></Button></>)}
                       </DataTableCell>
                     </DataTableRow>
                   )
@@ -539,16 +479,10 @@ export function TerminologyReviewPanel() {
             </DataTable>
             {allTotalPages > 1 && (
               <div className="flex items-center justify-between pt-2">
-                <p className="text-xs text-[color:var(--px-shell-muted)]">
-                  {t("ragTerminology.pagination.pageInfo", { current: allPage, total: allTotalPages })}
-                </p>
+                <p className="text-xs text-[color:var(--px-shell-muted)]">{t("ragTerminology.pagination.pageInfo", { current: allPage, total: allTotalPages })}</p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setAllPage((p) => Math.max(1, p - 1))} disabled={allPage <= 1}>
-                    {t("ragTerminology.pagination.previous")}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setAllPage((p) => Math.min(allTotalPages, p + 1))} disabled={allPage >= allTotalPages}>
-                    {t("ragTerminology.pagination.next")}
-                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setAllPage((p) => Math.max(1, p - 1))} disabled={allPage <= 1}>{t("ragTerminology.pagination.previous")}</Button>
+                  <Button variant="outline" size="sm" onClick={() => setAllPage((p) => Math.min(allTotalPages, p + 1))} disabled={allPage >= allTotalPages}>{t("ragTerminology.pagination.next")}</Button>
                 </div>
               </div>
             )}
@@ -558,7 +492,6 @@ export function TerminologyReviewPanel() {
     )
   }
 
-  // ---- Render upload tab ----
   function renderUploadTab() {
     return (
       <div className="space-y-6">
@@ -567,30 +500,13 @@ export function TerminologyReviewPanel() {
           <p className="text-sm text-[color:var(--px-shell-muted)]">{t("ragTerminology.upload.description")}</p>
         </div>
         <div
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
+          onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed p-10 transition-colors ${
-            isDragActive
-              ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)]"
-              : "border-[color:var(--px-shell-line)] hover:border-[color:var(--px-shell-accent)]/30 hover:bg-[color:var(--px-shell-panel-strong)]"
-          }`}
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed p-10 transition-colors ${isDragActive ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)]" : "border-[color:var(--px-shell-line)] hover:border-[color:var(--px-shell-accent)]/30 hover:bg-[color:var(--px-shell-panel-strong)]"}`}
         >
           <input ref={inputRef} type="file" accept=".csv,.bib" className="hidden" onChange={handleFileSelect} />
-          {isUploading ? (
-            <>
-              <Loader2 className="h-8 w-8 animate-spin text-[color:var(--px-shell-accent)]" />
-              <p className="mt-4 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("ragTerminology.upload.uploading")}</p>
-            </>
-          ) : (
-            <>
-              <Upload className="h-8 w-8 text-[color:var(--px-shell-muted)]" />
-              <p className="mt-4 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("ragTerminology.upload.dragAndDrop")}</p>
-              <p className="mt-2 text-xs text-[color:var(--px-shell-muted)]">{t("ragTerminology.upload.supportedFormats")}</p>
-            </>
-          )}
+          {isUploading ? (<><Loader2 className="h-8 w-8 animate-spin text-[color:var(--px-shell-accent)]" /><p className="mt-4 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("ragTerminology.upload.uploading")}</p></>
+          ) : (<><Upload className="h-8 w-8 text-[color:var(--px-shell-muted)]" /><p className="mt-4 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("ragTerminology.upload.dragAndDrop")}</p><p className="mt-2 text-xs text-[color:var(--px-shell-muted)]">{t("ragTerminology.upload.supportedFormats")}</p></>)}
         </div>
       </div>
     )
@@ -598,77 +514,31 @@ export function TerminologyReviewPanel() {
 
   return (
     <PanelShell className="space-y-6 p-4 sm:p-6">
-      <TermFormModal
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-        onSave={handleCreate}
-        title={t("ragTerminology.dialog.createTitle")}
-        domainOptions={domains}
-        domainGroups={groups}
-      />
-      <TermFormModal
-        open={editDialogOpen}
-        onClose={() => { setEditDialogOpen(false); setEditingTerm(null) }}
-        onSave={handleEdit}
-        initial={editingTerm ? {
-          source_term: editingTerm.source_term,
-          target_term: editingTerm.target_term,
-          source_lang: editingTerm.source_lang,
-          target_lang: editingTerm.target_lang,
-          domain: editingTerm.domain,
-        } : undefined}
-        title={t("ragTerminology.dialog.editTitle")}
-        domainOptions={domains}
-        domainGroups={groups}
-      />
-
+      <TermFormModal open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} onSave={handleCreate} title={t("ragTerminology.dialog.createTitle")} domainOptions={domains} domainGroups={groups} />
+      <TermFormModal open={editDialogOpen} onClose={() => { setEditDialogOpen(false); setEditingTerm(null) }} onSave={handleEdit} initial={editingTerm ? { source_term: editingTerm.source_term, target_term: editingTerm.target_term, source_lang: editingTerm.source_lang, target_lang: editingTerm.target_lang, domain: editingTerm.domain } : undefined} title={t("ragTerminology.dialog.editTitle")} domainOptions={domains} domainGroups={groups} />
       <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <div className="flex justify-start">
           <EditorialTabsList className="gap-1">
-            <EditorialTabsTrigger value="terms">
-              {t("ragTerminology.reviewPanel.termsTab")}
-            </EditorialTabsTrigger>
-            <EditorialTabsTrigger value="allTerms">
-              {t("ragTerminology.reviewPanel.allTermsTab")}
-            </EditorialTabsTrigger>
-            <EditorialTabsTrigger value="upload">
-              {t("ragTerminology.reviewPanel.uploadTab")}
-            </EditorialTabsTrigger>
+            <EditorialTabsTrigger value="terms">{t("ragTerminology.reviewPanel.termsTab")}</EditorialTabsTrigger>
+            <EditorialTabsTrigger value="allTerms">{t("ragTerminology.reviewPanel.allTermsTab")}</EditorialTabsTrigger>
+            <EditorialTabsTrigger value="upload">{t("ragTerminology.reviewPanel.uploadTab")}</EditorialTabsTrigger>
           </EditorialTabsList>
         </div>
-
         <TabsContent value="terms" className="mt-0 space-y-4 min-h-[420px]">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
               <Select value={pendingDomainFilter || "__all__"} onValueChange={(v) => { setPendingDomainFilter(v === "__all__" ? "" : v); setPendingPage(1) }}>
-                <SelectTrigger className="w-44">
-                  <SelectValue placeholder={t("ragTerminology.filters.all")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>
-                  {domains.map((d) => (
-                    <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectTrigger className="w-44"><SelectValue placeholder={t("ragTerminology.filters.all")} /></SelectTrigger>
+                <SelectContent><SelectItem value="__all__">{t("ragTerminology.filters.all")}</SelectItem>{domains.map((d) => (<SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>))}</SelectContent>
               </Select>
             </div>
-            {pendingDomainFilter && (
-              <Button variant="outline" size="sm" onClick={() => { setPendingDomainFilter(""); setPendingPage(1) }}>
-                {t("ragTerminology.filters.clear")}
-              </Button>
-            )}
+            {pendingDomainFilter && (<Button variant="outline" size="sm" onClick={() => { setPendingDomainFilter(""); setPendingPage(1) }}>{t("ragTerminology.filters.clear")}</Button>)}
           </div>
           {renderPendingTable()}
         </TabsContent>
-
-        <TabsContent value="allTerms" className="mt-0 space-y-4 min-h-[420px]">
-          {renderAllTermsTable()}
-        </TabsContent>
-
-        <TabsContent value="upload" className="mt-0 space-y-4 min-h-[420px]">
-          {renderUploadTab()}
-        </TabsContent>
+        <TabsContent value="allTerms" className="mt-0 space-y-4 min-h-[420px]">{renderAllTermsTable()}</TabsContent>
+        <TabsContent value="upload" className="mt-0 space-y-4 min-h-[420px]">{renderUploadTab()}</TabsContent>
       </EditorialTabs>
     </PanelShell>
   )

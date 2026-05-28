@@ -30,12 +30,17 @@ import type { CommunityPaper } from "@/types/community"
 import { Button } from "@/ui/button/Button"
 import { Pill } from "@/ui/pill/Pill"
 
+/** 论文卡片组件 Props */
 interface PaperCardProps {
+  /** 论文数据 */
   paper: CommunityPaper
+  /** 删除回调（仅管理员可见） */
   onDelete?: (paper: CommunityPaper) => void
+  /** 是否正在删除 */
   deleting?: boolean
 }
 
+/** PDF 缩略图预览帧的 Props */
 interface PdfPreviewFrameProps {
   imageUrl: string | null
   unavailableIcon: ReactNode
@@ -43,6 +48,9 @@ interface PdfPreviewFrameProps {
   testId: string
 }
 
+/**
+ * 从响应头 Content-Disposition 中解析下载文件名
+ */
 function resolveDownloadFilename(
   response: Response,
   fallbackFilename: string,
@@ -61,6 +69,9 @@ function resolveDownloadFilename(
   return filenameMatch?.[1] ?? fallbackFilename
 }
 
+/**
+ * 从错误对象中提取可显示的错误消息
+ */
 function extractActionErrorMessage(error: unknown): string | null {
   if (typeof error === "string") {
     return error
@@ -91,6 +102,11 @@ function extractActionErrorMessage(error: unknown): string | null {
   return null
 }
 
+/**
+ * PDF 缩略图预览帧组件
+ * 展示论文 PDF 第一页的缩略图，支持悬停放大效果和懒加载。
+ * 无图片时显示占位符内容
+ */
 function PdfPreviewFrame({
   imageUrl,
   unavailableIcon,
@@ -105,7 +121,6 @@ function PdfPreviewFrame({
   return (
     <div
       data-testid={frameTestId}
-      /* 修改 1：移除 h-full 和 min-h，加入 w-full 和标准 A4 比例 aspect-[210/297] */
       className="relative flex w-full aspect-[210/297] overflow-visible"
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
@@ -115,7 +130,6 @@ function PdfPreviewFrame({
     >
       <div
         data-testid={testId.replace(/-image$/, "-surface")}
-        /* 修改 2：保持 h-full 让它填满上面定义的 A4 比例容器，移除 min-h */
         className={`relative z-0 flex h-full w-full origin-center overflow-hidden rounded-sm border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] shadow-[0_18px_48px_-34px_rgba(8,23,38,0.4)] transition-[transform,box-shadow] duration-200 ${isHovered ? "z-10 scale-[1.40] shadow-[0_34px_82px_-28px_rgba(8,23,38,0.62)]" : "scale-100"}
 `}
       >
@@ -125,7 +139,6 @@ function PdfPreviewFrame({
             src={imageUrl}
             alt=""
             loading="lazy"
-            /* 修改 3：额外留出纵向呼吸空间，尽量完整展示第一页内容 */
             className={`absolute inset-0 h-full w-full bg-white object-contain object-center px-1 py-2 transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
               setLoadedImageUrl(imageUrl)
@@ -157,6 +170,9 @@ function PdfPreviewFrame({
   )
 }
 
+/**
+ * 格式化作者列表，取前 3 位作者姓名
+ */
 function formatAuthors(authors: unknown[], fallback: string) {
   if (!authors.length) {
     return fallback
@@ -178,6 +194,10 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
+/**
+ * 预览链接包裹组件
+ * 当 to 为空时渲染纯展示结构，否则包裹为可导航的 Link
+ */
 function PreviewLink({
   to,
   label,
@@ -193,7 +213,6 @@ function PreviewLink({
 }) {
   if (!to) {
     return (
-      /* 修改 4：移除 h-full，让它自然贴合内部的 A4 比例容器 */
       <div data-testid={testId} className="flex flex-col gap-2">
         {children}
       </div>
@@ -208,7 +227,6 @@ function PreviewLink({
       onMouseEnter={onIntent}
       onFocus={onIntent}
       onPointerDown={onIntent}
-      /* 修改 5：同样移除这里的 h-full */
       className="group flex flex-col gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/25"
     >
       {children}
@@ -216,6 +234,12 @@ function PreviewLink({
   )
 }
 
+/**
+ * 论文卡片组件
+ * 展示社区论文的摘要信息，包括标题、作者、摘要、分类标签、
+ * 源 PDF / 翻译 PDF 缩略图预览、下载、点赞、收藏和外部链接等交互操作。
+ * 支持乐观更新点赞状态
+ */
 export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -233,6 +257,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     favorite_folder_count: Number(paper.viewer_state?.favorite_folder_count ?? 0),
   })
 
+  // 同步外部 paper 数据变更
   useEffect(() => {
     setLiked(Boolean(paper.viewer_state?.liked))
     setLikeCount(Number(paper.like_count ?? 0))
@@ -244,11 +269,13 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     })
   }, [paper.favorite_count, paper.id, paper.like_count, paper.viewer_state])
 
+  /** 预加载论文详情和预览增强器 */
   function prefetchDetailNavigation() {
     void prefetchCommunityPaperDetail(paper.id)
     void preloadPaperPreviewEnhancer()
   }
 
+  // 构建各种 PDF 和下载 URL
   const sourcePdfUrl =
     paper.source === "arxiv" || Boolean(paper.assets?.source_archive) || Boolean(paper.community_selected_task_id)
       ? `${API_BASE_URL}/api/papers/${paper.id}/source-thumbnail`
@@ -281,6 +308,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     paper.abstract_raw || paper.abstract_translated || t("community.card.abstractPlaceholder")
   const detailHref = `/paper/${paper.id}`
 
+  /** 下载源 PDF */
   async function handleSourceDownload() {
     if (!sourceDownloadUrl || sourceDownloadPending) {
       return
@@ -313,6 +341,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     }
   }
 
+  /** 下载翻译后的 PDF（需要先创建下载会话） */
   async function handleTranslatedDownload() {
     if (downloadPending || !translatedPdfDocumentUrl) {
       return
@@ -333,6 +362,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
     }
   }
 
+  /** 点赞/取消点赞（乐观更新） */
   async function handleLikeToggle() {
     if (likePending) {
       return
@@ -376,6 +406,7 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
           : t("community.likes.toast.unliked"),
       )
     } catch (likeError) {
+      // 乐观更新失败则回滚
       setLiked(liked)
       setLikeCount(likeCount)
       setActionError(extractActionErrorMessage(likeError) ?? t("community.likes.toast.failed"))
@@ -595,7 +626,6 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         </div>
       </div>
 
-      {/* 修改 6：加入 items-start 让右侧网格容器顶部对齐，彻底阻断向下延展 */}
       <div className="grid grid-cols-2 gap-4 items-start">
         <PreviewLink
           to={detailHref}

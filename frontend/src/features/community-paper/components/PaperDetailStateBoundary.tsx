@@ -6,14 +6,25 @@ import { StatePanel } from "@/ui/state-panel/StatePanel"
 
 import { PaperDetailSkeleton } from "./PaperDetailSkeleton"
 
+/** 论文详情状态边界 Props */
 interface PaperDetailStateBoundaryProps {
+  /** 是否正在加载 */
   loading: boolean
+  /** 错误信息 */
   error: string | null
+  /** 是否未找到 */
   notFound: boolean
+  /** 论文数据 */
   paper: CommunityPaper | null
+  /** 子渲染函数，仅在数据就绪时调用 */
   children: (paper: CommunityPaper) => ReactNode
 }
 
+/**
+ * 论文详情状态边界组件
+ * 根据加载/错误/未找到状态渲染对应的 UI（骨架屏、错误状态、404状态），
+ * 数据就绪时将论文数据传递给子组件
+ */
 export function PaperDetailStateBoundary({
   loading,
   error,

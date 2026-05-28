@@ -1,3 +1,13 @@
+/**
+ * 社区模块 API 客户端
+ *
+ * 封装社区论文、Agent 对话、收藏夹、点赞、管理后台等所有社区功能的 HTTP 调用。
+ * 包含：
+ * - Engagement 乐观更新系统（点赞/收藏数据即时刷新）
+ * - 论文详情缓存与预取
+ * - SSE 流式 Agent 对话
+ * - Curation 管理员任务管理
+ */
 import { API_BASE_URL, PAPER_PREVIEW_API_BASE_URL } from "@/api-base"
 import api from "@/lib/api"
 import { getAccessToken } from "@/lib/local-auth"
@@ -36,8 +46,13 @@ import type {
 } from "@/types/community"
 import type { TranslateRequest } from "@/lib/api"
 
+/** 论文详情缓存（Map） */
 const communityPaperDetailCache = new Map<string, CommunityPaperDetailResponse>()
+
+/** 论文详情进行中的请求（去重） */
 const communityPaperDetailInflight = new Map<string, Promise<CommunityPaperDetailResponse>>()
+
+/** Engagement 增量补丁 */
 type CommunityPaperEngagementPatch = {
   paperId: string
   likeCount?: number
@@ -45,10 +60,19 @@ type CommunityPaperEngagementPatch = {
   viewCount?: number
   viewerState?: Partial<ViewerState>
 }
+
+/** Engagement 覆盖数据（本地点赞/收藏即时更新） */
 const communityPaperEngagementOverrides = new Map<string, CommunityPaperEngagementPatch>()
+
+/** Engagement 变更监听器集合 */
 const communityPaperEngagementListeners = new Set<(patch: CommunityPaperEngagementPatch) => void>()
+
+/** 匿名用户 ID localStorage 键 */
 const COMMUNITY_ANON_ID_STORAGE_KEY = "paperx.community.anonymous-id"
 
+/**
+ * 合并 ViewerState，patch 中的字段覆盖 current
+ */
 function mergeViewerState(
   current: ViewerState | null | undefined,
   patch: Partial<ViewerState> | undefined,
@@ -66,6 +90,9 @@ function mergeViewerState(
   }
 }
 
+/**
+ * 合并 Engagement patch
+ */
 function mergeEngagementPatch(
   current: CommunityPaperEngagementPatch | undefined,
   patch: CommunityPaperEngagementPatch,
@@ -82,6 +109,9 @@ function mergeEngagementPatch(
   }
 }
 
+/**
+ * 将 Engagement patch 应用到单个论文对象
+ */
 function applyEngagementPatchToPaper(
   paper: CommunityPaper,
   patch: CommunityPaperEngagementPatch | undefined,
@@ -99,6 +129,9 @@ function applyEngagementPatchToPaper(
   }
 }
 
+/**
+ * 更新服务端渲染注入的启动数据中的 Feed 论文的 Engagement
+ */
 function updateBootstrappedFeed(patch: CommunityPaperEngagementPatch): void {
   const bootstrapFeed = window.__COMMUNITY_BOOTSTRAP__?.feed
   if (!bootstrapFeed?.items?.length) {
@@ -114,11 +147,20 @@ function updateBootstrappedFeed(patch: CommunityPaperEngagementPatch): void {
   }
 }
 
+/**
+ * 合并本地的 Engagement 覆盖数据到论文对象
+ * @param paper - 原始论文对象
+ * @returns 应用了本地 Engagement 覆盖后的论文对象
+ */
 export function mergeCommunityPaperEngagement(paper: CommunityPaper): CommunityPaper {
   const patch = communityPaperEngagementOverrides.get(paper.id)
   return applyEngagementPatchToPaper(paper, patch)
 }
 
+/**
+ * 发布 Engagement 变更（点赞/收藏数据），即时更新所有已渲染论文的状态
+ * @param patch - Engagement 变更数据
+ */
 export function publishCommunityPaperEngagement(patch: CommunityPaperEngagementPatch): void {
   const paperId = String(patch.paperId || "").trim()
   if (!paperId) {
@@ -135,6 +177,7 @@ export function publishCommunityPaperEngagement(patch: CommunityPaperEngagementP
   )
   communityPaperEngagementOverrides.set(paperId, nextPatch)
 
+  // 同步更新缓存中的详情
   const cachedDetail = communityPaperDetailCache.get(paperId)
   if (cachedDetail?.paper) {
     communityPaperDetailCache.set(paperId, {
@@ -149,6 +192,11 @@ export function publishCommunityPaperEngagement(patch: CommunityPaperEngagementP
   }
 }
 
+/**
+ * 订阅 Engagement 变更事件
+ * @param listener - 变更回调
+ * @returns 取消订阅的函数
+ */
 export function subscribeCommunityPaperEngagement(
   listener: (patch: CommunityPaperEngagementPatch) => void,
 ): () => void {
@@ -158,10 +206,15 @@ export function subscribeCommunityPaperEngagement(
   }
 }
 
+/** 清除所有本地的 Engagement 覆盖状态 */
 export function clearCommunityPaperEngagementState(): void {
   communityPaperEngagementOverrides.clear()
 }
 
+/**
+ * 获取或生成社区匿名用户 ID
+ * @returns 匿名用户 ID 字符串
+ */
 function getCommunityAnonymousId(): string | null {
   if (typeof window === "undefined") {
     return null
@@ -180,6 +233,10 @@ function getCommunityAnonymousId(): string | null {
   return generated
 }
 
+/**
+ * 获取社区论文列表（支持排序、搜索、分页）
+ * @param params - 查询参数
+ */
 export async function getCommunityPapers(params: {
   sort: CommunityFeedSort
   q?: string
@@ -206,6 +263,10 @@ export async function getCommunityPapers(params: {
   }
 }
 
+/**
+ * 创建社区 Agent 对话运行
+ * @param payload - 运行参数
+ */
 export async function createCommunityAgentRun(payload: {
   input: string
   paper_id?: string
@@ -217,6 +278,11 @@ export async function createCommunityAgentRun(payload: {
   return response.data
 }
 
+/**
+ * 解析 SSE 帧中的 JSON 数据
+ * @param frame - SSE 帧文本
+ * @returns 解析后的事件对象，无效帧返回 null
+ */
 function parseSseFrame(frame: string): CommunityAgentStreamEvent | null {
   const lines = frame
     .split(/\r?\n/)
@@ -250,6 +316,9 @@ function parseSseFrame(frame: string): CommunityAgentStreamEvent | null {
   return payload
 }
 
+/**
+ * 通过 HTTP GET 获取 Agent 运行的最终结果（用于 SSE 流式未返回 complete 事件时回退）
+ */
 async function fetchCommunityAgentRunResult(resultUrl: string): Promise<CommunityAgentRun> {
   const token = await getAccessToken()
   const response = await retryOnTransientNetworkError(
@@ -270,6 +339,13 @@ async function fetchCommunityAgentRunResult(resultUrl: string): Promise<Communit
   return (await response.json()) as CommunityAgentRun
 }
 
+/**
+ * 以 SSE 流式方式运行社区 Agent 对话
+ *
+ * @param payload - 运行参数
+ * @param options - 配置选项（onEvent 回调接收实时事件）
+ * @returns 完整的 CommunityAgentRun 对象
+ */
 export async function streamCommunityAgentRun(
   payload: {
     input: string
@@ -282,6 +358,7 @@ export async function streamCommunityAgentRun(
     onEvent?: (event: CommunityAgentStreamEvent) => void
   } = {},
 ): Promise<CommunityAgentRun> {
+  // 先提交运行任务（异步模式）
   const acceptedResponse = await api.post<CommunityAgentAcceptedRun>("/community-agent/runs", {
     ...payload,
     execution_mode: "async",
@@ -335,6 +412,7 @@ export async function streamCommunityAgentRun(
     }
   }
 
+  // 处理缓冲区残留的最后一个帧
   if (buffer.trim()) {
     const trailingEvent = parseSseFrame(buffer)
     if (trailingEvent) {
@@ -349,11 +427,18 @@ export async function streamCommunityAgentRun(
   return fetchCommunityAgentRunResult(acceptedRun.result_url)
 }
 
+/**
+ * 列出当前用户的社区 Agent 对话列表
+ */
 export async function listCommunityAgentConversations(): Promise<CommunityConversationRecord[]> {
   const response = await api.get<CommunityConversationRecord[]>("/community-agent/conversations")
   return response.data
 }
 
+/**
+ * 创建或更新社区 Agent 对话记录
+ * @param record - 对话记录
+ */
 export async function upsertCommunityAgentConversation(
   record: CommunityConversationRecord,
 ): Promise<CommunityConversationRecord> {
@@ -364,11 +449,19 @@ export async function upsertCommunityAgentConversation(
   return response.data
 }
 
+/**
+ * 删除社区 Agent 对话
+ * @param conversationId - 对话 ID
+ */
 export async function deleteCommunityAgentConversation(conversationId: string): Promise<{ deleted: boolean }> {
   const response = await api.delete<{ deleted: boolean }>(`/community-agent/conversations/${conversationId}`)
   return response.data
 }
 
+/**
+ * 导入 arXiv 论文到社区
+ * @param payload - 导入请求
+ */
 export async function importCommunityPaper(
   payload: CommunityPaperImportRequest,
 ): Promise<CommunityPaperImportResponse> {
@@ -376,6 +469,10 @@ export async function importCommunityPaper(
   return response.data
 }
 
+/**
+ * 获取社区论文详情
+ * @param paperId - 论文 ID
+ */
 export async function getCommunityPaperDetail(
   paperId: string,
 ): Promise<CommunityPaperDetailResponse> {
@@ -391,6 +488,10 @@ export async function getCommunityPaperDetail(
   return payload
 }
 
+/**
+ * 获取社区论文的相似论文列表
+ * @param paperId - 论文 ID
+ */
 export async function getCommunityPaperSimilar(
   paperId: string,
 ): Promise<CommunityPaperSimilarResponse> {
@@ -401,6 +502,9 @@ export async function getCommunityPaperSimilar(
   return response.data
 }
 
+/**
+ * 管理员提交 arXiv 整理任务批次
+ */
 export async function submitAdminArxivCurationBatch(
   payload: {
     arxiv_ids: string[]
@@ -412,6 +516,9 @@ export async function submitAdminArxivCurationBatch(
   return response.data
 }
 
+/**
+ * 管理员提交上传文件整理任务批次
+ */
 export async function submitAdminUploadCurationBatch(params: {
   files: File[]
   source_language: string
@@ -432,6 +539,9 @@ export async function submitAdminUploadCurationBatch(params: {
   return response.data
 }
 
+/**
+ * 管理员获取整理批次详情
+ */
 export async function getAdminCurationBatch(
   batchId: string,
 ): Promise<AdminCurationBatchResponse> {
@@ -442,6 +552,9 @@ export async function getAdminCurationBatch(
   return response.data
 }
 
+/**
+ * 管理员列出整理任务历史
+ */
 export async function listAdminCurationJobs(params: {
   status: string
   q: string
@@ -458,6 +571,9 @@ export async function listAdminCurationJobs(params: {
   return response.data
 }
 
+/**
+ * 管理员删除单个整理任务
+ */
 export async function deleteAdminCurationJob(
   jobId: string,
 ): Promise<AdminDeleteCurationJobResponse> {
@@ -465,6 +581,9 @@ export async function deleteAdminCurationJob(
   return response.data
 }
 
+/**
+ * 管理员批量删除整理任务
+ */
 export async function batchDeleteAdminCurationJobs(
   jobIds: string[],
 ): Promise<AdminBatchDeleteCurationJobsResponse> {
@@ -475,10 +594,18 @@ export async function batchDeleteAdminCurationJobs(
   return response.data
 }
 
+/**
+ * 从缓存中获取论文详情（同步方法）
+ * @param paperId - 论文 ID
+ * @returns 缓存的详情，不存在返回 null
+ */
 export function getCachedCommunityPaperDetail(paperId: string): CommunityPaperDetailResponse | null {
   return communityPaperDetailCache.get(paperId) ?? null
 }
 
+/**
+ * 预填充论文详情缓存
+ */
 export function primeCommunityPaperDetailCache(
   paperId: string,
   payload: CommunityPaperDetailResponse,
@@ -486,11 +613,16 @@ export function primeCommunityPaperDetailCache(
   communityPaperDetailCache.set(paperId, payload)
 }
 
+/** 清除论文详情缓存和进行中请求 */
 export function clearCommunityPaperDetailCache(): void {
   communityPaperDetailCache.clear()
   communityPaperDetailInflight.clear()
 }
 
+/**
+ * 预取论文详情（有缓存直接返回，进行中去重）
+ * @param paperId - 论文 ID
+ */
 export async function prefetchCommunityPaperDetail(
   paperId: string,
 ): Promise<CommunityPaperDetailResponse> {
@@ -511,6 +643,10 @@ export async function prefetchCommunityPaperDetail(
   return request
 }
 
+/**
+ * 记录论文浏览
+ * @param paperId - 论文 ID
+ */
 export async function recordCommunityPaperView(paperId: string): Promise<void> {
   await api.post(
     `/papers/${paperId}/view`,
@@ -523,16 +659,25 @@ export async function recordCommunityPaperView(paperId: string): Promise<void> {
   )
 }
 
+/**
+ * 列出当前用户的收藏夹
+ */
 export async function listFavoriteFolders(): Promise<FavoriteFolderListResponse> {
   const response = await api.get<FavoriteFolderListResponse>("/papers/favorite-folders")
   return response.data
 }
 
+/**
+ * 创建收藏夹
+ */
 export async function createFavoriteFolder(name: string): Promise<FavoriteFolderMutationResponse> {
   const response = await api.post<FavoriteFolderMutationResponse>("/papers/favorite-folders", { name })
   return response.data
 }
 
+/**
+ * 重命名收藏夹
+ */
 export async function renameFavoriteFolder(
   folderId: string,
   name: string,
@@ -541,16 +686,25 @@ export async function renameFavoriteFolder(
   return response.data
 }
 
+/**
+ * 删除收藏夹
+ */
 export async function deleteFavoriteFolder(folderId: string): Promise<FavoriteFolderDeleteResponse> {
   const response = await api.delete<FavoriteFolderDeleteResponse>(`/papers/favorite-folders/${folderId}`)
   return response.data
 }
 
+/**
+ * 获取收藏夹中的论文列表
+ */
 export async function getFavoriteFolderPapers(folderId: string): Promise<FavoriteFolderPapersResponse> {
   const response = await api.get<FavoriteFolderPapersResponse>(`/papers/favorite-folders/${folderId}/papers`)
   return response.data
 }
 
+/**
+ * 获取某篇论文的收藏夹状态
+ */
 export async function getPaperFavoriteFolders(
   paperId: string,
 ): Promise<PaperFavoriteFolderStateResponse> {
@@ -558,6 +712,9 @@ export async function getPaperFavoriteFolders(
   return response.data
 }
 
+/**
+ * 更新论文的收藏夹选择
+ */
 export async function updatePaperFavoriteFolders(
   paperId: string,
   folderIds: string[],
@@ -568,16 +725,25 @@ export async function updatePaperFavoriteFolders(
   return response.data
 }
 
+/**
+ * 点赞论文
+ */
 export async function likeCommunityPaper(paperId: string): Promise<PaperLikeResponse> {
   const response = await api.post<PaperLikeResponse>(`/papers/${paperId}/like`)
   return response.data
 }
 
+/**
+ * 取消点赞论文
+ */
 export async function unlikeCommunityPaper(paperId: string): Promise<PaperLikeResponse> {
   const response = await api.delete<PaperLikeResponse>(`/papers/${paperId}/like`)
   return response.data
 }
 
+/**
+ * 从 arXiv 提交论文到社区
+ */
 export async function submitCommunityPaperFromArxiv(payload: {
   arxiv_id: string
   source_language: string
@@ -587,6 +753,9 @@ export async function submitCommunityPaperFromArxiv(payload: {
   return response.data
 }
 
+/**
+ * 通过文件上传提交论文到社区
+ */
 export async function submitCommunityPaperFromUpload(
   file: File,
   payload: {
@@ -607,6 +776,9 @@ export async function submitCommunityPaperFromUpload(
   return response.data
 }
 
+/**
+ * 翻译社区论文
+ */
 export async function translateCommunityPaper(
   paperId: string,
   config: TranslateRequest,
@@ -615,6 +787,10 @@ export async function translateCommunityPaper(
   return response.data
 }
 
+/**
+ * 获取社区论文预览
+ * 优先使用 PAPER_PREVIEW_API_BASE_URL，失败时回退到主 API
+ */
 export async function getCommunityPaperPreview(
   paperId: string,
 ): Promise<CommunityPaperPreviewResponse> {
@@ -654,6 +830,9 @@ export async function getCommunityPaperPreview(
   }
 }
 
+/**
+ * 创建社区论文下载会话
+ */
 export async function createCommunityPaperDownloadSession(
   paperId: string,
 ): Promise<CommunityPaperDownloadSessionResponse> {
@@ -664,6 +843,9 @@ export async function createCommunityPaperDownloadSession(
   return response.data
 }
 
+/**
+ * 管理员删除社区论文
+ */
 export async function deleteCommunityPaper(
   paperId: string,
 ): Promise<AdminDeletePaperResponse> {

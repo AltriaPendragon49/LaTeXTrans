@@ -1,9 +1,14 @@
+/**
+ * 主题切换按钮组件
+ * 渲染用于切换亮色/暗色主题的按钮，显示当前模式，并自适应图标
+ */
 import { MoonStar, SunMedium } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/ui/button/Button"
 
+/** 主题切换按钮，在 light/dark 间切换，图标和文本跟随当前主题自适应 */
 export function ThemeToggle() {
   const { t } = useTranslation()
   const { theme, setTheme } = useTheme()

@@ -1,21 +1,35 @@
+/**
+ * 工作流步骤指示器组件
+ * 渲染带状态图标（完成/进行中/错误/待处理）的垂直步骤列表
+ */
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** 工作流步骤状态 */
 export type WorkflowStepState = "complete" | "current" | "error" | "upcoming"
 
+/** 单个工作流步骤 */
 interface WorkflowStepItem {
+  /** 步骤唯一标识 */
   id: string
+  /** 步骤标签 */
   label: string
+  /** 可选描述 */
   description?: string | null
+  /** 步骤当前状态 */
   state: WorkflowStepState
 }
 
+/** WorkflowStepper 组件 Props */
 interface WorkflowStepperProps {
+  /** 步骤列表 */
   items: WorkflowStepItem[]
+  /** 额外样式 */
   className?: string
 }
 
+/** 根据步骤状态返回圆圈样式类 */
 function stepCircleClass(state: WorkflowStepState) {
   switch (state) {
     case "complete":
@@ -29,6 +43,7 @@ function stepCircleClass(state: WorkflowStepState) {
   }
 }
 
+/** 根据步骤状态返回文本样式类 */
 function stepTextClass(state: WorkflowStepState) {
   switch (state) {
     case "complete":
@@ -42,6 +57,7 @@ function stepTextClass(state: WorkflowStepState) {
   }
 }
 
+/** 根据步骤状态渲染对应的图标 */
 function renderStepIcon(state: WorkflowStepState) {
   switch (state) {
     case "complete":
@@ -55,6 +71,7 @@ function renderStepIcon(state: WorkflowStepState) {
   }
 }
 
+/** 工作流步骤指示器，垂直时间线样式，左侧竖线连接各步骤节点 */
 export function WorkflowStepper({ items, className }: WorkflowStepperProps) {
   return (
     <div className={cn("relative ml-2 space-y-5 border-l-2 border-[color:var(--px-shell-line)] py-1 pl-5", className)}>

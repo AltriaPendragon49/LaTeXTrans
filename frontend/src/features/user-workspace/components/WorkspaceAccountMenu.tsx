@@ -11,6 +11,7 @@ import { Button } from "@/ui/button/Button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/primitives/popover"
 import type { QuotaSnapshot } from "@/lib/local-auth"
 
+/** 格式化 LaTeX 翻译额度显示 */
 function formatLatexQuota(snapshot: QuotaSnapshot | null | undefined, loading: boolean, t: (key: string, values?: Record<string, unknown>) => string) {
   if (snapshot) {
     return `${snapshot.latex_translation.remaining}/${snapshot.latex_translation.limit}`
@@ -19,6 +20,7 @@ function formatLatexQuota(snapshot: QuotaSnapshot | null | undefined, loading: b
   return loading ? t("profile.quota.loading") : t("profile.quota.unavailable")
 }
 
+/** 格式化 PDF 直接翻译额度显示 */
 function formatPdfDirectQuota(snapshot: QuotaSnapshot | null | undefined, loading: boolean, t: (key: string, values?: Record<string, unknown>) => string) {
   const pdfDirect = snapshot?.pdf_direct
   if (!pdfDirect) {
@@ -40,6 +42,7 @@ function formatPdfDirectQuota(snapshot: QuotaSnapshot | null | undefined, loadin
   return t("profile.quota.unavailable")
 }
 
+/** 额度双格展示组件 */
 function QuotaCells({
   latexValue,
   pdfDirectValue,
@@ -77,6 +80,14 @@ function QuotaCells({
   )
 }
 
+/**
+ * 工作区账户菜单组件
+ * 侧栏底部的用户头像/菜单按钮，通过 Popover 展示：
+ * - 用户信息和额度概览
+ * - 个人资料、设置入口
+ * - 管理员入口（策展、任务管理）
+ * - 登出按钮
+ */
 export function WorkspaceAccountMenu({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate()
   const { t } = useTranslation()

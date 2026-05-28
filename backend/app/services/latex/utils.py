@@ -1,11 +1,11 @@
 ﻿"""
-LaTeX Utilities for Web Backend
+Web 后端的 LaTeX 实用工具
 
-Complete adaptation from prototype system with:
-- All Streamlit dependencies removed
-- Python logging added
-- sys.stderr redirection removed
-- Full AST processing and LaTeX manipulation functionality preserved
+从原型系统完整适配而来，包括：
+- 移除了所有 Streamlit 依赖
+- 添加了 Python logging
+- 移除了 sys.stderr 重定向
+- 保留了完整的 AST 处理和 LaTeX 操作功能
 """
 
 from pylatexenc.latexwalker import (
@@ -49,7 +49,10 @@ get_pattern_brace = lambda index: rf"\{{((?:[^{{}}]++|(?{index}))*+)\}}"
 
 
 def get_pattern_command_full(name, n=None):
-    """Generate regex pattern for LaTeX commands"""
+    """生成 LaTeX 命令的正则表达式模式。
+
+    根据命令名称和参数数量生成用于匹配 LaTeX 命令及其参数的正则表达式。
+    """
     pattern = rf'\\({name})'
     if n is None:
         pattern += rf'{spaces}({options})?'
@@ -66,12 +69,10 @@ def get_pattern_command_full(name, n=None):
 
 
 def extract_compressed_files(folder_path):
-    """
-    Traverse the given folder and extract all compressed files (zip, tar, tar.gz, etc.).
-    After extraction, delete the source compressed files.
-    
+    """遍历给定文件夹并解压所有压缩文件（zip, tar, tar.gz 等）。解压后删除源压缩文件。
+
     Args:
-        folder_path (str): Path to the folder containing compressed files.
+        folder_path: 包含压缩文件的文件夹路径
     """
     for root, _, files in os.walk(folder_path):
         for file in files:
@@ -376,7 +377,11 @@ def replace_includegraphics(latex_code):
 
 
 def process_latex_to_eva(latex_code):
-    """Process LaTeX code for evaluation/extraction"""
+    """处理 LaTeX 代码用于评估/提取。
+
+    移除 href 和 includegraphics 命令，展开 newcommand 定义，
+    提取标题、摘要和关键词，替换图和表格。
+    """
     latex_code = replace_href(latex_code)
     latex_code = replace_includegraphics(latex_code)
     latex_code = process_newcommands(latex_code)
@@ -391,7 +396,7 @@ def process_latex_to_eva(latex_code):
 
 
 def delete_ph(text) -> str:
-    """Delete placeholders from text"""
+    """从文本中删除占位符标记。"""
     pattern = r'搂(\.搂){0,2}'
     text = re.sub(pattern, '', text)
     placeholder_pattern = r"<.*?PLACEHOLDER.*?>"
@@ -2194,9 +2199,7 @@ def save_to_json(data, output_file):
 
 
 def compile_with_latexmk(tex_file: str, out_dir: str = "out", engine: str = "pdflatex"):
-    """
-    Compile LaTeX file using latexmk (deprecated - use compiler.py instead)
-    """
+    """使用 latexmk 编译 LaTeX 文件（已废弃 - 请改用 compiler.py）。"""
     os.makedirs(out_dir, exist_ok=True)
     
     cmd = [
@@ -2276,40 +2279,33 @@ ARXIV_EPRINT_SOURCES = arxiv_raw_cache.ARXIV_EPRINT_FALLBACK_SOURCES
 
 
 class ArxivDownloadError(Exception):
-    """Base exception for arXiv source download failures."""
+    """arXiv 源文件下载失败的基类异常。"""
 
 
 class ArxivNoSourceAvailableError(ArxivDownloadError):
-    """The paper has no TeX source available on arXiv."""
+    """论文在 arXiv 上没有可用的 TeX 源代码。"""
 
 
 class ArxivNetworkFailureError(ArxivDownloadError):
-    """All download attempts failed due to network or remote service errors."""
+    """所有下载尝试均因网络或远程服务错误而失败。"""
 
 
 class ArxivArchiveCorruptedError(ArxivDownloadError):
-    """Downloaded file is invalid or cannot be extracted."""
+    """下载的文件无效或无法解压。"""
 
 
 def get_tex_url(arxiv_id: str, headers: dict) -> str:
-    """
-    Keep compatibility for old callers.
-    Returns the highest-priority e-print source URL.
-    """
+    """为旧版调用方提供兼容性。返回最高优先级的 e-print 源 URL。"""
     _ = headers
     return ARXIV_EPRINT_SOURCES[0].format(arxiv_id=arxiv_id)
 
 
 def is_already_downloaded(arxiv_id: str, save_dir: str) -> bool:
-    """
-    Check if arxiv paper source is already fully downloaded and extracted.
+    """检查 arXiv 论文源是否已完全下载并解压。
 
-    Returns True only when the extracted subdirectory exists AND contains at
-    least one .tex file, which proves the tar.gz was fully extracted.
-
-    A bare .tar.gz (from a previous interrupted download/extract) or an empty
-    extracted directory are treated as NOT downloaded so the pipeline can
-    restart the download cleanly.
+    仅当解压后的子目录存在且包含至少一个 .tex 文件时返回 True，
+    这证明 tar.gz 已完全解压。裸 .tar.gz（来自之前中断的下载/解压）或
+    空的解压目录被视为未下载，以便流水线可以干净地重新开始下载。
     """
     extracted_dir = os.path.join(save_dir, arxiv_id)
     if not os.path.isdir(extracted_dir):
@@ -2674,12 +2670,11 @@ def download_arxiv_source_archive(  # type: ignore[redefinition]
 
 
 def download_tex(arxiv_id: str, tex_url: str, save_dir: str, headers: dict, progress_callback=None):
-    """
-    Download and extract TeX source with robust network handling.
+    """下载并解压 TeX 源代码，具有稳健的网络处理能力。
 
-    Note:
-        `tex_url` is preserved for backward compatibility but ignored because
-        the downloader now uses built-in prioritized multi-source endpoints.
+    注意:
+        `tex_url` 保留用于向后兼容，但会被忽略，
+        因为下载器现在使用内建的多源优先端点。
     """
     _ = tex_url
 
@@ -2834,7 +2829,7 @@ def batch_download_arxiv_tex(
 
 
 def get_arxiv_category(arxiv_ids: List[str]) -> dict:
-    """Get arXiv categories for papers"""
+    """获取论文的 arXiv 分类信息。"""
     results = {}
     headers = {"User-Agent": "Mozilla/5.0"}
     for arxiv_id in arxiv_ids:
@@ -2870,7 +2865,10 @@ def get_arxiv_category(arxiv_ids: List[str]) -> dict:
 
 
 def is_valid_arxiv_id(id_str):
-    """Validate arXiv ID format"""
+    """验证 arXiv ID 格式。
+
+    支持新格式（YYYY.NNNNN）和旧格式（subject/YYMMNNN）。
+    """
     # Modern format: YYYY.NNNNN or YYYY.NNNNNNN
     if re.match(r'^\d{4}\.\d{5,7}$', id_str):
         return True
@@ -2934,12 +2932,12 @@ _CJK_FONT_MAP = {
 
 
 def _has_package(latex_code: str, pkg: str) -> bool:
-    """Check whether a LaTeX package is already loaded (rough string match)."""
+    """检查某个 LaTeX 宏包是否已加载（粗略字符串匹配）。"""
     return bool(re.search(rf'\\usepackage(?:\[[^\]]*\])?\{{{re.escape(pkg)}\}}', latex_code))
 
 
 def _inject_after_documentclass(latex_code: str, block: str) -> str:
-    """Insert *block* immediately after the \\documentclass{...} command."""
+    """在 \\documentclass{...} 命令之后立即插入代码块。"""
     pattern = get_command_pattern(r'documentclass')
     match = pattern.search(latex_code)
     if match:
@@ -2954,7 +2952,7 @@ def _inject_after_documentclass(latex_code: str, block: str) -> str:
 
 
 def _inject_after_begin_document(latex_code: str, block: str) -> str:
-    """Insert *block* immediately after \\begin{document}."""
+    """在 \\begin{document} 之后立即插入代码块。"""
     match = re.search(r'\\begin\s*\{document\}', latex_code)
     if match:
         pos = match.end()

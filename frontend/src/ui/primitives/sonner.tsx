@@ -1,8 +1,13 @@
+/**
+ * Toast 通知组件 - 基于 Sonner 封装
+ * 渲染全局 Toast 通知容器，自动跟随主题切换
+ */
 import { useTheme } from "next-themes"
 import { Toaster as Sonner } from "sonner"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
+/** Toast 通知容器，集成主题系统，统一管理全局通知样式 */
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
 

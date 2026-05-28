@@ -19,6 +19,9 @@ import { PaperDetailStateBoundary } from "./PaperDetailStateBoundary"
 import { PaperDetailWorkspace } from "./PaperDetailWorkspace"
 import { resolveAvailableModes, resolvePreferredMode } from "../utils/paper-detail-mode-resolution"
 
+/**
+ * 格式化作者列表为逗号分隔字符串
+ */
 function formatAuthors(authors: unknown[], fallback: string) {
   if (!authors.length) {
     return fallback
@@ -39,6 +42,9 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
+/**
+ * 从错误对象中提取可显示的错误消息
+ */
 function extractActionErrorMessage(error: unknown): string | null {
   if (typeof error === "string") {
     return error
@@ -69,10 +75,13 @@ function extractActionErrorMessage(error: unknown): string | null {
   return null
 }
 
+/** 论文详情页 Props */
 interface PaperDetailScreenProps {
+  /** 论文 ID（可为 null，此时渲染为空） */
   paperId: string | null
 }
 
+/** 互动数据（点赞、收藏）的本地变更补丁 */
 interface PaperEngagementPatch {
   paperId: string
   likeCount: number
@@ -80,6 +89,12 @@ interface PaperEngagementPatch {
   viewerState: ViewerState
 }
 
+/**
+ * 论文详情页主组件
+ * 组合 Header + Workspace + StateBoundary 形成完整的论文详情视图。
+ * 管理阅读模式选择、下载、点赞/取消点赞和收藏状态变更。
+ * 调用 GET /api/papers/{paperId} 获取详情，通过 usePaperDetail hook 驱动
+ */
 export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const { t } = useTranslation()
   const { isAuthenticated } = useAuth()
@@ -106,6 +121,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
   const [engagementPatch, setEngagementPatch] = useState<PaperEngagementPatch | null>(null)
   const [mobileAnalysisJumpRequest, setMobileAnalysisJumpRequest] = useState(0)
 
+  // 解析可用阅读模式和首选模式
   const availableModes = useMemo<CommunityPaperReaderMode[]>(
     () => resolveAvailableModes(paper, preview, reader),
     [paper, preview, reader],
@@ -122,6 +138,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
       ? selectedModeState.mode
       : derivedPreferredMode
 
+  /** 切换阅读模式 */
   function handleSelectMode(nextMode: CommunityPaperReaderMode) {
     setSelectedModeState({
       paperId,
@@ -129,6 +146,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     })
   }
 
+  /** 创建下载会话并打开下载链接 */
   async function handleDownload() {
     if (!paperId) {
       return
@@ -146,6 +164,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
     }
   }
 
+  /** 点赞/取消点赞（乐观更新） */
   async function handleLikeToggle(activePaper: CommunityPaper) {
     if (!paperId || likePending) {
       return
@@ -217,6 +236,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
           : t("community.likes.toast.unliked"),
       )
     } catch (likeError) {
+      // 回滚乐观更新
       setEngagementPatch({
         paperId: activePaper.id,
         likeCount: currentLikeCount,
@@ -249,6 +269,7 @@ export function PaperDetailScreen({ paperId }: PaperDetailScreenProps) {
           activePaper.abstract_raw ||
           activePaper.abstract_translated ||
           t("community.detail.abstractUnavailable")
+        // 应用乐观互动数据补丁
         const effectivePaper: CommunityPaper =
           engagementPatch?.paperId === activePaper.id
             ? {

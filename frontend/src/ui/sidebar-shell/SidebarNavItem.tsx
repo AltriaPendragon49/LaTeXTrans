@@ -1,6 +1,11 @@
+/**
+ * 侧边栏导航项组件
+ * 基于 React Router NavLink，渲染带图标和文字的侧边栏导航链接
+ */
 import type { ReactNode } from "react"
 import { NavLink } from "react-router-dom"
 
+/** 侧边栏导航项，支持 collapsed 折叠模式（仅显示图标），active 高亮状态 */
 export function SidebarNavItem({
   to,
   icon,

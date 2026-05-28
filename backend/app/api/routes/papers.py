@@ -37,6 +37,7 @@ def _apply_viewer_aware_cache_headers(
     current_user: Optional[Dict[str, Any]],
     public_cache_control: str,
 ) -> None:
+    """根据用户是否登录设置区分权限的缓存头"""
     response.headers["Vary"] = "Authorization, Cookie"
     if current_user:
         response.headers["Cache-Control"] = "private, no-store"
@@ -48,6 +49,7 @@ def _ensure_paper_authorized(
     current_user: Optional[Dict[str, Any]],
     action: str,
 ) -> None:
+    """校验用户对论文资源的操作权限，未授权时抛出 401 或 403"""
     decision = authorize(current_user, "paper", action)
     if decision.allowed:
         return
@@ -66,6 +68,7 @@ def _ensure_paper_authorized(
 
 
 class AssetSummary(BaseModel):
+    """资源摘要"""
     id: str
     task_id: Optional[str] = None
     asset_type: str
@@ -75,12 +78,14 @@ class AssetSummary(BaseModel):
 
 
 class ViewerState(BaseModel):
+    """用户对论文的操作状态"""
     liked: bool = False
     favorited: bool = False
     favorite_folder_count: int = 0
 
 
 class FavoriteFolderSummary(BaseModel):
+    """收藏夹摘要"""
     id: str
     name: str
     paper_count: int = 0
@@ -89,29 +94,35 @@ class FavoriteFolderSummary(BaseModel):
 
 
 class FavoriteFolderListResponse(BaseModel):
+    """收藏夹列表响应体"""
     items: List[FavoriteFolderSummary]
 
 
 class FavoriteFolderMutationRequest(BaseModel):
+    """收藏夹创建/重命名请求体"""
     name: str
 
 
 class FavoriteFolderMutationResponse(BaseModel):
+    """收藏夹变更响应体"""
     folder: FavoriteFolderSummary
 
 
 class FavoriteFolderDeleteResponse(BaseModel):
+    """删除收藏夹响应体"""
     folder_id: str
     deleted: bool = True
 
 
 class FavoriteFolderPaperListResponse(BaseModel):
+    """收藏夹论文列表响应体"""
     folder: FavoriteFolderSummary
     items: List["PaperSummary"]
     total: int
 
 
 class PaperFavoriteFolderStateResponse(BaseModel):
+    """论文收藏夹状态响应体"""
     paper_id: str
     items: List[FavoriteFolderSummary]
     selected_folder_ids: List[str]
@@ -120,10 +131,12 @@ class PaperFavoriteFolderStateResponse(BaseModel):
 
 
 class PaperFavoriteFolderUpdateRequest(BaseModel):
+    """更新论文收藏夹请求体"""
     folder_ids: List[str] = []
 
 
 class PaperFavoriteFolderUpdateResponse(BaseModel):
+    """更新论文收藏夹响应体"""
     paper_id: str
     favorited: bool
     favorite_folder_count: int
@@ -132,12 +145,14 @@ class PaperFavoriteFolderUpdateResponse(BaseModel):
 
 
 class PaperLikeResponse(BaseModel):
+    """论文点赞响应体"""
     paper_id: str
     liked: bool
     like_count: int
 
 
 class PaperSummary(BaseModel):
+    """论文摘要信息"""
     id: str
     source: str
     arxiv_id: Optional[str] = None
@@ -168,17 +183,20 @@ class PaperSummary(BaseModel):
 
 
 class TaskSummary(BaseModel):
+    """任务摘要信息"""
     task_id: Optional[str] = None
     status: Optional[str] = None
 
 
 class PaperSubmitResponse(BaseModel):
+    """论文提交通用响应体"""
     paper: PaperSummary
     task: TaskSummary
     admission_result: str
 
 
 class PaperListResponse(BaseModel):
+    """论文列表分页响应体"""
     items: List[PaperSummary]
     total: int
     offset: int = 0
@@ -189,6 +207,7 @@ class PaperListResponse(BaseModel):
 
 
 class ContentPoolReadinessResponse(BaseModel):
+    """内容池就绪状态响应体"""
     candidate_total: int
     warmed_total: int
     translated_ready_total: int
@@ -200,6 +219,7 @@ class ContentPoolReadinessResponse(BaseModel):
 
 
 class ContentPoolJobEventResponse(BaseModel):
+    """内容池任务事件响应体"""
     timestamp: str
     arxiv_id: str
     stage: str
@@ -210,6 +230,7 @@ class ContentPoolJobEventResponse(BaseModel):
 
 
 class PaperDetailResponse(BaseModel):
+    """论文详情响应体"""
     paper: PaperSummary
     preview: Optional["PaperPreviewBootstrapResponse"] = None
     reader_state: str = "unavailable"
@@ -219,6 +240,7 @@ class PaperDetailResponse(BaseModel):
 
 
 class SimilarPaperItemResponse(BaseModel):
+    """相似论文条目响应体"""
     arxiv_id: str
     title: str
     abstract: str
@@ -228,15 +250,18 @@ class SimilarPaperItemResponse(BaseModel):
 
 
 class SimilarPaperListResponse(BaseModel):
+    """相似论文列表响应体"""
     items: List[SimilarPaperItemResponse]
 
 
 class PaperViewResponse(BaseModel):
+    """论文查看次数响应体"""
     paper_id: str
     view_count: int
 
 
 class PaperTranslateResponse(BaseModel):
+    """论文翻译响应体"""
     paper_id: str
     task_id: str
     status: str
@@ -245,6 +270,7 @@ class PaperTranslateResponse(BaseModel):
 
 
 class PaperPreviewResponse(BaseModel):
+    """论文预览响应体"""
     paper_id: str
     task_id: Optional[str] = None
     asset: AssetSummary
@@ -253,6 +279,7 @@ class PaperPreviewResponse(BaseModel):
 
 
 class PaperPreviewBootstrapResponse(BaseModel):
+    """论文预览引导响应体"""
     paper_id: str
     task_id: Optional[str] = None
     asset: AssetSummary
@@ -261,6 +288,7 @@ class PaperPreviewBootstrapResponse(BaseModel):
 
 
 class PaperDownloadSessionResponse(BaseModel):
+    """论文下载会话响应体"""
     paper_id: str
     asset_id: str
     download_url: str
@@ -271,11 +299,13 @@ PaperDetailResponse.model_rebuild()
 
 
 class PaperImportRequest(BaseModel):
+    """论文导入请求体"""
     source: str = "arxiv"
     arxiv_id: Optional[str] = None
 
 
 class PaperImportResponse(BaseModel):
+    """论文导入响应体"""
     paper_id: str
     reused: bool
     imported: bool
@@ -283,12 +313,14 @@ class PaperImportResponse(BaseModel):
 
 
 class AdminArxivCurationRequest(BaseModel):
+    """管理员 arXiv 内容策展请求体"""
     arxiv_ids: List[str]
     source_language: str = "en"
     target_language: str = "zh"
 
 
 class AdminCurationBatchItemResponse(BaseModel):
+    """管理员内容策展批次条目响应体"""
     job_id: str
     paper_id: Optional[str] = None
     source_type: str
@@ -299,12 +331,14 @@ class AdminCurationBatchItemResponse(BaseModel):
 
 
 class AdminCurationBatchResponse(BaseModel):
+    """管理员内容策展批次响应体"""
     batch_id: str
     status: str
     items: List[AdminCurationBatchItemResponse]
 
 
 class AdminCurationJobHistoryItemResponse(BaseModel):
+    """管理员内容策展历史任务条目响应体"""
     job_id: str
     batch_id: str
     paper_id: Optional[str] = None
@@ -324,33 +358,39 @@ class AdminCurationJobHistoryItemResponse(BaseModel):
 
 
 class AdminCurationJobHistoryResponse(BaseModel):
+    """管理员内容策展历史任务响应体"""
     items: List[AdminCurationJobHistoryItemResponse]
     total: int
 
 
 class AdminDeletePaperResponse(BaseModel):
+    """管理员删除论文响应体"""
     job_id: str
     paper_id: str
     status: str
 
 
 class AdminDeleteCurationJobResponse(BaseModel):
+    """管理员删除策展任务响应体"""
     job_id: str
     paper_id: Optional[str] = None
     status: str
 
 
 class AdminBatchDeleteCurationJobsRequest(BaseModel):
+    """管理员批量删除策展任务请求体"""
     job_ids: List[str]
 
 
 class AdminBatchDeleteCurationJobsFailureResponse(BaseModel):
+    """管理员批量删除策展任务失败条目响应体"""
     job_id: str
     status_code: int
     detail: Optional[str] = None
 
 
 class AdminBatchDeleteCurationJobsResponse(BaseModel):
+    """管理员批量删除策展任务响应体"""
     deleted: List[AdminDeleteCurationJobResponse]
     failed: List[AdminBatchDeleteCurationJobsFailureResponse]
     deleted_count: int
@@ -579,6 +619,7 @@ async def submit_paper(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """提交论文（支持上传 PDF 和 arXiv ID 两种方式）"""
     _ensure_paper_authorized(current_user, "submit")
     if credentials is None or not credentials.credentials:
         raise HTTPException(
@@ -629,6 +670,7 @@ async def submit_paper(
 
 @router.post("/import", response_model=PaperImportResponse)
 async def import_paper(request: PaperImportRequest):
+    """导入或复用已有论文记录"""
     if not request.arxiv_id:
         raise HTTPException(status_code=400, detail="arxiv_id is required")
 
@@ -649,6 +691,7 @@ async def list_papers(
     offset: int = Query(default=0, ge=0),
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
+    """获取社区论文列表（分页）"""
     user_id = str(current_user.get("id")) if isinstance(current_user, dict) and current_user.get("id") else None
     payload = await paper_service.list_community_papers(
         sort=sort,
@@ -671,6 +714,7 @@ async def list_papers(
 async def get_content_pool_readiness(
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """获取社区内容池就绪状态快照"""
     _ensure_paper_authorized(current_user, "content_pool_read")
     return community_content_pool_service.get_content_pool_readiness_snapshot()
 
@@ -681,6 +725,7 @@ async def get_content_pool_job_log(
     limit: int = Query(default=200, ge=1, le=1000),
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """获取内容池任务事件日志"""
     _ensure_paper_authorized(current_user, "content_pool_read")
     return community_content_pool_service.get_content_pool_job_log(arxiv_id=arxiv_id, limit=limit)
 
@@ -693,6 +738,7 @@ async def get_content_pool_job_log(
 async def list_favorite_folders(
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """列出当前用户的收藏夹"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.list_favorite_folders(user_id=user_id)
 
@@ -706,6 +752,7 @@ async def create_favorite_folder(
     request: FavoriteFolderMutationRequest,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """创建收藏夹"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.create_favorite_folder(user_id=user_id, name=request.name)
 
@@ -720,6 +767,7 @@ async def rename_favorite_folder(
     request: FavoriteFolderMutationRequest,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """重命名收藏夹"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.rename_favorite_folder(
         folder_id=folder_id,
@@ -737,6 +785,7 @@ async def delete_favorite_folder(
     folder_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """删除收藏夹"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.delete_favorite_folder(folder_id=folder_id, user_id=user_id)
 
@@ -750,6 +799,7 @@ async def get_favorite_folder_papers(
     folder_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """获取指定收藏夹内的论文列表"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.get_favorite_folder_papers(folder_id=folder_id, user_id=user_id)
 
@@ -764,6 +814,7 @@ async def submit_admin_arxiv_curation_batch(
     request: AdminArxivCurationRequest,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员提交 arXiv 批量内容策展任务"""
     _ensure_local_admin(current_user)
     return await paper_service.submit_admin_arxiv_curation_batch(
         arxiv_ids=request.arxiv_ids,
@@ -782,6 +833,7 @@ async def get_admin_curation_batch(
     batch_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员查询策展批次状态"""
     _ensure_local_admin(current_user)
     return await paper_service.get_admin_curation_batch(batch_id=batch_id)
 
@@ -796,6 +848,7 @@ async def list_admin_curation_jobs(
     q: Optional[str] = Query(default=None),
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员查询策展任务历史列表"""
     _ensure_local_admin(current_user)
     normalized_status = str(status or "").strip().lower()
     status_filter = None if normalized_status in {"", "all"} else normalized_status
@@ -816,6 +869,7 @@ async def submit_admin_upload_curation_batch(
     request: Request,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员上传文件进行批量内容策展"""
     _ensure_local_admin(current_user)
     form = await request.form()
     files = [
@@ -843,6 +897,7 @@ async def delete_admin_curation_job(
     job_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员删除指定策展任务"""
     _ensure_local_admin(current_user)
     return await paper_service.delete_admin_curation_job(
         job_id=job_id,
@@ -858,6 +913,7 @@ async def batch_delete_admin_curation_jobs(
     request: AdminBatchDeleteCurationJobsRequest,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员批量删除策展任务"""
     _ensure_local_admin(current_user)
     return await paper_service.batch_delete_admin_curation_jobs(
         job_ids=request.job_ids,
@@ -874,6 +930,7 @@ async def delete_admin_community_paper(
     paper_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """管理员删除社区论文"""
     _ensure_local_admin(current_user)
     return await paper_service.delete_community_paper_admin(
         paper_id=paper_id,
@@ -890,6 +947,7 @@ async def get_paper_favorite_folders(
     paper_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """获取论文关联的收藏夹状态"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.get_paper_favorite_folders(paper_id=paper_id, user_id=user_id)
 
@@ -904,6 +962,7 @@ async def update_paper_favorite_folders(
     request: PaperFavoriteFolderUpdateRequest,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """更新论文的收藏夹归属"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.update_paper_favorite_folders(
         paper_id=paper_id,
@@ -921,6 +980,7 @@ async def like_paper(
     paper_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """点赞论文"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.like_paper(paper_id=paper_id, user_id=user_id)
 
@@ -934,6 +994,7 @@ async def unlike_paper(
     paper_id: str,
     current_user: Optional[Dict[str, Any]] = Depends(require_current_user),
 ):
+    """取消点赞论文"""
     user_id = str((current_user or {}).get("id") or "").strip()
     return await paper_service.unlike_paper(paper_id=paper_id, user_id=user_id)
 
@@ -944,6 +1005,7 @@ async def get_paper_detail(
     response: Response,
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
+    """获取社区论文详情"""
     user_id = str(current_user.get("id")) if isinstance(current_user, dict) and current_user.get("id") else None
     payload = await paper_service.get_community_paper_detail(
         paper_id=paper_id,
@@ -969,6 +1031,7 @@ async def get_paper_similar(
     response: Response,
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
+    """获取相似论文列表"""
     _ = current_user
     payload = await paper_service.get_community_paper_similar(paper_id=paper_id)
     response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
@@ -982,6 +1045,7 @@ async def record_paper_view(
     response: Response,
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
+    """记录论文查看次数"""
     user_id = str((current_user or {}).get("id") or "").strip() or None
     anon_id = str(request.headers.get("X-Community-Anonymous-Id") or "").strip() or None
     if not anon_id:
@@ -1008,6 +1072,7 @@ async def translate_paper(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
 ):
+    """启动社区论文翻译任务"""
     return await paper_service.start_paper_translation(
         paper_id=paper_id,
         request=request,
@@ -1018,6 +1083,7 @@ async def translate_paper(
 
 @router.get("/{paper_id}/preview", response_model=PaperPreviewResponse)
 async def preview_paper(paper_id: str, response: Response):
+    """获取论文 HTML 预览"""
     payload = await paper_service.get_paper_preview(paper_id=paper_id)
     response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
     return payload
@@ -1025,6 +1091,7 @@ async def preview_paper(paper_id: str, response: Response):
 
 @router.get("/{paper_id}/translated-pdf")
 async def preview_translated_paper_pdf(paper_id: str, request: Request):
+    """预览翻译后的 PDF 文件"""
     payload = await paper_service.resolve_paper_translated_pdf_preview(paper_id=paper_id)
     asset = payload["asset"]
     filename = asset.get("file_name") or f"{paper_id}.pdf"
@@ -1045,6 +1112,7 @@ async def preview_translated_paper_pdf(paper_id: str, request: Request):
 
 @router.get("/{paper_id}/translated-thumbnail")
 async def preview_translated_paper_thumbnail(paper_id: str):
+    """获取翻译后的 PDF 缩略图"""
     payload = await paper_service.resolve_paper_translated_pdf_preview(paper_id=paper_id)
     asset = payload["asset"]
     cache_seed = f"translated:{paper_id}:{asset.get('id') or asset.get('file_name') or paper_id}"
@@ -1061,6 +1129,7 @@ async def preview_translated_paper_thumbnail(paper_id: str):
 
 @router.get("/{paper_id}/source-pdf")
 async def preview_source_paper_pdf(paper_id: str, request: Request):
+    """预览原始源 PDF 文件"""
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
 
     if payload.get("signed_url"):
@@ -1104,6 +1173,7 @@ async def preview_source_paper_pdf(paper_id: str, request: Request):
 
 @router.get("/{paper_id}/source-download")
 async def download_source_paper_pdf(paper_id: str, request: Request):
+    """下载原始源 PDF 文件"""
     payload = await paper_service.resolve_paper_source_pdf_preview(
         paper_id=paper_id,
         content_disposition="attachment",
@@ -1144,6 +1214,7 @@ async def download_source_paper_pdf(paper_id: str, request: Request):
 
 @router.get("/{paper_id}/source-thumbnail")
 async def preview_source_paper_thumbnail(paper_id: str):
+    """获取源 PDF 缩略图"""
     payload = await paper_service.resolve_paper_source_pdf_preview(paper_id=paper_id)
 
     if payload.get("signed_url"):
@@ -1174,6 +1245,7 @@ async def preview_source_paper_thumbnail(paper_id: str):
 
 @router.post("/{paper_id}/download-session", response_model=PaperDownloadSessionResponse)
 async def create_download_session(paper_id: str):
+    """创建论文下载会话，生成带签名的下载链接"""
     return await paper_service.create_paper_download_session(paper_id=paper_id)
 
 
@@ -1182,6 +1254,7 @@ async def download_paper(
     paper_id: str,
     token: str = Query(..., min_length=8),
 ):
+    """通过下载令牌下载论文文件"""
     payload = await paper_service.resolve_paper_download(paper_id=paper_id, token=token)
     asset = payload["asset"]
     if payload.get("signed_url"):

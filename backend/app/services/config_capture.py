@@ -1,6 +1,4 @@
-"""
-Runtime config capture service for translation tasks.
-"""
+"""运行时配置快照捕获服务，用于翻译任务"""
 
 from __future__ import annotations
 
@@ -17,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _json_safe(value: Any) -> Any:
-    """Convert arbitrary objects into JSON-serializable values."""
+    """将任意对象转换为 JSON 可序列化的值"""
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, Path):
@@ -44,12 +42,14 @@ def _json_safe(value: Any) -> Any:
 
 
 def _mask_api_key(api_key: Optional[str]) -> Optional[str]:
+    """对 API Key 进行脱敏处理，返回固定长度的星号串"""
     if not api_key:
         return None
     return "*" * 20
 
 
 def _sanitize_llm_config(llm_config: Mapping[str, Any]) -> Dict[str, Any]:
+    """清洗 LLM 配置，对 API Key 脱敏"""
     return {
         "base_url": _json_safe(llm_config.get("base_url", "")),
         "model": _json_safe(llm_config.get("model", "")),
@@ -59,6 +59,7 @@ def _sanitize_llm_config(llm_config: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def _sanitize_agent_config(agent_config: Mapping[str, Any]) -> Dict[str, Any]:
+    """清洗 Agent 配置，对 API Key 脱敏"""
     sanitized = _json_safe(agent_config)
     if not isinstance(sanitized, dict):
         return {"raw": sanitized}
@@ -77,10 +78,17 @@ def capture_task_config(
     llm_config: Mapping[str, Any],
     additional_info: Optional[Mapping[str, Any]] = None,
 ) -> Optional[Path]:
-    """
-    Capture a runtime config snapshot for a translation task.
+    """为翻译任务捕获运行时配置快照
 
-    Returns the output file path on success, or None when skipped/failed.
+    参数:
+        task_id: 任务 ID
+        advanced_config: 高级配置
+        agent_config: Agent 配置
+        llm_config: LLM 配置
+        additional_info: 附加信息（可选）
+
+    返回:
+        成功时返回输出文件路径，跳过或失败时返回 None
     """
     settings = get_settings()
     if not settings.enable_task_config_capture:
@@ -94,7 +102,7 @@ def capture_task_config(
         info = {"raw": info}
 
     arxiv_id = info.get("arxiv_id")
-    
+
     now = get_cst_now()
 
     filename = f"{task_id}.json"

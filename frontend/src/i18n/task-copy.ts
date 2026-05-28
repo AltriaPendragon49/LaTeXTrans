@@ -1,7 +1,14 @@
+/**
+ * 任务文案翻译工具
+ * 根据任务状态、阶段、详情代码和失败原因生成对应的国际化文案
+ */
+
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
+/** 任务详情参数类型 */
 export type TaskDetailParams = Record<string, string | number | boolean | null> | null | undefined
 
+/** getTaskCopy 的输入参数 */
 export interface TaskCopyInput {
   status?: string | null
   stage?: string | null
@@ -11,6 +18,7 @@ export interface TaskCopyInput {
   warnings?: string | null
 }
 
+/** 状态 -> 国际化 key 映射 */
 const statusKeyMap: Record<string, string> = {
   pending: "task.status.pending",
   queued: "task.status.queued",
@@ -22,6 +30,7 @@ const statusKeyMap: Record<string, string> = {
   structure_invalid: "task.status.structureInvalid",
 }
 
+/** 阶段 -> 国际化 key 映射 */
 const stageKeyMap: Record<string, string> = {
   idle: "task.stage.idle",
   downloading: "task.stage.downloading",
@@ -34,6 +43,7 @@ const stageKeyMap: Record<string, string> = {
   done: "task.stage.done",
 }
 
+/** 详情代码 -> 国际化 key 映射 */
 const detailKeyMap: Record<string, string> = {
   task_queued: "task.detail.taskQueued",
   task_waiting: "task.detail.taskWaiting",
@@ -60,11 +70,13 @@ const detailKeyMap: Record<string, string> = {
   task_rate_limited_retrying: "task.detail.rateLimitedRetrying",
 }
 
+/** 失败原因 -> 国际化 key 映射 */
 const failureKeyMap: Record<string, string> = {
   structure_env_stack_mismatch: "task.failure.structureEnvStackMismatch",
   structure_latexwalker_unexpected_closing_env: "task.failure.structureUnexpectedClosingEnv",
 }
 
+/** 需要显示 current/total 值的详情代码 */
 const valueDetailCodes = new Set([
   "translation_running",
   "translation_retry_failed_chunks",
@@ -73,19 +85,23 @@ const valueDetailCodes = new Set([
   "translation_apply_fallback",
 ])
 
+/** 需要显示百分比的详情代码 */
 const percentDetailCodes = new Set([
   "download_source_progress",
   "download_pdf_progress",
 ])
 
+/** 需要显示警告文本的详情代码 */
 const warningDetailCodes = new Set([
   "formatting_warning",
 ])
 
+/** 标准化状态值为小写 */
 function normalizeStatus(status?: string | null) {
   return status?.toLowerCase() ?? ""
 }
 
+/** 标准化阶段值，"extracting" 映射为 "downloading" */
 function normalizeStage(stage?: string | null) {
   if (!stage) {
     return ""
@@ -93,6 +109,7 @@ function normalizeStage(stage?: string | null) {
   return stage === "extracting" ? "downloading" : stage.toLowerCase()
 }
 
+/** 根据详情代码构建插值参数 */
 function getDetailValues(detailCode?: string | null, detailParams?: TaskDetailParams) {
   if (!detailParams) {
     return undefined
@@ -134,6 +151,7 @@ function getDetailValues(detailCode?: string | null, detailParams?: TaskDetailPa
   return params
 }
 
+/** 检查是否需要/具备特定详情代码所需的插值参数 */
 function hasRequiredDetailValues(
   detailCode?: string | null,
   detailValues?: Record<string, string | number | boolean | null>,
@@ -157,6 +175,12 @@ function hasRequiredDetailValues(
   return true
 }
 
+/**
+ * 根据任务状态和阶段获取状态标签
+ * @param translate - i18n 翻译函数
+ * @param status - 任务状态
+ * @param stage - 任务阶段
+ */
 export function getTaskStatusLabel(
   translate: Translate,
   status?: string | null,
@@ -165,6 +189,7 @@ export function getTaskStatusLabel(
   const normalizedStatus = normalizeStatus(status)
   const normalizedStage = normalizeStage(stage)
 
+  // processing 状态根据阶段给出更精细的描述
   if (normalizedStatus === "processing") {
     if (normalizedStage === "downloading" || normalizedStage === "downloading_pdf") {
       return translate("task.status.downloading")
@@ -178,12 +203,22 @@ export function getTaskStatusLabel(
   return key ? translate(key) : (status ?? "")
 }
 
+/**
+ * 获取任务阶段标签
+ * @param translate - i18n 翻译函数
+ * @param stage - 阶段名
+ */
 export function getTaskStageLabel(translate: Translate, stage?: string | null) {
   const normalizedStage = normalizeStage(stage)
   const key = stageKeyMap[normalizedStage]
   return key ? translate(key) : (stage ?? "")
 }
 
+/**
+ * 获取任务失败原因标签
+ * @param translate - i18n 翻译函数
+ * @param failureReasonCode - 失败原因代码
+ */
 export function getTaskFailureLabel(
   translate: Translate,
   failureReasonCode?: string | null,
@@ -192,6 +227,13 @@ export function getTaskFailureLabel(
   return key ? translate(key) : translate("task.failure.generic")
 }
 
+/**
+ * 获取任务详情标签
+ * @param translate - i18n 翻译函数
+ * @param detailCode - 详情代码
+ * @param detailParams - 详情参数
+ * @param stage - 当前阶段（detailCode 为空时回退到阶段标签）
+ */
 export function getTaskDetailLabel(
   translate: Translate,
   detailCode?: string | null,
@@ -215,6 +257,12 @@ export function getTaskDetailLabel(
   return translate(key, detailValues)
 }
 
+/**
+ * 聚合获取任务的所有文案标签
+ * @param translate - i18n 翻译函数
+ * @param input - 任务状态、阶段、详情代码等信息
+ * @returns 包含 statusLabel、stageLabel、detailLabel、failureLabel 的对象
+ */
 export function getTaskCopy(
   translate: Translate,
   {

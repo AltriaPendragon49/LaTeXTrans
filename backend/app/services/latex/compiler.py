@@ -1,11 +1,13 @@
 """
-Intelligent LaTeX Compiler with Fallback
+智能 LaTeX 编译器（带回退机制）
 
-Implements multi-stage compilation strategy:
-1. Try pdflatex first
-2. If fails or has errors, try xelatex
-3. Compare error counts from .log files
-4. Select PDF with fewer errors or return best available
+实现多阶段编译策略：
+1. 首先尝试 pdflatex
+2. 如果失败或有错误，尝试 xelatex
+3. 比较 .log 文件中的错误数量
+4. 选择错误更少的 PDF 或返回最佳可用结果
+
+支持 Host 和 Docker 两种运行时模式，以及 CJK/西里尔/拉丁语言族的自动引擎选择。
 """
 
 import os
@@ -46,26 +48,44 @@ _BIBLIOGRAPHY_DRIVER_RE = re.compile(r"\\(?:bibliography|addbibresource)\b|\\pri
 
 
 class LatexExecutor(Protocol):
-    """Build final subprocess argv from an already constructed LaTeX command."""
+    """LaTeX 执行器接口协议 —— 从已构建的 LaTeX 命令生成最终的子进程参数列表。"""
 
     def prepare_command(self, cmd: List[str], cwd: Path) -> List[str]:
         ...
 
 
 class HostLatexExecutor:
-    """Preserve existing behavior by running commands directly on host."""
+    """主机 LaTeX 执行器 —— 直接在宿主机上运行命令，保留原有行为。"""
 
     def prepare_command(self, cmd: List[str], cwd: Path) -> List[str]:
+        """直接返回原始命令，不做任何包装转换。"""
         return cmd
 
 
 class DockerLatexExecutor:
-    """Wrap LaTeX commands with docker run while preserving command arguments."""
+    """Docker LaTeX 执行器 —— 将 LaTeX 命令包装为 docker run 调用，同时保留命令参数。
+
+    自动处理路径映射（将宿主机路径映射到容器内路径）和输出目录转换。
+    """
 
     def __init__(self, image: str):
+        """初始化 Docker 执行器。
+
+        Args:
+            image: Docker 镜像名称
+        """
         self.image = image or LATEX_DOCKER_IMAGE_DEFAULT
 
     def prepare_command(self, cmd: List[str], cwd: Path) -> List[str]:
+        """将 LaTeX 命令包装为 docker run 调用，处理路径映射。
+
+        Args:
+            cmd: LaTeX 命令参数列表
+            cwd: 工作目录
+
+        Returns:
+            包装后的 docker 命令参数列表
+        """
         cwd_path = cwd.resolve()
         rewritten_cmd, extra_mounts = self._rewrite_command_paths(cmd, cwd_path)
         docker_cmd = [
@@ -85,6 +105,17 @@ class DockerLatexExecutor:
         return docker_cmd
 
     def _rewrite_command_paths(self, cmd: List[str], cwd: Path) -> Tuple[List[str], List[Tuple[Path, str]]]:
+        """重写命令路径，将宿主机路径转换为 Docker 容器内路径。
+
+        处理可执行文件名称（去掉 .exe 后缀）、-outdir 和 -output-directory 参数。
+
+        Args:
+            cmd: 原始命令参数列表
+            cwd: 工作目录
+
+        Returns:
+            (重写后的命令, 额外挂载列表)
+        """
         rewritten = list(cmd)
         mounts: List[Tuple[Path, str]] = []
 
@@ -111,6 +142,20 @@ class DockerLatexExecutor:
 
     @staticmethod
     def _map_host_path(host_path: Path, cwd: Path, mounts: List[Tuple[Path, str]], default_container_path: str) -> str:
+        """将宿主机路径映射到容器内路径。
+
+        如果路径在 cwd 下，计算相对路径并映射到 /work/ 下；
+        否则添加显式挂载并使用默认容器路径。
+
+        Args:
+            host_path: 宿主机路径
+            cwd: 工作目录
+            mounts: 挂载列表（会被修改以添加额外挂载）
+            default_container_path: 默认容器内路径
+
+        Returns:
+            容器内路径
+        """
         try:
             relative = host_path.relative_to(cwd)
             relative_posix = relative.as_posix()
@@ -122,6 +167,14 @@ class DockerLatexExecutor:
 
 
 def _get_latex_executor() -> LatexExecutor:
+    """根据环境变量获取 LaTeX 执行器实例。
+
+    检查 LATEX_RUNTIME_MODE 环境变量（host/docker），
+    在容器内或 Docker 不可用时自动回退到宿主机执行模式。
+
+    Raises:
+        RuntimeError: 当运行时模式无效或 Docker 不可用且宿主机也没有 LaTeX 时
+    """
     runtime_mode = os.getenv(LATEX_RUNTIME_MODE_ENV, LATEX_RUNTIME_MODE_DOCKER).strip().lower()
     if runtime_mode == LATEX_RUNTIME_MODE_HOST:
         return HostLatexExecutor()
@@ -347,13 +400,11 @@ def _is_host_latex_available() -> bool:
 
 
 def _kill_process_tree(pid: int) -> None:
-    """
-    Kill a process and all its children (entire process tree).
-    
-    On Windows, subprocess timeout only kills the parent process,
-    leaving child processes (e.g. xelatex spawned by latexmk) as orphans.
-    This function uses 'taskkill /T /F' on Windows to kill the entire tree.
-    On Unix, it sends SIGTERM to the process group.
+    """终止一个进程及其所有子进程（整个进程树）。
+
+    在 Windows 上，subprocess timeout 仅会终止父进程，导致子进程
+    （如 latexmk 派生的 xelatex）成为孤儿进程。此函数在 Windows 上
+    使用 'taskkill /T /F' 终止整个进程树，在 Unix 上向进程组发送 SIGTERM。
     """
     try:
         if platform.system() == "Windows":
@@ -897,7 +948,11 @@ def _escape_bare_percent_in_texttt_file(tex_path: Path) -> int:
 
 
 class CompilationResult:
-    """Result of a compilation attempt"""
+    """编译尝试的结果数据类。
+
+    记录编译是否成功、PDF 路径、日志路径、错误数量/内容、
+    质量问题和文献引用问题等详细信息。
+    """
     
     def __init__(
         self,
@@ -1296,22 +1351,21 @@ def compile_latex(
     engine: str = "pdflatex",
     max_runs: int = 2
 ) -> CompilationResult:
-    """
-    Compile LaTeX file with latexmk (intelligent build tool)
-    
-    Uses latexmk for smarter compilation that handles:
-    - Multiple compilation passes automatically
-    - BibTeX/biber integration
-    - Dependency tracking
-    
+    """使用 latexmk 编译 LaTeX 文件（智能构建工具）。
+
+    使用 latexmk 进行更智能的编译，处理：
+    - 自动多次编译通道
+    - BibTeX/biber 集成
+    - 依赖跟踪
+
     Args:
-        tex_file: Path to .tex file
-        output_dir: Output directory
-        engine: LaTeX engine ("pdflatex", "xelatex", or "lualatex")
-        max_runs: Maximum compilation runs (ignored, latexmk handles this)
-    
+        tex_file: .tex 文件路径
+        output_dir: 输出目录
+        engine: LaTeX 引擎（"pdflatex", "xelatex", 或 "lualatex"）
+        max_runs: 最大编译次数（已废弃，latexmk 自动处理）
+
     Returns:
-        CompilationResult object
+        CompilationResult 对象
     """
     tex_path = Path(tex_file).resolve()
     out_path = Path(output_dir).resolve()
@@ -1478,8 +1532,18 @@ async def compile_latex_async(
     on_process_end: Optional[Callable[[], None]] = None,
     compilation_timeout: int = 300,
 ) -> CompilationResult:
-    """
-    Async variant of compile_latex() using asyncio subprocess primitives.
+    """compile_latex() 的异步变体，使用 asyncio 子进程原语实现。
+
+    支持进程启动/结束回调、可配置超时和异步取消信号处理。
+
+    Args:
+        tex_file: .tex 文件路径
+        output_dir: 输出目录
+        engine: LaTeX 引擎
+        max_runs: 最大编译次数（已废弃）
+        on_process_start: 进程启动时的回调函数(pid, engine)
+        on_process_end: 进程结束时的回调函数
+        compilation_timeout: 编译超时时间（秒）
     """
     tex_path = Path(tex_file).resolve()
     out_path = Path(output_dir).resolve()
@@ -1608,9 +1672,9 @@ def _compile_latex_direct(
     engine: str = "pdflatex",
     max_runs: int = 2
 ) -> CompilationResult:
-    """
-    Fallback: Compile LaTeX file directly with pdflatex/xelatex
-    Used when latexmk is not available.
+    """回退方案：直接使用 pdflatex/xelatex 编译 LaTeX 文件。
+
+    当 latexmk 不可用时使用此函数。
     """
     tex_path = Path(tex_file).resolve()
     tex_filename = tex_path.name
@@ -2646,24 +2710,22 @@ def compile_with_intelligent_fallback(
 
 
 def compile_with_fallback(tex_file: str, output_dir: str) -> Dict:
-    """
-    Intelligent LaTeX compilation with fallback strategy (backward compatible)
-    
-    This function is kept for backward compatibility.
-    It now delegates to compile_with_intelligent_fallback.
-    
-    Strategy:
-    1. Auto-detect document language
-    2. For CJK: XeLaTeX -> LuaLaTeX -> PDFLaTeX
-    3. For Latin: PDFLaTeX -> XeLaTeX -> LuaLaTeX
-    4. Try each engine, return best result
-    
+    """智能 LaTeX 编译（带回退策略，向后兼容）。
+
+    此函数保留用于向后兼容，现在委托给 compile_with_intelligent_fallback。
+
+    策略:
+    1. 自动检测文档语言
+    2. CJK 文档: XeLaTeX -> LuaLaTeX -> PDFLaTeX
+    3. 拉丁文档: PDFLaTeX -> XeLaTeX -> LuaLaTeX
+    4. 依次尝试每个引擎，返回最佳结果
+
     Args:
-        tex_file: Path to .tex file
-        output_dir: Output directory
-    
+        tex_file: .tex 文件路径
+        output_dir: 输出目录
+
     Returns:
-        Dictionary with pdf_path, status, engine, error_count, warnings, errors
+        包含 pdf_path, status, engine, error_count, warnings, errors 的字典
     """
     return compile_with_intelligent_fallback(tex_file, output_dir)
 
@@ -3125,12 +3187,18 @@ def compile_with_origin_cli_parity(
     output_latex_dir: str,
     target_language: Optional[str] = None,
 ) -> Dict:
-    """
-    Legacy CLI compile order with a discardable health branch.
+    """旧版 CLI 编译顺序，带有可丢弃的健康检查分支。
 
-    The baseline remains pdflatex-first and accepts any produced PDF. Targeted
-    health repairs run only in a temporary project copy and fall back to the
-    baseline result on failure.
+    基线保持 pdflatex 优先，并接受任何产生的 PDF。
+    目标健康修复仅在临时项目副本中运行，失败时回退到基线结果。
+
+    Args:
+        tex_file: .tex 文件路径
+        output_latex_dir: LaTeX 输出目录
+        target_language: 目标语言代码
+
+    Returns:
+        包含 pdf_path, status, engine, error_count, warnings, errors 的字典
     """
     logger.info("Starting origin CLI parity compilation for %s", tex_file)
 
@@ -3170,19 +3238,26 @@ def compile_with_origin_cli_parity(
 
 
 class LaTeXCompiler:
+    """LaTeX 编译器封装类 —— 为与原型系统向后兼容而保留。
+
+    自动查找主 tex 文件并使用带回退策略的智能编译方法。
     """
-    LaTeX Compiler wrapper for backward compatibility with prototype system
-    """
-    
+
     def __init__(self, output_latex_dir: str):
-        self.output_latex_dir = output_latex_dir
-    
-    def compile(self) -> Optional[str]:
+        """初始化编译器。
+
+        Args:
+            output_latex_dir: 输出目录（包含 .tex 文件）
         """
-        Compile LaTeX document in the output directory
-        
+        self.output_latex_dir = output_latex_dir
+
+    def compile(self) -> Optional[str]:
+        """编译输出目录中的 LaTeX 文档。
+
+        使用智能主 tex 文件检测，并调用 compile_with_fallback 进行编译。
+
         Returns:
-            Path to PDF file or None if compilation failed
+            PDF 文件路径，如果编译失败则返回 None
         """
         # Use intelligent main tex file detection
         main_tex = find_main_tex_file(self.output_latex_dir)

@@ -1,14 +1,34 @@
+/**
+ * 编辑器外壳组件
+ * 渲染表单式编辑器容器，包含工具栏、输入区和操作按钮区
+ */
 import type { FormHTMLAttributes, ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** ComposerShell 组件 Props */
 interface ComposerShellProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "title"> {
+  /**
+   * 顶部工具栏区域
+   */
   toolbar?: ReactNode
+  /**
+   * 输入区右侧操作槽位（如发送按钮）
+   */
   actionSlot?: ReactNode
+  /**
+   * 底部脚注区域
+   */
   footer?: ReactNode
+  /**
+   * 主体区域额外样式类名
+   */
   bodyClassName?: string
 }
 
+/**
+ * 编辑器外壳组件，顶层为 form 元素，包含可选的工具栏、内容区和底部脚注
+ */
 export function ComposerShell({
   toolbar,
   actionSlot,

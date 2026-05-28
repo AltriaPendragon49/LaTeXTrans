@@ -1,3 +1,7 @@
+/**
+ * 编辑风格标签页组件
+ * 基于 Tabs 封装，提供编辑风格专属的圆角标签页样式
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -7,10 +11,12 @@ type EditorialTabsProps = React.ComponentProps<typeof Tabs>
 type EditorialTabsListProps = React.ComponentProps<typeof TabsList>
 type EditorialTabsTriggerProps = React.ComponentProps<typeof TabsTrigger>
 
+/** 编辑风格 Tabs 根组件，直接代理到基础 Tabs */
 export function EditorialTabs(props: EditorialTabsProps) {
   return <Tabs {...props} />
 }
 
+/** 编辑风格标签列表，带圆角边框和阴影 */
 export function EditorialTabsList({ className, ...props }: EditorialTabsListProps) {
   return (
     <TabsList
@@ -23,6 +29,7 @@ export function EditorialTabsList({ className, ...props }: EditorialTabsListProp
   )
 }
 
+/** 编辑风格标签触发器，active 状态有卡片高亮效果 */
 export function EditorialTabsTrigger({ className, ...props }: EditorialTabsTriggerProps) {
   return (
     <TabsTrigger

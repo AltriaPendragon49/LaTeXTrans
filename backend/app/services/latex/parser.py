@@ -1,11 +1,11 @@
 """
-LaTeX Parser with AST Processing
+LaTeX 解析器 —— 基于 AST 处理
 
-Adapted from prototype system with:
-- All Streamlit dependencies removed  
-- Progress callback mechanism added
-- Python logging integrated
-- sys.stderr redirection removed
+从原型系统适配而来，包含以下改动：
+- 移除了所有 Streamlit 依赖
+- 添加了进度回调机制
+- 集成了 Python logging
+- 移除了 sys.stderr 重定向
 """
 
 from typing import Any, Dict, Optional, Callable, List
@@ -18,7 +18,7 @@ import regex
 
 logger = logging.getLogger(__name__)
 
-
+# 编译后的正则表达式常量，用于性能优化
 _PLACEHOLDER_ATOM_RE = re.compile(
     r"<(?:PLACEHOLDER_[^>]+|ENV(?:_BEGIN|_END)?_[^>]+|ITEM_[^>]+|EQROW_[^>]+|INLMATH_[^>]+)>"
 )
@@ -45,6 +45,7 @@ _PREAMBLE_COMMAND_RE = re.compile(
     r"\\(?:usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|def|title|author|date)\b"
 )
 
+# Origin CLI 兼容模式下的不翻译环境列表
 _ORIGIN_CLI_NO_TRANSLATE_ENVS = [
     'equation', 'align', 'align*', 'gather', 'gather*', 'verbatim', 'verbatim*', 'lstlisting*', 'minted', 'minted*',
     'equation*', 'alignat', 'alignat*', 'flalign', 'flalign*', 'split', 'split*', 'cases', 'cases*', 'subequations',
@@ -56,34 +57,53 @@ _ORIGIN_CLI_NO_TRANSLATE_ENVS = [
 
 
 class LatexParser:
+    """LaTeX 文档解析器 —— 将 LaTeX 源文件解析为结构化节段用于后续翻译。
+
+    负责：
+    - 合并 \\input/\\include 引用
+    - 提取并替换新命令定义
+    - 提取环境、标题等结构
+    - 按节拆分文档
+    - 合并过短的节、拆分过长的节
+    """
+
     def __init__(self, dir: str, output_dir: str, origin_cli_parity: bool = False):
+        """初始化 LaTeX 解析器。
+
+        Args:
+            dir: LaTeX 项目目录
+            output_dir: 解析后文件的输出目录
+            origin_cli_parity: 是否启用 origin CLI 兼容模式
+        """
         self.inputs_json = []
         self.envs_json = []
         self.captions_json = []
         self.newcommands_json = []
         self.sections_json = []
-        self.dir = dir  # LaTeX project directory
-        self.output_dir = output_dir  # Output directory for parsed files
+        self.dir = dir
+        self.output_dir = output_dir
         self.env_count = 0
         self.caption_count = 0
         self.origin_cli_parity = bool(origin_cli_parity)
 
     def parse(self, on_progress: Optional[Callable[[str, int, str], None]] = None):
-        """
-        Parse the LaTeX document and return the parsed content.
-        
+        """执行完整的 LaTeX 文档解析流程。
+
+        依次执行：查找主 tex 文件 → 读取并去除注释 → 合并输入文件 →
+        提取新命令 → 按节拆分 → 合并短节 → 切分长节 → 提取环境/标题。
+
         Args:
-            on_progress: Optional callback function(stage, percentage, message)
+            on_progress: 可选的进度回调函数(stage, percentage, message)
         """
         if on_progress:
             on_progress("parsing", 0, "Starting LaTeX parsing...")
-        
+
         logger.info("Starting LaTeX document parsing")
 
         main_tex_file = find_main_tex_file(self.dir)
         if not main_tex_file:
             logger.warning("No main tex file found in directory")
-            print("⚠️ Warning: There is no main tex file to compile in this directory.")
+            print("Warning: There is no main tex file to compile in this directory.")
             return None
 
         if on_progress:
@@ -92,9 +112,9 @@ class LatexParser:
         main_tex = read_tex_file(main_tex_file)
         if not main_tex:
             logger.warning("Main tex file is empty")
-            print("⚠️ Warning: The main tex file is empty.")
+            print("Warning: The main tex file is empty.")
             return None
-        
+
         if on_progress:
             on_progress("parsing", 20, "Reading main tex file...")
 
@@ -102,16 +122,16 @@ class LatexParser:
         full_tex = self._merge_inputs(main_tex)
         full_tex = self._extract_newcommands(full_tex)
 
-        # Delete redundant blank lines to prevent LLM from missing placeholders during translation
+        # 删除多余的空行，防止 LLM 在翻译时遗漏占位符
         full_tex = compress_newlines(full_tex)
 
         self._split_to_sections(full_tex)
 
-        # Merge short sections to avoid too many sections
+        # 合并过短的节以避免过多的 API 请求
         self._merge_short_sections(min_tokens=50)
 
         if not self.origin_cli_parity:
-            # Chunk overly long sections to prevent LLM catastrophic truncation
+            # 切分过长的节以防止 LLM 灾难性截断
             self._chunk_long_sections(max_tokens=4000)
 
         total_sections = len(self.sections_json)
@@ -138,12 +158,18 @@ class LatexParser:
 
         if on_progress:
             on_progress("parsing", 100, "Parsing complete")
-        
+
         logger.info(f"Parsing complete: {total_sections} sections processed")
 
     @staticmethod
     def _get_token_encoder():
+        """获取 token 编码器，优先使用 tiktoken 的 o200k_base 编码。
+
+        如果 tiktoken 不可用，回退到确定性 token 估算器。
+        """
+
         class _FallbackTokenEncoder:
+            """确定性 token 估算器的回退编码器适配器。"""
             def encode(self, text: str):
                 return range(estimate_tokens_v1(text or ""))
 
@@ -161,14 +187,15 @@ class LatexParser:
                 return _FallbackTokenEncoder()
 
     def _merge_inputs(self, tex: str) -> str:
-        """
-        Merge all the inputs in the main tex file and generate a json file for the inputs.
+        """合并主 tex 文件中的所有 \\input/\\include 引用。
+
+        递归读取被引用的文件，用占位符包裹其内容，并生成输入文件的 JSON 记录。
         """
         main_tex = remove_comments(tex)
         command_name = r'input|include'
         pattern_input = get_command_pattern(command_name)
         pos = 0
-        
+
         while True:
             result = pattern_input.search(main_tex, pos)
             if result is None:
@@ -201,15 +228,15 @@ class LatexParser:
         return main_tex
 
     def _extract_envs(self, tex: str) -> str:
-        """
-        Extract all the environments in the full tex and generate a json file for the environments.
-        The environments are replaced with placeholders in the full tex.
+        """提取完整 tex 中的所有环境并生成环境 JSON 记录。
+
+        环境被替换为占位符，根据环境名称判断是否需要翻译。
         """
         full_tex = remove_comments(tex)
         command_name = r'.*?'
         pattern_env = self._get_origin_cli_env_pattern(command_name) if self.origin_cli_parity else get_env_pattern(command_name)
         placeholder_pattern_cap = r"<PLACEHOLDER_CAP_\d+>"
-        
+
         if self.origin_cli_parity:
             no_translate_envs = _ORIGIN_CLI_NO_TRANSLATE_ENVS
         else:
@@ -222,7 +249,7 @@ class LatexParser:
                 'algorithm', 'algorithmic', 'algorithmicx', 'algorithm2e', 'algorithmicx*', 'algorithmic*', 'algorithm*',
                 'theorem', 'theorem*', 'lemma', 'lemma*', 'proof', 'proof*', 'definition', 'definition*'
             ]
-        
+
         while True:
             result = pattern_env.search(full_tex)
             if result is None:
@@ -240,9 +267,9 @@ class LatexParser:
             if placeholders_cap_in_env and self.origin_cli_parity:
                 need_trans = False
             elif placeholders_cap_in_env:
-                # If there are placeholders in the environment, we usually do not translate it.
-                # HOWEVER, for high-level containers like title, author, abstract, frontmatter, keywords,
-                # we SHOULD translate them as the TranslatorAgent can handle nested placeholders.
+                # 如果环境中存在占位符，通常我们不翻译它。
+                # 但是，对于像 frontmatter, abstract, title, author, keywords 这样的高层容器，
+                # 我们应该翻译它们，因为 TranslationAgent 可以处理嵌套占位符。
                 translatable_containers = ['frontmatter', 'abstract', 'title', 'author', 'keywords']
                 if env_name not in translatable_containers:
                     need_trans = False
@@ -256,13 +283,15 @@ class LatexParser:
                 "trans_content": '',
                 "need_trans": need_trans
             })
-        
+
         return full_tex
 
     def _extract_captions(self, tex: str) -> str:
-        """
-        Extract all the captions in the full tex and generate a json file for the captions.
-        The captions are replaced with placeholders in the full tex.
+        """提取完整 tex 中的所有标题/说明命令并生成标题 JSON 记录。
+
+        支持的命令: caption, caption*, subcaption, subcaption*, title, keywords,
+        abstract, icmltitle, icmltitlerunning。
+        标题被替换为占位符。
         """
         full_tex = remove_comments(tex)
         command_name = r'caption|caption\*|subcaption|subcaption\*|title|keywords|abstract|icmltitle|icmltitlerunning'
@@ -283,43 +312,45 @@ class LatexParser:
             })
 
         return full_tex
-    
+
     def _extract_newcommands(self, tex: str) -> str:
-        """
-        Extract all the newcommands in the full tex and generate a json file for the newcommands.
+        """提取完整 tex 中所有 \\newcommand/\\def/\\newenvironment 等定义并生成 JSON 记录。
+
+        命令定义被替换为占位符，以便正文在不受自定义命令干扰的情况下进行翻译。
         """
         def get_nonNone(*args):
+            """从多个参数中返回第一个非 None 的值。"""
             result = [arg for arg in args if arg is not None]
             if self.origin_cli_parity:
                 assert len(result) == 1
             else:
                 assert len(result) >= 1
             return result[0]
-        
+
         full_tex = remove_comments(tex)
         pattern = self._get_origin_cli_newcommand_pattern() if self.origin_cli_parity else get_newcommand_pattern()
         count = 0
-        
+
         while True:
             match = pattern.search(full_tex)
             if match is None:
                 break
-            
+
             if self.origin_cli_parity:
                 name1 = match.group(1)
                 name2 = match.group(2)
                 name = get_nonNone(name1, name2)
                 n_arguments = match.group(3)
             else:
-                # Groups 1,2: newcommand name; Group 6: newenvironment name
+                # 组 1,2: newcommand 名称; 组 6: newenvironment 名称
                 name1 = match.group(1)
                 name2 = match.group(2)
                 env_name = match.group(6)
                 name = get_nonNone(name1, name2, env_name)
 
-                # Group 3: newcommand args; Group 7: newenvironment args
+                # 组 3: newcommand 参数; 组 7: newenvironment 参数
                 n_arguments = match.group(3) or match.group(7)
-            
+
             if n_arguments is None:
                 n_arguments = 0
             else:
@@ -337,17 +368,21 @@ class LatexParser:
 
     @staticmethod
     def _get_origin_cli_env_pattern(command_name):
+        """生成 origin CLI 兼容模式下的环境匹配正则表达式。"""
         get_command_env = lambda name: rf"\\begin{spaces}\{{(?!document\b|center\b|proof\b|multicols\b)({name})\}}{spaces}({options})?(.*?)\\end{spaces}\{{\1\}}"
         return regex.compile(get_command_env(command_name), regex.DOTALL)
 
     @staticmethod
     def _get_origin_cli_newcommand_pattern():
+        """生成 origin CLI 兼容模式下的新命令匹配正则表达式。"""
         newcommand = rf'\\(?:newcommand\*?|def|renewcommand|newenvironment|renewenvironment){spaces}(?:\{{\\([a-zA-Z]+)\}}|\\([a-zA-Z]+)){spaces}(?:\[(\d)\])?{spaces}({get_pattern_brace(4)})'
         return regex.compile(newcommand, regex.DOTALL)
-    
+
     def _split_to_sections(self, tex: str) -> Any:
-        """
-        Split the full tex to sections and generate a json file for the sections.
+        """将完整 tex 内容按节（section/subsection/subsubsection）拆分为多个片段。
+
+        生成 sections_json 列表，每个元素包含节编号、内容和翻译内容字段。
+        导言区（\\begin{document} 之前）被标记为节 "-1"。
         """
         full_tex = remove_comments(tex)
         command_name_section = r'section|subsection|subsubsection|section\*|subsection\*|subsubsection\*'
@@ -381,7 +416,7 @@ class LatexParser:
 
         before_section = document[:first_section_match.start()] if first_section_match else document
         sections_tex = document[first_section_match.start():] if first_section_match else document
-        
+
         self.sections_json.append({
             "section": "0",
             "content": before_section,
@@ -446,8 +481,10 @@ class LatexParser:
             })
 
     def _merge_short_sections(self, min_tokens=20):
-        """
-        Merge sections that are too short to save the number of API requests
+        """合并 token 数量过少的相邻节，以减少 API 请求次数。
+
+        Args:
+            min_tokens: 合并的最低 token 阈值
         """
         enc = tiktoken.encoding_for_model("gpt-4") if self.origin_cli_parity else self._get_token_encoder()
         merged_sections = []
@@ -483,34 +520,31 @@ class LatexParser:
         self.sections_json = merged_sections
 
     def _chunk_long_sections(self, max_tokens=4000):
-        """
-        Split sections that exceed max_tokens into smaller sub-chunks based on natural boundaries
-        (paragraphs first, then sentences) to prevent LLM truncation.
-        Tracks previous_context to maintain semantic continuity across LLM calls.
-        Marks chunks that still exceed `max_tokens` after boundary search as
-        `oversize_no_safe_boundary=True` for deterministic source-pass-through gating.
+        """将超过 max_tokens 的节按自然边界（段落优先、其次句子）拆分为更小的子块。
 
-        Structure-Aware Split Invariant (OpenSpec: structure-aware-chunking):
-        Before finalizing a split point, we verify via `_is_safe_split_boundary`
-        that the current chunk ends at brace depth 0 and outside any \\begin...\\end
-        environment. If the boundary is unsafe, we defer the split and accumulate
-        more text, ultimately flagging the overall chunk as oversize_no_safe_boundary.
+        追踪 previous_context 以维护跨 LLM 调用的语义连续性。
+        对在边界搜索后仍超过 max_tokens 的块标记为 oversize_no_safe_boundary=True，
+        用于确定性源直通门控。
+
+        结构感知分割不变量:
+        在确定分割点之前，通过 _is_safe_split_boundary 验证当前块在大括号深度为 0
+        且不在任何 \\begin...\\end 环境内结束。如果边界不安全，则延迟分割并累积更多文本。
         """
         enc = self._get_token_encoder()
         chunked_sections = []
-        
+
         for section in self.sections_json:
             content = section["content"]
             tokens = len(enc.encode(content))
-            
+
             if tokens <= max_tokens:
                 self._annotate_section_chunk(section, enc, max_tokens)
                 chunked_sections.append(section)
                 continue
-                
+
             logger.info(f"Section {section['section']} exceeds {max_tokens} tokens ({tokens} tokens). Splitting...")
-            
-            # 1. Try splitting by paragraph (double newline)
+
+            # 1. 尝试按段落分割（双换行）
             parts = re.split(r'(\n{2,})', content)
             paragraphs = []
             current_p = ""
@@ -523,12 +557,12 @@ class LatexParser:
                     current_p += part
             if current_p:
                 paragraphs.append(current_p)
-                
-            # If a single paragraph is still too large, split by sentence boundary
+
+            # 如果单个段落仍然太大，按句子边界分割
             refined_parts = []
             for p in paragraphs:
                 if len(enc.encode(p)) > max_tokens:
-                    # Split by sentence boundary '. ', but preserve the delimiter
+                    # 按句子边界 '. ' 分割，但保留分隔符
                     sentences = re.split(r'(\.\s+)', p)
                     current_s = ""
                     for s in sentences:
@@ -543,18 +577,17 @@ class LatexParser:
                 else:
                     refined_parts.append(p)
 
-            # Assemble sub-chunks — only split at brace-depth-zero boundaries
+            # 组装子块 —— 仅在大括号深度为零的边界分割
             current_chunk = ""
             current_chunk_tokens = 0
             sub_chunk_idx = 1
             previous_context = ""
-            
+
             for part in refined_parts:
                 part_tokens = len(enc.encode(part))
-                
-                # If adding this part exceeds max, check whether the
-                # boundary before `part` is a safe split point (brace depth == 0
-                # and not inside a \begin...\end environment).
+
+                # 如果添加此部分会超出限制，检查 part 之前的边界
+                # 是否是安全分割点（大括号深度 == 0 且不在 \\begin...\\end 环境中）
                 if current_chunk and (current_chunk_tokens + part_tokens > max_tokens):
                     if self._is_safe_split_boundary(current_chunk):
                         new_section = section.copy()
@@ -569,28 +602,28 @@ class LatexParser:
                         self._annotate_section_chunk(new_section, enc, max_tokens)
                         chunked_sections.append(new_section)
                         sub_chunk_idx += 1
-                        
-                        # Store trailing text of the completed chunk as context
+
+                        # 存储已完成块的尾部文本作为下一块的上下文
                         tail = current_chunk[-1000:]
                         last_paragraph_match = re.search(r'([^\n]+)$', tail)
                         if last_paragraph_match:
                             previous_context = last_paragraph_match.group(1).strip()
                         else:
                             previous_context = tail.strip()
-                            
+
                         current_chunk = ""
                         current_chunk_tokens = 0
                     else:
-                        # Not a safe boundary — accumulate and defer the split decision.
+                        # 不是安全边界 —— 累积并推迟分割决定。
                         logger.debug(
                             f"Section {section['section']}: skipping split at unsafe boundary "
                             f"(brace depth > 0 or inside environment). Accumulating."
                         )
-                    
+
                 current_chunk += part
                 current_chunk_tokens += part_tokens
-                
-            # Final remaining chunk
+
+            # 最后一个剩余块
             if current_chunk:
                 new_section = section.copy()
                 new_section["section"] = f"{section['section']}_chunk_{sub_chunk_idx}"
@@ -608,6 +641,7 @@ class LatexParser:
 
     @staticmethod
     def _base_section_id(section_id: str) -> str:
+        """从 chunk ID 中提取基础节 ID（去掉 _chunk_N 后缀）。"""
         if not section_id:
             return ""
         match = _SECTION_CHUNK_ID_RE.match(section_id)
@@ -617,6 +651,7 @@ class LatexParser:
 
     @staticmethod
     def _strip_structural_shell(text: str) -> str:
+        """移除结构外壳（占位符、LaTeX 命令、结构符号），仅保留可翻译的纯文本。"""
         stripped = _PLACEHOLDER_ATOM_RE.sub(" ", text or "")
         stripped = _LATEX_COMMAND_TOKEN_RE.sub(" ", stripped)
         stripped = _STRUCTURAL_SYMBOL_RE.sub(" ", stripped)
@@ -625,6 +660,11 @@ class LatexParser:
 
     @staticmethod
     def _extract_structure_shells(content: str) -> Dict[str, Any]:
+        """提取内容中的前导和尾部结构外壳（环境标记、占位符等）。
+
+        返回包含 leading_structure_shell, core_translatable_content,
+        trailing_structure_shell 等字段的字典。
+        """
         text = content or ""
         leading_shell = ""
         trailing_shell = ""
@@ -651,15 +691,20 @@ class LatexParser:
         }
 
     def _annotate_structure_shells(self, section: Dict[str, Any]) -> Dict[str, Any]:
+        """为节字典添加结构外壳注释信息。"""
         section.update(self._extract_structure_shells(section.get("content", "") or ""))
         return section
 
     def _annotate_section_chunk(self, section: Dict[str, Any], enc: Any, max_tokens: int) -> Dict[str, Any]:
+        """为节/块添加丰富的元数据注释，包括 chunk_kind, chunk_role, immutable_only 等字段。
+
+        这些注释被翻译 Agent 用于决定如何处理每个块（翻译、直通、降级等）。
+        """
         content = section.get("content", "") or ""
         self._annotate_structure_shells(section)
         stripped = self._strip_structural_shell(section.get("core_translatable_content", content))
         placeholder_only = bool(content.strip()) and _PLACEHOLDER_ATOM_RE.sub("", content).strip() == ""
-        translatable_char_count = len(re.findall(r"[A-Za-z\u00C0-\u024F\u4e00-\u9fff]", stripped))
+        translatable_char_count = len(re.findall(r"[A-Za-zÀ-ɏ一-鿿]", stripped))
         base_section_id = self._base_section_id(str(section.get("section", "")))
 
         chunk_kind = "normal"
@@ -706,6 +751,10 @@ class LatexParser:
         enc: Any,
         max_tokens: int,
     ) -> List[Dict[str, Any]]:
+        """将纯占位符块合并到同基础节的相邻块中，以减少碎片化。
+
+        仅合并同一基础节内的占位符块，并更新令牌计数和元数据。
+        """
         collapsed: List[Dict[str, Any]] = []
         deferred_prefix = ""
         deferred_base = ""
@@ -764,23 +813,24 @@ class LatexParser:
 
     @staticmethod
     def _is_safe_split_boundary(text: str) -> bool:
-        """
-        Return True iff the end of `text` is a safe LaTeX split boundary:
-        - The brace depth (counting { vs }) must be 0.
-        - We must not be inside any \\begin{...}...\\end{...} environment.
+        """检查文本末尾是否是一个安全的 LaTeX 分割边界。
 
-        This ensures we never split \\textbf{long text} mid-brace or separate
-        a \\begin from its matching \\end.
+        返回 True 的条件：
+        - 大括号深度（计数 { vs }）必须为 0。
+        - 不能在任何 \\begin{...}...\\end{...} 环境内。
+
+        这确保我们不会在 \\textbf{long text} 的大括号中间分割，
+        也不会将 \\begin 与其匹配的 \\end 分离。
         """
         depth = 0
-        env_stack = []  # stack of environment names currently open
+        env_stack = []  # 当前打开的环境名称栈
 
         i = 0
         while i < len(text):
             ch = text[i]
 
             if ch == '\\':
-                # Look for \begin{name} and \end{name}
+                # 查找 \begin{name} 和 \end{name}
                 begin_m = re.match(r'\\begin\s*\{([^}]*)\}', text[i:])
                 if begin_m:
                     env_stack.append(begin_m.group(1))

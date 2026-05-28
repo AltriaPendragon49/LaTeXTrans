@@ -1,12 +1,20 @@
+/**
+ * 开关切换组件（纯 CSS 实现）
+ * 基于 button[role=switch]，渲染可切换 on/off 的开关控件，不依赖 Radix
+ */
 import type { ButtonHTMLAttributes } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** ToggleSwitch 组件 Props */
 interface ToggleSwitchProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
+  /** 当前开关状态 */
   checked: boolean
+  /** 状态变更回调 */
   onCheckedChange: (checked: boolean) => void
 }
 
+/** 纯 CSS 开关控件，使用 button + role="switch" 实现，与 Radix Switch 视觉一致 */
 export function ToggleSwitch({
   checked,
   onCheckedChange,

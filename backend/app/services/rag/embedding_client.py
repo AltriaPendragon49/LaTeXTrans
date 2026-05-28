@@ -1,3 +1,5 @@
+"""文本嵌入客户端 - 基于 sentence-transformers 生成稠密向量嵌入"""
+
 from __future__ import annotations
 
 import logging
@@ -5,31 +7,26 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Custom exception
-# ---------------------------------------------------------------------------
+# ── 自定义异常 ───────────────────────────────────────────────────────
 
 
 class EmbeddingError(RuntimeError):
-    """Raised when embedding generation fails."""
+    """嵌入生成失败时抛出"""
 
 
-# ---------------------------------------------------------------------------
-# Client
-# ---------------------------------------------------------------------------
+# ── 客户端 ───────────────────────────────────────────────────────────
 
 
 class EmbeddingClient:
-    """Generate text embeddings using sentence-transformers.
+    """使用 sentence-transformers 生成文本嵌入向量。
 
-    Parameters
+    参数
     ----------
     model_name : str
-        HuggingFace model name compatible with ``sentence-transformers``.
-        Defaults to ``"sentence-transformers/all-MiniLM-L6-v2"`` (384-d).
-    device : str, optional
-        Torch device string (e.g. ``"cpu"``, ``"cuda"``).  If *None* the
-        library chooses automatically.
+        与 ``sentence-transformers`` 兼容的 HuggingFace 模型名称。
+        默认为 ``"sentence-transformers/all-MiniLM-L6-v2"``（384 维）。
+    device : str, 可选
+        Torch 设备字符串（如 ``"cpu"``, ``"cuda"``）。为 *None* 时自动选择。
     """
 
     def __init__(
@@ -37,15 +34,20 @@ class EmbeddingClient:
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         device: Optional[str] = None,
     ) -> None:
+        """初始化嵌入客户端
+
+        参数:
+            model_name: 模型名称
+            device: 计算设备（可选）
+        """
         self.model_name = model_name
         self._device = device
         self._model = None
 
-    # ------------------------------------------------------------------
-    # Lazy-load the model so missing dependencies don't break imports
-    # ------------------------------------------------------------------
+    # ── 延迟加载模型，避免缺失依赖导致导入失败 ────────────────────────
 
     def _load_model(self) -> None:
+        """延迟加载 sentence-transformers 模型"""
         if self._model is not None:
             return
         try:
@@ -61,27 +63,25 @@ class EmbeddingClient:
         )
         self._model = SentenceTransformer(self.model_name, device=self._device)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    # ── 公共 API ──────────────────────────────────────────────────────
 
     def encode(self, texts: list[str]) -> list[list[float]]:
-        """Encode a list of texts into dense vector embeddings.
+        """将文本列表编码为稠密向量嵌入。
 
-        Parameters
+        参数
         ----------
         texts : list[str]
-            One or more text strings to embed.
+            一个或多个待嵌入的文本字符串。
 
-        Returns
+        返回
         -------
         list[list[float]]
-            Embeddings, one per input text.
+            每个输入文本对应一个嵌入向量。
 
-        Raises
+        异常
         ------
         EmbeddingError
-            If the model failed to load or encoding raised an error.
+            模型加载失败或编码出错时抛出。
         """
         if not texts:
             return []
@@ -100,24 +100,22 @@ class EmbeddingClient:
             logger.warning("Embedding encoding failed: %s", exc)
             raise EmbeddingError(f"Embedding encoding failed: {exc}") from exc
 
-    # ------------------------------------------------------------------
-    # Utility
-    # ------------------------------------------------------------------
+
+# ── 工具函数 ─────────────────────────────────────────────────────────
 
 
 def compute_similarity(embedding1: list[float], embedding2: list[float]) -> float:
-    """Compute cosine similarity between two embedding vectors.
+    """计算两个嵌入向量之间的余弦相似度。
 
-    Parameters
+    参数
     ----------
     embedding1, embedding2 : list[float]
-        Dense vectors of equal length.
+        等长的稠密向量。
 
-    Returns
+    返回
     -------
     float
-        Cosine similarity in ``[-1, 1]``.  Returns ``0.0`` on zero-vector
-        input or if the lengths differ.
+        余弦相似度，范围在 ``[-1, 1]``。零向量输入或长度不等时返回 ``0.0``。
     """
     if len(embedding1) != len(embedding2):
         logger.warning(

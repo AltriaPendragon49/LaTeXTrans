@@ -42,28 +42,19 @@ const STATUS_LABELS: Record<string, { tone: "muted" | "accent" | "info" | "succe
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
-    return date.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  } catch {
-    return dateString
-  }
+    return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  } catch { return dateString }
 }
 
 const GRID_COLS_WITH_ACTIONS = "grid-cols-[1fr_1fr_120px_100px_120px_80px]"
 const GRID_COLS_NO_ACTIONS = "grid-cols-[1fr_1fr_120px_100px_120px]"
 
+/**
+ * 术语表格子组件
+ * 可复用的术语列表展示，支持加载、错误、空状态和分享操作
+ */
 function TermsTable({
-  terms,
-  loading,
-  error,
-  onRetry,
-  emptyIcon,
-  emptyMessage,
-  onShare,
-  shareLoadingId,
+  terms, loading, error, onRetry, emptyIcon, emptyMessage, onShare, shareLoadingId,
 }: {
   terms: TerminologyTerm[]
   loading: boolean
@@ -79,30 +70,13 @@ function TermsTable({
   const gridCols = showActions ? GRID_COLS_WITH_ACTIONS : GRID_COLS_NO_ACTIONS
 
   if (loading) {
-    return (
-      <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)]/70 text-[color:var(--px-shell-muted)]">
-        <Loader2 className="h-6 w-6 animate-spin" />
-        <p className="mt-3 text-sm">{t("glossary.loading")}</p>
-      </div>
-    )
+    return (<div className="flex min-h-[300px] flex-col items-center justify-center rounded-[18px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)]/70 text-[color:var(--px-shell-muted)]"><Loader2 className="h-6 w-6 animate-spin" /><p className="mt-3 text-sm">{t("glossary.loading")}</p></div>)
   }
   if (error) {
-    return (
-      <NoticeBanner
-        tone="danger"
-        icon={<XCircle className="h-4 w-4" />}
-        description={error}
-        action={<Button variant="ghost" size="sm" onClick={onRetry}>{t("common.actions.retry")}</Button>}
-      />
-    )
+    return (<NoticeBanner tone="danger" icon={<XCircle className="h-4 w-4" />} description={error} action={<Button variant="ghost" size="sm" onClick={onRetry}>{t("common.actions.retry")}</Button>} />)
   }
   if (terms.length === 0) {
-    return (
-      <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)]/58 px-6 text-center text-[color:var(--px-shell-muted)]">
-        {emptyIcon || <BookOpenText className="h-7 w-7" />}
-        <p className="mt-3 text-sm">{emptyMessage}</p>
-      </div>
-    )
+    return (<div className="flex min-h-[300px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)]/58 px-6 text-center text-[color:var(--px-shell-muted)]">{emptyIcon || <BookOpenText className="h-7 w-7" />}<p className="mt-3 text-sm">{emptyMessage}</p></div>)
   }
 
   return (
@@ -123,36 +97,15 @@ function TermsTable({
           const isShareLoading = shareLoadingId === term.id
           return (
             <DataTableRow key={term.id} className={`flex flex-col gap-2 px-4 py-3 md:grid ${gridCols} md:items-center sm:px-6 sm:py-4`}>
-              <DataTableCell className="flex justify-between gap-2 md:block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.sourceTerm")}</span>
-                <span className="truncate font-medium text-[color:var(--px-shell-ink)]">{term.source_term}</span>
-              </DataTableCell>
-              <DataTableCell className="flex justify-between gap-2 md:block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.targetTerm")}</span>
-                <span className="truncate text-[color:var(--px-shell-muted)]">{term.target_term}</span>
-              </DataTableCell>
-              <DataTableCell className="flex justify-between gap-2 md:block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.domain")}</span>
-                <span className="truncate text-sm text-[color:var(--px-shell-muted)]">{term.domain || "-"}</span>
-              </DataTableCell>
-              <DataTableCell className="flex justify-between gap-2 md:block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.status")}</span>
-                <StatusBadge tone={statusStyle.tone} size="sm">{statusStyle.label}</StatusBadge>
-              </DataTableCell>
-              <DataTableCell className="flex justify-between gap-2 md:block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.createdAt")}</span>
-                <span className="text-xs text-[color:var(--px-shell-muted)]">{formatDate(term.created_at)}</span>
-              </DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.sourceTerm")}</span><span className="truncate font-medium text-[color:var(--px-shell-ink)]">{term.source_term}</span></DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.targetTerm")}</span><span className="truncate text-[color:var(--px-shell-muted)]">{term.target_term}</span></DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.domain")}</span><span className="truncate text-sm text-[color:var(--px-shell-muted)]">{term.domain || "-"}</span></DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.status")}</span><StatusBadge tone={statusStyle.tone} size="sm">{statusStyle.label}</StatusBadge></DataTableCell>
+              <DataTableCell className="flex justify-between gap-2 md:block"><span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--px-shell-muted)] md:hidden">{t("glossary.table.createdAt")}</span><span className="text-xs text-[color:var(--px-shell-muted)]">{formatDate(term.created_at)}</span></DataTableCell>
               {showActions && (
                 <DataTableCell className="flex justify-end md:block md:text-right">
                   {term.source_type !== "system" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onShare(term.id)}
-                      disabled={isShareLoading}
-                      title={t("glossary.share")}
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => onShare(term.id)} disabled={isShareLoading} title={t("glossary.share")}>
                       {isShareLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
                     </Button>
                   )}
@@ -166,12 +119,17 @@ function TermsTable({
   )
 }
 
+/**
+ * 术语管理工作区组件
+ * 提供用户个人术语库的管理界面，包含两个标签页：
+ * 1. 我的术语（my）：上传 CSV/BibTeX（POST /terminology/upload）、查看和分享
+ * 2. 官方术语库（official）：浏览系统级已批准的术语
+ */
 export function GlossaryWorkspace() {
   const { t } = useTranslation()
-
   const [activeTab, setActiveTab] = useState("my")
 
-  // My terms
+  // 我的术语
   const [myTerms, setMyTerms] = useState<TerminologyTerm[]>([])
   const [myTotal, setMyTotal] = useState(0)
   const [myPage, setMyPage] = useState(1)
@@ -179,25 +137,24 @@ export function GlossaryWorkspace() {
   const [myLoadError, setMyLoadError] = useState<string | null>(null)
   const [myStatusFilter, setMyStatusFilter] = useState("")
 
-  // Official terms
+  // 官方术语
   const [officialTerms, setOfficialTerms] = useState<TerminologyTerm[]>([])
   const [officialTotal, setOfficialTotal] = useState(0)
   const [officialPage, setOfficialPage] = useState(1)
   const [isLoadingOfficial, setIsLoadingOfficial] = useState(false)
   const [officialLoadError, setOfficialLoadError] = useState<string | null>(null)
 
-  // Upload
+  // 上传
   const [isUploading, setIsUploading] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Share
+  // 分享
   const [shareLoadingId, setShareLoadingId] = useState<string | null>(null)
 
   const myTotalPages = Math.max(1, Math.ceil(myTotal / PAGE_SIZE))
   const officialTotalPages = Math.max(1, Math.ceil(officialTotal / PAGE_SIZE))
 
-  // ---- Load my terms ----
   const loadMyTerms = useCallback(async () => {
     setIsLoadingMy(true)
     setMyLoadError(null)
@@ -207,18 +164,12 @@ export function GlossaryWorkspace() {
       const response = await listMyTerms(params)
       setMyTerms(response.terms)
       setMyTotal(response.total)
-    } catch {
-      setMyLoadError(t("glossary.loadError"))
-    } finally {
-      setIsLoadingMy(false)
-    }
+    } catch { setMyLoadError(t("glossary.loadError")) }
+    finally { setIsLoadingMy(false) }
   }, [myPage, myStatusFilter, t])
 
-  useEffect(() => {
-    if (activeTab === "my") loadMyTerms()
-  }, [loadMyTerms, activeTab])
+  useEffect(() => { if (activeTab === "my") loadMyTerms() }, [loadMyTerms, activeTab])
 
-  // ---- Load official terms ----
   const loadOfficialTerms = useCallback(async () => {
     setIsLoadingOfficial(true)
     setOfficialLoadError(null)
@@ -226,51 +177,33 @@ export function GlossaryWorkspace() {
       const response = await listTerms({ page: officialPage, page_size: PAGE_SIZE, status: "approved", source_type: "system" })
       setOfficialTerms(response.terms)
       setOfficialTotal(response.total)
-    } catch {
-      setOfficialLoadError(t("glossary.loadError"))
-    } finally {
-      setIsLoadingOfficial(false)
-    }
+    } catch { setOfficialLoadError(t("glossary.loadError")) }
+    finally { setIsLoadingOfficial(false) }
   }, [officialPage, t])
 
-  useEffect(() => {
-    if (activeTab === "official") loadOfficialTerms()
-  }, [loadOfficialTerms, activeTab])
+  useEffect(() => { if (activeTab === "official") loadOfficialTerms() }, [loadOfficialTerms, activeTab])
 
-  // ---- Upload ----
   function handleDrag(event: React.DragEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    if (event.type === "dragenter" || event.type === "dragover") {
-      setIsDragActive(true)
-    } else if (event.type === "dragleave") {
-      setIsDragActive(false)
-    }
+    event.preventDefault(); event.stopPropagation()
+    if (event.type === "dragenter" || event.type === "dragover") { setIsDragActive(true) }
+    else if (event.type === "dragleave") { setIsDragActive(false) }
   }
 
   async function handleUploadFile(file: File) {
     const validExtensions = [".csv", ".bib"]
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
-    if (!validExtensions.includes(ext)) {
-      toast.error(t("glossary.supportedFormats"))
-      return
-    }
+    if (!validExtensions.includes(ext)) { toast.error(t("glossary.supportedFormats")); return }
     setIsUploading(true)
     try {
       const result = await uploadTerminologyFile(file)
       toast.success(t("glossary.uploadSuccess", { accepted: result.accepted, rejected: result.rejected }))
       loadMyTerms()
-    } catch {
-      toast.error(t("glossary.uploadError"))
-    } finally {
-      setIsUploading(false)
-    }
+    } catch { toast.error(t("glossary.uploadError")) }
+    finally { setIsUploading(false) }
   }
 
   function handleDrop(event: React.DragEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    setIsDragActive(false)
+    event.preventDefault(); event.stopPropagation(); setIsDragActive(false)
     const file = event.dataTransfer.files[0]
     if (file) handleUploadFile(file)
   }
@@ -281,143 +214,50 @@ export function GlossaryWorkspace() {
     event.target.value = ""
   }
 
-  // ---- Share ----
   async function handleShare(termId: string) {
     setShareLoadingId(termId)
     try {
       await shareTerm(termId)
       toast.success(t("glossary.shareSuccess"))
       loadMyTerms()
-    } catch {
-      toast.error(t("glossary.shareError"))
-    } finally {
-      setShareLoadingId(null)
-    }
-  }
-
-  // ---- Render upload area ----
-  function renderUploadArea() {
-    return (
-      <div
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-[18px] border border-dashed p-8 transition-colors ${
-          isDragActive
-            ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)]"
-            : "border-[color:var(--px-shell-line)] hover:border-[color:var(--px-shell-accent)]/30 hover:bg-[color:var(--px-shell-panel-strong)]"
-        }`}
-      >
-        <input ref={inputRef} type="file" accept=".csv,.bib" className="hidden" onChange={handleFileSelect} />
-        {isUploading ? (
-          <>
-            <Loader2 className="h-8 w-8 animate-spin text-[color:var(--px-shell-accent)]" />
-            <p className="mt-3 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("glossary.uploading")}</p>
-          </>
-        ) : (
-          <>
-            <Upload className="h-8 w-8 text-[color:var(--px-shell-muted)]" />
-            <p className="mt-3 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("glossary.uploadPrompt")}</p>
-            <p className="mt-1 text-xs text-[color:var(--px-shell-muted)]">{t("glossary.supportedFormats")}</p>
-          </>
-        )}
-      </div>
-    )
+    } catch { toast.error(t("glossary.shareError")) }
+    finally { setShareLoadingId(null) }
   }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 py-2">
-      <PageIntro
-        title={t("glossary.glossary_management")}
-        description={t("glossary.description")}
-      />
-
+      <PageIntro title={t("glossary.glossary_management")} description={t("glossary.description")} />
       <PanelShell className="w-full space-y-6 rounded-none border-0 bg-transparent p-0 shadow-none">
         <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex justify-start">
             <EditorialTabsList className="gap-1 rounded-[16px] bg-[color:var(--px-shell-panel)]/72 p-1 shadow-none">
-              <EditorialTabsTrigger value="my" className="rounded-[12px]">
-                {t("glossary.myTerms")}
-              </EditorialTabsTrigger>
-              <EditorialTabsTrigger value="official" className="rounded-[12px]">
-                {t("glossary.officialLibrary")}
-              </EditorialTabsTrigger>
+              <EditorialTabsTrigger value="my" className="rounded-[12px]">{t("glossary.myTerms")}</EditorialTabsTrigger>
+              <EditorialTabsTrigger value="official" className="rounded-[12px]">{t("glossary.officialLibrary")}</EditorialTabsTrigger>
             </EditorialTabsList>
           </div>
 
           <TabsContent value="my" className="mt-0 space-y-6 min-h-[420px]">
-            {/* Upload area */}
-            {renderUploadArea()}
+            <div onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop} onClick={() => inputRef.current?.click()} className={`flex cursor-pointer flex-col items-center justify-center rounded-[18px] border border-dashed p-8 transition-colors ${isDragActive ? "border-[color:var(--px-shell-accent)] bg-[color:var(--px-shell-accent-soft)]" : "border-[color:var(--px-shell-line)] hover:border-[color:var(--px-shell-accent)]/30 hover:bg-[color:var(--px-shell-panel-strong)]"}`}>
+              <input ref={inputRef} type="file" accept=".csv,.bib" className="hidden" onChange={handleFileSelect} />
+              {isUploading ? (<><Loader2 className="h-8 w-8 animate-spin text-[color:var(--px-shell-accent)]" /><p className="mt-3 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("glossary.uploading")}</p></>) : (<><Upload className="h-8 w-8 text-[color:var(--px-shell-muted)]" /><p className="mt-3 text-sm font-medium text-[color:var(--px-shell-ink)]">{t("glossary.uploadPrompt")}</p><p className="mt-1 text-xs text-[color:var(--px-shell-muted)]">{t("glossary.supportedFormats")}</p></>)}
+            </div>
 
-            {/* Status filter */}
             <div className="flex items-center gap-3">
               <Label className="text-sm whitespace-nowrap">{t("glossary.filterStatus")}</Label>
               <Select value={myStatusFilter || "__all__"} onValueChange={(v) => { setMyStatusFilter(v === "__all__" ? "" : v); setMyPage(1) }}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder={t("glossary.all")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">{t("glossary.all")}</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="pending_review">Pending</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                </SelectContent>
+                <SelectTrigger className="w-40"><SelectValue placeholder={t("glossary.all")} /></SelectTrigger>
+                <SelectContent><SelectItem value="__all__">{t("glossary.all")}</SelectItem><SelectItem value="approved">Approved</SelectItem><SelectItem value="pending_review">Pending</SelectItem><SelectItem value="rejected">Rejected</SelectItem></SelectContent>
               </Select>
             </div>
 
-            <TermsTable
-              terms={myTerms}
-              loading={isLoadingMy}
-              error={myLoadError}
-              onRetry={loadMyTerms}
-              emptyMessage={t("glossary.empty")}
-              onShare={handleShare}
-              shareLoadingId={shareLoadingId}
-            />
+            <TermsTable terms={myTerms} loading={isLoadingMy} error={myLoadError} onRetry={loadMyTerms} emptyMessage={t("glossary.empty")} onShare={handleShare} shareLoadingId={shareLoadingId} />
 
-            {myTotalPages > 1 && (
-              <div className="flex items-center justify-between pt-2">
-                <p className="text-xs text-[color:var(--px-shell-muted)]">
-                  {t("glossary.pageInfo", { current: myPage, total: myTotalPages })}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setMyPage((p) => Math.max(1, p - 1))} disabled={myPage <= 1}>
-                    {t("glossary.previous")}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setMyPage((p) => Math.min(myTotalPages, p + 1))} disabled={myPage >= myTotalPages}>
-                    {t("glossary.next")}
-                  </Button>
-                </div>
-              </div>
-            )}
+            {myTotalPages > 1 && (<div className="flex items-center justify-between pt-2"><p className="text-xs text-[color:var(--px-shell-muted)]">{t("glossary.pageInfo", { current: myPage, total: myTotalPages })}</p><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setMyPage((p) => Math.max(1, p - 1))} disabled={myPage <= 1}>{t("glossary.previous")}</Button><Button variant="outline" size="sm" onClick={() => setMyPage((p) => Math.min(myTotalPages, p + 1))} disabled={myPage >= myTotalPages}>{t("glossary.next")}</Button></div></div>)}
           </TabsContent>
 
           <TabsContent value="official" className="mt-0 space-y-6 min-h-[420px]">
-            <TermsTable
-              terms={officialTerms}
-              loading={isLoadingOfficial}
-              error={officialLoadError}
-              onRetry={loadOfficialTerms}
-              emptyMessage={t("glossary.officialEmpty")}
-            />
-
-            {officialTotalPages > 1 && (
-              <div className="flex items-center justify-between pt-2">
-                <p className="text-xs text-[color:var(--px-shell-muted)]">
-                  {t("glossary.pageInfo", { current: officialPage, total: officialTotalPages })}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setOfficialPage((p) => Math.max(1, p - 1))} disabled={officialPage <= 1}>
-                    {t("glossary.previous")}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setOfficialPage((p) => Math.min(officialTotalPages, p + 1))} disabled={officialPage >= officialTotalPages}>
-                    {t("glossary.next")}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <TermsTable terms={officialTerms} loading={isLoadingOfficial} error={officialLoadError} onRetry={loadOfficialTerms} emptyMessage={t("glossary.officialEmpty")} />
+            {officialTotalPages > 1 && (<div className="flex items-center justify-between pt-2"><p className="text-xs text-[color:var(--px-shell-muted)]">{t("glossary.pageInfo", { current: officialPage, total: officialTotalPages })}</p><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setOfficialPage((p) => Math.max(1, p - 1))} disabled={officialPage <= 1}>{t("glossary.previous")}</Button><Button variant="outline" size="sm" onClick={() => setOfficialPage((p) => Math.min(officialTotalPages, p + 1))} disabled={officialPage >= officialTotalPages}>{t("glossary.next")}</Button></div></div>)}
           </TabsContent>
         </EditorialTabs>
       </PanelShell>

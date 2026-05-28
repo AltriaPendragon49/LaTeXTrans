@@ -8,10 +8,12 @@ from backend.app.db import db_connection, get_database_dialect
 
 
 def _placeholder(_index: int) -> str:
+    """根据数据库方言返回对应的参数占位符（SQLite: ?，MySQL: %s）。"""
     return "?" if get_database_dialect() == "sqlite" else "%s"
 
 
 def _fetchone(cursor) -> Optional[dict[str, Any]]:
+    """从游标获取一行数据并转换为字典格式返回。"""
     row = cursor.fetchone()
     if row is None:
         return None
@@ -21,6 +23,7 @@ def _fetchone(cursor) -> Optional[dict[str, Any]]:
 
 
 def _fetchall(cursor) -> list[dict[str, Any]]:
+    """从游标获取所有行数据并转换为字典列表返回。"""
     rows = cursor.fetchall() or []
     normalized: list[dict[str, Any]] = []
     for row in rows:
@@ -32,6 +35,7 @@ def _fetchall(cursor) -> list[dict[str, Any]]:
 
 
 def _decode_turns(value: Any) -> list[dict[str, Any]]:
+    """将存储的对话轮次数据解码为字典列表格式。"""
     if value in (None, ""):
         return []
     if isinstance(value, list):
@@ -49,6 +53,7 @@ def _decode_turns(value: Any) -> list[dict[str, Any]]:
 
 
 def _decode_json_dict(value: Any) -> dict[str, Any] | None:
+    """将存储的JSON数据解码为字典格式，如果数据为空或无效则返回None。"""
     if value in (None, ""):
         return None
     if isinstance(value, dict):
@@ -66,6 +71,7 @@ def _decode_json_dict(value: Any) -> dict[str, Any] | None:
 
 
 def _normalize_db_timestamp(value: Any) -> Any:
+    """将数据库中的时间戳标准化为统一的字符串格式。"""
     if get_database_dialect() == "sqlite":
         return value
     if value in (None, ""):
@@ -88,7 +94,10 @@ def _normalize_db_timestamp(value: Any) -> Any:
 
 
 class CommunityAgentConversationRepository:
+    """社区Agent对话数据访问层，管理对话的增删改查操作。"""
+
     def _normalize_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的对话记录格式。"""
         if row is None:
             return None
         return {
@@ -100,10 +109,12 @@ class CommunityAgentConversationRepository:
         }
 
     def _serialize_turns(self, turns: Any) -> str:
+        """将对话轮次序列化为JSON字符串以便存储到数据库。"""
         normalized = [dict(item) for item in (turns or []) if isinstance(item, dict)]
         return json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
 
     def list_conversations_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        """获取指定用户的所有对话列表，按更新时间降序排列。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -121,6 +132,7 @@ class CommunityAgentConversationRepository:
             ]
 
     def get_conversation_for_user(self, user_id: str, conversation_id: str) -> Optional[dict[str, Any]]:
+        """获取指定用户的单个对话记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -134,6 +146,7 @@ class CommunityAgentConversationRepository:
             return self._normalize_row(_fetchone(cursor))
 
     def upsert_conversation_for_user(self, user_id: str, record: dict[str, Any]) -> dict[str, Any]:
+        """创建或更新用户的对话记录（存在则更新，不存在则插入）。"""
         conversation_id = str(record.get("id") or "").strip()
         if not conversation_id:
             raise ValueError("conversation id is required")
@@ -194,6 +207,7 @@ class CommunityAgentConversationRepository:
         }
 
     def delete_conversation_for_user(self, user_id: str, conversation_id: str) -> bool:
+        """删除指定用户的对话记录，返回是否删除成功。"""
         with db_connection(commit=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -207,7 +221,10 @@ class CommunityAgentConversationRepository:
 
 
 class CommunityAgentRunRepository:
+    """社区Agent运行记录数据访问层，管理运行任务和事件的增删改查操作。"""
+
     def _normalize_run_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """将数据库行数据标准化为统一的运行记录格式。"""
         if row is None:
             return None
         return {
@@ -227,11 +244,13 @@ class CommunityAgentRunRepository:
         }
 
     def _serialize_json_dict(self, payload: Any) -> str | None:
+        """将字典数据序列化为JSON字符串以存储到数据库。"""
         if not isinstance(payload, dict):
             return None
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     def get_run(self, run_id: str) -> Optional[dict[str, Any]]:
+        """根据运行ID获取运行记录。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(
@@ -245,6 +264,7 @@ class CommunityAgentRunRepository:
             return self._normalize_run_row(_fetchone(cursor))
 
     def upsert_run(self, record: dict[str, Any]) -> dict[str, Any]:
+        """创建或更新运行记录（存在则更新，不存在则插入）。"""
         run_id = str(record.get("run_id") or "").strip()
         if not run_id:
             raise ValueError("run_id is required")
@@ -340,6 +360,7 @@ class CommunityAgentRunRepository:
         }
 
     def append_event(self, run_id: str, sequence_no: int, event: dict[str, Any]) -> None:
+        """向指定运行记录追加一个事件（存在则更新，不存在则插入）。"""
         payload = json.dumps(dict(event), ensure_ascii=False, separators=(",", ":"))
         event_type = str(event.get("type") or "status")
         created_at = _normalize_db_timestamp(str(event.get("timestamp") or ""))
@@ -376,6 +397,7 @@ class CommunityAgentRunRepository:
                 )
 
     def list_events(self, run_id: str) -> list[dict[str, Any]]:
+        """获取指定运行记录的所有事件，按序号升序排列。"""
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(

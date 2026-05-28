@@ -1,3 +1,5 @@
+"""本地认证与 NiuTrans 上游认证服务"""
+
 from __future__ import annotations
 
 import base64
@@ -19,35 +21,46 @@ from backend.app.utils.async_blocking import run_blocking
 
 
 def _b64url_encode(raw: bytes) -> str:
+    """将原始字节进行 URL 安全的 Base64 编码（去除末尾填充）"""
     return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
 
 
 def _b64url_decode(value: str) -> bytes:
+    """解码 URL 安全的 Base64 字符串"""
     normalized = value + "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(normalized.encode("utf-8"))
 
 
 def _now_utc() -> datetime:
+    """获取当前 UTC 时间"""
     return datetime.now(timezone.utc)
 
 
 def _now_unix() -> int:
+    """获取当前 Unix 时间戳（秒）"""
     return int(_now_utc().timestamp())
 
 
 @dataclass
 class AuthServiceError(Exception):
+    """认证服务异常，携带状态码、错误码和消息"""
     status_code: int
     code: str
     message: str
 
 
 class NiuTransAuthClient:
+    """NiuTrans 上游认证客户端
+
+    负责与 NiuTrans API 通信：验证用户凭据、获取用户信息和余额。
+    """
+
     def __init__(self) -> None:
         self._settings = get_settings()
 
     @staticmethod
     def _extract_first(payload: Any, *candidate_paths: tuple[str, ...]) -> Optional[str]:
+        """从嵌套字典中按候选路径提取第一个非空字符串值"""
         for path in candidate_paths:
             current = payload
             for key in path:
@@ -61,6 +74,7 @@ class NiuTransAuthClient:
 
     @staticmethod
     def _extract_first_raw(payload: Any, *candidate_paths: tuple[str, ...]) -> Any:
+        """从嵌套字典中按候选路径提取第一个非空原始值"""
         for path in candidate_paths:
             current = payload
             for key in path:
@@ -74,6 +88,7 @@ class NiuTransAuthClient:
 
     @classmethod
     def _extract_int(cls, payload: Any, *candidate_paths: tuple[str, ...]) -> Optional[int]:
+        """从嵌套字典中按候选路径提取整数值"""
         value = cls._extract_first_raw(payload, *candidate_paths)
         if value is None or isinstance(value, bool):
             return None
@@ -83,6 +98,18 @@ class NiuTransAuthClient:
             return None
 
     async def verify_credentials(self, *, identifier: str, password: str) -> dict[str, Any]:
+        """向 NiuTrans 验证用户凭据
+
+        参数:
+            identifier: 用户标识（邮箱/用户名）
+            password: 密码
+
+        返回:
+            包含 external_user_id, email, display_name, upstream_token 的字典
+
+        异常:
+            AuthServiceError: 认证失败或上游不可用
+        """
         request_payload = {
             "identifier": identifier,
             "password": password,
@@ -197,6 +224,15 @@ class NiuTransAuthClient:
         }
 
     async def fetch_user_info_balance(self, *, token: str, user_id: str) -> dict[str, Any]:
+        """从 NiuTrans 获取用户信息和积分余额
+
+        参数:
+            token: 上游认证令牌
+            user_id: 上游用户 ID
+
+        返回:
+            包含 unused_num_integral, unused_num_page, apikey, status, fetched_at 的字典
+        """
         request_headers = {
             "Accept": "application/json, text/plain, */*",
             "Authorization": token,
@@ -279,6 +315,15 @@ class NiuTransAuthClient:
 
 
 class LocalAuthService:
+    """本地认证服务
+
+    负责：
+    - 本地用户登录/登出
+    - JWT 令牌签发与验证
+    - PDF 余额快照存储
+    - 配额查询
+    """
+
     def __init__(
         self,
         *,
@@ -286,12 +331,20 @@ class LocalAuthService:
         upstream_client: Optional[NiuTransAuthClient] = None,
         quota_service: Optional[TranslationQuotaService] = None,
     ) -> None:
+        """初始化本地认证服务
+
+        参数:
+            repository: 认证数据仓库（可选，默认自动创建）
+            upstream_client: NiuTrans 上游客户端（可选，默认自动创建）
+            quota_service: 翻译配额服务（可选，默认自动创建）
+        """
         self._settings = get_settings()
         self._repository = repository or AuthRepository()
         self._upstream_client = upstream_client or NiuTransAuthClient()
         self._quota_service = quota_service or TranslationQuotaService()
 
     def _parse_jwt_keys(self) -> list[tuple[str, str]]:
+        """解析配置中的 JWT 密钥列表，返回 (版本号, 密钥) 元组列表"""
         raw_value = str(self._settings.auth_jwt_keys or "").strip()
         items = [item.strip() for item in raw_value.split(",") if item.strip()]
         parsed: list[tuple[str, str]] = []
@@ -308,6 +361,7 @@ class LocalAuthService:
         return parsed
 
     def _build_local_user_payload(self, user: dict[str, Any]) -> dict[str, Any]:
+        """构建本地用户载荷（用于 API 响应）"""
         return {
             "id": user["id"],
             "external_provider": user["external_provider"],
@@ -324,6 +378,7 @@ class LocalAuthService:
         user_id: str,
         upstream_user: dict[str, Any],
     ) -> None:
+        """从上游获取并存储 PDF 直译余额快照，同时存储加密后的 API Key"""
         upstream_token = str(upstream_user.get("upstream_token") or "").strip()
         external_user_id = str(upstream_user.get("external_user_id") or "").strip()
         if not upstream_token or not external_user_id:
@@ -359,6 +414,7 @@ class LocalAuthService:
             )
 
     async def get_quota_snapshot_for_user(self, user_id: str, roles: Optional[list[str]] = None) -> dict[str, Any]:
+        """获取用户配额快照"""
         try:
             return await run_blocking(lambda: self._quota_service.get_quota_snapshot(user_id, roles=roles))
         except DatabaseUnavailableError as exc:
@@ -369,6 +425,7 @@ class LocalAuthService:
             ) from exc
 
     def _encode_jwt(self, payload: dict[str, Any]) -> str:
+        """使用 HS256 签发 JWT 令牌"""
         version, secret = self._parse_jwt_keys()[0]
         header = {"alg": "HS256", "typ": "JWT", "kid": version}
         signing_input = ".".join(
@@ -381,6 +438,7 @@ class LocalAuthService:
         return f"{signing_input}.{_b64url_encode(signature)}"
 
     def _decode_and_verify_jwt(self, token: str) -> dict[str, Any]:
+        """解码并验证 JWT 令牌，验证失败时抛出 AuthServiceError"""
         parts = token.split(".")
         if len(parts) != 3:
             raise AuthServiceError(401, "AUTH_SESSION_INVALID", "Session is invalid or expired.")
@@ -420,6 +478,19 @@ class LocalAuthService:
         client_ip: Optional[str],
         user_agent: Optional[str],
     ) -> dict[str, Any]:
+        """用户登录
+
+        流程：验证上游凭据 -> 创建/获取本地用户 -> 创建会话 -> 存储余额快照 -> 签发 JWT
+
+        参数:
+            identifier: 登录标识
+            password: 密码
+            client_ip: 客户端 IP
+            user_agent: User-Agent
+
+        返回:
+            包含 access_token, token_type, expires_in, user, quota_snapshot 的字典
+        """
         normalized_identifier = identifier.strip()
         if not normalized_identifier or not password:
             raise AuthServiceError(400, "AUTH_INVALID_REQUEST", "Identifier and password are required.")
@@ -494,6 +565,7 @@ class LocalAuthService:
         }
 
     async def get_current_user_from_token(self, token: str) -> dict[str, Any]:
+        """从 JWT 令牌获取当前用户信息（验证令牌 + 会话有效性 + token_version）"""
         payload = self._decode_and_verify_jwt(token)
         session_id = str(payload.get("sid") or "").strip()
         user_id = str(payload.get("sub") or "").strip()
@@ -529,6 +601,7 @@ class LocalAuthService:
         return self._build_local_user_payload(user)
 
     async def logout_current_session(self, token: str) -> None:
+        """登出当前会话（吊销会话令牌）"""
         payload = self._decode_and_verify_jwt(token)
         session_id = str(payload.get("sid") or "").strip()
         if not session_id:

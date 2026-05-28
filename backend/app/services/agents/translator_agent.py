@@ -1,4 +1,13 @@
-﻿from typing import Dict, Any, List, Optional, Callable, Tuple
+﻿"""翻译器 Agent —— 多 Agent 翻译管线中的核心翻译引擎。
+
+负责将 LaTeX 源文本翻译为目标语言，包括：
+- 节级、环境级和标题级的递进式翻译
+- 基于缓冲区预算的嵌套救援翻译（段落/片段/窗口）
+- 翻译后不变量验证和英文残留检测
+- LLM 池故障转移和速率限制处理
+- 术语表注入和 RAG 术语管理
+"""
+from typing import Dict, Any, List, Optional, Callable, Tuple
 from .base_tool_agent import BaseToolAgent
 from .validator_agent import (
     ValidatorAgent,
@@ -52,7 +61,7 @@ try:
         TOKEN_ESTIMATOR_ID_V1,
     )
 except Exception:
-    # Fallback to keep runtime deterministic even if the helper module is unavailable.
+    # 回退方案：即使辅助模块不可用，也保持运行时确定性。
     from hashlib import sha256
     from math import ceil, floor
 
@@ -101,6 +110,17 @@ def sanitize_section_translation_shells(
 
 
 class TranslatorAgent(BaseToolAgent):
+    """翻译器 Agent：核心翻译引擎，处理 LaTeX 源文本到目标语言的翻译。
+
+    支持多种翻译模式（trans_mode）：
+    - 0: 完整翻译
+    - 1: 仅重译错误部分
+    - 2: 带术语表的完整翻译
+    - 3: 快速扫描模式（仅翻译摘要和结论）
+
+    包含递进式嵌套救援翻译管线：段落 -> 片段 -> 窗口式退避，
+    以及完整的 LLM 池故障转移、速率限制和不可变占位符保护。
+    """
     STATUS_TRANSLATED = "translated"
     STATUS_TRANSLATED_AFTER_NOOP_RETRY = "translated_after_noop_retry"
     STATUS_FALLBACK_SOURCE_API_FAILURE = "fallback_source_api_failure"
@@ -153,8 +173,8 @@ class TranslatorAgent(BaseToolAgent):
         STATUS_MATH_PRESERVED,
     })
 
-    def __init__(self, 
-                 config: Dict[str, Any], 
+    def __init__(self,
+                 config: Dict[str, Any],
                  trans_mode: int = 0,
                  project_dir: Optional[str] = None,
                  output_dir: Optional[str] = None,
@@ -162,6 +182,17 @@ class TranslatorAgent(BaseToolAgent):
                  generate_terminology: bool = False,
                  on_progress: Optional[Callable[[int, str], None]] = None,
                  ):
+        """初始化翻译器 Agent。
+
+        Args:
+            config: 系统配置字典
+            trans_mode: 翻译模式（0=完整, 1=重试, 2=术语表, 3=快速扫描）
+            project_dir: 项目目录路径
+            output_dir: 输出目录路径
+            errors_report: 错误报告列表（用于重试模式）
+            generate_terminology: 是否生成术语表
+            on_progress: 进度回调函数
+        """
         super().__init__(agent_name="TranslatorAgent", config=config, on_progress=on_progress)
         self.config = config
         self.update_term = config.get("update_term", False)
@@ -171,8 +202,8 @@ class TranslatorAgent(BaseToolAgent):
         self.user_term = config.get("user_term", None)
         self.target_language = config.get("target_language", "ch")
         self.category = config.get("category", None)
-        self.project_dir = project_dir  # Project path for parsing
-        self.output_dir = output_dir  # Output directory for parsed files
+        self.project_dir = project_dir  # 项目路径：用于解析
+        self.output_dir = output_dir  # 输出目录：用于存放解析后的文件
         self.fail_section_nums = []
         self.fail_caption_phs = []
         self.fail_env_phs = []
@@ -228,6 +259,7 @@ class TranslatorAgent(BaseToolAgent):
             return int(default)
 
     def _resolve_safe_limit_config(self) -> Tuple[int, int, int]:
+        """解析安全输入限制配置：模型上下文窗口、提示保留令牌、安全输入上限。"""
         llm_cfg = self.config.get("llm_config", {}) or {}
         default_context = 128000
         default_reserve = 4096
@@ -1177,6 +1209,11 @@ class TranslatorAgent(BaseToolAgent):
         prompt_key: str = "section_system_prompt",
         prompt_key_with_terms: Optional[str] = None,
     ) -> Optional[str]:
+        """按段落分割文本并逐段调用 LLM 救援翻译。
+
+        当完整的节级翻译失败时，作为递进式退避策略的第一级使用。
+        每个段落独立翻译，并通过预算系统和质量阈值控制。
+        """
         normalized = (text or "").replace("\r\n", "\n")
         if not normalized.strip():
             return None
@@ -2105,6 +2142,7 @@ class TranslatorAgent(BaseToolAgent):
         return normalized_src == normalized_tgt or cls._is_noop_translation(original, translated)
 
     def _prepare_llm_payload_text(self, text: str) -> Tuple[str, Dict[str, Any]]:
+        """为 LLM 调用准备文本载荷：隔离数学、环境、屏蔽敏感命令并预处理。"""
         isolated_math_text, math_map = isolate_math_spans(text)
         isolated_env_text, env_map = isolate_env_blocks(isolated_math_text)
         masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
@@ -2121,6 +2159,7 @@ class TranslatorAgent(BaseToolAgent):
         }
 
     def _restore_llm_output_text(self, raw_text: str, context: Dict[str, Any]) -> str:
+        """将 LLM 输出文本还原：取消屏蔽敏感命令、恢复环境和内联数学。"""
         math_map = context.get("math_map", {}) if context else {}
         env_map = context.get("env_map", {}) if context else {}
         mask_mapping = context.get("mask_mapping", {}) if context else {}
@@ -2236,9 +2275,11 @@ class TranslatorAgent(BaseToolAgent):
         return target
 
     def _build_brutal_target_language_fragment_fallback(self, fragment: str) -> Optional[str]:
-        # Fixed pseudo-Chinese filler is forbidden in final outputs. Without a
-        # real translated rescue response, callers must surface explicit
-        # fallback/failure metadata instead of inventing target-language text.
+        """构建强制的目标语言片段回退（当前禁止伪翻译填充）。
+
+        固定伪中文填充在最终输出中是被禁止的。如果没有真实的翻译救援响应，
+        调用方必须返回明确的回退/失败元数据，而不是编造目标语言文本。
+        """
         return None
 
     def _apply_brutal_target_language_fragment_sweep(
@@ -2304,6 +2345,7 @@ class TranslatorAgent(BaseToolAgent):
         prompt_key: str,
         prompt_key_with_terms: Optional[str],
     ) -> Optional[str]:
+        """强制翻译翻译输出中残留的英文散文片段（多轮扫描）。"""
         working = text or ""
         if not self._has_residual_english_prose(working, min_words=10):
             return None
@@ -2407,8 +2449,9 @@ class TranslatorAgent(BaseToolAgent):
 
     @staticmethod
     def _sanitize_retrans_error_message(error_message: str) -> str:
+        """清理重译错误消息，确保诊断文本不会泄漏原始结构分隔符。"""
         text = error_message or ""
-        # Ensure diagnostic context never leaks raw structural delimiters.
+        # 确保诊断上下文永不泄漏原始结构分隔符。
         text = text.replace(r"\begin{", "<BEGIN_TOKEN{")
         text = text.replace(r"\end{", "<END_TOKEN{")
         text = re.sub(r"(?<!\\)\$", r"\\$", text)
@@ -2426,6 +2469,11 @@ class TranslatorAgent(BaseToolAgent):
         include_glossary: bool = False,
         user_prefix: str = "",
     ) -> str:
+        """通过 LLM 翻译文本，支持硬冻结协议、术语表和池故障转移。
+
+        将 LaTeX 结构令牌预处理为占位符后再发送给 LLM，防止结构损坏。
+        包含 429 速率限制处理、网络故障退避和致命错误回退。
+        """
         prepared_text, llm_context = self._prepare_llm_payload_text(user_text)
         user_content = f"{user_prefix}{prepared_text}"
         assert_no_raw_structure(user_content, context=f"translator:{part_type}:{fail_part}")
@@ -2456,18 +2504,18 @@ class TranslatorAgent(BaseToolAgent):
         }
 
         _timeout = build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
-        # ── Rate-limit (429) handling ────────────────────────────────────────
-        # NOTE: global_llm_semaphore is an INFRA GUARD only (prevents system
-        # overload). It has no authority over Phase 2 business scheduling.
-        # 429 retry is strictly bounded: at most MAX_429_RETRIES attempts.
-        # After that, we fall back to source text. Infinite retry is FORBIDDEN.
+        # ── 速率限制（429）处理 ────────────────────────────────────────────
+        # 注意：global_llm_semaphore 仅作为基础设施守卫（防止系统过载）。
+        # 它对 Phase 2 业务调度没有权限。
+        # 429 重试有严格上限：最多 MAX_429_RETRIES 次。
+        # 超限后回退到源文本。禁止无限重试。
         MAX_429_RETRIES = 3
         rate_limit_hits = 0
         network_failures = 0
 
         while rate_limit_hits <= MAX_429_RETRIES and network_failures <= 3:
             try:
-                async with global_llm_semaphore:  # Infra Guard — system survival only
+                async with global_llm_semaphore:  # 基础设施守卫 —— 仅确保系统存活性
                     if self._uses_system_pool():
                         result = await post_chat_completion_with_pool(
                             session=session,
@@ -2556,13 +2604,14 @@ class TranslatorAgent(BaseToolAgent):
                     self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_after_3_attempts")
                     return fallback_text
 
-        # Should not normally be reached; defensive fallback
+        # 正常情况下不应到达此处；防御性回退
         self._register_llm_part_failure(part_type, str(fail_part))
         self._mark_api_fallback(part_type, str(fail_part), "api_request_failed_429_max_retries")
         return fallback_text
 
 
     def _escape_bare_underscores_in_text_mode(self, text: str) -> str:
+        """将文本模式中的裸露下划线转义为 LaTeX 转义序列。"""
         if not text or "_" not in text:
             return text
 
@@ -2597,7 +2646,17 @@ class TranslatorAgent(BaseToolAgent):
         )
 
     async def execute(self, error_retry_count=0, Maxtry=3):
+        """执行翻译任务的核心入口方法。
 
+        根据 trans_mode 选择不同的翻译策略：
+        - mode 0/2: 完整翻译所有 section、environment、caption
+        - mode 1: 仅重译错误报告中指定的部分
+        - mode 3: 快速扫描模式，仅翻译摘要和结论
+
+        Args:
+            error_retry_count: 当前错误重试计数
+            Maxtry: 最大重试次数
+        """
         if self.origin_cli_parity:
             self.prompts = pm.create_origin_cli_parity_prompts(
                 self.config["source_language"],
@@ -2767,8 +2826,8 @@ class TranslatorAgent(BaseToolAgent):
                 logger.info("Quick scan mode completed: abstract and conclusion translated")
                 self.update_progress(100, "Quick scan completed: abstract and conclusion translated")
         
-        # When RAG provides term_dict but LLM extraction was skipped (trans_mode==2),
-        # populate terminology_table from term_dict so the user can still view it.
+        # 当 RAG 提供了 term_dict 但跳过了 LLM 提取时（trans_mode==2），
+        # 从 term_dict 填充 terminology_table，以便用户仍能查看。
         if self.term_dict and not self.terminology_table:
             self.terminology_table = list(self.term_dict.items())
 
@@ -2777,27 +2836,24 @@ class TranslatorAgent(BaseToolAgent):
             self._save_terminology_table()
             logger.info(f"Terminology table generated with {len(self.terminology_table)} terms")
 
-        # Persist deterministic oversize downgrade evidence for replay and observability.
+        # 持久化确定性的超大块降级证据，用于回放和可观测性。
         self._flush_oversize_downgrade_events()
 
     def _section_has_translatable_content(self, content: str) -> bool:
-        """
-        Check if a section (especially section 0) contains translatable text.
-        Returns True if there's meaningful text content after \begin{document}.
-        """
-        # Remove placeholders to check for actual text
+        """检查节（特别是 section 0）是否包含可翻译文本内容。"""
+        # 移除占位符以便检查实际文本
         text = re.sub(r'<PLACEHOLDER_[A-Z]+_\d+>', '', content)
-        # Remove LaTeX commands that don't contain translatable text
+        # 移除非翻译文本的 LaTeX 命令
         text = re.sub(r'\\(documentclass|usepackage|author|affiliation|email|date|maketitle|newpage|setcounter|makeatletter|makeatother|label|ref|eqref|cite|bibliography|bibliographystyle)\b[^\n]*', '', text)
-        # Remove begin/end document
+        # 移除 begin/end document
         text = re.sub(r'\\(begin|end)\{document\}', '', text)
-        # Remove comments
+        # 移除注释
         text = re.sub(r'%[^\n]*', '', text)
-        # Remove excessive whitespace
+        # 移除多余空白
         text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Check if there's substantial text content (more than just LaTeX markup)
-        # Look for actual words (at least 50 characters of text content)
+
+        # 检查是否有足够的文本内容（不仅仅是 LaTeX 标记）
+        # 查找实际单词（至少 50 个字符的文本内容）
         return len(text) > 50
 
     async def translate(self,
@@ -3026,7 +3082,7 @@ class TranslatorAgent(BaseToolAgent):
             await future
     
     def _find_part_by_error(self, error: Dict, secs: List, caps: List, envs: List) -> Optional[Dict]:
-        """Find the part (section/caption/env) referenced by an error report."""
+        """根据错误报告查找引用的部分（section/caption/environment）。"""
         part_type = error.get("part")
         identifier = error.get("num_or_ph")
         
@@ -3045,9 +3101,9 @@ class TranslatorAgent(BaseToolAgent):
         return None
     
     def _apply_structural_fix(self, part: Dict, error: Dict) -> bool:
-        """
-        Apply non-speculative local normalization for structural errors.
-        NOTE: speculative structural repair is forbidden by invariant.
+        """对结构错误应用非推测性本地标准化修复。
+
+        注意：推测性结构修复已被不变量禁止。
         """
         original = part.get("content", "")
         translated = part.get("trans_content", "")
@@ -3077,8 +3133,8 @@ class TranslatorAgent(BaseToolAgent):
 
     
     def _fix_missing_commands(self, original: str, translated: str) -> str:
-        """Restore missing LaTeX commands from original to translated content."""
-        # Extract commands with regex
+        """从原文恢复翻译中缺失的 LaTeX 命令（仅检测，不做复杂插入以免破坏结构）。"""
+        # 使用正则提取命令
         cmd_pattern = r'\\([a-zA-Z]+)(?:\{[^}]*\})*'
         
         original_cmds = re.findall(cmd_pattern, original)
@@ -3098,7 +3154,7 @@ class TranslatorAgent(BaseToolAgent):
         return translated
     
     def _fix_missing_placeholders(self, original: str, translated: str) -> str:
-        """Spec invariant: speculative placeholder repair must be unreachable."""
+        """规范不变量：推测性占位符修复必须不可达。"""
         raise SpeculativeRepairForbiddenError(
             "forbidden: speculative repair in _fix_missing_placeholders"
         )
@@ -4399,7 +4455,8 @@ class TranslatorAgent(BaseToolAgent):
                                      session: aiohttp.ClientSession,
                                      previous_context: Optional[str] = None,
                                      remedial_kind: Optional[str] = None) -> str:
-        # Inject Reference Context Template if available
+        """通过 LLM 翻译文本（带上下文模板注入和救援预算控制）。"""
+        # 如果可用，注入参考上下文模板
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
             template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
             system_prompt += template.format(context=previous_context)
@@ -4440,7 +4497,8 @@ class TranslatorAgent(BaseToolAgent):
                                           session: aiohttp.ClientSession,
                                           previous_context: Optional[str] = None,
                                           remedial_kind: Optional[str] = None) -> str:
-        # Inject Reference Context Template if available
+        """通过 LLM 翻译文本（带术语表和上下文模板注入）。"""
+        # 如果可用，注入参考上下文模板
         if previous_context and "REFERENCE_CONTEXT_TEMPLATE" in self.prompts:
             template = self.prompts["REFERENCE_CONTEXT_TEMPLATE"]
             system_prompt += template.format(context=previous_context)
@@ -4791,6 +4849,7 @@ class TranslatorAgent(BaseToolAgent):
         return "\n".join(merged_content)
 
     def build_term_dict(self):
+        """构建术语字典：从用户上传的 CSV 或项目分类对应的术语文件加载。"""
         if self.user_term:
             df = pd.read_csv(self.user_term, header=None, names=['English Term', 'Chinese Translation'])
             self.term_dict.update(zip(df['English Term'], df['Chinese Translation']))
@@ -4825,8 +4884,7 @@ class TranslatorAgent(BaseToolAgent):
                     print(f"Error: Default terminology file not found: {e}")
 
     def add_placeholder(self):
-
-        # Add placeholders from caption, env, input, and newcommand to the vocabulary
+        """将 caption、env、input 和 newcommand 的占位符添加到术语词汇表中。"""
         caption_path = os.path.join(self.output_dir, "captions_map.json")
         input_path = os.path.join(self.output_dir, "inputs_map.json")
         env_path = os.path.join(self.output_dir, "envs_map.json")
@@ -4865,9 +4923,7 @@ class TranslatorAgent(BaseToolAgent):
             self.term_dict[item] = item
 
     def _save_terminology_table(self) -> None:
-        """
-        Save terminology table to CSV file in output directory.
-        """
+        """将术语表保存为 CSV 文件到输出目录。"""
         import csv
         
         if not self.terminology_table:
@@ -4947,11 +5003,10 @@ class TranslatorAgent(BaseToolAgent):
         mapping: Dict[str, str],
         fail_part: str,
     ) -> None:
-        """
-        Task 12.5: Persist protection log entries to data/protection_log/<task_id>.json.
+        """将保护动作日志持久化到 data/protection_log/<task_id>.json。
 
-        Only writes when *mapping* is non-empty.  Entries are appended to an
-        existing JSON array so the file accumulates across all translation calls.
+        仅在 mapping 非空时写入。条目追加到现有 JSON 数组中，
+        以便文件累积所有翻译调用的记录。
         """
         if not mapping or not self.output_dir:
             return

@@ -45,11 +45,22 @@ import {
   getModeBadgeLabel,
 } from "../utils/conversation-runtime"
 
+/** 路由状态（可通过导航传入种子输入） */
 interface LocationState {
   seedInput?: string
   seedSkillToggles?: CommunityAgentSkillToggles
 }
 
+/**
+ * 社区对话工作区主组件
+ * 完整的 Agent 对话界面，包含：
+ * - 左侧对话历史侧栏（ConversationRail）
+ * - 中间消息列表（ConversationThread）
+ * - 底部输入框（ConversationComposer）
+ *
+ * 支持新建对话、流式 Agent 响应、引文导航和论文导入。
+ * 通过 SSE 流式接收 Agent 运行结果
+ */
 export function CommunityConversationWorkspace() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -81,6 +92,7 @@ export function CommunityConversationWorkspace() {
     [agentMode, externalSearchEnabled, t],
   )
 
+  // 加载对话列表（GET /api/agent/conversations）
   useEffect(() => {
     if (authLoading || !isAuthenticated) {
       setConversations([])
@@ -120,6 +132,7 @@ export function CommunityConversationWorkspace() {
     setExternalSearchEnabled(Boolean(locationState?.seedSkillToggles?.external_search))
   }, [conversationId, locationState?.seedSkillToggles?.external_search])
 
+  // 抑制 Bootstrap 对话重定向
   useEffect(() => {
     if (
       suppressedBootstrapConversationIdRef.current &&
@@ -129,6 +142,7 @@ export function CommunityConversationWorkspace() {
     }
   }, [conversationId])
 
+  // Bootstrap：如果 URL 中的 conversationId 不在已加载列表中，创建新记录
   useEffect(() => {
     if (authLoading || !conversationsHydrated || conversationsLoading || !isAuthenticated || !conversationId) {
       return
@@ -177,6 +191,7 @@ export function CommunityConversationWorkspace() {
     [conversationId, conversations],
   )
 
+  /** 合并/更新对话记录到列表中 */
   const mergeConversationRecord = useCallback((record: CommunityConversationRecord) => {
     setConversations((current) =>
       [record, ...current.filter((entry) => entry.id !== record.id)].sort((left, right) =>
@@ -185,6 +200,7 @@ export function CommunityConversationWorkspace() {
     )
   }, [])
 
+  /** 更新对话中的特定轮次 */
   const updateConversationTurn = useCallback((
     targetConversationId: string,
     targetTurnId: string,
@@ -204,6 +220,7 @@ export function CommunityConversationWorkspace() {
     )
   }, [])
 
+  // 运行中进度步骤动画
   useEffect(() => {
     if (!agentBusy) {
       setRunningStageIndex(0)
@@ -218,6 +235,7 @@ export function CommunityConversationWorkspace() {
     return () => window.clearInterval(intervalId)
   }, [agentBusy, runningProgressSteps.length])
 
+  // 新消息时自动滚动到底部
   useEffect(() => {
     const container = messageListRef.current
     if (!container) {
@@ -238,6 +256,10 @@ export function CommunityConversationWorkspace() {
     return () => window.cancelAnimationFrame(frameId)
   }, [agentBusy, conversationId, currentConversation?.turns.length, runningStageIndex])
 
+  /**
+   * 执行一次对话 Agent 运行
+   * 创建用户轮次 → 创建 assistant 占位轮次 → 流式接收事件更新
+   */
   const runConversationTurn = useCallback(async (
     record: CommunityConversationRecord,
     latestUserInput: string,
@@ -323,6 +345,7 @@ export function CommunityConversationWorkspace() {
     }
   }, [agentMode, externalSearchEnabled, mergeConversationRecord, t, updateConversationTurn])
 
+  // 如果是种子对话（有 seedInput），自动触发首次 Agent 运行
   useEffect(() => {
     if (!isAuthenticated || !currentConversation || agentBusy) {
       return
@@ -357,6 +380,7 @@ export function CommunityConversationWorkspace() {
     runConversationTurn,
   ])
 
+  /** 处理引文打开：导航到社区论文页或 arXiv */
   async function handleCitationOpen(citation: CommunityAgentCitation) {
     if (citation.paper_id) {
       navigate(`/paper/${citation.paper_id}`)
@@ -381,6 +405,7 @@ export function CommunityConversationWorkspace() {
     }
   }
 
+  /** 提交用户消息 */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!isAuthenticated || !currentConversation || agentBusy) {
@@ -404,6 +429,7 @@ export function CommunityConversationWorkspace() {
     await runConversationTurn(updatedRecord, normalized, undefined, agentMode)
   }
 
+  /** 创建新对话 */
   function handleNewChat() {
     if (!isAuthenticated) {
       navigate("/login")
@@ -415,6 +441,7 @@ export function CommunityConversationWorkspace() {
     navigate(`/agent/${createConversationId()}`)
   }
 
+  /** 删除对话 */
   async function handleDeleteConversation(targetConversationId: string) {
     if (!isAuthenticated || deletingConversationId) {
       return
@@ -557,6 +584,7 @@ export function CommunityConversationWorkspace() {
         </PanelShell>
       </div>
 
+      {/* 移动端对话侧栏 Sheet */}
       {isMobile ? (
         <Sheet open={mobileRailOpen} onOpenChange={setMobileRailOpen}>
           <SheetContent side="left" className="w-[min(90vw,24rem)] p-0 sm:max-w-none">

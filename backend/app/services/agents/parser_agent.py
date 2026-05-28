@@ -1,11 +1,11 @@
 """
-Parser Agent
+解析器 Agent
 
-Adapted from prototype system with:
-- Streamlit dependencies removed
-- Python logging integrated
-- Progress callback mechanism added
-- LLM config from backend.app.core.config
+从原型系统适配而来，包含以下改动：
+- 移除 Streamlit 依赖
+- 集成 Python logging
+- 添加进度回调机制
+- LLM 配置从 backend.app.core.config 读取
 """
 
 from typing import Dict, Any, Optional, Callable, List
@@ -51,41 +51,44 @@ SKIP_LLM_JUDGMENT_ENVS = [
     'quotation', 'quote', 'verse',
 ]
 
-# Task 2: Non-translatable environment registry
-# These environments must be preserved verbatim — LLM must NEVER touch their content.
-# Parser will set need_trans=False for any env whose env_name is in this set.
+# Task 2: 不可翻译环境注册表
+# 这些环境必须原样保留，LLM 绝不能修改其内容。
+# Parser 会对 env_name 在此集合中的任何环境设置 need_trans=False。
 VERBATIM_ENVS: frozenset = frozenset({
-    # Code / listing environments
+    # 代码/列表环境
     'verbatim', 'verbatim*', 'Verbatim', 'lstlisting', 'minted',
     'alltt', 'BVerbatim', 'LVerbatim', 'SaveVerbatim',
-    # XML / structural data blocks
+    # XML/结构化数据块
     'CCSXML',
-    # File content environments
+    # 文件内容环境
     'filecontents', 'filecontents*',
-    # Comment environments (should have been stripped, but guard anyway)
+    # 注释环境（可能已被剥离，但留作保护）
     'comment',
-    # TikZ / PGF raw code (fragile)
+    # TikZ/PGF 原始代码（脆弱）
     'tikzpicture', 'pgfpicture',
-    # Algorithm pseudocode (preserve structure)
+    # 算法伪代码（保留结构）
     'algorithm', 'algorithm2e', 'algorithmic', 'algorithmicx',
-    # Theorem-like structured blocks (preserve as Level-A)
+    # 定理类结构化块（作为 Level-A 保留）
     'theorem', 'theorem*', 'lemma', 'lemma*', 'proof', 'proof*', 'definition', 'definition*',
 })
 
 
 class ParserAgent(BaseToolAgent):
-    def __init__(self, 
-                 config: Dict[str, Any], 
+    """解析器 Agent：负责解析 LaTeX 源文件并判断环境是否需要翻译。"""
+
+    def __init__(self,
+                 config: Dict[str, Any],
                  project_dir: str = None,
                  output_dir: str = None,
                  on_progress: Optional[Callable[[str, int, str], None]] = None
                  ):
+        """初始化 ParserAgent。"""
         super().__init__(agent_name="ParserAgent", config=config, on_progress=on_progress)
         self.config = config
         self.project_dir = project_dir
         self.output_dir = output_dir
-        
-        # Get LLM config
+
+        # 获取 LLM 配置
         settings = get_settings()
         llm_config = settings.get_llm_config()
         self.model = config.get("llm_config", {}).get("model", llm_config["model"])
@@ -104,6 +107,7 @@ class ParserAgent(BaseToolAgent):
 
     @staticmethod
     def _coerce_bool(value: Any, default: bool = False) -> bool:
+        """将各种类型的值安全地转换为布尔值。"""
         if value is None:
             return default
         if isinstance(value, bool):
@@ -115,6 +119,7 @@ class ParserAgent(BaseToolAgent):
         return default
 
     def _uses_system_pool(self) -> bool:
+        """判断是否使用系统托管的 LLM 池模式。"""
         llm_config = self.config.get("llm_config", {})
         if str(llm_config.get("pool_mode") or "").strip() == "system_managed" and llm_config.get("pool_members"):
             return True
@@ -122,6 +127,7 @@ class ParserAgent(BaseToolAgent):
 
     @staticmethod
     def _prepare_llm_payload_text(text: str) -> str:
+        """对文本进行预处理（隔离数学、环境、屏蔽敏感命令），准备发送给 LLM。"""
         isolated_math_text, math_map = isolate_math_spans(text)
         isolated_env_text, _env_map = isolate_env_blocks(isolated_math_text)
         masked_text, mask_mapping = mask_sensitive_commands(isolated_env_text)
@@ -132,6 +138,7 @@ class ParserAgent(BaseToolAgent):
         return preprocess_risky_tokens(masked_text, math_map)
 
     def _prepare_env_judge_payload_text(self, env_text: str) -> str:
+        """为环境判断准备文本，确保不包含原始结构标记。"""
         prepared = self._prepare_llm_payload_text(env_text or "")
         assert_no_raw_structure(prepared, context="parser_env_judge")
         assert_no_long_raw_span(
@@ -143,7 +150,7 @@ class ParserAgent(BaseToolAgent):
         return prepared
 
     async def execute(self) -> Any:
-        """Execute parsing task (async version with parallel LLM calls)"""
+        """执行解析任务（异步版本，支持并行 LLM 调用）。"""
         prompt_factory = (
             pm.create_origin_cli_parity_prompts
             if self.origin_cli_parity
@@ -153,7 +160,7 @@ class ParserAgent(BaseToolAgent):
             self.config.get("source_language", "en"),
             self.config.get("target_language", "ch")
         )
-        
+
         self.log(f"Starting parsing for project: {os.path.basename(self.project_dir)}")
         self.update_progress(0, f"Parsing {os.path.basename(self.project_dir)}")
 
@@ -175,11 +182,11 @@ class ParserAgent(BaseToolAgent):
         env_need_trans = []
         skipped_by_type = 0
         skipped_by_length = 0
-        
+
         if latex_parser.envs_json:
             for env in latex_parser.envs_json:
-                # Task 2: Force need_trans=False for verbatim/structural environments
-                # These must be preserved exactly as-is; LLM must never see their content.
+                # Task 2: 对逐字/结构化环境强制设置 need_trans=False
+                # 此类内容必须原样保留，LLM 绝不能看到其内容。
                 if env.get("env_name") in VERBATIM_ENVS:
                     env["need_trans"] = False
                     continue
@@ -195,7 +202,7 @@ class ParserAgent(BaseToolAgent):
                     skipped_by_length += 1
                     continue
                 env_need_trans.append(env)
-        
+
         total_envs = len(latex_parser.envs_json) if latex_parser.envs_json else 0
         self.log(f"Environment filter stats: total={total_envs}, "
                  f"need_llm_check={len(env_need_trans)}, "
@@ -209,8 +216,8 @@ class ParserAgent(BaseToolAgent):
             placeholder_to_index = {
                 env["placeholder"]: i for i, env in enumerate(latex_parser.envs_json)
             }
-            
-            # Use parallel LLM calls for environment judgment
+
+            # 使用并行 LLM 调用进行环境判断
             await self._judge_envs_parallel(env_need_trans, latex_parser, placeholder_to_index)
         elif env_need_trans:
             self.log(
@@ -219,7 +226,7 @@ class ParserAgent(BaseToolAgent):
             )
 
         self.update_progress(90, "Saving parsed data to JSON files")
-        
+
         self._save_parser_outputs(latex_parser)
 
         self.update_progress(100, "Parsing complete")
@@ -227,6 +234,7 @@ class ParserAgent(BaseToolAgent):
         self.log(f"Parsed files saved in {self.output_dir}")
 
     def _save_parser_outputs(self, latex_parser: LatexParser) -> None:
+        """将解析器输出保存为 JSON 映射文件。"""
         self.save_file(Path(self.output_dir, "inputs_map.json"), "json", latex_parser.inputs_json)
         self.save_file(Path(self.output_dir, "envs_map.json"), "json", latex_parser.envs_json)
         self.save_file(Path(self.output_dir, "captions_map.json"), "json", latex_parser.captions_json)
@@ -234,6 +242,7 @@ class ParserAgent(BaseToolAgent):
         self.save_file(Path(self.output_dir, "sections_map.json"), "json", latex_parser.sections_json)
 
     def _judge_envs_origin_cli_parity(self, latex_parser: LatexParser) -> None:
+        """使用 origin CLI parity 模式（串行）判断环境翻译需求。"""
         env_need_trans = []
         if latex_parser.envs_json:
             for env in latex_parser.envs_json:
@@ -261,7 +270,7 @@ class ParserAgent(BaseToolAgent):
 
     def _request_llm_for_judge(self, system_prompt: str, text: str) -> bool:
         """
-        Request LLM API to determine if environment needs translation
+        同步请求 LLM API 判断环境是否需要翻译。
         """
         try:
             payload_text = self._prepare_env_judge_payload_text(text)
@@ -273,11 +282,11 @@ class ParserAgent(BaseToolAgent):
             "model": f"{self.model}",
             "messages": [
                 {
-                    "role": "system", 
+                    "role": "system",
                     "content": f"{system_prompt}"
                 },
                 {
-                    "role": "user", 
+                    "role": "user",
                     "content": payload_text
                 }
             ],
@@ -289,7 +298,7 @@ class ParserAgent(BaseToolAgent):
             "Authorization": f"Bearer {self.API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         for attempt in range(1, 4):
             try:
                 response = requests.post(
@@ -317,6 +326,7 @@ class ParserAgent(BaseToolAgent):
                     return True
 
     def _request_llm_for_judge_origin_cli_parity(self, system_prompt: str, text: str) -> bool:
+        """Origin CLI parity 模式下同步请求 LLM 判断环境翻译需求。"""
         payload = {
             "model": f"{self.model}",
             "messages": [
@@ -354,15 +364,15 @@ class ParserAgent(BaseToolAgent):
         return True
 
     async def _request_llm_for_judge_async(
-        self, 
-        system_prompt: str, 
-        text: str, 
+        self,
+        system_prompt: str,
+        text: str,
         session: aiohttp.ClientSession,
         semaphore: asyncio.Semaphore
     ) -> bool:
         """
-        Async version: Request LLM API to determine if environment needs translation.
-        Uses aiohttp and semaphore for concurrent control.
+        异步版本：请求 LLM API 判断环境是否需要翻译。
+        使用 aiohttp 和信号量进行并发控制。
         """
         try:
             payload_text = self._prepare_env_judge_payload_text(text)
@@ -379,12 +389,12 @@ class ParserAgent(BaseToolAgent):
             "temperature": 0,
             "max_tokens": 50
         }
-        
+
         headers = {
             "Authorization": f"Bearer {self.API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         async with semaphore:
             for attempt in range(1, 4):
                 try:
@@ -402,15 +412,15 @@ class ParserAgent(BaseToolAgent):
                             return False
                         return True
                     async with session.post(
-                        self.base_url, 
-                        json=payload, 
-                        headers=headers, 
+                        self.base_url,
+                        json=payload,
+                        headers=headers,
                         timeout=build_llm_client_timeout(self.config, default=self.request_timeout_seconds)
                     ) as response:
                         response.raise_for_status()
                         result = await response.json()
                         output = result["choices"][0]["message"]["content"].strip()
-                        
+
                         if output.lower() == "true":
                             return True
                         elif output.lower() == "false":
@@ -420,50 +430,50 @@ class ParserAgent(BaseToolAgent):
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     if attempt < 3:
                         logger.warning(f"Async LLM request failed (attempt {attempt}): {e}")
-                        await asyncio.sleep(3 * attempt)  # Exponential backoff
+                        await asyncio.sleep(3 * attempt)  # 指数退避
                     else:
                         logger.error(f"Failed to determine translation need, defaulting to True")
                         return True
         return True
 
     async def _judge_envs_parallel(
-        self, 
-        env_need_trans: List[Dict], 
+        self,
+        env_need_trans: List[Dict],
         latex_parser: 'LatexParser',
         placeholder_to_index: Dict[str, int]
     ) -> None:
         """
-        Parallel execution for environment translation judgment.
-        Uses asyncio.gather for concurrent LLM calls with progress tracking.
+        并行执行环境翻译需求判断。
+        使用 asyncio.gather 进行并发 LLM 调用，并跟踪进度。
         """
         semaphore = asyncio.Semaphore(self.llm_max_concurrent_requests)
         total_envs = len(env_need_trans)
-        completed_count = [0]  # Use list for mutable reference in closure
-        
+        completed_count = [0]  # 使用列表以便在闭包中进行可变引用
+
         async with aiohttp.ClientSession() as session:
             async def judge_single_env(env: Dict) -> tuple:
-                """Judge a single environment and return (placeholder, result)"""
+                """判断单个环境并返回 (placeholder, result)。"""
                 result = await self._request_llm_for_judge_async(
                     self.prompts["set_need_trans_for_envs_system_prompt"],
                     env["content"],
                     session,
                     semaphore
                 )
-                # Update progress counter and report periodically
+                # 更新进度计数并定期报告
                 completed_count[0] += 1
                 if completed_count[0] % 5 == 0 or completed_count[0] == total_envs:
                     progress = 70 + int(20 * completed_count[0] / total_envs)
                     self.update_progress(
-                        progress, 
+                        progress,
                         f"Judging environments: {completed_count[0]}/{total_envs}"
                     )
                 return (env["placeholder"], result)
-            
-            # Execute all judgments in parallel
+
+            # 并行执行所有判断任务
             tasks = [judge_single_env(env) for env in env_need_trans]
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Apply results to latex_parser
+
+            # 将结果应用到 latex_parser
             for result in results:
                 if isinstance(result, Exception):
                     logger.error(f"Parallel env judgment failed: {result}")
@@ -472,4 +482,3 @@ class ParserAgent(BaseToolAgent):
                 idx = placeholder_to_index.get(placeholder)
                 if idx is not None:
                     latex_parser.envs_json[idx]["need_trans"] = need_trans
-

@@ -1,9 +1,14 @@
+/**
+ * 复选框组件 - 基于 Radix UI Checkbox 封装
+ * 渲染可选中/取消选中的复选框控件
+ */
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import { Check } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** 复选框组件，支持 checked/unchecked 状态，选中时显示勾选图标 */
 const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>

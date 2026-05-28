@@ -1,10 +1,10 @@
 """
-FastAPI Main Application
+FastAPI 主应用程序
 
-Minimal MVP version with:
-- Health check endpoint
-- arXiv download endpoint
-- Basic CORS configuration
+最小化 MVP 版本，提供：
+- 健康检查端点
+- arXiv 下载端点
+- 基础 CORS 配置
 """
 
 import asyncio
@@ -31,26 +31,27 @@ if hasattr(task_manager_module, "set_runtime_shutting_down"):
     set_runtime_shutting_down = task_manager_module.set_runtime_shutting_down
 else:
     def set_runtime_shutting_down(_flag: bool) -> None:
+        """设置运行时关闭标志（兼容性空实现）"""
         return None
 
-# Configure logging
+# 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Get settings
+# 获取全局设置
 settings = get_settings()
 
-# Create FastAPI app
+# 创建 FastAPI 应用
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
     description="PaperX Backend API"
 )
 
-# Configure CORS
+# 配置 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -62,13 +63,16 @@ app.add_middleware(
 
 @app.middleware("http")
 async def frontend_pressure_middleware(request, call_next):
+    """前端流量压力感知中间件：当 Web 运行时启用时记录前端请求压力"""
     if runtime_pressure.web_runtime_enabled():
         runtime_pressure.record_frontend_pressure()
     return await call_next(request)
 
 api_router = APIRouter()
 
+# 被中断的任务状态集合
 INTERRUPTED_TASK_STATUSES = ["queued", "pending", "processing"]
+# 非成功状态的论文状态集合
 NON_SUCCESS_PAPER_STATUSES = [
     "not_started",
     "queued",
@@ -80,6 +84,7 @@ NON_SUCCESS_PAPER_STATUSES = [
 
 
 def _dedupe_non_empty(values: List[str]) -> List[str]:
+    """对非空字符串列表去重，保持原始顺序"""
     seen: Set[str] = set()
     ordered: List[str] = []
     for value in values:
@@ -92,7 +97,7 @@ def _dedupe_non_empty(values: List[str]) -> List[str]:
 
 
 async def _seed_rag_terminology():
-    """Seed official RAG terminology terms on first startup."""
+    """在首次启动时写入官方 RAG 术语数据"""
     try:
         seed_enabled = os.getenv("RAG_TERMINOLOGY_SEED_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes"}
         if not seed_enabled:
@@ -111,17 +116,20 @@ async def _seed_rag_terminology():
 
 
 def get_translation_task_repository() -> TranslationTaskRepository:
+    """获取翻译任务仓库实例"""
     return TranslationTaskRepository()
 
 
 def get_community_paper_repository() -> CommunityPaperRepository:
+    """获取社区论文仓库实例"""
     return CommunityPaperRepository()
 
 
 async def reset_stale_community_tasks() -> dict:
     """
-    Purge non-success community-paper rows.
-    This removes related local artifacts and paper-related local rows.
+    清理非成功状态的社区论文记录。
+
+    移除相关的本地产物和论文相关的本地数据库行。
     """
     import asyncio as _asyncio
     import shutil as _shutil
@@ -149,8 +157,8 @@ async def reset_stale_community_tasks() -> dict:
         return result
 
     try:
-        # Safety guard: never purge public published papers on startup.
-        # Purge only drafts/private/removed records that are still in non-success states.
+        # 安全守卫：绝不在启动时清除公开已发布的论文。
+        # 仅清除草稿/私有/已移除状态且仍处于非成功状态的记录。
         purgeable_rows = [
             row
             for row in purgeable_rows
@@ -243,8 +251,9 @@ async def reset_stale_community_tasks() -> dict:
 
 async def fail_interrupted_translation_tasks() -> dict:
     """
-    Mark interrupted queued/pending/processing translation tasks as failed on restart.
-    Also cleans local task artifacts and updates affected community-paper status.
+    重启时将中断的排队/待处理/进行中翻译任务标记为失败。
+
+    同时清理本地任务产物并更新受影响的社区论文状态。
     """
     result = {"failed_tasks": 0, "updated_papers": 0, "cleaned_task_artifacts": 0, "errors": []}
     repository = get_translation_task_repository()
@@ -316,7 +325,7 @@ async def fail_interrupted_translation_tasks() -> dict:
 
 @app.on_event("startup")
 async def startup_event():
-    """Startup event handler"""
+    """应用启动事件处理器：初始化任务队列、恢复中断任务、启动后台循环"""
     set_runtime_shutting_down(False)
     runtime_role = str(getattr(settings, "backend_runtime_role", "all") or "all").strip().lower()
     if runtime_role == "worker":
@@ -336,7 +345,7 @@ async def startup_event():
     app.state.arxiv_metadata_repair_task = None
     app.state.hot_ranking_cron_task = None
 
-    # Initialize TaskQueue
+    # 初始化任务队列
     import backend.app.services.task_manager as tm_module
     from backend.app.services.task_manager import TaskQueue
     tq = TaskQueue(max_concurrent=settings.max_concurrent_translations)
@@ -419,14 +428,14 @@ async def startup_event():
             from backend.app.core import timezone_utils
 
             async def _hot_ranking_daily_cron():
-                """Daily hot ranking cron: refresh rankings, auto-intake new papers, write summary."""
+                """每日热门排行定时任务：刷新排名、自动收录新论文、写入摘要"""
                 while True:
-                    # Compute seconds until next CST trigger time
+                    # 计算距离下一次 CST 触发时间的秒数
                     now_cst = timezone_utils.get_cst_now()
                     hour = int(getattr(settings, "hot_ranking_cron_hour", 3) or 3)
                     minute = int(getattr(settings, "hot_ranking_cron_minute", 7) or 7)
 
-                    # Next trigger in CST
+                    # 下一次 CST 触发时间
                     next_trigger = now_cst.replace(hour=hour, minute=minute, second=0, microsecond=0)
                     if next_trigger <= now_cst:
                         from datetime import timedelta
@@ -434,7 +443,7 @@ async def startup_event():
                         next_trigger += timedelta(days=1)
 
                     wait_seconds = (next_trigger - now_cst).total_seconds()
-                    # Cap at 24h to be safe, and ensure at least 60s
+                    # 最多等待 24 小时，最少 60 秒
                     wait_seconds = max(60.0, min(wait_seconds, 86400.0))
 
                     logger.info(
@@ -452,11 +461,11 @@ async def startup_event():
             logger.info("[Startup] Hot ranking daily cron started")
 
     if runtime_role != "all":
-        # Seed RAG terminology for all runtime roles
+        # 为所有运行时角色写入 RAG 术语数据
         await _seed_rag_terminology()
         return
 
-    # Orphaned task cleanup runs on startup and then periodically.
+    # 孤立任务清理在启动时运行一次，之后定期运行
     from backend.app.services.task_manager import task_manager as _tm
     from pathlib import Path as _Path
     import shutil as _shutil
@@ -466,13 +475,11 @@ async def startup_event():
 
     async def _run_cleanup():
         """
-        State-independent orphaned task cleanup.
+        状态无关的孤立任务清理。
 
-        Scans data/outputs and data/terms for directories older than
-        guest_task_ttl_hours. Any task_id not found in local
-        translation-task persistence is considered orphaned and deleted.
-        If local translation-task storage is unreachable the entire
-        deletion is skipped to prevent accidental data loss.
+        扫描 data/outputs 和 data/terms 目录中超过 guest_task_ttl_hours 的目录。
+        在本地翻译任务持久化存储中找不到的 task_id 视为孤立任务并删除。
+        如果本地翻译任务存储不可达，则跳过整个删除过程以防止意外数据丢失。
         """
         import asyncio as _asyncio2
         try:
@@ -481,7 +488,7 @@ async def startup_event():
             ttl_seconds = settings.guest_task_ttl_hours * 3600
             now = _time.time()
 
-            # 1. Collect directories older than TTL from both scan dirs
+            # 1. 从两个扫描目录中收集超过 TTL 的目录
             old_task_ids: set = set()
             for scan_dir in [outputs_dir, terms_dir]:
                 if not scan_dir.exists():
@@ -500,7 +507,7 @@ async def startup_event():
                 logger.debug("[OrphanedCleanup] No old directories found, skipping.")
                 return
 
-            # 2. Bulk-query local persistence to find which task_ids still exist in DB
+            # 2. 批量查询本地持久化存储，找出哪些 task_id 仍在数据库中
             repository = get_translation_task_repository()
             try:
                 db_task_ids = set(
@@ -517,7 +524,7 @@ async def startup_event():
                 return
 
 
-            # 3. Delete directories whose task_id is NOT in the DB (orphaned)
+            # 3. 删除数据库中不存在的 task_id 对应的目录（孤立任务）
             orphaned = old_task_ids - db_task_ids
             if not orphaned:
                 logger.debug("[OrphanedCleanup] No orphaned tasks found.")
@@ -533,24 +540,25 @@ async def startup_event():
                             logger.info(f"[OrphanedCleanup] Deleted: {target}")
                         except Exception as rm_err:
                             logger.error(f"[OrphanedCleanup] Failed to delete {target}: {rm_err}")
-                # Also evict from in-memory cache if present
+                # 同时从内存缓存中驱逐（如果存在）
                 _tm._tasks.pop(task_id, None)
 
         except Exception as e:
             logger.error(f"[OrphanedCleanup] Unexpected error during cleanup: {e}", exc_info=True)
 
     async def cleanup_loop():
-        # --- Run once immediately on startup ---
+        """孤立任务清理循环：启动时立即运行一次，之后定期执行"""
+        # --- 启动时立即运行一次 ---
         logger.info("[OrphanedCleanup] Running initial cleanup on startup...")
         await _run_cleanup()
 
-        # --- Then run periodically ---
+        # --- 之后定期运行 ---
         while True:
             await asyncio.sleep(cleanup_interval)
             logger.info("[OrphanedCleanup] Running scheduled cleanup...")
             await _run_cleanup()
 
-            # Also flush expired in-memory guest tasks (supplementary)
+            # 同时刷新过期的内存驻留游客任务（补充清理）
             try:
                 from backend.app.services.task_manager import guest_tracker
                 expired_ids = guest_tracker.get_expired_task_ids()
@@ -573,7 +581,7 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Shutdown event handler"""
+    """应用关闭事件处理器：取消所有后台任务，优雅退出"""
     set_runtime_shutting_down(True)
     public_feed_rebuild_task = getattr(app.state, 'public_feed_rebuild_task', None)
     if public_feed_rebuild_task:
@@ -616,7 +624,7 @@ async def shutdown_event():
 @api_router.post("/admin/cleanup", tags=["admin"])
 async def admin_cleanup_stale_tasks(_admin: dict = Depends(require_admin_request)):
     """
-    Manually trigger stale task cleanup and restart failover reconciliation.
+    手动触发过期任务清理和重启故障转移协调。
     """
     failover_result = await fail_interrupted_translation_tasks()
     cleanup_result = await reset_stale_community_tasks()
@@ -627,10 +635,10 @@ async def admin_cleanup_stale_tasks(_admin: dict = Depends(require_admin_request
 @api_router.get("/health")
 async def health_check():
     """
-    Health check endpoint
-    
-    Returns:
-        Status information
+    健康检查端点
+
+    返回：
+        应用状态信息
     """
     return {
         "status": "healthy",
@@ -643,10 +651,10 @@ async def health_check():
 @api_router.get("/")
 async def root():
     """
-    Root endpoint
-    
-    Returns:
-        Welcome message
+    根路径端点
+
+    返回：
+        欢迎信息和 API 入口说明
     """
     return {
         "message": "PaperX Backend API",
@@ -659,12 +667,12 @@ async def root():
 @api_router.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     """
-    Handle favicon.ico requests to avoid 404 errors in logs
+    处理 favicon.ico 请求，防止日志中出现 404 错误
     """
     return Response(content="", media_type="image/x-icon")
 
 
-# Import and include API routes
+# 导入并注册 API 路由
 from backend.app.api.routes import auth, arxiv, upload, task, translate, download, history, papers, community_agent, pdf_direct
 from backend.app.api.routes import settings as settings_routes
 from backend.app.api.routes import terminology

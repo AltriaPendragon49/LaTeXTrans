@@ -1,18 +1,30 @@
+/**
+ * 侧边栏品牌按钮组件
+ * 渲染可点击的品牌 Logo，折叠时切换为折叠图标+展开提示
+ */
 import type { MouseEventHandler } from "react"
 import { ChevronRight } from "lucide-react"
 
 import collapsedLogo from "@/assets/logo-折叠.png"
 import expandedLogo from "@/assets/logo-expanded-cropped.png"
 
+/** SidebarBrandButton 组件 Props */
 interface SidebarBrandButtonProps {
+  /** 品牌名称 */
   brandName: string
+  /** 副标题 */
   subtitle: string
+  /** 是否折叠 */
   collapsed: boolean
+  /** 是否在折叠时显示展开提示 */
   showCollapsedActionHint?: boolean
+  /** 折叠时的操作提示标签 */
   collapsedActionLabel?: string
+  /** 点击回调 */
   onClick: MouseEventHandler<HTMLButtonElement>
 }
 
+/** 侧边栏品牌按钮，折叠时显示小 Logo，hover 出现展开箭头提示 */
 export function SidebarBrandButton({
   brandName,
   collapsed,

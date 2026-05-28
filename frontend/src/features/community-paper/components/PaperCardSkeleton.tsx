@@ -1,5 +1,9 @@
 import { Skeleton } from "@/ui/primitives/skeleton"
 
+/**
+ * 论文卡片骨架屏组件
+ * 在论文列表加载过程中展示占位动画，模拟卡片的分类标签、标题、摘要和操作按钮布局
+ */
 export function PaperCardSkeleton() {
   return (
     <div className="rounded-[28px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-6">

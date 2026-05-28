@@ -14,16 +14,25 @@ import {
   SheetTitle,
 } from "@/ui/primitives/sheet"
 
+/** 热榜时间窗口可选值 */
 const WINDOW_VALUES = ["3d", "7d", "30d", "90d", "all"] as const
 
+/** 默认时间窗口 */
 const DEFAULT_WINDOW = "30d"
 
+/** 热榜窗口筛选组件 Props */
 interface HotWindowFilterProps {
+  /** 当前选中的时间窗口 */
   selectedWindow: string
+  /** 窗口变更回调 */
   onWindowChange: (window: string) => void
   className?: string
 }
 
+/**
+ * 热榜窗口筛选组件
+ * 在桌面端使用 Popover、移动端使用 Sheet 展示热榜时间窗口选项（3天/7天/30天/90天/全部）
+ */
 export function HotWindowFilter({
   selectedWindow,
   onWindowChange,

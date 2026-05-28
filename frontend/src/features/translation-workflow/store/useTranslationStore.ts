@@ -9,8 +9,10 @@ import { DEFAULT_CONFIG, getDefaultTranslationModel } from "@/types/config"
 import type { AdvancedConfig, LatexValidation, TranslationConfig } from "@/types/config"
 import type { TranslateRequest } from "@/lib/api"
 
+/** 任务详情参数类型 */
 type TaskDetailParams = Record<string, string | number | boolean | null> | null
 
+/** 翻译工作流全局状态接口 */
 interface TranslationWorkflowState {
   taskId: string | null
   arxivId: string | null
@@ -53,9 +55,15 @@ interface TranslationWorkflowState {
   stopPolling: () => void
 }
 
+/** 全局轮询和下载轮询的定时器引用 */
 let pollingInterval: ReturnType<typeof setInterval> | null = null
 let downloadPollingInterval: ReturnType<typeof setInterval> | null = null
 
+/**
+ * 翻译工作流全局状态管理 (Zustand Store)
+ * 管理翻译任务的全生命周期状态：上传、下载、轮询、翻译、编译。
+ * 包含用户设置加载、LaTeX 验证、批量操作等功能
+ */
 export const useTranslationStore = create<TranslationWorkflowState>((set, get) => ({
   taskId: null,
   arxivId: null,
@@ -79,9 +87,12 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
   userSettingsLoaded: false,
   hasSystemApiKey: false,
 
+  /** 设置当前翻译任务 ID */
   setTaskId: (id) => set({ taskId: id }),
+  /** 设置当前 arXiv ID */
   setArxivId: (id) => set({ arxivId: id }),
 
+  /** 完全重置——清理轮询定时器并重置所有状态 */
   reset: () => {
     if (pollingInterval) clearInterval(pollingInterval)
     if (downloadPollingInterval) clearInterval(downloadPollingInterval)
@@ -111,6 +122,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     })
   },
 
+  /** 只重置翻译状态（保留配置和用户设置）——用于发起新翻译 */
   resetTranslationState: () => {
     if (pollingInterval) clearInterval(pollingInterval)
     if (downloadPollingInterval) clearInterval(downloadPollingInterval)
@@ -138,6 +150,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     })
   },
 
+  /** 合并更新翻译配置 */
   setConfig: (newConfig) =>
     set((state) => ({
       config: {
@@ -149,6 +162,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
       },
     })),
 
+  /** 合并更新高级配置 */
   setAdvancedConfig: (advancedConfig) =>
     set((state) => ({
       config: {
@@ -160,14 +174,21 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
       },
     })),
 
+  /** 重置配置为默认值 */
   resetConfig: () =>
     set({
       config: { ...DEFAULT_CONFIG },
     }),
 
+  /** 设置 LaTeX 校验结果 */
   setLatexValidation: (validation) => set({ latexValidation: validation }),
 
+  /**
+   * 从后端 GET /api/settings 加载用户设置
+   * 将服务端保存的默认语言、翻译模式、API key 状态等合并到本地配置中
+   */
   loadUserSettings: async (forceReload = false) => {
+    // 如果已经加载过且不强制重载，则跳过
     if (get().userSettingsLoaded && !forceReload) return
 
     try {
@@ -230,13 +251,19 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     }
   },
 
+  /** 标记用户设置为未加载，下次访问时会重新拉取 */
   invalidateUserSettings: () => {
     set({ userSettingsLoaded: false })
   },
 
+  /**
+   * 从 arXiv 下载源文件
+   * 调用 POST /api/download/arxiv 接口，然后启动 SSE/轮询监听下载进度
+   */
   startArxivDownload: async (arxivId) => {
     get().resetTranslationState()
 
+    // 确保用户设置已加载
     set({ userSettingsLoaded: false })
     await get().loadUserSettings()
 
@@ -280,6 +307,11 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     }
   },
 
+  /**
+   * 轮询 arXiv 下载进度
+   * 优先使用 SSE (GET /api/task/{taskId}/stream) 获取实时进度，
+   * 失败时回退到 HTTP 轮询 (GET /api/status/{taskId})
+   */
   pollDownloadProgress: () => {
     const { taskId } = get()
     if (!taskId) return
@@ -288,6 +320,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     let sseRetryCount = 0
     const maxSseRetries = 3
 
+    /** 标记下载失败 */
     const markDownloadFailed = (message?: string) => {
       const errorMessage = message || i18n.t("dashboard.arxivDownloadFailed")
       set({
@@ -300,6 +333,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
       toast.error(i18n.t("dashboard.arxivDownloadFailed"))
     }
 
+    /** HTTP 轮询回退方案 */
     const startPollingFallback = () => {
       if (downloadPollingInterval) return
 
@@ -358,6 +392,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
       }, 2000)
     }
 
+    /** 建立 SSE 连接监听下载进度 */
     const connectSSE = () => {
       if (downloadPollingInterval) return
 
@@ -368,6 +403,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
           sseRetryCount = 0
         }
 
+        // 处理 update 事件：增量进度更新
         eventSource.addEventListener("update", (event) => {
           try {
             const data = JSON.parse(event.data)
@@ -410,6 +446,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
           }
         })
 
+        // 处理 complete 事件
         eventSource.addEventListener("complete", (event) => {
           try {
             const data = JSON.parse(event.data)
@@ -443,6 +480,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
           }
         })
 
+        // 处理 error 事件
         eventSource.addEventListener("error", (event) => {
           try {
             const data = JSON.parse((event as MessageEvent).data)
@@ -450,10 +488,11 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
             eventSource?.close()
             eventSource = null
           } catch {
-            // Connection errors fall through to the shared handler below.
+            // 连接错误会传递到下面的 onerror 共享处理器
           }
         })
 
+        // SSE 连接错误处理，支持最多 3 次重试后回退到 HTTP 轮询
         eventSource.onerror = () => {
           eventSource?.close()
           eventSource = null
@@ -474,6 +513,10 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     connectSSE()
   },
 
+  /**
+   * 开始翻译
+   * 调用 POST /api/translate/{taskId} 提交翻译请求，启动任务状态轮询
+   */
   startTranslation: async (config) => {
     const { taskId } = get()
     if (!taskId) {
@@ -509,7 +552,13 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     }
   },
 
+  /**
+   * 轮询翻译任务状态
+   * 每 2 秒调用 GET /api/status/{taskId} 获取最新状态，
+   * 任务完成或失败后自动停止轮询
+   */
   pollStatus: () => {
+    // 已经在轮询中，避免重复启动
     if (get().isPolling) return
     set({ isPolling: true })
 
@@ -538,6 +587,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
             : [...state.logs, statusData.message].filter((value, index, values) => values.indexOf(value) === index),
         }))
 
+        // 终端状态：停止轮询并显示对应 toast
         if (
           ["completed", "failed", "completed_with_warnings", "failed_compilation"].includes(
             statusData.status.toLowerCase(),
@@ -563,6 +613,7 @@ export const useTranslationStore = create<TranslationWorkflowState>((set, get) =
     }, 2000)
   },
 
+  /** 停止任务状态轮询 */
   stopPolling: () => {
     if (pollingInterval) clearInterval(pollingInterval)
     pollingInterval = null

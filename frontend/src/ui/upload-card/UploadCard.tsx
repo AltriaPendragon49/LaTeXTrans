@@ -1,23 +1,41 @@
+/**
+ * 上传卡片组件
+ * 渲染文件上传的完整交互流程：idle（待上传）-> uploading（上传中）-> success（成功）-> error（失败）
+ * 使用 Framer Motion 实现状态切换动画
+ */
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertTriangle, CheckCircle2, FileArchive, Loader2, Upload, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/ui/button/Button"
 
+/** UploadCard 组件 Props */
 interface UploadCardProps {
+  /** 是否为拖拽激活状态 */
   isDragActive: boolean
+  /** 文件名 */
   fileName: string
+  /** 上传进度（0-100） */
   progress: number
+  /** 上传状态：idle / uploading / success / error */
   status: "idle" | "uploading" | "success" | "error"
+  /** idle 状态标题 */
   idleTitle: string
+  /** idle 状态描述 */
   idleDescription: string
+  /** 上传中标签 */
   uploadingLabel: string
+  /** 成功状态操作按钮标签 */
   successActionLabel: string
+  /** 错误状态标签 */
   errorLabel: string
+  /** 重试按钮标签 */
   retryLabel: string
+  /** 重置回调 */
   onReset: (event: React.MouseEvent) => void
 }
 
+/** 上传卡片，根据 status 状态渲染不同的 UI，AnimatePresence 驱动切换动画 */
 export function UploadCard({
   isDragActive,
   fileName,

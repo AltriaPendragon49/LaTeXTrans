@@ -11,6 +11,7 @@ import { uploadFile } from "@/lib/api"
 import { useTranslationConfig } from "@/features/translation-workflow/hooks/useTranslationConfig"
 import { useTranslationTask } from "@/features/translation-workflow/hooks/useTranslationTask"
 
+/** 上传错误响应体的形状 */
 type UploadErrorShape = {
   response?: {
     data?: {
@@ -20,6 +21,10 @@ type UploadErrorShape = {
   message?: string
 }
 
+/**
+ * 拖拽上传区域组件
+ * 处理 LaTeX 文件的拖拽、点击选择和上传流程，上传完成后更新全局任务状态
+ */
 export function DropZone() {
   const { setTaskId, setArxivId, resetTranslationState } = useTranslationTask()
   const { setLatexValidation, latexValidation } = useTranslationConfig()
@@ -30,6 +35,7 @@ export function DropZone() {
   const [fileName, setFileName] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
+  /** 处理拖拽事件，进入/离开时更新激活状态 */
   const handleDrag = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -40,6 +46,7 @@ export function DropZone() {
     }
   }, [])
 
+  /** 处理文件验证和上传，支持 .zip/.rar/.tar/.gz/.tgz/.tex 格式，最大 50MB */
   const processFile = useCallback(async (file: File) => {
     const validExtensions = [".zip", ".rar", ".tar", ".gz", ".tgz", ".tex"]
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
@@ -59,6 +66,7 @@ export function DropZone() {
     setUploadStatus("uploading")
     setProgress(0)
 
+    // 上传过程中模拟进度条增长
     const interval = window.setInterval(() => {
       setProgress((prev) => (prev >= 90 ? prev : prev + 10))
     }, 200)
@@ -92,6 +100,7 @@ export function DropZone() {
     }
   }, [resetTranslationState, setArxivId, setLatexValidation, setTaskId, t])
 
+  /** 处理文件拖放 */
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -102,6 +111,7 @@ export function DropZone() {
     }
   }, [processFile])
 
+  /** 处理文件输入框变更 */
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     event.preventDefault()
     if (event.target.files && event.target.files[0]) {
@@ -109,6 +119,7 @@ export function DropZone() {
     }
   }
 
+  /** 重置上传状态到空闲 */
   function resetUpload(event: React.MouseEvent) {
     event.stopPropagation()
     setUploadStatus("idle")
@@ -120,6 +131,7 @@ export function DropZone() {
     setLatexValidation(null)
   }
 
+  /** 打开系统文件选择对话框 */
   function openFileDialog() {
     inputRef.current?.click()
   }

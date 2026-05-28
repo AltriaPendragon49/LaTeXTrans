@@ -1,14 +1,22 @@
+/**
+ * 工具提示组件 - 基于 Radix UI Tooltip 封装
+ * 在元素 hover 或 focus 时显示浮动的提示文本
+ */
 import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 
 import { cn } from "@/lib/utils"
 
+/** 工具提示 Provider，需包裹在应用根处以提供全局 Tooltip 上下文 */
 const TooltipProvider = TooltipPrimitive.Provider
 
+/** 工具提示根组件 */
 const Tooltip = TooltipPrimitive.Root
 
+/** 工具提示触发器，hover/focus 时触发提示显示 */
 const TooltipTrigger = TooltipPrimitive.Trigger
 
+/** 工具提示内容气泡，显示在触发器附近 */
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>

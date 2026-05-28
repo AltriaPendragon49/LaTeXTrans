@@ -1,3 +1,7 @@
+/**
+ * 搜索栏组件
+ * 渲染带输入框和提交按钮的搜索表单，支持单行和多行模式，以及 inline/feature 两种样式
+ */
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -6,6 +10,7 @@ import { Button } from "@/ui/button/Button"
 import { Input } from "@/ui/input/Input"
 import { Textarea } from "@/ui/input/Textarea"
 
+/** 搜索栏样式变体：inline（紧凑） / feature（突出展示） */
 const searchBarVariants = cva(
   "border border-[color:var(--px-shell-line)] text-[color:var(--px-shell-ink)] shadow-[var(--px-shell-shadow)]",
   {
@@ -23,22 +28,37 @@ const searchBarVariants = cva(
   },
 )
 
+/** SearchBar 组件 Props */
 interface SearchBarProps extends VariantProps<typeof searchBarVariants> {
+  /** 当前输入值 */
   value: string
+  /** 值变更回调 */
   onValueChange: (value: string) => void
+  /** 提交回调，传入当前值 */
   onSubmit: (value: string) => void
+  /** 占位文本 */
   placeholder: string
+  /** 无障碍标签 */
   ariaLabel: string
+  /** 提交按钮标签 */
   actionLabel: string
+  /** 提交按钮图标 */
   actionIcon?: ReactNode
+  /** 辅助操作按钮 */
   auxiliaryAction?: ReactNode
+  /** 元信息区域 */
   meta?: ReactNode
+  /** 是否禁用 */
   disabled?: boolean
+  /** 是否多行模式 */
   multiline?: boolean
+  /** 额外样式 */
   className?: string
+  /** 输入框额外样式 */
   inputClassName?: string
 }
 
+/** 搜索栏，multiline 使用 Textarea 组件，Enter 提交（Shift+Enter 换行） */
 export function SearchBar({
   value,
   onValueChange,

@@ -4,6 +4,7 @@ import { BookText } from "lucide-react"
 import { PageIntro } from "@/ui/page-intro/PageIntro"
 import { TerminologyReviewPanel } from "@/features/rag-terminology/components/TerminologyReviewPanel"
 
+/** RAG术语管理页面组件：展示 RAG 术语审核面板 */
 export default function RagTerminologyAdminPage() {
   const { t } = useTranslation()
 

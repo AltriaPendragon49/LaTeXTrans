@@ -1,5 +1,7 @@
+/** 术语来源类型 */
 export type TermSourceType = "system" | "user" | "imported" | "auto_extracted" | "manual" | "bibtex_imported" | "shared_by_user";
 
+/** 术语条目接口 */
 export interface TerminologyTerm {
   id: string;
   source_term: string;
@@ -20,6 +22,7 @@ export interface TerminologyTerm {
   updated_at?: string;
 }
 
+/** 匹配日志条目接口 */
 export interface MatchLogEntry {
   id: string;
   task_id: string;
@@ -32,6 +35,7 @@ export interface MatchLogEntry {
   rerank_score?: number;
 }
 
+/** 术语上传结果接口 */
 export interface TerminologyUploadResult {
   accepted: number;
   rejected: number;
@@ -39,6 +43,7 @@ export interface TerminologyUploadResult {
   term_ids: string[];
 }
 
+/** 创建术语的请求体 */
 export interface CreateTermPayload {
   source_term: string;
   target_term: string;
@@ -49,6 +54,7 @@ export interface CreateTermPayload {
   status?: string;
 }
 
+/** 更新术语的请求体 */
 export interface UpdateTermPayload {
   source_term?: string;
   target_term?: string;
@@ -58,23 +64,27 @@ export interface UpdateTermPayload {
   status?: string;
 }
 
+/** 批量操作请求体 */
 export interface BatchOperationPayload {
   term_ids: string[];
   operation: "approve" | "reject" | "delete";
   reason?: string;
 }
 
+/** 领域信息接口 */
 export interface DomainInfo {
   value: string;
   label_zh: string;
   group: string | null;
 }
 
+/** 领域列表响应接口 */
 export interface DomainsResponse {
   domains: DomainInfo[];
   groups: Record<string, { label_zh: string; members: string[] }>;
 }
 
+/** 术语表单数据接口 */
 export interface TermFormData {
   source_term: string;
   target_term: string;

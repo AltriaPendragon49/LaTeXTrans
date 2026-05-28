@@ -77,6 +77,7 @@ const LANGUAGE_OPTIONS = [
   { value: "es", label: "Español" },
 ]
 
+/** 格式化日期字符串 */
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -90,37 +91,40 @@ function formatDate(dateString: string): string {
   }
 }
 
+/**
+ * 术语浏览器页面组件
+ * 提供术语的完整 CRUD 管理界面，包括：
+ * - 多条件筛选（状态、领域、源语言、关键词搜索）
+ * - 分页加载（GET /terminology/terms）
+ * - 创建/编辑/删除术语
+ * - 去抖搜索
+ */
 export function TerminologyBrowserPage() {
   const { t } = useTranslation()
 
-  // Domain data
   const { domains, groups, isLoading: isDomainsLoading, error: domainsError } = useDomains()
 
-  // Data state
   const [terms, setTerms] = useState<TerminologyTerm[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Filters
   const [statusFilter, setStatusFilter] = useState("")
   const [domainFilter, setDomainFilter] = useState("")
   const [sourceLangFilter, setSourceLangFilter] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
 
-  // Dialog state
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingTerm, setEditingTerm] = useState<TerminologyTerm | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
-  // Action loading
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  // Debounce search
+  // 搜索去抖
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery)
@@ -129,7 +133,6 @@ export function TerminologyBrowserPage() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Load terms
   const loadTerms = useCallback(async () => {
     setIsLoading(true)
     setLoadError(null)
@@ -153,13 +156,12 @@ export function TerminologyBrowserPage() {
     loadTerms()
   }, [loadTerms])
 
-  // Reset page when filters change
   function handleFilterChange(setter: (v: string) => void, value: string) {
     setter(value)
     setPage(1)
   }
 
-  // Create term
+  /** 创建术语 */
   async function handleCreate(data: TermFormData) {
     try {
       await createTerm({
@@ -178,7 +180,7 @@ export function TerminologyBrowserPage() {
     }
   }
 
-  // Edit term
+  /** 编辑术语 */
   async function handleEdit(data: TermFormData) {
     if (!editingTerm) return
     try {
@@ -197,7 +199,7 @@ export function TerminologyBrowserPage() {
     }
   }
 
-  // Delete term
+  /** 删除术语 */
   async function handleDelete(termId: string) {
     if (!window.confirm(t("ragTerminology.deleteConfirm"))) return
     setActionLoadingId(termId)
@@ -213,7 +215,6 @@ export function TerminologyBrowserPage() {
     }
   }
 
-  // Render domain filter options grouped
   function renderDomainFilterOptions() {
     if (isDomainsLoading || domainsError || groups == null || Object.keys(groups).length === 0) {
       return domains.map((d) => (
@@ -249,7 +250,6 @@ export function TerminologyBrowserPage() {
 
   return (
     <PanelShell className="space-y-6 p-4 sm:p-6">
-      {/* Create dialog */}
       <TermFormModal
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
@@ -260,7 +260,6 @@ export function TerminologyBrowserPage() {
         domainGroups={groups}
       />
 
-      {/* Edit dialog */}
       <TermFormModal
         open={editDialogOpen}
         onClose={() => { setEditDialogOpen(false); setEditingTerm(null) }}
@@ -278,9 +277,7 @@ export function TerminologyBrowserPage() {
         domainGroups={groups}
       />
 
-      {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--px-shell-muted)]" />
           <Input
@@ -291,7 +288,6 @@ export function TerminologyBrowserPage() {
           />
         </div>
 
-        {/* Status filter */}
         <div className="flex items-center gap-2">
           <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.status")}</Label>
           <Select value={statusFilter || "__all__"} onValueChange={(v) => handleFilterChange(setStatusFilter, v === "__all__" ? "" : v)}>
@@ -307,7 +303,6 @@ export function TerminologyBrowserPage() {
           </Select>
         </div>
 
-        {/* Domain filter */}
         <div className="flex items-center gap-2">
           <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.domain")}</Label>
           <Select value={domainFilter || "__all__"} onValueChange={(v) => handleFilterChange(setDomainFilter, v === "__all__" ? "" : v)}>
@@ -327,7 +322,6 @@ export function TerminologyBrowserPage() {
           </Select>
         </div>
 
-        {/* Source lang filter */}
         <div className="flex items-center gap-2">
           <Label className="text-sm whitespace-nowrap">{t("ragTerminology.filters.sourceLang")}</Label>
           <Select value={sourceLangFilter || "__all__"} onValueChange={(v) => handleFilterChange(setSourceLangFilter, v === "__all__" ? "" : v)}>
@@ -343,7 +337,6 @@ export function TerminologyBrowserPage() {
           </Select>
         </div>
 
-        {/* Clear filters */}
         <Button variant="outline" size="sm" onClick={() => {
           setStatusFilter("")
           setDomainFilter("")
@@ -357,21 +350,18 @@ export function TerminologyBrowserPage() {
 
         <div className="flex-1" />
 
-        {/* Create button */}
         <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-1" />
           {t("ragTerminology.create")}
         </Button>
       </div>
 
-      {/* Results count */}
       {!isLoading && !loadError && terms.length > 0 && (
         <p className="text-xs text-[color:var(--px-shell-muted)]">
           {t("ragTerminology.browser.resultsCount", { count: total })}
         </p>
       )}
 
-      {/* Content area */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-14 text-[color:var(--px-shell-muted)]">
           <Loader2 className="h-6 w-6 animate-spin" />
@@ -459,7 +449,6 @@ export function TerminologyBrowserPage() {
             </DataTableBody>
           </DataTable>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between pt-2">
               <p className="text-xs text-[color:var(--px-shell-muted)]">

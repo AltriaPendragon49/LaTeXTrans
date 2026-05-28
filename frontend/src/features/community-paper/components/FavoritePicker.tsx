@@ -18,19 +18,27 @@ import type {
 import { Button } from "@/ui/button/Button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/primitives/popover"
 
+/** 收藏选择器 Props */
 interface FavoritePickerProps {
+  /** 论文 ID */
   paperId: string
+  /** 收藏数 */
   favoriteCount?: number
+  /** 查看者状态（是否已收藏等） */
   viewerState?: ViewerState | null
+  /** 展示样式：卡片模式或图标模式 */
   variant?: "card" | "icon"
   className?: string
+  /** 收藏状态变更回调 */
   onFavoriteStateChange?: (payload: PaperFavoriteFolderUpdateResponse) => void
 }
 
+/** 将字符串数组转为 Set，用于比较选择差异 */
 function buildSet(values: string[]) {
   return new Set(values.map((value) => value.trim()).filter(Boolean))
 }
 
+/** 比较两个选择列表是否相同 */
 function sameSelection(left: string[], right: string[]) {
   const leftSet = buildSet(left)
   const rightSet = buildSet(right)
@@ -45,6 +53,7 @@ function sameSelection(left: string[], right: string[]) {
   return true
 }
 
+/** 计算文件夹在选择变更后的论文数量 */
 function nextFolderCount(folder: FavoriteFolder, fromSelected: boolean, toSelected: boolean) {
   if (fromSelected === toSelected) {
     return folder.paper_count
@@ -55,6 +64,12 @@ function nextFolderCount(folder: FavoriteFolder, fromSelected: boolean, toSelect
   return Math.max(0, folder.paper_count - 1)
 }
 
+/**
+ * 收藏选择器组件
+ * 通过 Popover 展示收藏夹列表，支持多选切换、新建收藏夹、确认保存。
+ * 调用 GET /api/papers/{paperId}/favorite-folders 获取文件夹列表，
+ * 调用 POST /api/papers/{paperId}/favorite-folders 更新收藏状态
+ */
 export function FavoritePicker({
   paperId,
   favoriteCount = 0,
@@ -83,6 +98,7 @@ export function FavoritePicker({
     [initialSelectedFolderIds, selectedFolderIds],
   )
 
+  // 打开时加载收藏夹列表
   useEffect(() => {
     if (!open || !isAuthenticated) {
       return
@@ -121,6 +137,7 @@ export function FavoritePicker({
     }
   }, [isAuthenticated, open, paperId, t])
 
+  /** 处理打开/关闭，未登录用户重定向到登录页 */
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen && !isAuthenticated) {
       toast.error(t("auth.loginRequiredForThisFeature"))
@@ -130,6 +147,7 @@ export function FavoritePicker({
     setOpen(nextOpen)
   }
 
+  /** 切换文件夹选中状态 */
   function toggleFolder(folderId: string) {
     setSelectedFolderIds((current) =>
       current.includes(folderId)
@@ -138,6 +156,7 @@ export function FavoritePicker({
     )
   }
 
+  /** 创建新收藏夹 */
   async function handleCreateFolder() {
     const normalizedName = newFolderName.trim()
     if (!normalizedName || creating) {
@@ -162,6 +181,7 @@ export function FavoritePicker({
     }
   }
 
+  /** 确认保存收藏夹选择 */
   async function handleConfirm() {
     if (!hasChanges || saving) {
       return

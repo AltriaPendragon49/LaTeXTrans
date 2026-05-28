@@ -23,9 +23,11 @@ import { RecordRow } from "@/ui/record-row/RecordRow"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 import { UploadDropSurface } from "@/ui/upload-card/UploadDropSurface"
 
+/** 活动批处理状态集合 */
 const ACTIVE_BATCH_STATUSES = new Set(["queued", "pending", "running"])
 const ACTIVE_JOB_STATUSES = new Set(["queued", "pending", "running", "processing"])
 
+/** 解析 arXiv ID 文本输入为去重数组 */
 function parseArxivIds(rawValue: string): string[] {
   return Array.from(
     new Set(
@@ -37,6 +39,7 @@ function parseArxivIds(rawValue: string): string[] {
   )
 }
 
+/** 判断批处理是否仍在活动中 */
 function isBatchActive(batch: AdminCurationBatchResponse | null): boolean {
   if (!batch) {
     return false
@@ -47,6 +50,12 @@ function isBatchActive(batch: AdminCurationBatchResponse | null): boolean {
   return batch.items.some((item) => ACTIVE_JOB_STATUSES.has(item.status.toLowerCase()))
 }
 
+/**
+ * 管理员策展工作区组件
+ * 提供 arXiv ID 批量导入和文件批量上传两种策展方式。
+ * 支持实时查看批处理状态，活动批处理自动轮询刷新。
+ * 仅管理员角色可访问
+ */
 export function AdminCurationWorkspace() {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useAuth()
@@ -73,6 +82,7 @@ export function AdminCurationWorkspace() {
     }
   }, [isAuthenticated, loadUserSettings])
 
+  /** 刷新批处理状态 */
   const refreshBatch = useCallback(async (batchId: string) => {
     try {
       setIsRefreshing(true)
@@ -86,6 +96,7 @@ export function AdminCurationWorkspace() {
     }
   }, [t])
 
+  // 活动批处理自动轮询
   useEffect(() => {
     if (!batch?.batch_id || !hasActiveBatch) {
       return
@@ -98,6 +109,7 @@ export function AdminCurationWorkspace() {
     return () => window.clearInterval(intervalId)
   }, [batch?.batch_id, hasActiveBatch, refreshBatch])
 
+  /** 提交 arXiv ID 批量策展 */
   async function handleSubmitArxiv(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!arxivIds.length) {
@@ -121,6 +133,7 @@ export function AdminCurationWorkspace() {
     }
   }
 
+  /** 提交文件批量上传策展 */
   async function handleSubmitUploads() {
     if (!selectedFiles.length) {
       return

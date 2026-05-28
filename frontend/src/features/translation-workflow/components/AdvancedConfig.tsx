@@ -16,6 +16,11 @@ import { FormattingPanel } from "@/features/translation-workflow/components/Form
 import { useTranslationConfig } from "@/features/translation-workflow/hooks/useTranslationConfig"
 import type { CompileStrategy, FormattingConfig, TranslationMode } from "@/types/config"
 
+/**
+ * 高级配置组件
+ * 提供翻译模式、编译策略、翻译模型、API 设置、RAG 术语开关、
+ * 邮件通知和排版格式等高级翻译配置界面
+ */
 export function AdvancedConfig() {
   const { config, setConfig, setAdvancedConfig, hasSystemApiKey } = useTranslationConfig()
   const { user } = useAuth()
@@ -23,10 +28,12 @@ export function AdvancedConfig() {
   const { t } = useTranslation()
   const languages = getLocalizedLanguageOptions(t)
 
+  /** 更新高级配置中的单个字段 */
   function updateConfig(key: keyof typeof advanced_config, value: unknown) {
     setAdvancedConfig({ [key]: value })
   }
 
+  /** 合并更新格式化配置 */
   function updateFormatting(patch: Partial<FormattingConfig>) {
     setAdvancedConfig({
       formatting: { ...(advanced_config.formatting ?? {}), ...patch },

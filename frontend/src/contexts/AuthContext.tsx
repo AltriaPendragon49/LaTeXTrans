@@ -56,6 +56,7 @@ interface AuthProviderProps {
     children: ReactNode
 }
 
+/** 认证上下文提供者：管理用户会话、登录/注册/登出、配额快照等认证相关状态 */
 export function AuthProvider({ children }: AuthProviderProps) {
     const [user, setUser] = useState<LocalAuthUser | null>(null)
     const [session, setSession] = useState<LocalAuthSession | null>(null)
@@ -189,6 +190,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     )
 }
 
+/** 获取认证上下文的 Hook，必须在 AuthProvider 内部使用 */
 export function useAuth(): AuthContextType {
     const context = useContext(AuthContext)
     if (!context) {

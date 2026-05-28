@@ -1,3 +1,5 @@
+"""Cross-Encoder 重排序器 - 对候选术语进行精细相关性评分"""
+
 from __future__ import annotations
 
 import logging
@@ -5,23 +7,21 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Reranker
-# ---------------------------------------------------------------------------
+# ── 重排序器 ─────────────────────────────────────────────────────────
 
 
 class CrossEncoderReranker:
-    """Cross-Encoder reranker for fine-grained candidate term scoring.
+    """Cross-Encoder 重排序器，用于对候选术语进行细粒度评分。
 
-    Uses ``sentence-transformers`` ``CrossEncoder`` under the hood.
+    底层使用 ``sentence-transformers`` 的 ``CrossEncoder``。
 
-    Parameters
+    参数
     ----------
     model_name : str
-        HuggingFace cross-encoder model name.
-        Defaults to ``"cross-encoder/ms-marco-MiniLM-L-6-v2"``.
-    device : str, optional
-        Torch device (``"cpu"``, ``"cuda"``).  *None* lets the library decide.
+        HuggingFace cross-encoder 模型名称。
+        默认为 ``"cross-encoder/ms-marco-MiniLM-L-6-v2"``。
+    device : str, 可选
+        Torch 设备（``"cpu"``, ``"cuda"``）。为 *None* 时自动选择。
     """
 
     def __init__(
@@ -29,16 +29,21 @@ class CrossEncoderReranker:
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
         device: Optional[str] = None,
     ) -> None:
+        """初始化 Cross-Encoder 重排序器
+
+        参数:
+            model_name: 模型名称
+            device: 计算设备（可选）
+        """
         self.model_name = model_name
         self._device = device
         self._model = None
         self._load_error: Optional[str] = None
 
-    # ------------------------------------------------------------------
-    # Model loading
-    # ------------------------------------------------------------------
+    # ── 模型加载 ─────────────────────────────────────────────────────
 
     def _load_model(self) -> None:
+        """延迟加载 CrossEncoder 模型，已加载则跳过"""
         if self._model is not None:
             return
         try:
@@ -65,9 +70,7 @@ class CrossEncoderReranker:
             logger.warning(msg)
             self._load_error = msg
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    # ── 公共 API ─────────────────────────────────────────────────────
 
     def rerank(
         self,
@@ -75,30 +78,28 @@ class CrossEncoderReranker:
         candidates: list[dict],
         top_n: int = 10,
     ) -> list[dict]:
-        """Score candidate terms and return the top ``top_n`` by relevance.
+        """对候选术语评分，返回按相关性排序的前 ``top_n`` 个结果。
 
-        Parameters
+        参数
         ----------
         query : str
-            The query text (e.g. a LaTeX chunk).
+            查询文本（如 LaTeX 文本块）。
         candidates : list[dict]
-            Candidate term dicts.  Each **must** contain a ``"source_term"``
-            key.  May also have ``"bm25_score"`` and/or ``"vector_score"``.
+            候选术语字典。每个必须包含 ``"source_term"`` 键。
+            可以同时有 ``"bm25_score"`` 和/或 ``"vector_score"``。
         top_n : int
-            Number of highest-scoring candidates to return.
+            返回的最高评分候选数量。
 
-        Returns
+        返回
         -------
         list[dict]
-            Input dicts augmented with a ``"rerank_score"`` field, sorted by
-            descending ``rerank_score``, truncated to ``top_n``.  On failure
-            the original candidates (sorted by their existing scores) are
-            returned unchanged.
+            输入字典附加 ``"rerank_score"`` 字段，按降序排列，
+            截断至 ``top_n``。失败时原样返回按现有评分排序的候选项。
         """
         if not query or not query.strip() or not candidates:
             return candidates[:top_n] if candidates else []
 
-        # Fallback if model is not available.
+        # 模型不可用时的回退策略。
         if self._model is None:
             logger.warning(
                 "CrossEncoder model not loaded; "
@@ -106,7 +107,7 @@ class CrossEncoderReranker:
             )
             return self._fallback_sort(candidates, top_n)
 
-        # Build (query, source_term) pairs.
+        # 构建 (query, source_term) 配对。
         pairs = []
         valid_candidates = []
         for c in candidates:
@@ -131,16 +132,14 @@ class CrossEncoderReranker:
         return valid_candidates[:top_n]
 
     def is_available(self) -> bool:
-        """``True`` if the CrossEncoder model was loaded successfully."""
+        """CrossEncoder 模型是否已成功加载"""
         return self._model is not None
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    # ── 内部辅助方法 ─────────────────────────────────────────────────
 
     @staticmethod
     def _fallback_sort(candidates: list[dict], top_n: int) -> list[dict]:
-        """Fallback: sort candidates by the best available score."""
+        """回退策略：按最佳可用评分排序候选项"""
         for c in candidates:
             c.setdefault("rerank_score", 0.0)
 

@@ -1,6 +1,11 @@
+/**
+ * 本地认证模块
+ * 管理用户登录、会话持久化、配额快照和登出等功能
+ */
 import { API_BASE_URL } from "@/api-base"
 import { retryOnTransientNetworkError } from "@/lib/network-retry"
 
+/** 本地认证用户信息 */
 export interface LocalAuthUser {
     id: string
     external_provider: string
@@ -12,6 +17,7 @@ export interface LocalAuthUser {
     phone?: string | null
 }
 
+/** LaTeX 翻译配额快照 */
 export interface LatexTranslationQuotaSnapshot {
     limit: number
     used: number
@@ -20,6 +26,7 @@ export interface LatexTranslationQuotaSnapshot {
     reset_timezone: string
 }
 
+/** PDF 直译配额快照 */
 export interface PdfDirectQuotaSnapshot {
     unused_integral: number | null
     unused_pages: number | null
@@ -28,11 +35,13 @@ export interface PdfDirectQuotaSnapshot {
     fetched_at: string | null
 }
 
+/** 完整配额快照（含 LaTeX 翻译和 PDF 直译） */
 export interface QuotaSnapshot {
     latex_translation: LatexTranslationQuotaSnapshot
     pdf_direct: PdfDirectQuotaSnapshot
 }
 
+/** 本地认证会话 */
 export interface LocalAuthSession {
     access_token: string
     token_type: string
@@ -41,6 +50,7 @@ export interface LocalAuthSession {
     quota_snapshot?: QuotaSnapshot | null
 }
 
+/** 本地认证错误 */
 export interface LocalAuthError {
     message: string
     code?: string
@@ -54,10 +64,12 @@ const DEFAULT_NIUTRANS_LOGIN_URL = "https://niutrans.com/login?active=0"
 const DEFAULT_NIUTRANS_REGISTER_URL = "https://niutrans.com/login?active=3"
 const DEFAULT_NIUTRANS_ACCOUNT_URL = "https://niutrans.com/login?active=0"
 
+/** 判断当前是否在浏览器环境 */
 function isBrowser(): boolean {
     return typeof window !== "undefined"
 }
 
+/** 标准化用户对象，返回 null 表示数据不合法 */
 function normalizeUser(input: Partial<LocalAuthUser>): LocalAuthUser | null {
     if (typeof input.id !== "string" || !input.id.trim()) {
         return null
@@ -80,10 +92,12 @@ function normalizeUser(input: Partial<LocalAuthUser>): LocalAuthUser | null {
     }
 }
 
+/** 判断输入是否为 Record 类型 */
 function isRecord(input: unknown): input is Record<string, unknown> {
     return Boolean(input && typeof input === "object")
 }
 
+/** 标准化数值：非有限数值返回 null */
 function normalizeNumber(input: unknown): number | null {
     if (typeof input !== "number" || !Number.isFinite(input)) {
         return null
@@ -91,10 +105,16 @@ function normalizeNumber(input: unknown): number | null {
     return input
 }
 
+/** 标准化字符串：非字符串或空串返回 fallback */
 function normalizeString(input: unknown, fallback: string): string {
     return typeof input === "string" && input.trim() ? input : fallback
 }
 
+/**
+ * 标准化配额快照数据结构
+ * @param input - 原始数据
+ * @returns 标准化后的 QuotaSnapshot，数据不合法则返回 null
+ */
 export function normalizeQuotaSnapshot(input: unknown): QuotaSnapshot | null {
     if (!isRecord(input) || !isRecord(input.latex_translation)) {
         return null
@@ -131,6 +151,7 @@ export function normalizeQuotaSnapshot(input: unknown): QuotaSnapshot | null {
     }
 }
 
+/** 解析错误 payload 为 LocalAuthError */
 function parseErrorPayload(payload: unknown, fallbackMessage: string): LocalAuthError {
     if (!payload || typeof payload !== "object") {
         return { message: fallbackMessage }
@@ -143,10 +164,18 @@ function parseErrorPayload(payload: unknown, fallbackMessage: string): LocalAuth
     }
 }
 
+/**
+ * 检查本地认证是否已配置
+ * @returns 始终返回 true（认证模块已集成）
+ */
 export function isLocalAuthConfigured(): boolean {
     return true
 }
 
+/**
+ * 从 localStorage 读取已存储的会话
+ * @returns 会话对象，不存在或无效时返回 null
+ */
 export function getStoredSession(): LocalAuthSession | null {
     if (!isBrowser()) {
         return null
@@ -185,6 +214,10 @@ export function getStoredSession(): LocalAuthSession | null {
     }
 }
 
+/**
+ * 持久化会话到 localStorage
+ * @param session - 会话对象
+ */
 export function persistSession(session: LocalAuthSession): void {
     if (!isBrowser()) {
         return
@@ -192,6 +225,7 @@ export function persistSession(session: LocalAuthSession): void {
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
+/** 清除 localStorage 中存储的会话 */
 export function clearStoredSession(): void {
     if (!isBrowser()) {
         return
@@ -199,10 +233,20 @@ export function clearStoredSession(): void {
     window.localStorage.removeItem(SESSION_STORAGE_KEY)
 }
 
+/**
+ * 获取当前有效的 access token
+ * @returns token 字符串，未登录返回 null
+ */
 export async function getAccessToken(): Promise<string | null> {
     return getStoredSession()?.access_token ?? null
 }
 
+/**
+ * 使用密码方式登录
+ * @param identifier - 登录标识（用户名/邮箱）
+ * @param password - 密码
+ * @returns 包含会话或错误的对象
+ */
 export async function signInWithPassword(
     identifier: string,
     password: string,
@@ -268,6 +312,10 @@ export async function signInWithPassword(
     }
 }
 
+/**
+ * 启动时从服务端恢复并验证本地会话
+ * @returns 包含会话和用户的对象，token 过期或无效时自动清除
+ */
 export async function bootstrapLocalSession(): Promise<{
     session: LocalAuthSession | null
     user: LocalAuthUser | null
@@ -313,6 +361,11 @@ export async function bootstrapLocalSession(): Promise<{
     }
 }
 
+/**
+ * 从服务端获取当前配额快照
+ * @param accessToken - 可选的 access token，不传则自动获取
+ * @returns 包含配额快照或错误的对象
+ */
 export async function fetchQuotaSnapshot(accessToken?: string | null): Promise<{
     quotaSnapshot: QuotaSnapshot | null
     error: LocalAuthError | null
@@ -358,6 +411,7 @@ export async function fetchQuotaSnapshot(accessToken?: string | null): Promise<{
             }
         }
 
+        // 同步更新 localStorage 中的会话
         const session = getStoredSession()
         if (session?.access_token === token) {
             persistSession({
@@ -375,6 +429,10 @@ export async function fetchQuotaSnapshot(accessToken?: string | null): Promise<{
     }
 }
 
+/**
+ * 登出当前会话
+ * @param accessToken - 可选的 access token
+ */
 export async function signOutCurrentSession(accessToken?: string | null): Promise<void> {
     const token = accessToken ?? (await getAccessToken())
 
@@ -393,14 +451,17 @@ export async function signOutCurrentSession(accessToken?: string | null): Promis
     }
 }
 
+/** 获取小牛翻译登录页 URL */
 export function getNiuTransLoginUrl(): string {
     return viteEnv.VITE_NIUTRANS_LOGIN_URL || DEFAULT_NIUTRANS_LOGIN_URL
 }
 
+/** 获取小牛翻译注册页 URL */
 export function getNiuTransRegisterUrl(): string {
     return viteEnv.VITE_NIUTRANS_REGISTER_URL || DEFAULT_NIUTRANS_REGISTER_URL
 }
 
+/** 获取小牛翻译账户管理页 URL */
 export function getNiuTransAccountUrl(): string {
     return viteEnv.VITE_NIUTRANS_ACCOUNT_URL || DEFAULT_NIUTRANS_ACCOUNT_URL
 }

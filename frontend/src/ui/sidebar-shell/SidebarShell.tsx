@@ -1,8 +1,13 @@
+/**
+ * 侧边栏外壳组件
+ * 渲染完整的侧边栏布局，包含品牌区、导航区和工具区，支持折叠/展开切换
+ */
 import type { ReactNode } from "react"
 import { ChevronLeft } from "lucide-react"
 
 import { Button } from "@/ui/button/Button"
 
+/** SidebarShell 组件 Props */
 export function SidebarShell({
   brand,
   nav,
@@ -12,12 +17,19 @@ export function SidebarShell({
   onHoverChange,
   collapseLabel,
 }: {
+  /** 品牌 Logo 区域（如 SidebarBrandButton） */
   brand: ReactNode
+  /** 导航区域 */
   nav: ReactNode
+  /** 工具区域（如语言选择器、主题切换） */
   utility: ReactNode
+  /** 是否折叠 */
   collapsed: boolean
+  /** 切换折叠回调 */
   onToggleCollapse: () => void
+  /** hover 状态变化回调（用于触发展开提示） */
   onHoverChange?: (hovered: boolean) => void
+  /** 折叠按钮的无障碍标签 */
   collapseLabel: string
 }) {
   return (

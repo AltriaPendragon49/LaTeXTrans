@@ -1,11 +1,11 @@
-"""Hot Ranking Service - orchestrates the daily hot ranking pipeline.
+"""热门排序服务 - 编排每日热门排序流水线
 
-Steps:
-  1. rank_ranking_cycle  - rank candidates via the ranking engine and write artifacts
-  2. filter_existing_papers - query DB to find already-existing papers
-  3. auto_intake         - auto-intake top candidates via admin curation
-  4. generate_daily_summary - write daily intake artifacts
-  5. run_full_cycle      - run all of the above in sequence
+步骤:
+  1. run_ranking_cycle  - 通过排序引擎对候选论文进行排序并写入产物
+  2. filter_existing_papers - 查询数据库过滤已存在的论文
+  3. auto_intake         - 通过管理策展自动收录排名靠前的候选
+  4. generate_daily_summary - 写入每日收录摘要
+  5. run_full_cycle      - 依次执行以上所有步骤
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from backend.app.core.timezone_utils import get_cst_now
 
 logger = logging.getLogger(__name__)
 
-# ── Demo / Synthetic data generators ────────────────────────────────────
+# ── 演示/合成数据生成器 ──────────────────────────────────────────────
 
 _DEMO_ARXIV_IDS = [
     "2501.12345",
@@ -66,7 +66,7 @@ _DEMO_ARXIV_IDS = [
 
 
 def _pub_date_from_arxiv_id(arxiv_id: str) -> str:
-    """Infer an ISO publication date from an arXiv ID like 2501.12345 → 2025-01-15T00:00:00Z."""
+    """从 arXiv ID 推断 ISO 格式的发布日期，如 2501.12345 -> 2025-01-15T00:00:00Z"""
     parts = arxiv_id.split(".")
     if len(parts) >= 2 and len(parts[0]) == 4:
         yy = int(parts[0][:2])
@@ -78,10 +78,10 @@ def _pub_date_from_arxiv_id(arxiv_id: str) -> str:
 
 
 def _generate_demo_candidates(window: str = "30d") -> list[dict]:
-    """Generate synthetic candidate data for the ranking engine.
+    """生成合成候选数据供排序引擎使用
 
-    Used as a fallback when source adapters are unavailable.
-    Publication dates are spread across recent days so they survive window filtering.
+    当源数据适配器不可用时的回退方案。
+    发布日期分布在最近几天，确保能通过窗口过滤。
     """
     from random import Random
 
@@ -89,7 +89,7 @@ def _generate_demo_candidates(window: str = "30d") -> list[dict]:
     now = datetime.now(timezone.utc)
     candidates: list[dict] = []
     for idx, arxiv_id in enumerate(_DEMO_ARXIV_IDS):
-        # Spread candidates across the last 60 days so every window has some data
+        # 将候选分散到最近 60 天，确保每个窗口都有数据
         days_ago = rng.uniform(0, 60)
         pub_dt = now - timedelta(days=days_ago)
         pub_date = pub_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -112,50 +112,54 @@ def _generate_demo_candidates(window: str = "30d") -> list[dict]:
     return candidates
 
 
-# ── Service class ───────────────────────────────────────────────────────
+# ── 服务类 ───────────────────────────────────────────────────────────
 
 
 class HotRankingService:
-    """Orchestrates the hot ranking pipeline: rank → filter → intake → summarize."""
+    """编排热门排序流水线：排序 -> 过滤 -> 收录 -> 摘要"""
 
     def __init__(self, settings=None):
-        self.settings = settings or get_settings()
-        self._intaken_in_run: set[str] = set()  # in-memory dedup
+        """初始化热门排序服务
 
-    # ── Helpers ──────────────────────────────────────────────────────
+        参数:
+            settings: 配置对象（可选，默认使用全局配置）
+        """
+        self.settings = settings or get_settings()
+        self._intaken_in_run: set[str] = set()  # 内存中去重，防止同一次运行重复收录
+
+    # ── 辅助方法 ────────────────────────────────────────────────────
 
     def _get_arxiv_id_dir(self) -> Path:
-        """Resolve the base output directory for hot ranking artifacts."""
+        """获取热门排序产物的基础输出目录"""
         raw = getattr(self.settings, "hot_ranking_arxiv_id_dir", "") or ""
         if raw:
             return Path(raw)
-        # Default: backend/arxiv_id/hot_ranked
+        # 默认: backend/arxiv_id/hot_ranked
         return Path(__file__).resolve().parent.parent.parent / "arxiv_id" / "hot_ranked"
 
     def _exported_at(self) -> str:
-        """Return the current UTC timestamp as an ISO string."""
+        """返回当前 UTC 时间戳的 ISO 字符串"""
         return utc_now_iso()
 
-    # ── Step 1: Ranking ──────────────────────────────────────────────
+    # ── 步骤 1: 排序 ────────────────────────────────────────────────
 
     async def run_ranking_cycle(self, window: str | None = None) -> RankResult:
-        """Run the ranking engine and write window artifacts.
+        """运行排序引擎并写入窗口产物
 
-        1. Try to enrich candidates via source adapters (fail-soft).
-        2. If source adapters fail, use demo/synthetic data.
-        3. Call engine.rank_candidates().
-        4. Write window artifacts.
-        5. Return RankResult.
+        1. 尝试通过源适配器获取真实候选（失败则回退到演示数据）
+        2. 调用 engine.rank_candidates()
+        3. 写入窗口产物
+        4. 返回 RankResult
         """
         active_window = window or getattr(self.settings, "hot_ranking_auto_intake_default_window", "3d") or "3d"
         exported_at = self._exported_at()
         raw_candidates: list[dict] = []
 
-        # --- Try live source adapters ---
+        # --- 尝试使用真实源适配器 ---
         try:
             from backend.app.services.ranking.source_adapters import collect_candidates_from_sources
 
-            # Collect real candidates from alphaXiv hot feed + all source adapters
+            # 从 alphaXiv 热门流和所有源适配器收集真实候选
             source_candidates = await collect_candidates_from_sources(
                 limit=200,
                 timeout=120,
@@ -172,15 +176,15 @@ class HotRankingService:
                 "Hot ranking: source adapters failed, falling back to demo data: %s", exc
             )
 
-        # --- Fall back to demo data ---
+        # --- 回退到演示数据 ---
         if not raw_candidates:
             logger.info("Hot ranking: using demo/synthetic candidate data")
             raw_candidates = _generate_demo_candidates(window=active_window)
 
-        # --- Rank ---
+        # --- 排序 ---
         ranked = rank_candidates(raw_candidates, window=active_window)
 
-        # --- Write artifacts ---
+        # --- 写入产物 ---
         base_dir = self._get_arxiv_id_dir()
         try:
             paths = write_window_artifacts(ranked, window=active_window, base_dir=base_dir, exported_at=exported_at)
@@ -200,21 +204,21 @@ class HotRankingService:
             total_count=len(ranked),
         )
 
-    # ── Step 2: Filter existing papers ───────────────────────────────
+    # ── 步骤 2: 过滤已存在论文 ─────────────────────────────────────
 
     async def filter_existing_papers(
         self, candidates: list[RankedCandidate]
     ) -> tuple[list[RankedCandidate], list[dict]]:
-        """Query DB to find already-existing papers.
+        """查询数据库过滤已存在的论文
 
-        For each candidate, check:
-        - get_paper_by_arxiv_id() → if found, paper exists
-        - list_curation_jobs_for_arxiv_id() → if active job exists, skip
+        对每个候选检查:
+        - get_paper_by_arxiv_id() -> 若找到，论文已存在
+        - list_curation_jobs_for_arxiv_id() -> 若活跃任务存在，跳过
 
-        Returns: (new_candidates, skipped_info_list)
+        返回: (新候选列表, 已跳过信息列表)
 
-        NOTE: Uses try/except for DB access. If DB is unavailable, logs a warning
-        and returns all candidates as new with an empty skipped list.
+        注意: 使用 try/except 处理数据库访问。若数据库不可用，记录警告
+        并将所有候选标记为新候选，跳过列表为空。
         """
         new_candidates: list[RankedCandidate] = []
         skipped_info: list[dict] = []
@@ -231,7 +235,7 @@ class HotRankingService:
 
         for candidate in candidates:
             try:
-                # Check if paper already exists in DB
+                # 检查论文是否已存在于数据库
                 paper_row = await asyncio.to_thread(
                     repository.get_paper_by_arxiv_id, candidate.arxiv_id
                 )
@@ -243,7 +247,7 @@ class HotRankingService:
                     })
                     continue
 
-                # Check if there is an active curation job
+                # 检查是否存在活跃的策展任务
                 curation_jobs = await asyncio.to_thread(
                     repository.list_curation_jobs_for_arxiv_id, candidate.arxiv_id
                 )
@@ -276,21 +280,19 @@ class HotRankingService:
         )
         return new_candidates, skipped_info
 
-    # ── Steps 3-4: Auto-intake ───────────────────────────────────────
+    # ── 步骤 3-4: 自动收录 ──────────────────────────────────────────
 
     async def auto_intake(
         self, candidates: list[RankedCandidate]
     ) -> dict[str, Any]:
-        """Auto-intake top candidates via admin curation.
+        """通过管理策展自动收录排名靠前的候选
 
-        1. Filter by min_score from settings.
-        2. Take top_n from settings.
-        3. Submit the eligible arXiv IDs through the existing admin curation
-           batch path so duplicate cleanup, job creation, and scheduling stay
-           identical to operator-driven intake.
-        4. Return intake result dict.
+        1. 按配置中的 min_score 过滤
+        2. 取配置中的 top_n 条
+        3. 通过现有管理策展批量路径提交符合条件的 arXiv ID
+        4. 返回收录结果字典
 
-        Uses late imports to avoid circular dependencies.
+        使用延迟导入以避免循环依赖。
         """
         min_score = float(getattr(self.settings, "hot_ranking_auto_intake_min_score", 50.0) or 50.0)
         top_n = int(getattr(self.settings, "hot_ranking_auto_intake_top_n", 20) or 20)
@@ -299,7 +301,7 @@ class HotRankingService:
         skipped: list[dict] = []
         errors: list[dict] = []
 
-        # Filter and sort
+        # 过滤与排序
         eligible = [c for c in candidates if c.hot_score >= min_score]
         eligible.sort(key=lambda c: -c.hot_score)
         eligible = eligible[:top_n]
@@ -317,7 +319,7 @@ class HotRankingService:
                 "errors": [{"arxiv_id": "N/A", "error": "HOT_RANKING_SYSTEM_USER_ID is not configured"}],
             }
 
-        # Late imports (avoid circular deps)
+        # 延迟导入（避免循环依赖）
         try:
             from backend.app.services.paper_service import (
                 _schedule_curation_job,
@@ -444,17 +446,17 @@ class HotRankingService:
         )
         return {"intaken": intaken, "skipped": skipped, "errors": errors}
 
-    # ── Step 5: Generate daily summary ──────────────────────────────
+    # ── 步骤 5: 生成每日摘要 ────────────────────────────────────────
 
     async def generate_daily_summary(
         self,
         rank_result: RankResult,
         intake_result: dict,
     ) -> DailyIntakeSummary:
-        """Generate daily intake summary.
+        """生成每日收录摘要
 
-        Build DailyIntakeSummary dataclass, write artifacts via
-        write_daily_intake_artifacts.  Returns the summary.
+        构建 DailyIntakeSummary 数据类，通过 write_daily_intake_artifacts 写入产物。
+        返回摘要对象。
         """
         now_cst = get_cst_now()
         date_str = now_cst.strftime("%Y-%m-%d")
@@ -470,9 +472,9 @@ class HotRankingService:
             if c.hot_score < float(getattr(self.settings, "hot_ranking_auto_intake_min_score", 50.0) or 50.0)
         )
 
-        # Count existing papers
+        # 统计已存在的论文
         existing_count = total_candidates - intaken_count - below_threshold
-        # But also account for those in skipped due to already-existing
+        # 同时计入因已存在而被跳过的论文
         already_existing = len([s for s in skipped_papers if s.get("reason") == "already_in_library"])
         existing_count = max(existing_count, already_existing)
 
@@ -489,7 +491,7 @@ class HotRankingService:
             quality_gate_failures_from_prior_runs=[],
         )
 
-        # Write artifacts
+        # 写入产物
         base_dir = self._get_arxiv_id_dir()
         try:
             paths = write_daily_intake_artifacts(summary, base_dir)
@@ -503,13 +505,13 @@ class HotRankingService:
 
         return summary
 
-    # ── Full cycle ──────────────────────────────────────────────────
+    # ── 完整周期 ────────────────────────────────────────────────────
 
     async def run_full_cycle(self) -> dict[str, Any]:
-        """Run the complete daily cycle: rank → filter → intake → summarize.
+        """运行完整的每日排序周期：排序 -> 过滤 -> 收录 -> 摘要
 
-        Returns a dict with summary information for logging/reporting.
-        Always writes artifacts even if some steps fail.
+        返回包含用于日志/报告的摘要信息的字典。
+        即使某个步骤失败，也始终会写入产物。
         """
         window = (
             getattr(self.settings, "hot_ranking_auto_intake_default_window", "3d")
@@ -517,14 +519,14 @@ class HotRankingService:
         )
         logger.info("Hot ranking daily cycle started for window=%s", window)
 
-        # Step 1: Rank
+        # 步骤 1: 排序
         try:
             rank_result = await self.run_ranking_cycle(window=window)
         except Exception as exc:
             logger.error("Hot ranking: rank cycle failed: %s", exc, exc_info=True)
             return {"status": "error", "step": "rank", "window": window, "error": str(exc)}
 
-        # Step 2: Filter
+        # 步骤 2: 过滤
         try:
             new_candidates, skipped = await self.filter_existing_papers(rank_result.candidates)
         except Exception as exc:
@@ -532,7 +534,7 @@ class HotRankingService:
             new_candidates = rank_result.candidates
             skipped = []
 
-        # Step 3-4: Intake
+        # 步骤 3-4: 收录
         auto_intake_enabled = bool(
             getattr(self.settings, "hot_ranking_auto_intake_enabled", True)
         )
@@ -544,7 +546,7 @@ class HotRankingService:
                 logger.error("Hot ranking: auto_intake failed: %s", exc, exc_info=True)
                 intake_result = {"intaken": [], "skipped": [], "errors": [{"error": str(exc)}]}
 
-        # Step 5: Summarize
+        # 步骤 5: 摘要
         try:
             summary = await self.generate_daily_summary(rank_result, intake_result)
         except Exception as exc:

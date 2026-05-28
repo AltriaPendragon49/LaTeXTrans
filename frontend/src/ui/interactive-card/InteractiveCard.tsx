@@ -1,8 +1,13 @@
+/**
+ * 可交互卡片组件
+ * 渲染可点击或仅作容器的卡片，hover 有视觉反馈，支持多种色调和尺寸
+ */
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 可交互卡片样式变体：panel / strong / selected / ghost */
 const interactiveCardVariants = cva(
   "group w-full rounded-[24px] border text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--px-shell-accent)]/20 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--px-shell-panel)] disabled:pointer-events-none disabled:opacity-60",
   {
@@ -30,12 +35,15 @@ const interactiveCardVariants = cva(
   },
 )
 
+/** InteractiveCard 组件 Props */
 export interface InteractiveCardProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof interactiveCardVariants> {
+  /** 渲染元素类型：button 渲染为按钮，div 渲染为纯容器 */
   element?: "button" | "div"
 }
 
+/** 可交互卡片，默认为 button，element="div" 时渲染为 div 容器 */
 export const InteractiveCard = React.forwardRef<HTMLButtonElement, InteractiveCardProps>(
   ({ className, tone, size, type = "button", element = "button", ...props }, ref) => {
     if (element === "div") {

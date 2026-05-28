@@ -1,8 +1,13 @@
+/**
+ * 聊天气泡组件
+ * 渲染圆角聊天气泡，支持 assistant（AI 对话）和 user（用户发言）两种视觉风格
+ */
 import type { HTMLAttributes } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 聊天气泡样式变体：assistant（左对齐浅色） / user（右对齐深色） */
 const chatBubbleVariants = cva(
   "w-full whitespace-pre-wrap border px-5 py-4 text-[15px] leading-relaxed backdrop-blur-sm transition-colors duration-200",
   {
@@ -20,10 +25,12 @@ const chatBubbleVariants = cva(
   },
 )
 
+/** ChatBubble 组件 Props */
 interface ChatBubbleProps
   extends HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof chatBubbleVariants> {}
 
+/** 聊天气泡，根据 speaker 属性渲染 assistant 或 user 风格 */
 export function ChatBubble({
   speaker,
   className,

@@ -1,7 +1,7 @@
 """
-Translation API Routes
+翻译 API 路由
 
-Provides endpoints for starting translation tasks.
+提供启动翻译任务的接口。
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -72,7 +72,7 @@ def resolve_llm_task_capacity(llm_config: Dict[str, Any]) -> int:
     )
     return max(int(scheduler.community_task_capacity() or 1), 1)
 
-# Allow missing Authorization header (guest mode)
+# 允许缺失 Authorization 头（游客模式）
 security = HTTPBearer(auto_error=False)
 
 
@@ -118,21 +118,21 @@ def _quota_exceeded_detail(exc: DailyQuotaExceededError) -> dict[str, Any]:
 
 
 class TranslateRequest(BaseModel):
-    """Translation request with advanced configuration"""
+    """翻译请求体，包含高级配置选项"""
     target_language: str = Field(default="ch", description="Target language code (e.g., 'ch', 'en')")
     source_language: str = Field(default="en", description="Source language code (e.g., 'en', 'ch')")
     advanced_config: AdvancedConfig = Field(default_factory=AdvancedConfig, description="Advanced configuration options")
 
 
 class TranslateResponse(BaseModel):
-    """Translation response"""
+    """翻译响应体"""
     task_id: str
     status: str
     message: str
 
 
 class BatchTranslateRequest(BaseModel):
-    """Batch translation request (authenticated users only)"""
+    """批量翻译请求体（仅认证用户）"""
     arxiv_ids: list = Field(..., description="List of arXiv IDs (max 9)")
     target_language: str = Field(default="ch")
     source_language: str = Field(default="en")
@@ -140,7 +140,7 @@ class BatchTranslateRequest(BaseModel):
 
 
 class BatchTranslateResponse(BaseModel):
-    """Batch translation response"""
+    """批量翻译响应体"""
     batch_id: str
     task_ids: list
     message: str
@@ -148,7 +148,7 @@ class BatchTranslateResponse(BaseModel):
 
 
 def normalize_origin_cli_parity_advanced_config(advanced_config: AdvancedConfig) -> AdvancedConfig:
-    """Return the user config shape that matches the effective origin CLI parity kernel."""
+    """返回与有效的 origin CLI parity 内核匹配的用户配置形式"""
     if hasattr(advanced_config, "model_copy"):
         normalized = advanced_config.model_copy(deep=True)
     else:
@@ -203,7 +203,7 @@ def get_user_api_config(user_id: str) -> dict:
 
 async def get_user_api_config_async(user_id: str) -> dict:
     """
-    Async-safe wrapper for fetching user API config from local persistence.
+    异步安全的封装，从本地持久化获取用户 API 配置。
     """
     try:
         settings_row = await run_db_blocking(
@@ -330,7 +330,7 @@ def build_llm_config(advanced_config: AdvancedConfig, user_id: str = None) -> Di
 
 async def build_llm_config_async(advanced_config: AdvancedConfig, user_id: str = None) -> Dict[str, Any]:
     """
-    Async-safe variant of build_llm_config for async request paths.
+    build_llm_config 的异步安全版本，用于异步请求路径。
     """
     def _system_pool_config() -> Dict[str, Any]:
         return _build_system_managed_llm_config(advanced_config)
@@ -493,7 +493,7 @@ async def find_reusable_output(config_hash: str, task_id: str) -> Optional[str]:
 
 
 async def persist_task_config_hash(task_id: str, config_hash: str) -> bool:
-    """Persist config_hash for an already-created authenticated task row."""
+    """为已创建的认证任务行持久化 config_hash"""
     try:
         repository = get_translation_task_repository()
         updated = await run_db_blocking(
@@ -550,14 +550,14 @@ async def run_translation(
     user_id: str = None
 ):
     """
-    Background task to run translation (async version)
-    
+    后台运行翻译任务的异步版本
+
     Args:
-        task_id: Task ID
-        target_language: Target language code
-        source_language: Source language code
-        advanced_config: Advanced configuration options
-        user_id: Optional user ID for authenticated users
+        task_id: 任务 ID
+        target_language: 目标语言代码
+        source_language: 源语言代码
+        advanced_config: 高级配置选项
+        user_id: 可选，认证用户的用户 ID
     """
     logger.info(f"Starting translation for task: {task_id}")
     advanced_config = normalize_origin_cli_parity_advanced_config(advanced_config)
@@ -1011,18 +1011,18 @@ async def _start_translation_for_task(
     reserve_daily_quota: bool = True,
 ) -> TranslateResponse:
     """
-    Start translation for a task
+    为任务启动翻译
 
     Args:
-        task_id: Task ID from upload or arxiv endpoint
-        request: Translation configuration with advanced options
-        credentials: Optional bearer token for authenticated users
+        task_id: 来自上传或 arxiv 接口的任务 ID
+        request: 包含高级选项的翻译配置
+        credentials: 可选，认证用户的 Bearer 令牌
 
     Returns:
-        Translation start confirmation
+        翻译启动确认信息
 
     Raises:
-        HTTPException: If task not found or not ready for translation
+        HTTPException: 任务未找到或未准备好翻译时抛出
     """
     logger.info(f"Translation request for task: {task_id}")
     effective_advanced_config = normalize_origin_cli_parity_advanced_config(request.advanced_config)
@@ -1191,10 +1191,10 @@ async def get_queue_status(
     current_user: Optional[dict[str, Any]] = Depends(optional_current_user),
 ):
     """
-    Get current task queue status.
+    获取当前任务队列状态。
 
     Returns:
-        Queue status including active count, queue size, and max concurrent
+        队列状态，包括活跃数、队列大小和最大并发数
     """
     tq = get_task_queue()
 
@@ -1227,20 +1227,19 @@ async def batch_translate(
     current_user: dict[str, Any] = Depends(require_current_user),
 ):
     """
-    Batch translation for authenticated users only.
-    Accepts up to 9 arXiv IDs and creates independent translation tasks.
+    批量翻译接口，仅限认证用户使用。
+    接受最多 9 个 arXiv ID 并创建独立的翻译任务。
 
-    The endpoint returns immediately after creating tasks in memory and persisting
-    them to the database. The actual arXiv download and translation enqueue happen
-    in background coroutines (asyncio.create_task), so the HTTP request is not
-    blocked by potentially slow network downloads.
+    接口在内存中创建任务并持久化到数据库后立即返回。
+    实际的 arXiv 下载和翻译入队在后台协程（asyncio.create_task）中进行，
+    因此 HTTP 请求不会被可能较慢的网络下载所阻塞。
 
     Args:
-        request: Batch translation request with arXiv IDs and config
-        credentials: Required bearer token (401 if missing)
+        request: 包含 arXiv ID 和配置的批量翻译请求
+        credentials: 必需的 Bearer 令牌（缺失时返回 401）
 
     Returns:
-        Batch ID and list of task IDs
+        批次 ID 和任务 ID 列表
     """
     user_id = resolve_current_user_id(current_user, credentials)
     if not user_id:
@@ -1418,16 +1417,16 @@ async def _download_and_enqueue(
     lane: str = "interactive",
 ):
     """
-    Background coroutine: download arXiv source and enqueue translation.
+    后台协程：下载 arXiv 源码并入队翻译任务。
 
-    Runs outside the HTTP request lifecycle so it does NOT block batch_translate.
-    Progress is visible via GET /api/tasks/{task_id}.
+    在 HTTP 请求生命周期之外运行，因此不会阻塞 batch_translate。
+    进度可通过 GET /api/tasks/{task_id} 查看。
 
-    Flow:
-        1. Update task status → processing (downloading)
-        2. Download arXiv source in thread pool (blocking I/O)
-        3. Update task status → pending (source available)
-        4. Enqueue translation via TaskQueue
+    流程：
+        1. 更新任务状态 → processing（下载中）
+        2. 在线程池中下载 arXiv 源码（阻塞 I/O）
+        3. 更新任务状态 → pending（源码已就绪）
+        4. 通过 TaskQueue 入队翻译
     """
     logger.info(f"[BatchDownload] Starting background download for task {task_id}, arxiv_id={arxiv_id}")
     advanced_config = normalize_origin_cli_parity_advanced_config(advanced_config)

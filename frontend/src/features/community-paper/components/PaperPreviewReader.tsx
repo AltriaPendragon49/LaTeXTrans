@@ -15,13 +15,19 @@ import { enhancePaperPreviewElement, preloadPaperPreviewEnhancer } from "@/lib/p
 import type { CommunityPaperPreviewResponse } from "@/types/community"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
+/** 论文预览阅读器的 Props */
 interface PaperPreviewReaderProps {
+  /** 论文 ID */
   paperId: string
+  /** 论文元数据（用于去除重复标题） */
   paperMetadata?: PaperReaderMetadata | null
+  /** 初始预览数据（可选，用于缓存） */
   initialPreview?: CommunityPaperPreviewResponse | null
+  /** 阅读器状态：就绪/预热中/不可用 */
   readerState?: "ready" | "warming" | "unavailable"
 }
 
+/** 获取预览数据唯一标识（基于资源 ID 和生成时间） */
 function getPreviewIdentity(preview: CommunityPaperPreviewResponse | null | undefined): string | null {
   if (!preview) {
     return null
@@ -34,6 +40,7 @@ function getPreviewIdentity(preview: CommunityPaperPreviewResponse | null | unde
   ].join("::")
 }
 
+/** 获取预览数据完整签名（包含 HTML 内容） */
 function getPreviewSignature(preview: CommunityPaperPreviewResponse | null | undefined): string | null {
   if (!preview) {
     return null
@@ -45,6 +52,9 @@ function getPreviewSignature(preview: CommunityPaperPreviewResponse | null | und
   ].join("::")
 }
 
+/**
+ * 规范化预览 HTML，将 LaTeX 环境转换为适合展示的 HTML 结构
+ */
 function normalizePreviewHtml(rawHtml: string): string {
   if (!rawHtml) {
     return ""
@@ -52,6 +62,7 @@ function normalizePreviewHtml(rawHtml: string): string {
 
   let normalized = rawHtml
 
+  // 处理 LaTeX 代码块
   normalized = normalized.replace(
     /<pre class="paper-preview__latex">([\s\S]*?)<\/pre>/g,
     (_match, source: string) => {
@@ -83,6 +94,7 @@ function normalizePreviewHtml(rawHtml: string): string {
     },
   )
 
+  // 各种 LaTeX 命令清理
   normalized = normalized.replace(
     /<p>\s*\\flushright\{([^}]*)\}(?:\s*\\n)?\s*\\end\{quote\}\s*<\/p>/g,
     "<p>$1</p>",
@@ -107,6 +119,16 @@ function normalizePreviewHtml(rawHtml: string): string {
   return normalized
 }
 
+/**
+ * 论文预览阅读器组件
+ * 加载并渲染社区论文的结构化 HTML 预览内容，支持：
+ * - LaTeX 数学公式渲染（KaTeX 引擎）
+ * - 表格展开查看（Sheet 弹出）
+ * - 数学块回退渲染
+ * - 锚点平滑滚动
+ *
+ * 调用 GET /api/papers/{paperId}/preview 获取 HTML 预览数据
+ */
 export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderProps>(
   function PaperPreviewReader({ paperId, paperMetadata = null, initialPreview = null, readerState = "unavailable" }, ref) {
     const { t } = useTranslation()
@@ -119,6 +141,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
     const [error, setError] = useState<string | null>(null)
     const [expandedTable, setExpandedTable] = useState<{ caption: string | null; html: string } | null>(null)
 
+    // 加载或更新预览数据
     useEffect(() => {
       if (initialPreview?.html_content) {
         const nextSignature = getPreviewSignature(initialPreview)
@@ -190,6 +213,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
     const previewSignature = useMemo(() => getPreviewSignature(preview), [preview])
     const previewAssetId = preview?.asset.id
 
+    // HTML 净化：规范化 → 去除重复标题 → DOMPurify 清理
     const sanitizedHtml = useMemo(() => {
       if (!preview?.html_content || !previewSignature) {
         return ""
@@ -209,20 +233,22 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       return sanitized
     }, [paperMetadata, preview?.html_content, previewSignature])
 
+    // 预加载预览增强器
     useEffect(() => {
       if (!previewSignature) {
         return
       }
-
       void preloadPaperPreviewEnhancer()
     }, [previewSignature])
 
+    // 签名变更时清除展开的表格状态
     useEffect(() => {
       if (!previewSignature) {
         setExpandedTable(null)
       }
     }, [previewSignature])
 
+    // 增强预览元素：渲染数学公式
     useEffect(() => {
       if (!sanitizedHtml || !contentRef.current || !previewSignature) {
         return
@@ -231,6 +257,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       let cancelled = false
       const target = contentRef.current
       void (async () => {
+        // KaTeX 数学块回退渲染
         const fallbackRenderMathBlocks = async () => {
           const katexModule = await import("katex")
           const katex = katexModule.default
@@ -275,6 +302,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       }
     }, [previewAssetId, previewSignature, sanitizedHtml])
 
+    // 为表格元素添加展开按钮
     useEffect(() => {
       if (!contentRef.current || !previewSignature) {
         return
@@ -299,6 +327,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       })
     }, [previewSignature, sanitizedHtml, t])
 
+    // 处理点击事件：展开表格、锚点平滑滚动
     useEffect(() => {
       if (!contentRef.current || !previewSignature) {
         return
@@ -352,6 +381,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
       }
     }, [previewSignature])
 
+    /** 附加 ref 回调 */
     function attachRootRef(node: HTMLDivElement | null) {
       if (!ref) {
         return
@@ -428,6 +458,7 @@ export const PaperPreviewReader = forwardRef<HTMLDivElement, PaperPreviewReaderP
           </div>
         </div>
 
+        {/* 展开表格的 Sheet 弹出层 */}
         <Sheet open={Boolean(expandedTable)} onOpenChange={(open) => !open && setExpandedTable(null)}>
           <SheetContent
             side="right"

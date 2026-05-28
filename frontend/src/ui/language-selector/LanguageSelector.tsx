@@ -1,3 +1,7 @@
+/**
+ * 语言选择器组件
+ * 渲染用于切换界面语言的下拉选择器，切换后自动持久化到 localStorage
+ */
 import { Languages } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -10,6 +14,7 @@ import {
 } from "@/ui/primitives/select"
 import { UI_LANGUAGES, persistLanguage, type UILanguage } from "@/i18n/config"
 
+/** 语言选择器，展示当前语言并通过下拉列表切换，变更后写入 localStorage 并更新 i18n */
 export function LanguageSelector() {
   const { i18n, t } = useTranslation()
   const currentLanguage = (i18n.resolvedLanguage ?? i18n.language) as UILanguage

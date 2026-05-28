@@ -25,6 +25,7 @@ import type { CommunityPaper, FavoriteFolder } from "@/types/community"
 import { Button } from "@/ui/button/Button"
 import { PageIntro } from "@/ui/page-intro/PageIntro"
 
+/** 从各种类型的错误对象中提取可读的错误消息字符串 */
 function extractActionErrorMessage(error: unknown): string | null {
   if (typeof error === "string") {
     return error
@@ -55,6 +56,7 @@ function extractActionErrorMessage(error: unknown): string | null {
   return null
 }
 
+/** 格式化作者列表：取前三名作者姓名以逗号连接，无作者时使用回退文案 */
 function formatAuthors(authors: unknown[], fallback: string) {
   if (!authors.length) {
     return fallback
@@ -76,6 +78,7 @@ function formatAuthors(authors: unknown[], fallback: string) {
     .join(", ")
 }
 
+/** 收藏夹页面组件：管理收藏文件夹的创建/重命名/删除，展示文件夹内的论文列表 */
 export default function FavoritesPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()

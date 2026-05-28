@@ -1,3 +1,5 @@
+"""Milvus 向量检索器 - 基于嵌入向量的近似最近邻搜索"""
+
 from __future__ import annotations
 
 import logging
@@ -5,9 +7,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Graceful degradation: pymilvus is optional
-# ---------------------------------------------------------------------------
+# ── 优雅降级: pymilvus 为可选依赖 ────────────────────────────────────
 
 try:
     from pymilvus import (
@@ -28,9 +28,7 @@ except ImportError:  # pragma: no cover
     logger.info("pymilvus is not installed; vector retrieval will be unavailable.")
 
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+# ── 常量 ─────────────────────────────────────────────────────────────
 
 _PRIMARY_FIELD = "term_id"
 _VECTOR_FIELD = "embedding"
@@ -39,23 +37,20 @@ _TARGET_FIELD = "target_term"
 _METADATA_FIELD = "metadata"
 
 
-# ---------------------------------------------------------------------------
-# Retriever
-# ---------------------------------------------------------------------------
+# ── 检索器 ───────────────────────────────────────────────────────────
 
 
 class VectorRetriever:
-    """Milvus-based vector retriever for approved-term embeddings.
+    """基于 Milvus 的向量检索器，用于已批准术语嵌入检索。
 
-    Parameters
+    参数
     ----------
     uri : str
-        Milvus server URI (e.g. ``"http://localhost:19530"``).
+        Milvus 服务器 URI（如 ``"http://localhost:19530"``）。
     collection_name : str
-        Name of the Milvus collection for terminology embeddings.
+        用于术语嵌入的 Milvus 集合名称。
     embedding_dim : int
-        Dimension of the embedding vectors (default 384 for
-        all-MiniLM-L6-v2).
+        嵌入向量维度（默认 384，适用于 all-MiniLM-L6-v2）。
     """
 
     def __init__(
@@ -64,17 +59,23 @@ class VectorRetriever:
         collection_name: str,
         embedding_dim: int = 384,
     ) -> None:
+        """初始化向量检索器
+
+        参数:
+            uri: Milvus 服务器 URI
+            collection_name: 集合名称
+            embedding_dim: 嵌入维度
+        """
         self._uri = uri
         self._collection_name = collection_name
         self._embedding_dim = embedding_dim
         self._collection: Optional[Any] = None
         self._connected = False
 
-    # ------------------------------------------------------------------
-    # Connection & collection lifecycle
-    # ------------------------------------------------------------------
+    # ── 连接与集合生命周期 ───────────────────────────────────────────
 
     def _connect(self) -> bool:
+        """连接到 Milvus 服务器，已连接则跳过"""
         if self._connected:
             return True
         if connections is None:
@@ -91,12 +92,12 @@ class VectorRetriever:
             return False
 
     def ensure_collection(self) -> bool:
-        """Create the collection if it does not already exist.
+        """如果集合不存在则创建。
 
-        Returns
+        返回
         -------
         bool
-            ``True`` if the collection is ready, ``False`` on failure.
+            集合就绪返回 ``True``，失败返回 ``False``。
         """
         if not self._connect():
             return False
@@ -152,7 +153,7 @@ class VectorRetriever:
                 name=self._collection_name, schema=schema
             )
 
-            # Create an IVF_FLAT index on the vector field for ANN search
+            # 在向量字段上创建 IVF_FLAT 索引以支持 ANN 搜索
             index_params = {
                 "metric_type": "COSINE",
                 "index_type": "IVF_FLAT",
@@ -167,16 +168,14 @@ class VectorRetriever:
                 self._embedding_dim,
             )
 
-            # Load collection into memory for search readiness
+            # 将集合加载到内存中以支持搜索
             self._collection.load()
             return True
         except Exception as exc:
             logger.warning("Failed to create Milvus collection: %s", exc)
             return False
 
-    # ------------------------------------------------------------------
-    # Write operations
-    # ------------------------------------------------------------------
+    # ── 写入操作 ─────────────────────────────────────────────────────
 
     def upsert_term(
         self,
@@ -186,12 +185,12 @@ class VectorRetriever:
         target_term: str,
         metadata: dict | None = None,
     ) -> bool:
-        """Insert or update a single term embedding in Milvus.
+        """在 Milvus 中插入或更新单个术语嵌入。
 
-        Returns
+        返回
         -------
         bool
-            ``True`` on success, ``False`` on failure.
+            成功返回 ``True``，失败返回 ``False``。
         """
         if not self._ensure_ready():
             return False
@@ -212,15 +211,15 @@ class VectorRetriever:
             return False
 
     def batch_upsert(self, entries: list[dict]) -> bool:
-        """Insert or update multiple term embeddings in Milvus.
+        """在 Milvus 中批量插入或更新多个术语嵌入。
 
-        Each *entry* dict must have keys: ``term_id``, ``embedding``,
-        ``source_term``, ``target_term``, and optionally ``metadata``.
+        每个 *entry* 字典必须包含: ``term_id``, ``embedding``,
+        ``source_term``, ``target_term`` 以及可选的 ``metadata``。
 
-        Returns
+        返回
         -------
         bool
-            ``True`` on success, ``False`` on failure.
+            成功返回 ``True``，失败返回 ``False``。
         """
         if not self._ensure_ready():
             return False
@@ -243,28 +242,26 @@ class VectorRetriever:
             logger.warning("Milvus batch_upsert failed: %s", exc)
             return False
 
-    # ------------------------------------------------------------------
-    # Read operations
-    # ------------------------------------------------------------------
+    # ── 读取操作 ─────────────────────────────────────────────────────
 
     def search(
         self,
         embedding: list[float],
         top_n: int = 20,
     ) -> list[dict]:
-        """Search for the nearest neighbour terms in Milvus.
+        """在 Milvus 中搜索最近邻术语。
 
-        Parameters
+        参数
         ----------
         embedding : list[float]
-            Query vector.
+            查询向量。
         top_n : int
-            Number of results to return.
+            返回的结果数量。
 
-        Returns
+        返回
         -------
         list[dict]
-            Each entry::
+            每个条目格式::
 
                 {
                     "term_id": …,
@@ -274,7 +271,7 @@ class VectorRetriever:
                     "retrieval_source": "vector",
                 }
 
-            Empty list on failure.
+            失败时返回空列表。
         """
         if not self._ensure_ready():
             return []
@@ -314,12 +311,12 @@ class VectorRetriever:
             return []
 
     def delete_term(self, term_id: str) -> bool:
-        """Delete a term from Milvus by ``term_id``.
+        """按 ``term_id`` 从 Milvus 删除术语。
 
-        Returns
+        返回
         -------
         bool
-            ``True`` on success, ``False`` on failure.
+            成功返回 ``True``，失败返回 ``False``。
         """
         if not self._ensure_ready():
             return False
@@ -332,12 +329,10 @@ class VectorRetriever:
             logger.warning("Milvus delete_term failed for %s: %s", term_id, exc)
             return False
 
-    # ------------------------------------------------------------------
-    # Health
-    # ------------------------------------------------------------------
+    # ── 健康检查 ─────────────────────────────────────────────────────
 
     def health_check(self) -> bool:
-        """Return whether the Milvus connection and collection are usable."""
+        """返回 Milvus 连接和集合是否可用"""
         if not self._connect():
             return False
         if utility is None:
@@ -347,11 +342,10 @@ class VectorRetriever:
         except Exception:
             return False
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    # ── 内部辅助方法 ─────────────────────────────────────────────────
 
     def _ensure_ready(self) -> bool:
+        """确保集合已加载，必要时创建"""
         if self._collection is not None:
             return True
         return self.ensure_collection()

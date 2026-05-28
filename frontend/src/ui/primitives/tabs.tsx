@@ -1,10 +1,16 @@
+/**
+ * 标签页组件 - 基于 Radix UI Tabs 封装
+ * 提供标签页切换界面，包含标签列表、触发器和内容面板
+ */
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 
 import { cn } from "@/lib/utils"
 
+/** 标签页根组件 */
 const Tabs = TabsPrimitive.Root
 
+/** 标签页列表容器，包裹所有标签触发器 */
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
@@ -20,6 +26,7 @@ const TabsList = React.forwardRef<
 ))
 TabsList.displayName = TabsPrimitive.List.displayName
 
+/** 标签页触发器，点击切换到对应内容面板 */
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -35,6 +42,7 @@ const TabsTrigger = React.forwardRef<
 ))
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
 
+/** 标签页内容面板，与对应标签触发器关联显示 */
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>

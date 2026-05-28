@@ -1,5 +1,9 @@
 import { Skeleton } from "@/ui/primitives/skeleton"
 
+/**
+ * 论文详情页骨架屏组件
+ * 在详情数据加载过程中展示占位动画，模拟分类标签、标题、作者和内容区布局
+ */
 export function PaperDetailSkeleton() {
   return (
     <div className="space-y-6">

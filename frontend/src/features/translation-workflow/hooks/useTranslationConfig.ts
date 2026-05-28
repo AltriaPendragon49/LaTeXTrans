@@ -1,5 +1,10 @@
 import { useTranslationStore } from "@/features/translation-workflow/store/useTranslationStore"
 
+/**
+ * 翻译配置 Hook
+ * 从全局 Zustand store 中选取翻译配置相关的状态和操作方法
+ * @returns 包含 config、latexValidation、hasSystemApiKey、用户设置加载状态及各种配置更新方法
+ */
 export function useTranslationConfig() {
   const config = useTranslationStore((state) => state.config)
   const latexValidation = useTranslationStore((state) => state.latexValidation)

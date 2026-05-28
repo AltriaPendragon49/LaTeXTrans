@@ -10,6 +10,7 @@ import { SidebarBrandButton } from "@/ui/sidebar-shell/SidebarBrandButton"
 import { SidebarNavItem } from "@/ui/sidebar-shell/SidebarNavItem"
 import { SidebarShell } from "@/ui/sidebar-shell/SidebarShell"
 
+/** 桌面端侧边栏组件：展示品牌标志、主导航项、折叠控制和用户账户菜单 */
 export function AppSidebar() {
   const { t } = useTranslation()
   const { isAuthenticated, user } = useAuth()

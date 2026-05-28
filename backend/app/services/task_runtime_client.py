@@ -1,3 +1,9 @@
+"""任务运行时内部通信服务
+
+处理 Web 节点与 Worker 节点之间的内部 HTTP 请求，
+包括任务取消信号发送和签名验证。
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -13,10 +19,12 @@ from backend.app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 内部任务取消动作标识
 INTERNAL_TASK_CANCEL_ACTION = "task.cancel"
 
 
 def _runtime_secret() -> str:
+    """获取运行时内部通信密钥（取自 JWT 密钥配置的首个密钥）"""
     settings = get_settings()
     raw_keys = str(getattr(settings, "auth_jwt_keys", "") or "").strip()
     for item in raw_keys.split(","):
@@ -33,6 +41,7 @@ def _signature_payload(
     timestamp: str,
     terminal_reason: str,
 ) -> str:
+    """构建签名载荷字符串"""
     return "\n".join([action, task_id, timestamp, terminal_reason])
 
 
@@ -43,6 +52,7 @@ def _sign_internal_request(
     timestamp: str,
     terminal_reason: str,
 ) -> str:
+    """对内部运行时请求进行 HMAC-SHA256 签名"""
     payload = _signature_payload(
         action=action,
         task_id=task_id,
@@ -59,6 +69,10 @@ def verify_internal_task_runtime_request(
     action: str,
     terminal_reason: str,
 ) -> None:
+    """验证内部运行时请求的签名和时间戳
+
+    验证失败时抛出 401 HTTPException。
+    """
     timestamp = str(request.headers.get("x-latextrans-runtime-timestamp") or "").strip()
     signature = str(request.headers.get("x-latextrans-runtime-signature") or "").strip()
     if not timestamp or not signature:
@@ -84,11 +98,13 @@ def verify_internal_task_runtime_request(
 
 
 def should_signal_worker_runtime() -> bool:
+    """判断当前节点是否应发送 Worker 信号（仅 Web 角色发送）"""
     role = str(getattr(get_settings(), "backend_runtime_role", "all") or "all").strip().lower()
     return role == "web"
 
 
 def worker_cancel_signal_failed(result: Dict[str, Any]) -> bool:
+    """判断 Worker 取消信号是否发送失败"""
     return should_signal_worker_runtime() and (
         not bool(result.get("sent"))
         or bool(result.get("error"))
@@ -101,6 +117,16 @@ async def request_worker_task_cancel(
     terminal_reason: str = "task_deleted",
     timeout_seconds: float = 5.0,
 ) -> Dict[str, Any]:
+    """向 Worker 节点发送任务取消请求
+
+    参数:
+        task_id: 任务 ID
+        terminal_reason: 终止原因码
+        timeout_seconds: 请求超时秒数
+
+    返回:
+        包含 sent, status_code 等字段的结果字典
+    """
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
         return {"sent": False, "reason": "empty_task_id"}

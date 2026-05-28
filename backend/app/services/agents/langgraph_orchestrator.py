@@ -1,7 +1,7 @@
-"""Origin CLI parity LangGraph orchestrator.
+"""Origin CLI parity LangGraph 编排器。
 
-The production backend intentionally runs a single translation kernel:
-parse -> translate -> validate/retry -> generate -> finalize.
+生产后端有意运行单一的翻译核心管线：
+解析 -> 翻译 -> 验证/重试 -> 生成 -> 收尾。
 """
 from __future__ import annotations
 
@@ -34,12 +34,14 @@ from .validator_agent import ValidatorAgent
 
 logger = logging.getLogger(__name__)
 
+# 管线超时和重试配置常量
 MAX_PIPELINE_TIMEOUT_SEC: float = 1800.0
 MAX_VALIDATE_RETRIES: int = 3
 MAX_CONSECUTIVE_NO_PROGRESS_REMEDIAL_ATTEMPTS: int = 3
 
 
 class PipelineState(TypedDict, total=False):
+    """管线状态 TypedDict，用于 LangGraph StateGraph 的节点间状态传递。"""
     config: Dict[str, Any]
     project_dir: str
     output_dir: str
@@ -55,6 +57,7 @@ class PipelineState(TypedDict, total=False):
 
 
 def _resolve_pipeline_timeout_seconds(config: Dict[str, Any]) -> float:
+    """从配置中解析管线超时秒数。"""
     raw_value = (config or {}).get("pipeline_timeout_seconds")
     if raw_value is None:
         raw_value = getattr(get_settings(), "pipeline_timeout_seconds", MAX_PIPELINE_TIMEOUT_SEC)
@@ -70,6 +73,7 @@ def _write_audit_log(
     event: str,
     payload: Optional[dict] = None,
 ) -> None:
+    """将审计事件追加写入 audit.jsonl 文件。"""
     audit_path = Path(transed_project_dir) / "audit.jsonl"
     entry = {
         "task_id": task_id,
@@ -86,6 +90,7 @@ def _write_audit_log(
 
 
 def _write_task_log(output_dir: str, event: str, data: Optional[dict] = None) -> None:
+    """将结构化事件追加写入 task_log.json 文件。"""
     log_file = Path(output_dir) / "task_log.json"
     entry = {
         "timestamp": get_cst_now_iso(),
@@ -106,12 +111,14 @@ def _write_task_log(output_dir: str, event: str, data: Optional[dict] = None) ->
 
 
 def _update_progress(state: PipelineState, pct: int, msg: str = "") -> None:
+    """通过管线状态中的回调函数更新进度。"""
     cb = state.get("on_progress")
     if cb:
         cb(pct, msg)
 
 
 def _write_stage_failed_log(output_dir: str, stage: str, error: Exception) -> None:
+    """将标准化的阶段失败事件写入任务日志。"""
     tb = traceback.format_exc()
     digest = hashlib.sha256(tb.encode("utf-8", errors="replace")).hexdigest()[:16]
     _write_task_log(
@@ -127,12 +134,14 @@ def _write_stage_failed_log(output_dir: str, stage: str, error: Exception) -> No
 
 
 def _merge_warnings(primary: Optional[str], secondary: Optional[str]) -> Optional[str]:
+    """合并两个警告字符串，用换行符分隔。"""
     if primary and secondary:
         return f"{primary}\n{secondary}"
     return primary or secondary
 
 
 def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) -> tuple[tuple[Any, ...], ...]:
+    """将错误报告列表规范化为可哈希的签名元组，用于比较验证重试是否有进展。"""
     signature: list[tuple[Any, ...]] = []
     for item in errors_report or []:
         if not isinstance(item, dict):
@@ -161,6 +170,7 @@ def _normalize_error_signature(errors_report: Optional[List[Dict[str, Any]]]) ->
 
 
 async def node_parse(state: PipelineState) -> PipelineState:
+    """管线节点：解析 LaTeX 源文件。"""
     transed_project_dir = state["transed_project_dir"]
     base_name = state["base_name"]
     config = state["config"]
@@ -203,6 +213,7 @@ async def node_parse(state: PipelineState) -> PipelineState:
 
 
 async def node_translate(state: PipelineState) -> PipelineState:
+    """管线节点：翻译已解析的内容（含 RAG 术语注入）。"""
     transed_project_dir = state["transed_project_dir"]
     config = state["config"]
     task_id = state.get("task_id", state.get("base_name", ""))
@@ -223,10 +234,10 @@ async def node_translate(state: PipelineState) -> PipelineState:
             else _update_progress(state, 10 + int(p * 0.6), m),
         )
 
-        # RAG Terminology injection: load approved terms if RAG is enabled
+        # RAG 术语注入：如果启用了 RAG，则加载已批准的术语
         enable_rag = config.get("enable_rag_terminology", False)
         if enable_rag:
-            _update_progress(state, 10, "Loading RAG terminology…")
+            _update_progress(state, 10, "Loading RAG terminology...")
             try:
                 from backend.app.services.rag.domain_constants import map_arxiv_categories_to_domain
                 from backend.app.services.terminology_service import TerminologyService
@@ -235,11 +246,11 @@ async def node_translate(state: PipelineState) -> PipelineState:
                 if rag_service.is_enabled:
                     rag_domain = config.get("rag_terminology_domain") or None
 
-                    # Auto-detect domain from arXiv category if not explicitly set
+                    # 如果未明确设置，从 arXiv 分类自动检测领域
                     if not rag_domain:
                         category_map = config.get("category") or {}
                         if category_map:
-                            # category_map is {arxiv_id: ["cs.CL", ...]}
+                            # category_map 格式为 {arxiv_id: ["cs.CL", ...]}
                             all_categories: list[str] = []
                             for cats in category_map.values():
                                 if isinstance(cats, list):
@@ -317,6 +328,7 @@ async def node_translate(state: PipelineState) -> PipelineState:
 
 
 async def node_validate_and_retry(state: PipelineState) -> PipelineState:
+    """管线节点：验证翻译结果并最多重试 MAX_VALIDATE_RETRIES 次。"""
     transed_project_dir = state["transed_project_dir"]
     config = state["config"]
     mode = state["mode"]
@@ -442,6 +454,7 @@ async def node_validate_and_retry(state: PipelineState) -> PipelineState:
 
 
 async def node_generate(state: PipelineState) -> PipelineState:
+    """管线节点：生成 PDF（重建 LaTeX 并编译）。"""
     transed_project_dir = state["transed_project_dir"]
     config = state["config"]
     task_id = state.get("task_id", state.get("base_name", ""))
@@ -505,6 +518,7 @@ async def node_generate(state: PipelineState) -> PipelineState:
 
 
 async def node_finalize(state: PipelineState) -> PipelineState:
+    """管线节点：收尾 —— 移动 PDF、记录日志、执行 RAG 后处理。"""
     transed_project_dir = state["transed_project_dir"]
     base_name = state["base_name"]
     generation_result = state["generation_result"] or {}
@@ -645,7 +659,7 @@ async def node_finalize(state: PipelineState) -> PipelineState:
 
 
 def _run_post_translation_rag(state: PipelineState, config: dict, task_id: str) -> None:
-    """Run RAG post-translation extraction if RAG terminology was enabled."""
+    """如果启用了 RAG 术语，则运行翻译后 RAG 术语提取。"""
     enable_rag = config.get("enable_rag_terminology", False)
     if not enable_rag:
         return
@@ -654,7 +668,7 @@ def _run_post_translation_rag(state: PipelineState, config: dict, task_id: str) 
         translator_agent = state.get("translator_agent")
         if translator_agent is None:
             return
-        # Collect source and target chunks from the translator agent's sections
+        # 从翻译器 Agent 的 sections 中收集源文和目标文块
         sections = getattr(translator_agent, "translated_sections", None) or getattr(translator_agent, "sections", [])
         source_chunks: list[str] = []
         target_chunks: list[str] = []
@@ -679,9 +693,9 @@ def build_pipeline_graph(
     enable_diagnostics: bool = False,
     config: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    """Build the production parity graph.
+    """构建生产 parity 管线图。
 
-    `enable_diagnostics` is accepted for call-site compatibility and ignored.
+    `enable_diagnostics` 的参数仅为兼容调用方而保留，实际被忽略。
     """
     graph = StateGraph(PipelineState)
     graph.add_node("parse", node_parse)
@@ -705,6 +719,17 @@ async def run_pipeline(
     output_dir: str,
     on_progress: Optional[Callable[[int, str], None]] = None,
 ) -> Dict[str, Any]:
+    """运行完整的 LaTeX 翻译管线。
+
+    Args:
+        config: 系统配置字典
+        project_dir: LaTeX 项目目录路径
+        output_dir: 输出目录路径
+        on_progress: 可选进度回调函数 (percentage, message)
+
+    Returns:
+        包含 status/pdf_path/error_summary/warnings 的结果字典。
+    """
     config = normalize_origin_cli_parity_agent_config(config or {})
     base_name = os.path.basename(project_dir)
     target_language = config.get("target_language", "zh")

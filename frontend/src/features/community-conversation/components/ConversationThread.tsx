@@ -16,17 +16,27 @@ import type {
   CommunityConversationTurn,
 } from "@/types/community"
 
+/** 对话线程组件 Props */
 interface ConversationThreadProps {
+  /** 消息列表容器的 ref */
   messageListRef: RefObject<HTMLDivElement | null>
+  /** 当前活跃的对话记录 */
   currentConversation: CommunityConversationRecord | null
+  /** Agent 是否忙碌中 */
   agentBusy: boolean
+  /** Agent 错误信息 */
   agentError: string | null
+  /** 运行中进度步骤 */
   runningProgressSteps: string[]
+  /** 当前进度步骤索引 */
   runningStageIndex: number
+  /** 打开引文的回调 */
   onCitationOpen: (citation: CommunityAgentCitation) => void
+  /** 打开论文回调 */
   onOpenPaper: (paperId: string) => void
 }
 
+/** 格式化对话时间戳为 HH:mm:ss */
 function formatConversationTimestamp(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
@@ -40,6 +50,11 @@ function formatConversationTimestamp(value: string) {
   })
 }
 
+/**
+ * 对话轮次卡片子组件
+ * 渲染单条对话轮次，包括用户消息气泡、Agent 回复气泡、
+ * 主要引文卡片、次要引文列表和深度研究报告卡片
+ */
 function ConversationTurnCard({
   turn,
   onCitationOpen,
@@ -211,6 +226,11 @@ function ConversationTurnCard({
   )
 }
 
+/**
+ * 对话线程组件
+ * 渲染对话消息列表，包含所有用户和 Agent 的对话轮次、
+ * 运行中进度指示器、错误提示和空状态
+ */
 export function ConversationThread({
   messageListRef,
   currentConversation,

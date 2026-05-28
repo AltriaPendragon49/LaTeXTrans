@@ -1,36 +1,36 @@
-# Agent services
+# Agent 服务模块
 import asyncio
 from typing import Optional
 
-# ── INFRA GUARD (Safety Net) ─────────────────────────────────────────────────
-# global_llm_semaphore caps total concurrent outbound LLM API requests.
+# ── 基础设施守卫（安全网）────────────────────────────────────────────────
+# global_llm_semaphore 限制并发的对外 LLM API 请求总数。
 #
-# ROLE: Infrastructure-level protection against system resource exhaustion.
-#       It must NEVER be used to make business scheduling decisions.
+# 角色：基础设施级别的保护，防止系统资源耗尽。
+#       绝不能用于业务调度决策。
 #
-# The value is read from Settings lazily on first use.
+# 该值在首次使用时从 Settings 延迟读取。
 
 _global_llm_semaphore: Optional[asyncio.Semaphore] = None
 
 
 def _get_llm_semaphore() -> asyncio.Semaphore:
-    """Return the global LLM semaphore, creating it on first call."""
+    """返回全局 LLM 信号量，在首次调用时创建。"""
     global _global_llm_semaphore
     if _global_llm_semaphore is None:
         try:
             from backend.app.core.config import settings
             limit = settings.llm_max_concurrent_requests
         except Exception:
-            limit = 30  # safe fallback if settings unavailable (e.g. in tests)
+            limit = 30  # 若 settings 不可用（如测试环境），使用安全回退值
         _global_llm_semaphore = asyncio.Semaphore(limit)
     return _global_llm_semaphore
 
 
 class _SemaphoreProxy:
     """
-    Proxy that forwards `async with` to the lazily-created global semaphore.
-    This allows `async with global_llm_semaphore:` to work naturally in code
-    while deferring actual Semaphore creation until the event loop is running.
+    代理类，将 `async with` 转发给延迟创建的全局信号量。
+    这样代码中可以自然地使用 `async with global_llm_semaphore:`，
+    而实际的 Semaphore 创建则推迟到事件循环运行之后。
     """
     async def __aenter__(self):
         return await _get_llm_semaphore().__aenter__()
@@ -39,5 +39,5 @@ class _SemaphoreProxy:
         return await _get_llm_semaphore().__aexit__(exc_type, exc_val, exc_tb)
 
 
-# Public interface used by translator_agent.py
+# 供 translator_agent.py 使用的公开接口
 global_llm_semaphore: _SemaphoreProxy = _SemaphoreProxy()

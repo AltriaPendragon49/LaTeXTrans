@@ -1,8 +1,13 @@
+/**
+ * 药丸标签组件
+ * 渲染小巧的圆角药丸形标签，支持 muted / accent / ink 三种色调
+ */
 import type { HTMLAttributes } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** 药丸标签样式变体：muted / accent / ink */
 const pillVariants = cva(
   "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em]",
   {
@@ -23,6 +28,7 @@ const pillVariants = cva(
 
 type PillProps = HTMLAttributes<HTMLDivElement> & VariantProps<typeof pillVariants>
 
+/** 药丸标签，极简的文本标签组件 */
 export function Pill({ className, tone, ...props }: PillProps) {
   return <div className={cn(pillVariants({ tone }), className)} {...props} />
 }

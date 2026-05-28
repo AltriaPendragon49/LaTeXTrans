@@ -9,6 +9,7 @@ import type {
   DomainsResponse,
 } from "@/features/rag-terminology/types"
 
+/** 术语列表查询参数 */
 export interface ListTermsParams {
   page: number
   page_size: number
@@ -19,6 +20,7 @@ export interface ListTermsParams {
   query?: string
 }
 
+/** 术语列表响应 */
 export interface ListTermsResponse {
   terms: TerminologyTerm[]
   total: number
@@ -27,7 +29,8 @@ export interface ListTermsResponse {
 }
 
 /**
- * Upload a terminology file (CSV or BibTeX) for RAG injection.
+ * 上传术语文件（CSV 或 BibTeX）用于 RAG 注入
+ * POST /terminology/upload (multipart/form-data)
  */
 export async function uploadTerminologyFile(file: File): Promise<TerminologyUploadResult> {
   const formData = new FormData()
@@ -42,7 +45,8 @@ export async function uploadTerminologyFile(file: File): Promise<TerminologyUplo
 }
 
 /**
- * List terminology terms with optional filters.
+ * 列出术语条目（支持筛选）
+ * GET /terminology/terms
  */
 export async function listTerms(params: ListTermsParams): Promise<ListTermsResponse> {
   const response = await api.get<ListTermsResponse>("/terminology/terms", { params })
@@ -50,7 +54,8 @@ export async function listTerms(params: ListTermsParams): Promise<ListTermsRespo
 }
 
 /**
- * List terminology terms pending review.
+ * 列出待审核的术语条目
+ * GET /terminology/pending
  */
 export async function listPendingTerms(params: ListTermsParams): Promise<ListTermsResponse> {
   const response = await api.get<ListTermsResponse>("/terminology/pending", { params })
@@ -58,21 +63,24 @@ export async function listPendingTerms(params: ListTermsParams): Promise<ListTer
 }
 
 /**
- * Approve a pending terminology term.
+ * 批准待审核术语
+ * POST /terminology/{termId}/approve
  */
 export async function approveTerm(termId: string): Promise<void> {
   await api.post(`/terminology/${termId}/approve`)
 }
 
 /**
- * Reject a pending terminology term.
+ * 拒绝待审核术语
+ * POST /terminology/{termId}/reject
  */
 export async function rejectTerm(termId: string, reason?: string): Promise<void> {
   await api.post(`/terminology/${termId}/reject`, { reason })
 }
 
 /**
- * Create a new terminology term (admin).
+ * 创建新术语（管理员）
+ * POST /terminology/terms
  */
 export async function createTerm(data: CreateTermPayload): Promise<TerminologyTerm> {
   const response = await api.post<TerminologyTerm>("/terminology/terms", data)
@@ -80,21 +88,24 @@ export async function createTerm(data: CreateTermPayload): Promise<TerminologyTe
 }
 
 /**
- * Update an existing terminology term (admin).
+ * 更新已有术语（管理员）
+ * PUT /terminology/terms/{termId}
  */
 export async function updateTerm(termId: string, data: UpdateTermPayload): Promise<void> {
   await api.put(`/terminology/terms/${termId}`, data)
 }
 
 /**
- * Delete a terminology term (admin).
+ * 删除术语（管理员）
+ * DELETE /terminology/terms/{termId}
  */
 export async function deleteTerm(termId: string): Promise<void> {
   await api.delete(`/terminology/terms/${termId}`)
 }
 
 /**
- * Batch approve/reject/delete terms (admin).
+ * 批量审批/拒绝/删除术语（管理员）
+ * POST /terminology/terms/batch
  */
 export async function batchOperateTerms(payload: BatchOperationPayload): Promise<{ succeeded: number; failed: number }> {
   const response = await api.post("/terminology/terms/batch", payload)
@@ -102,7 +113,8 @@ export async function batchOperateTerms(payload: BatchOperationPayload): Promise
 }
 
 /**
- * Get match logs for a completed translation task.
+ * 获取翻译任务的匹配日志
+ * GET /terminology/tasks/{taskId}/matches
  */
 export async function getMatchLogs(taskId: string): Promise<MatchLogEntry[]> {
   const response = await api.get<MatchLogEntry[]>(`/terminology/tasks/${taskId}/matches`)
@@ -110,7 +122,8 @@ export async function getMatchLogs(taskId: string): Promise<MatchLogEntry[]> {
 }
 
 /**
- * List the current user's own terminology terms.
+ * 列出当前用户自己的术语条目
+ * GET /terminology/my-terms
  */
 export async function listMyTerms(params: ListTermsParams): Promise<ListTermsResponse> {
   const response = await api.get<ListTermsResponse>("/terminology/my-terms", { params })
@@ -118,7 +131,8 @@ export async function listMyTerms(params: ListTermsParams): Promise<ListTermsRes
 }
 
 /**
- * List all available terminology domains.
+ * 列出所有可用的术语领域
+ * GET /terminology/domains
  */
 export async function listDomains(): Promise<DomainsResponse> {
   const response = await api.get<DomainsResponse>("/terminology/domains")
@@ -126,7 +140,8 @@ export async function listDomains(): Promise<DomainsResponse> {
 }
 
 /**
- * Share a personal term to admin for review.
+ * 将个人术语共享给管理员审核
+ * POST /terminology/terms/{termId}/share
  */
 export async function shareTerm(termId: string): Promise<{ shared_term_id: string }> {
   const response = await api.post<{ shared_term_id: string }>(`/terminology/terms/${termId}/share`)

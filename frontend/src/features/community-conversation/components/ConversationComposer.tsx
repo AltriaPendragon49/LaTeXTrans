@@ -9,10 +9,15 @@ import { SegmentedControl } from "@/ui/segmented-control/SegmentedControl"
 import { ToggleSwitch } from "@/ui/toggle-switch/ToggleSwitch"
 import type { CommunityAgentMode } from "@/types/community"
 
+/** 对话输入框组件 Props */
 interface ConversationComposerProps {
+  /** 当前输入文本 */
   input: string
+  /** Agent 是否忙碌中 */
   agentBusy: boolean
+  /** Agent 模式（chat / deep_research） */
   agentMode: CommunityAgentMode
+  /** 是否启用外部搜索 */
   externalSearchEnabled: boolean
   onInputChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -20,6 +25,11 @@ interface ConversationComposerProps {
   onExternalSearchChange: (enabled: boolean) => void
 }
 
+/**
+ * 对话输入框组件
+ * 提供文本输入区域、Agent 模式切换（chat / deep_research）、
+ * 外部搜索开关和发送按钮。支持 Enter 快捷发送
+ */
 export function ConversationComposer({
   input,
   agentBusy,

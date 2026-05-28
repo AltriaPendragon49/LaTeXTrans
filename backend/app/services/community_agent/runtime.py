@@ -1,3 +1,5 @@
+"""Agent 运行时状态数据类"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,6 +8,10 @@ from typing import Any, Dict, List
 
 @dataclass
 class AgentRuntimeState:
+    """Agent 运行时的可变状态容器
+
+    跟踪一次对话回合中所有的上下文、引用、工具追踪和生成结果。
+    """
     input_text: str
     context: Dict[str, Any]
     skill_toggles: Dict[str, Any]
@@ -29,6 +35,7 @@ class AgentRuntimeState:
     planner_turn_count: int = 0
 
     def add_citations(self, citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """添加引用列表，去重后返回新添加的引用"""
         added: List[Dict[str, Any]] = []
         for citation in citations:
             citation_id = str(citation.get("id") or "").strip()

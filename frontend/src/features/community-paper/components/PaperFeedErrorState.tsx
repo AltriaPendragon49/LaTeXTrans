@@ -4,10 +4,16 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/ui/button/Button"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 
+/** 论文列表错误状态 Props */
 interface PaperFeedErrorStateProps {
+  /** 重试回调 */
   onRetry: () => void
 }
 
+/**
+ * 论文列表错误状态组件
+ * 在社区论文列表加载失败时显示错误提示和重试按钮
+ */
 export function PaperFeedErrorState({ onRetry }: PaperFeedErrorStateProps) {
   const { t } = useTranslation()
 

@@ -13,6 +13,11 @@ import { LoadingState } from "@/ui/loading-state/LoadingState"
 import { PageIntro } from "@/ui/page-intro/PageIntro"
 import { SectionCard } from "@/ui/section-card/SectionCard"
 
+/**
+ * 个人资料工作区组件
+ * 展示用户的登录信息、账户操作入口（设置、登出）。
+ * 未登录用户显示登录提示
+ */
 export function ProfileWorkspace() {
   const navigate = useNavigate()
   const { user, isAuthenticated, loading, signOut } = useAuth()

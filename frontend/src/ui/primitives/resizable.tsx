@@ -1,8 +1,13 @@
+/**
+ * 可调整大小面板组件 - 基于 react-resizable-panels 封装
+ * 提供可拖拽调整大小的面板布局
+ */
 import { GripVertical } from "lucide-react"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 
 import { cn } from "@/lib/utils"
 
+/** 可调整大小的面板组容器 */
 const ResizablePanelGroup = ({
   className,
   ...props
@@ -16,8 +21,10 @@ const ResizablePanelGroup = ({
   />
 )
 
+/** 可调整大小的单个面板 */
 const ResizablePanel = Panel
 
+/** 面板分割手柄，支持拖拽调整相邻面板大小，可选 withHandle 显示拖拽图标 */
 const ResizableHandle = ({
   withHandle,
   className,

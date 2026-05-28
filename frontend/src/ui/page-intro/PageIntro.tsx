@@ -1,16 +1,28 @@
+/**
+ * 页面标题区组件
+ * 渲染页面顶部的标题、描述、图标和操作按钮区域
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** PageIntro 组件 Props */
 interface PageIntroProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+  /** 标题上方小字 */
   eyebrow?: ReactNode
+  /** 页面主标题 */
   title: ReactNode
+  /** 可选描述文本 */
   description?: ReactNode
+  /** 可选图标 */
   icon?: ReactNode
+  /** 可选元信息 */
   meta?: ReactNode
+  /** 右侧操作按钮区域 */
   actions?: ReactNode
 }
 
+/** 页面标题区，左侧图标+标题+描述，右侧操作按钮，底部有分隔线 */
 export function PageIntro({
   eyebrow,
   title,

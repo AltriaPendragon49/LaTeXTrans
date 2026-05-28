@@ -1,8 +1,8 @@
 """
-File Upload API Routes
+文件上传 API 路由
 
-Provides endpoints for uploading .zip, .tar.gz, .rar or .tex files.
-Supports automatic extraction and LaTeX project validation.
+提供上传 .zip、.tar.gz、.rar 或 .tex 文件的接口。
+支持自动解压和 LaTeX 项目验证。
 """
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
@@ -31,13 +31,13 @@ router = APIRouter()
 settings = get_settings()
 task_manager = get_task_manager()
 
-# Allow missing Authorization header (guest mode)
+# 允许缺失 Authorization 头（游客模式）
 security = HTTPBearer(auto_error=False)
 required_security = HTTPBearer(auto_error=True)
 
 
 class LatexValidationResponse(BaseModel):
-    """LaTeX validation result in response"""
+    """LaTeX 验证结果响应体"""
     is_valid: bool
     main_file: Optional[str] = None
     tex_files: List[str] = []
@@ -46,7 +46,7 @@ class LatexValidationResponse(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    """File upload response with LaTeX validation"""
+    """文件上传响应体，包含 LaTeX 验证结果"""
     task_id: str
     status: str
     message: str
@@ -79,15 +79,15 @@ def _safe_upload_filename(filename: Optional[str]) -> str:
 
 def extract_rar(file_path: Path, extract_dir: Path) -> None:
     """
-    Extract RAR archive using rarfile library.
-    
+    使用 rarfile 库解压 RAR 归档文件。
+
     Args:
-        file_path: Path to the RAR file
-        extract_dir: Directory to extract to
-    
+        file_path: RAR 文件路径
+        extract_dir: 解压目标目录
+
     Raises:
-        ImportError: If rarfile is not installed
-        Exception: If extraction fails
+        ImportError: rarfile 未安装时抛出
+        Exception: 解压失败时抛出
     """
     try:
         import rarfile
@@ -113,13 +113,13 @@ def extract_rar(file_path: Path, extract_dir: Path) -> None:
 
 def get_file_extension(filename: Optional[str]) -> str:
     """
-    Get file extension, handling compound extensions like .tar.gz
-    
+    获取文件扩展名，处理 .tar.gz 等复合扩展名。
+
     Args:
-        filename: Original filename
-    
+        filename: 原始文件名
+
     Returns:
-        File extension (e.g., ".zip", ".tar.gz", ".rar")
+        文件扩展名（如 ".zip"、".tar.gz"、".rar"）
     """
     filename = filename or ""
     name = filename.lower()
@@ -140,8 +140,7 @@ async def batch_upload_translate(
     current_user: dict[str, Any] = Depends(require_current_user),
 ):
     """
-    Upload multiple source packages and start translations with one atomic
-    daily-quota reservation before any upload task is created.
+    上传多个源码包并启动翻译，在创建任何上传任务之前进行一次原子性的每日配额预留。
     """
     from backend.app.api.routes import translate as translate_route
 
@@ -263,25 +262,25 @@ async def upload_file(
     current_user: Optional[dict] = Depends(optional_current_user),
 ):
     """
-    Upload .zip, .tar.gz, .rar or .tex file
-    
-    Supports the following formats:
-    - .zip - Standard ZIP compression
-    - .tar.gz / .tgz - TAR+GZIP compression (common for arXiv)
-    - .tar - TAR archive
-    - .rar - RAR compression
-    - .tex - Single LaTeX file
-    
-    After extraction, the directory is validated as a LaTeX project.
-    
+    上传 .zip、.tar.gz、.rar 或 .tex 文件
+
+    支持以下格式：
+    - .zip - 标准 ZIP 压缩
+    - .tar.gz / .tgz - TAR+GZIP 压缩（arXiv 常用格式）
+    - .tar - TAR 归档
+    - .rar - RAR 压缩
+    - .tex - 单个 LaTeX 文件
+
+    解压后对目录进行 LaTeX 项目验证。
+
     Args:
-        file: Uploaded file
-    
+        file: 上传的文件
+
     Returns:
-        Task information with upload status and LaTeX validation
-    
+        包含上传状态和 LaTeX 验证结果的任务信息
+
     Raises:
-        HTTPException: If file type is invalid or upload fails
+        HTTPException: 文件类型无效或上传失败时抛出
     """
     # Get file extension (handle compound extensions)
     file_ext = get_file_extension(file.filename)

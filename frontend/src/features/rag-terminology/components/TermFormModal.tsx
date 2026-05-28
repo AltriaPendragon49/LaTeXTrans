@@ -17,21 +17,27 @@ import {
 
 import type { DomainInfo, TermFormData } from "@/features/rag-terminology/types"
 
+/** 术语表单弹窗 Props */
 export interface TermFormModalProps {
+  /** 是否打开 */
   open: boolean
+  /** 关闭回调 */
   onClose: () => void
+  /** 保存回调 */
   onSave: (data: TermFormData) => Promise<void>
-  /** Pre-fill for editing */
+  /** 预填数据（编辑模式） */
   initial?: Partial<TermFormData>
+  /** 弹窗标题 */
   title: string
-  /** Whether to show language fields (default true) */
+  /** 是否显示语言选择字段（默认 true） */
   showLanguageFields?: boolean
-  /** Domain options (from API) */
+  /** 领域选项（从 API 获取） */
   domainOptions: DomainInfo[]
-  /** Domain groups for grouped dropdown */
+  /** 领域分组（用于分组下拉菜单） */
   domainGroups: Record<string, { label_zh: string; members: string[] }>
 }
 
+/** 语言选项 */
 const LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "zh", label: "中文" },
@@ -43,6 +49,11 @@ const LANGUAGE_OPTIONS = [
   { value: "es", label: "Español" },
 ]
 
+/**
+ * 术语表单弹窗组件
+ * 用于创建或编辑术语条目，支持源术语/目标术语输入、语言选择和领域筛选。
+ * 弹窗打开时自动从 initial 预填表单字段
+ */
 export function TermFormModal({
   open,
   onClose,
@@ -90,7 +101,7 @@ export function TermFormModal({
 
   if (!open) return null
 
-  // Sort domain options: ungrouped first, then grouped
+  // 领域选项排序：先无分组，再按分组
   const sortedOptions = [...domainOptions].sort((a, b) => {
     const aHasGroup = a.group != null
     const bHasGroup = b.group != null
@@ -98,16 +109,14 @@ export function TermFormModal({
     return a.value.localeCompare(b.value)
   })
 
-  // Render grouped or flat domain options
+  /** 渲染领域下拉选项（支持分组或扁平列表） */
   function renderDomainOptions() {
     if (Object.keys(domainGroups).length === 0) {
-      // Flat list
       return sortedOptions.map((d) => (
         <SelectItem key={d.value} value={d.value}>{d.label_zh || d.value}</SelectItem>
       ))
     }
 
-    // Grouped list
     const ungrouped = sortedOptions.filter((d) => d.group == null)
     const groupedByGroup: Record<string, DomainInfo[]> = {}
     for (const d of sortedOptions) {

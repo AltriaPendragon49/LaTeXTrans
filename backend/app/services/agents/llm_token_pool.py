@@ -1,3 +1,8 @@
+"""LLM 令牌池 —— 多成员调度、故障转移和速率限制管理模块。
+
+提供多 LLM 提供者成员的智能调度、基于 HTTP 状态码的故障转移、
+速率限制（429）和瞬态错误（503/5xx）的重试逻辑。
+"""
 from __future__ import annotations
 
 import asyncio
@@ -14,22 +19,29 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
+# 可重试的 HTTP 状态码
 _RETRYABLE_STATUS_CODES = frozenset({429, 503})
+# 503 故障转移阈值
 _STATUS_503_FAILOVER_THRESHOLD = 3
+# 503 冷却时间（秒）
 _STATUS_503_COOLDOWN_SECONDS = 8
+# 所有成员不可用时 503 重试等待时间（秒）
 _ALL_MEMBERS_UNAVAILABLE_503_RETRY_SECONDS = 2
+# 默认成员并发数
 _DEFAULT_MEMBER_CONCURRENCY = 1
 
 
 class ProviderErrorKind(str, Enum):
-    RETRYABLE_RATE_LIMIT = "retryable_rate_limit"
-    RETRYABLE_TRANSIENT = "retryable_transient"
-    COOLDOWN = "cooldown"
-    FATAL = "fatal"
+    """LLM 提供者错误分类枚举。"""
+    RETRYABLE_RATE_LIMIT = "retryable_rate_limit"    # 可重试：速率限制
+    RETRYABLE_TRANSIENT = "retryable_transient"      # 可重试：瞬态错误
+    COOLDOWN = "cooldown"                            # 需要冷却
+    FATAL = "fatal"                                  # 致命错误，不可重试
 
 
 @dataclass(frozen=True)
 class ProviderErrorClassification:
+    """提供者错误分类结果。"""
     kind: ProviderErrorKind
     retryable: bool
     cooldown: bool = False
@@ -37,6 +49,8 @@ class ProviderErrorClassification:
 
 
 class ProviderFatalError(RuntimeError):
+    """LLM 提供者致命错误异常。"""
+
     def __init__(
         self,
         *,
@@ -53,6 +67,7 @@ class ProviderFatalError(RuntimeError):
 
 @dataclass(frozen=True)
 class LlmTaskLease:
+    """LLM 任务租约，绑定任务到特定的池成员。"""
     task_id: str
     member_id: str
     base_url: str
@@ -62,6 +77,7 @@ class LlmTaskLease:
 
 @dataclass
 class _SchedulerMember:
+    """调度器内部成员表示。"""
     member_id: str
     base_url: str
     api_key: str
@@ -72,6 +88,7 @@ class _SchedulerMember:
 
     @property
     def quota_key(self) -> str:
+        """基于配额范围计算配额键。"""
         if self.quota_scope in {"independent", "account", "per_account"} and self.account_id:
             return f"account:{self.account_id}"
         if self.quota_scope in {"independent", "member"}:
@@ -80,6 +97,7 @@ class _SchedulerMember:
 
 
 def _mask_api_key(api_key: str) -> str:
+    """遮蔽 API 密钥，仅显示前4位和后4位。"""
     normalized = str(api_key or "").strip()
     if len(normalized) <= 8:
         return "***"
@@ -87,6 +105,7 @@ def _mask_api_key(api_key: str) -> str:
 
 
 def classify_provider_error(status_code: int, body: str = "") -> ProviderErrorClassification:
+    """根据 HTTP 状态码和响应体分类提供者错误。"""
     text = str(body or "").lower()
     fatal_markers = (
         "invalid api key",
@@ -135,6 +154,8 @@ def classify_provider_error(status_code: int, body: str = "") -> ProviderErrorCl
 
 
 class LlmMemberScheduler:
+    """LLM 成员调度器，管理任务租约和成员并发控制。"""
+
     def __init__(
         self,
         *,
@@ -143,6 +164,14 @@ class LlmMemberScheduler:
         default_member_concurrency: int = _DEFAULT_MEMBER_CONCURRENCY,
         pool_concurrency: Optional[int] = None,
     ) -> None:
+        """初始化调度器。
+
+        Args:
+            members: 成员配置列表
+            reserve_count: 保留成员数量
+            default_member_concurrency: 默认成员并发数
+            pool_concurrency: 池级别并发限制
+        """
         self.reserve_count = max(int(reserve_count or 0), 0)
         self.default_member_concurrency = max(int(default_member_concurrency or _DEFAULT_MEMBER_CONCURRENCY), 1)
         self._members: dict[str, _SchedulerMember] = {}
@@ -155,6 +184,7 @@ class LlmMemberScheduler:
         self.update_members(members)
 
     def update_members(self, members: Iterable[Mapping[str, Any]]) -> None:
+        """更新或刷新调度器的成员列表。"""
         normalized_members: dict[str, _SchedulerMember] = {}
         member_order: list[str] = []
         for index, member in enumerate(members):
@@ -191,9 +221,11 @@ class LlmMemberScheduler:
                 self._member_semaphores.pop(member_id, None)
 
     def _healthy_member_ids(self) -> list[str]:
+        """返回当前健康成员的 ID 列表。"""
         return list(self._member_order)
 
     def community_task_capacity(self) -> int:
+        """计算社区任务容量（独立配额单元数减去保留数）。"""
         healthy = [self._members[member_id] for member_id in self._healthy_member_ids()]
         if not healthy:
             return 0
@@ -201,6 +233,7 @@ class LlmMemberScheduler:
         return max(1, len(independent_units) - self.reserve_count)
 
     def reserve_member_ids(self) -> set[str]:
+        """计算应在负载下保留的成员 ID 集合。"""
         capacity = self.community_task_capacity()
         leased = {lease.member_id for lease in self._task_leases.values()}
         healthy = set(self._healthy_member_ids())
@@ -211,6 +244,7 @@ class LlmMemberScheduler:
         return set(ordered_reserve[-self.reserve_count:])
 
     async def acquire_task_lease(self, task_id: str) -> LlmTaskLease:
+        """为任务获取池成员租约，必要时等待。"""
         normalized_task_id = str(task_id or "").strip()
         if not normalized_task_id:
             raise ValueError("task_id is required for LLM task lease")
@@ -239,11 +273,13 @@ class LlmMemberScheduler:
                 await self._condition.wait()
 
     async def release_task_lease(self, task_id: str) -> None:
+        """释放任务租约并通知等待者。"""
         async with self._condition:
             self._task_leases.pop(str(task_id or "").strip(), None)
             self._condition.notify_all()
 
     def _choose_unleased_member(self) -> Optional[_SchedulerMember]:
+        """按顺序选择尚未租出的成员。"""
         leased = {lease.member_id for lease in self._task_leases.values()}
         for member_id in self._member_order:
             if member_id not in leased:
@@ -252,6 +288,7 @@ class LlmMemberScheduler:
 
     @asynccontextmanager
     async def request_permission(self, member_id: str, *, task_id: Optional[str] = None):
+        """异步上下文管理器：获取成员级别的请求许可（通过信号量）。"""
         member = self._members.get(member_id)
         if member is None:
             raise KeyError(f"Unknown LLM member {member_id}")
@@ -266,6 +303,8 @@ class LlmMemberScheduler:
 
 
 class _SchedulerRegistry:
+    """调度器注册表，线程安全地管理命名调度器实例。"""
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._schedulers: dict[str, LlmMemberScheduler] = {}
@@ -279,6 +318,7 @@ class _SchedulerRegistry:
         default_member_concurrency: int = _DEFAULT_MEMBER_CONCURRENCY,
         pool_concurrency: Optional[int] = None,
     ) -> LlmMemberScheduler:
+        """获取或创建指定池 ID 的调度器。"""
         with self._lock:
             scheduler = self._schedulers.get(pool_id)
             if scheduler is None:
@@ -297,6 +337,7 @@ class _SchedulerRegistry:
 
 
 def build_pool_members_from_groups(groups: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """从组配置列表中构建展平的池成员列表。"""
     members: list[dict[str, Any]] = []
     for group_index, group in enumerate(groups):
         base_url = str(group.get("base_url") or "").strip()
@@ -346,6 +387,7 @@ def build_pool_members_from_groups(groups: Iterable[Mapping[str, Any]]) -> list[
 
 
 def compute_pool_routing_key(members: Iterable[Mapping[str, Any]]) -> str:
+    """根据成员配置计算确定性的池路由键。"""
     normalized = []
     for member in members:
         normalized.append(
@@ -363,6 +405,7 @@ def compute_pool_routing_key(members: Iterable[Mapping[str, Any]]) -> str:
 
 @dataclass
 class _MemberState:
+    """池注册表中成员的运行时状态。"""
     member_id: str
     base_url: str
     api_key: str
@@ -375,11 +418,14 @@ class _MemberState:
 
 
 class _PoolRegistry:
+    """池注册表，管理池成员的运行时状态（选择、故障跟踪、冷却）。"""
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._pools: dict[str, dict[str, _MemberState]] = {}
 
     def ensure_pool(self, pool_id: str, members: Iterable[Mapping[str, Any]]) -> dict[str, _MemberState]:
+        """确保指定池 ID 的成员状态存在并同步。"""
         now = time.monotonic()
         with self._lock:
             state = self._pools.setdefault(pool_id, {})
@@ -416,6 +462,7 @@ class _PoolRegistry:
         exclude: Optional[set[str]] = None,
         preferred_base_urls: Optional[Iterable[str]] = None,
     ) -> Optional[_MemberState]:
+        """从池中选择最佳成员，支持排除和首选 base_url 偏好。"""
         now = time.monotonic()
         with self._lock:
             state = self._pools.get(pool_id, {})
@@ -448,12 +495,14 @@ class _PoolRegistry:
             return min(candidates, key=lambda item: (item.last_used_at, item.member_id))
 
     def mark_attempt(self, pool_id: str, member_id: str) -> None:
+        """标记成员的使用时间。"""
         with self._lock:
             member = self._pools.get(pool_id, {}).get(member_id)
             if member is not None:
                 member.last_used_at = time.monotonic()
 
     def record_success(self, pool_id: str, member_id: str) -> None:
+        """记录成功的请求，重置故障计数器。"""
         with self._lock:
             member = self._pools.get(pool_id, {}).get(member_id)
             if member is None:
@@ -465,6 +514,7 @@ class _PoolRegistry:
             member.last_used_at = time.monotonic()
 
     def record_fatal(self, pool_id: str, member_id: str) -> None:
+        """将成员标记为致命故障状态。"""
         with self._lock:
             member = self._pools.get(pool_id, {}).get(member_id)
             if member is None:
@@ -473,6 +523,7 @@ class _PoolRegistry:
             member.last_used_at = time.monotonic()
 
     def record_status(self, pool_id: str, member_id: str, status: int, *, retry_after_seconds: int = 0) -> tuple[int, bool]:
+        """记录 HTTP 状态码结果，更新故障计数器和冷却状态。"""
         now = time.monotonic()
         with self._lock:
             member = self._pools.get(pool_id, {}).get(member_id)
@@ -496,11 +547,13 @@ class _PoolRegistry:
             return 0, False
 
 
+# 全局单例注册表
 _POOL_REGISTRY = _PoolRegistry()
 _SCHEDULER_REGISTRY = _SchedulerRegistry()
 
 
 def _parse_retry_after_seconds(headers: Optional[Mapping[str, str]]) -> int:
+    """从响应头中解析 Retry-After 秒数。"""
     raw = str((headers or {}).get("Retry-After") or "").strip()
     if raw.isdigit():
         return max(int(raw), 0)
@@ -514,6 +567,7 @@ def _log_pool_request_success(
     base_url: str,
     status_code: int,
 ) -> None:
+    """记录池请求成功的结构化日志。"""
     logger.info(
         "LLM pool request served by member %s",
         member_id,
@@ -535,6 +589,7 @@ def _log_pool_failover(
     status_code: int,
     reason: str,
 ) -> None:
+    """记录池故障转移事件的结构化日志。"""
     logger.warning(
         "LLM pool failover from member %s to %s after HTTP %s",
         current.member_id,
@@ -561,6 +616,7 @@ def _log_pool_exhausted_retry(
     status_code: int,
     wait_seconds: int,
 ) -> None:
+    """记录池资源耗尽后重试的结构化日志。"""
     logger.warning(
         "LLM pool all members unavailable after HTTP %s; retrying member %s in %ss",
         status_code,
@@ -587,6 +643,7 @@ async def _perform_member_request(
     timeout: aiohttp.ClientTimeout,
     scheduler_lease_id: Optional[str] = None,
 ) -> tuple[int, Mapping[str, str], Optional[Dict[str, Any]], str]:
+    """对指定的池成员执行实际的 HTTP POST 请求。"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -614,6 +671,7 @@ async def _perform_member_request(
 
 
 def _single_member_from_config(llm_config: Mapping[str, Any]) -> dict[str, Any]:
+    """从配置中构建单成员表示（非池模式）。"""
     base_url = str(llm_config.get("base_url") or "").strip()
     api_key = str(llm_config.get("api_key") or "").strip()
     member_id_source = f"{base_url}:{api_key}"
@@ -629,6 +687,7 @@ def _single_member_from_config(llm_config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _scheduler_defaults(llm_config: Mapping[str, Any]) -> tuple[int, int, Optional[int]]:
+    """从配置中提取调度器默认参数。"""
     reserve_count = int(llm_config.get("reserve_count") or llm_config.get("llm_reserve_count") or 0)
     default_member_concurrency = int(
         llm_config.get("default_member_concurrency")
@@ -650,8 +709,32 @@ async def post_chat_completion_with_pool(
     preferred_base_urls_getter: Optional[Callable[[], Iterable[str]]] = None,
     on_retryable_status: Optional[Callable[[str, str, int], None]] = None,
 ) -> Dict[str, Any]:
+    """通过 LLM 池（或单成员模式）发送聊天补全请求，支持自动故障转移和重试。
+
+    这是与 LLM 提供者交互的主要入口点。支持两种模式：
+    1. 单成员模式（pool_mode != "system_managed" 或无池成员）
+    2. 系统托管池模式（pool_mode == "system_managed" 且有池成员）
+
+    在池模式下，自动处理：
+    - 基于 HTTP 状态码的故障转移（429、503、5xx）
+    - 速率限制退避
+    - 首选 base_url 亲和性路由
+
+    Args:
+        session: aiohttp 客户端会话
+        llm_config: LLM 配置，包含池成员和参数
+        payload: 要发送的聊天补全请求载荷
+        timeout: HTTP 请求超时
+        on_retry_message: 可选的进度消息回调
+        preferred_base_urls_getter: 可选的返回首选 base_url 列表的回调
+        on_retryable_status: 可选的收到可重试状态码时的回调
+
+    Returns:
+        LLM API 响应 JSON 字典
+    """
     members = list(llm_config.get("pool_members") or [])
     if llm_config.get("pool_mode") != "system_managed" or not members:
+        # 单成员模式
         single_member = _single_member_from_config(llm_config)
         pool_id = str(llm_config.get("pool_routing_key") or compute_pool_routing_key([single_member]))
         reserve_count, default_member_concurrency, pool_concurrency = _scheduler_defaults(llm_config)
@@ -698,6 +781,7 @@ async def post_chat_completion_with_pool(
         )
         return result or {}
 
+    # 系统托管池模式
     pool_id = str(llm_config.get("pool_routing_key") or compute_pool_routing_key(members))
     reserve_count, default_member_concurrency, pool_concurrency = _scheduler_defaults(llm_config)
     scheduler = _SCHEDULER_REGISTRY.ensure_scheduler(

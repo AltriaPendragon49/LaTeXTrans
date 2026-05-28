@@ -1,3 +1,9 @@
+"""arXiv 原始文件 COS 缓存服务
+
+管理 arXiv 原始 PDF 和 e-print 源文件在对象存储中的缓存键，
+并提供签名下载 URL 构建功能。
+"""
+
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -7,6 +13,7 @@ from typing import Any, Optional
 from backend.app.core.config import get_settings
 from backend.app.services.storage_backend import CosStorageBackend, _ensure_cos_config
 
+# arXiv e-print 回退下载源列表
 ARXIV_EPRINT_FALLBACK_SOURCES = (
     "https://export.arxiv.org/e-print/{arxiv_id}",
     "https://arxiv.org/e-print/{arxiv_id}",
@@ -16,18 +23,22 @@ _SAFE_ARXIV_ID_RE = re.compile(r"^[0-9A-Za-z._/-]+$")
 
 
 def _settings_value(settings: Any, name: str, default: Any = None) -> Any:
+    """安全地从配置对象获取属性值"""
     return getattr(settings, name, default)
 
 
 def _normalize_prefix(settings: Any) -> str:
+    """规范化 COS 缓存前缀"""
     return str(_settings_value(settings, "arxiv_raw_cache_prefix", "") or "").strip().strip("/")
 
 
 def _join_key(*parts: str) -> str:
+    """用斜杠连接路径片段"""
     return "/".join(part.strip("/") for part in parts if part.strip("/"))
 
 
 def normalize_arxiv_id_for_object(arxiv_id: str) -> str:
+    """将 arXiv ID 规范化为安全的 COS 对象路径片段"""
     normalized = str(arxiv_id or "").strip().strip("/")
     if normalized.endswith(".pdf"):
         normalized = normalized[:-4]
@@ -41,21 +52,25 @@ def normalize_arxiv_id_for_object(arxiv_id: str) -> str:
 
 
 def raw_pdf_object_key(arxiv_id: str, *, settings: Optional[Any] = None) -> str:
+    """构建 arXiv 原始 PDF 的 COS 对象键"""
     active_settings = settings or get_settings()
     return _join_key(_normalize_prefix(active_settings), "pdf", normalize_arxiv_id_for_object(arxiv_id))
 
 
 def _legacy_raw_pdf_object_key(arxiv_id: str, *, settings: Optional[Any] = None) -> str:
+    """构建旧版（带 .pdf 后缀）的 arXiv 原始 PDF 对象键"""
     active_settings = settings or get_settings()
     return _join_key(_normalize_prefix(active_settings), "pdf", f"{normalize_arxiv_id_for_object(arxiv_id)}.pdf")
 
 
 def raw_eprint_object_key(arxiv_id: str, *, settings: Optional[Any] = None) -> str:
+    """构建 arXiv e-print 源文件的 COS 对象键"""
     active_settings = settings or get_settings()
     return _join_key(_normalize_prefix(active_settings), "e-print", normalize_arxiv_id_for_object(arxiv_id))
 
 
 def is_enabled(*, settings: Optional[Any] = None) -> bool:
+    """判断 arXiv 原始缓存功能是否启用（需要 COS 后端 + arxiv_raw_cache_enabled）"""
     active_settings = settings or get_settings()
     return (
         str(_settings_value(active_settings, "storage_backend_mode", "") or "").strip().lower() == "cos"
@@ -64,6 +79,7 @@ def is_enabled(*, settings: Optional[Any] = None) -> bool:
 
 
 def _get_backend(settings: Any, backend: Optional[Any] = None) -> Optional[Any]:
+    """获取 COS 存储后端实例"""
     if backend is not None:
         return backend
     if str(_settings_value(settings, "storage_backend_mode", "") or "").strip().lower() != "cos":
@@ -79,6 +95,7 @@ def _get_backend(settings: Any, backend: Optional[Any] = None) -> Optional[Any]:
 
 
 def is_raw_pdf_object_key(object_key: str, arxiv_id: str, *, settings: Optional[Any] = None) -> bool:
+    """判断给定的对象键是否对应指定 arXiv ID 的原始 PDF"""
     try:
         normalized_key = str(object_key or "").strip().strip("/")
         return normalized_key in {
@@ -98,6 +115,7 @@ def _build_signed_url(
     content_type: Optional[str],
     inline: bool,
 ) -> Optional[str]:
+    """构建 COS 对象的签名下载 URL"""
     if not is_enabled(settings=settings):
         return None
 
@@ -127,6 +145,7 @@ def build_pdf_download_url(
     filename: Optional[str] = None,
     inline: bool = True,
 ) -> Optional[str]:
+    """构建 arXiv 原始 PDF 的签名下载 URL"""
     active_settings = settings or get_settings()
     return _build_signed_url(
         object_key=raw_pdf_object_key(arxiv_id, settings=active_settings),
@@ -144,6 +163,7 @@ def build_eprint_download_url(
     settings: Optional[Any] = None,
     backend: Optional[Any] = None,
 ) -> Optional[str]:
+    """构建 arXiv e-print 源文件的签名下载 URL"""
     active_settings = settings or get_settings()
     return _build_signed_url(
         object_key=raw_eprint_object_key(arxiv_id, settings=active_settings),
@@ -161,6 +181,7 @@ def build_eprint_source_urls(
     settings: Optional[Any] = None,
     backend: Optional[Any] = None,
 ) -> list[str]:
+    """构建 arXiv e-print 源文件下载 URL 列表（优先使用 COS 签名 URL，回退到公开源）"""
     urls: list[str] = []
     signed_url = build_eprint_download_url(arxiv_id, settings=settings, backend=backend)
     if signed_url:

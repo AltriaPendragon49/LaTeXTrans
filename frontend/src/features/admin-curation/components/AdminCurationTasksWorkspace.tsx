@@ -51,6 +51,7 @@ import { SearchBar } from "@/ui/search-bar/SearchBar"
 import { StatePanel } from "@/ui/state-panel/StatePanel"
 import { StatusBadge } from "@/ui/status-badge/StatusBadge"
 
+/** 状态筛选选项 */
 const STATUS_OPTIONS = [
   { value: "all", labelKey: "community.admin.tasks.filters.all", fallback: "All" },
   { value: "queued", labelKey: "community.admin.tasks.filters.queued", fallback: "Queued" },
@@ -59,6 +60,7 @@ const STATUS_OPTIONS = [
   { value: "failed", labelKey: "community.admin.tasks.filters.failed", fallback: "Failed" },
 ]
 
+/** 根据任务状态返回徽章色调 */
 function getJobStatusTone(status: string): "accent" | "success" | "danger" | "warning" | "muted" {
   switch (status.toLowerCase()) {
     case "completed":
@@ -74,6 +76,7 @@ function getJobStatusTone(status: string): "accent" | "success" | "danger" | "wa
   }
 }
 
+/** 解析任务对应的可读论文 ID */
 function resolveReadPaperId(job: AdminCurationJobHistoryItem): string | null {
   if (String(job.status || "").trim().toLowerCase() !== "completed") {
     return null
@@ -88,6 +91,16 @@ function resolveReadPaperId(job: AdminCurationJobHistoryItem): string | null {
   return fallbackPaperId || null
 }
 
+/**
+ * 管理员策展任务历史工作区组件
+ * 查看和管理所有策展任务的历史记录，支持：
+ * - 按状态和关键词筛选
+ * - 批量选择删除
+ * - 单独删除（硬删除）
+ * - 查看已完成的论文
+ *
+ * 调用 GET /api/admin/curation/jobs 获取任务列表
+ */
 export function AdminCurationTasksWorkspace() {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useAuth()
@@ -105,6 +118,7 @@ export function AdminCurationTasksWorkspace() {
 
   const isAdmin = hasAdminRole(user?.roles)
 
+  /** 加载任务列表 */
   const loadJobs = useCallback(async (params?: { status?: string, q?: string }) => {
     const status = params?.status ?? statusFilter
     const q = params?.q ?? searchValue
@@ -129,6 +143,7 @@ export function AdminCurationTasksWorkspace() {
     void loadJobs({ status: statusFilter, q: searchValue })
   }, [isAuthenticated, isAdmin, loadJobs, searchValue, statusFilter])
 
+  /** 删除单个任务 */
   async function handleDeleteJob() {
     if (!jobPendingDelete) {
       return
@@ -170,6 +185,7 @@ export function AdminCurationTasksWorkspace() {
     })
   }
 
+  /** 批量删除任务 */
   async function handleBatchDeleteJobs() {
     const visibleSelectedJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId))
     if (!visibleSelectedJobIds.length) {

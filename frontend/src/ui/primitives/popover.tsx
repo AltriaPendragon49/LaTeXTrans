@@ -1,3 +1,7 @@
+/**
+ * 弹出层组件 - 基于 Radix UI Popover 封装
+ * 在触发器附近显示浮动的信息面板
+ */
 "use client"
 
 import * as React from "react"
@@ -5,12 +9,16 @@ import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
 
+/** 弹出层根组件 */
 const Popover = PopoverPrimitive.Root
 
+/** 弹出层触发器 */
 const PopoverTrigger = PopoverPrimitive.Trigger
 
+/** 弹出层锚点，指定弹出层的定位参考点 */
 const PopoverAnchor = PopoverPrimitive.Anchor
 
+/** 弹出层内容容器，显示在触发器附近 */
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>

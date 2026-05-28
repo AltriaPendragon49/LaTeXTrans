@@ -18,10 +18,12 @@ settings = get_settings()
 
 
 class CommunityAgentSkillToggles(BaseModel):
+    """社区 Agent 技能开关"""
     external_search: bool = False
 
 
 class CommunityAgentRunRequest(BaseModel):
+    """社区 Agent 运行请求体"""
     input: str
     paper_id: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
@@ -31,6 +33,7 @@ class CommunityAgentRunRequest(BaseModel):
 
 
 class CommunityConversationTurnPayload(BaseModel):
+    """对话轮次载荷"""
     id: str
     role: Literal["user", "assistant"]
     content: str
@@ -41,6 +44,7 @@ class CommunityConversationTurnPayload(BaseModel):
 
 
 class CommunityConversationRecordPayload(BaseModel):
+    """对话记录载荷"""
     id: str
     title: str
     created_at: str
@@ -49,11 +53,13 @@ class CommunityConversationRecordPayload(BaseModel):
 
 
 class CommunityConversationDeleteResponse(BaseModel):
+    """删除对话响应体"""
     deleted: bool
     conversation_id: str
 
 
 class CommunityAgentRunResponse(BaseModel):
+    """社区 Agent 运行响应体"""
     run_id: str
     status: str
     intent: Optional[str] = None
@@ -76,6 +82,7 @@ def _ensure_community_agent_authorized(
     action: str,
     context: Optional[Dict[str, Any]] = None,
 ) -> None:
+    """校验社区 Agent 功能授权，未授权时抛出 403"""
     decision = authorize(
         current_user,
         resource,
@@ -91,6 +98,7 @@ def _ensure_community_agent_authorized(
 
 
 def _ensure_community_agent_product_enabled() -> None:
+    """检查社区 Agent 产品开关是否已启用，未启用时抛出 403"""
     if settings.community_agent_product_enabled:
         return
     raise HTTPException(
@@ -104,6 +112,7 @@ async def create_agent_run(
     request: CommunityAgentRunRequest,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    """创建社区 Agent 运行实例，支持阻塞和异步两种执行模式"""
     _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
@@ -138,6 +147,7 @@ async def create_agent_run(
 async def list_agent_conversations(
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    """列出当前用户的社区 Agent 对话记录"""
     _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
@@ -156,6 +166,7 @@ async def upsert_agent_conversation(
     request: CommunityConversationRecordPayload,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    """创建或更新社区 Agent 对话记录（Upsert）"""
     _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
@@ -177,6 +188,7 @@ async def delete_agent_conversation(
     conversation_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    """删除指定社区 Agent 对话记录"""
     _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
@@ -195,6 +207,7 @@ async def get_agent_run(
     run_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    """获取指定 Agent 运行实例的状态与结果"""
     _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,
@@ -219,6 +232,7 @@ async def stream_agent_events(
     run_id: str,
     current_user: Dict[str, Any] = Depends(require_current_user),
 ):
+    """以 SSE 流的形式推送 Agent 运行事件，支持心跳保活"""
     _ensure_community_agent_product_enabled()
     _ensure_community_agent_authorized(
         current_user,

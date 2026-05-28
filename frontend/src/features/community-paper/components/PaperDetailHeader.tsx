@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/primitives/popover
 import { SegmentedControl } from "@/ui/segmented-control/SegmentedControl"
 import type { CommunityPaper, CommunityPaperReaderMode } from "@/types/community"
 
+/** 论文详情页顶部导航栏 Props */
 interface PaperDetailHeaderProps {
   paper: CommunityPaper
   selectedMode: CommunityPaperReaderMode
@@ -29,6 +30,11 @@ interface PaperDetailHeaderProps {
   onMobileOpenAnalysis?: () => void
 }
 
+/**
+ * 论文详情页顶部导航栏组件
+ * 包含返回按钮、阅读模式分段控制器、点赞/收藏/下载/分享/信息操作按钮。
+ * 移动端支持工具栏折叠和跳转到分析面板的快捷按钮
+ */
 export function PaperDetailHeader({
   paper,
   selectedMode,
@@ -60,6 +66,7 @@ export function PaperDetailHeader({
     }
   }, [])
 
+  // 切换移动端时自动折叠/展开工具栏
   useEffect(() => {
     if (isMobile && !wasMobileRef.current) {
       setMobileToolbarCollapsed(true)
@@ -81,7 +88,7 @@ export function PaperDetailHeader({
   const arxivUrl = paper.arxiv_id ? `https://arxiv.org/abs/${paper.arxiv_id}` : null
   const categoryLabel =
     paper.categories.length > 0
-      ? paper.categories.join(" · ")
+      ? paper.categories.join(" . ")
       : t("community.card.categoriesUnavailable")
 
   const modeItems = [
@@ -104,6 +111,7 @@ export function PaperDetailHeader({
     },
   ]
 
+  /** 复制当前页面链接到剪贴板 */
   async function handleShare() {
     const shareUrl =
       typeof window === "undefined"
@@ -242,6 +250,7 @@ export function PaperDetailHeader({
               <Download className="h-4 w-4" />
             </Button>
 
+            {/* 论文信息 Popover */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -337,6 +346,7 @@ export function PaperDetailHeader({
               <Share2 className="h-4 w-4" />
             </Button>
 
+            {/* 移动端工具栏折叠按钮 */}
             {isMobile ? (
               <Button
                 type="button"
@@ -386,6 +396,10 @@ export function PaperDetailHeader({
   )
 }
 
+/**
+ * 信息行子组件
+ * 用于 Popover 中展示论文元数据键值对
+ */
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[14px] border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel-strong)] px-3 py-2.5">

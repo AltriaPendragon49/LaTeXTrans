@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
 import { API_BASE_URL } from "@/api-base"
 
+/** PDF 直接翻译任务数据结构 */
 interface PdfDirectTask {
   task_id: string
   file_name?: string
@@ -23,13 +24,19 @@ interface PdfDirectTask {
   completed_at?: string
 }
 
+/** 任务列表 API 返回结构 */
 interface TaskListResponse {
   tasks: PdfDirectTask[]
   quota_snapshot?: Record<string, unknown>
 }
 
+/** 任务状态轮询间隔（毫秒） */
 const POLL_INTERVAL_MS = 2000
 
+/**
+ * 通用 POST 请求封装
+ * 自动携带 Authorization token（如果用户已登录）
+ */
 async function apiPost(path: string, body?: FormData | object): Promise<Response> {
   const token = getAccessToken()
   const headers: Record<string, string> = {}
@@ -46,6 +53,10 @@ async function apiPost(path: string, body?: FormData | object): Promise<Response
   })
 }
 
+/**
+ * 通用 GET 请求封装
+ * 自动携带 Authorization token
+ */
 async function apiGet(path: string): Promise<Response> {
   const token = getAccessToken()
   const headers: Record<string, string> = {}
@@ -53,6 +64,7 @@ async function apiGet(path: string): Promise<Response> {
   return fetch(`${API_BASE_URL}${path}`, { headers })
 }
 
+/** 从 localStorage 中读取访问令牌 */
 function getAccessToken(): string | null {
   try {
     const raw = localStorage.getItem("latextrans.localAuth.session")
@@ -64,6 +76,7 @@ function getAccessToken(): string | null {
   }
 }
 
+/** 根据 trans_status 返回对应的中文状态标签 */
 function statusLabel(transStatus: number | undefined, t: (key: string) => string): string {
   switch (transStatus) {
     case 101: return t("pdfDirect.status.ready")
@@ -75,6 +88,16 @@ function statusLabel(transStatus: number | undefined, t: (key: string) => string
   }
 }
 
+/**
+ * PDF 直接翻译工作区组件
+ * 提供 PDF 文件上传、通过小牛翻译 API 直接翻译 PDF 的完整流程：
+ * 1. 上传 PDF -> POST /api/pdf-direct/upload
+ * 2. 启动翻译 -> POST /api/pdf-direct/{task_id}/start
+ * 3. 轮询进度 -> POST /api/pdf-direct/{task_id}/poll
+ * 4. 取消翻译 -> POST /api/pdf-direct/{task_id}/cancel
+ * 5. 下载译文 -> GET /api/pdf-direct/{task_id}/download
+ * 6. 任务列表 -> GET /api/pdf-direct
+ */
 export function PdfDirectWorkspace() {
   const { t } = useTranslation()
   const { user, refreshQuotaSnapshot } = useAuth()
@@ -91,6 +114,10 @@ export function PdfDirectWorkspace() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /**
+   * 从后端获取任务列表
+   * 调用 GET /api/pdf-direct
+   */
   const fetchTaskList = useCallback(async () => {
     setIsLoadingList(true)
     try {
@@ -100,29 +127,33 @@ export function PdfDirectWorkspace() {
         setTaskList(data.tasks ?? [])
       }
     } catch {
-      /* ignore list fetch errors */
+      /* 忽略列表获取错误 */
     } finally {
       setIsLoadingList(false)
     }
   }, [])
 
+  // 登录后自动加载任务列表
   useEffect(() => {
     if (isAuthenticated) {
       void fetchTaskList()
     }
   }, [isAuthenticated, fetchTaskList])
 
+  // 组件卸载时清除轮询定时器
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current)
     }
   }, [])
 
+  /** 清除错误状态 */
   function clearError() {
     setError(null)
     setErrorCode(null)
   }
 
+  /** 停止轮询 */
   function stopPolling() {
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current)
@@ -130,16 +161,23 @@ export function PdfDirectWorkspace() {
     }
   }
 
+  /**
+   * 从任务列表中选择一个任务作为当前操作任务
+   * 如果该任务正在处理中，自动恢复轮询
+   */
   function selectTask(task: PdfDirectTask) {
     stopPolling()
     clearError()
     setUploadedTask(task)
-    // Auto-resume polling for processing tasks
     if (task.trans_status === 103) {
       startPolling(task.task_id)
     }
   }
 
+  /**
+   * 处理文件选择并上传
+   * 调用 POST /api/pdf-direct/upload（multipart/form-data）
+   */
   async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -175,6 +213,10 @@ export function PdfDirectWorkspace() {
     }
   }
 
+  /**
+   * 启动翻译
+   * 调用 POST /api/pdf-direct/{task_id}/start，成功后开始轮询
+   */
   async function handleStart(taskOverride?: PdfDirectTask) {
     const task = taskOverride ?? uploadedTask
     if (!task) return
@@ -201,6 +243,11 @@ export function PdfDirectWorkspace() {
     }
   }
 
+  /**
+   * 轮询翻译进度
+   * 循环调用 POST /api/pdf-direct/{task_id}/poll，
+   * 到达终端状态（取消/完成/失败）后停止
+   */
   function startPolling(taskId: string) {
     stopPolling()
 
@@ -238,6 +285,10 @@ export function PdfDirectWorkspace() {
     pollTimerRef.current = setTimeout(poll, POLL_INTERVAL_MS)
   }
 
+  /**
+   * 取消当前翻译
+   * 调用 POST /api/pdf-direct/{task_id}/cancel
+   */
   async function handleCancel() {
     if (!uploadedTask) return
     stopPolling()
@@ -261,6 +312,10 @@ export function PdfDirectWorkspace() {
     }
   }
 
+  /**
+   * 下载翻译后的 PDF
+   * 调用 GET /api/pdf-direct/{task_id}/download，创建 Blob 触发浏览器下载
+   */
   async function handleDownload() {
     if (!uploadedTask) return
     setIsDownloading(true)
@@ -291,6 +346,9 @@ export function PdfDirectWorkspace() {
     }
   }
 
+  /**
+   * 根据 API 响应的错误码和 HTTP 状态码显示对应的中文错误提示
+   */
   function handleApiError(data: Record<string, unknown>, status: number) {
     const code = typeof data.code === "string" ? data.code : null
     const message = typeof data.message === "string" ? data.message : null
@@ -315,17 +373,20 @@ export function PdfDirectWorkspace() {
     }
   }
 
+  /** 重置工作区，停止轮询并清除当前任务 */
   function resetWorkspace() {
     stopPolling()
     setUploadedTask(null)
     clearError()
   }
 
+  // 判断任务状态
   const isTerminal = uploadedTask && [104, 105, 106].includes(uploadedTask.trans_status ?? 0)
   const isProcessing = uploadedTask?.trans_status === 103
   const isReady = uploadedTask?.trans_status === 101
   const progressPercent = uploadedTask?.progress != null ? Math.round(uploadedTask.progress * 100) : 0
 
+  // 未登录用户显示登录提示
   if (!isAuthenticated) {
     return (
       <LoginPrompt
@@ -345,9 +406,10 @@ export function PdfDirectWorkspace() {
         {t("pdfDirect.description")}
       </p>
 
-      {/* Upload area + current task workspace */}
+      {/* 上传区域 + 当前任务工作区 */}
       <div className="rounded-lg border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-6">
         {!uploadedTask ? (
+          /* 未选择任务时显示上传区域 */
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-4 rounded-lg border-2 border-dashed border-[color:var(--px-shell-line)] p-8 text-center">
               <Upload className="h-10 w-10 text-[color:var(--px-shell-muted)]" />
@@ -379,6 +441,7 @@ export function PdfDirectWorkspace() {
             </p>
           </div>
         ) : (
+          /* 已选择任务时显示任务详情和操作 */
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -398,6 +461,7 @@ export function PdfDirectWorkspace() {
               )}
             </div>
 
+            {/* 就绪状态：显示"开始翻译"按钮 */}
             {isReady && (
               <Button onClick={() => handleStart()} disabled={isStarting} className="w-full gap-2" size="lg">
                 {isStarting ? (
@@ -409,6 +473,7 @@ export function PdfDirectWorkspace() {
               </Button>
             )}
 
+            {/* 处理中状态：显示进度条和取消按钮 */}
             {isProcessing && (
               <PanelShell tone="glass" className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
@@ -431,6 +496,7 @@ export function PdfDirectWorkspace() {
               </PanelShell>
             )}
 
+            {/* 完成状态：显示成功面板和下载按钮 */}
             {isTerminal && uploadedTask.trans_status === 105 && (
               <div className="space-y-3">
                 <PanelShell tone="success" className="space-y-2">
@@ -447,6 +513,7 @@ export function PdfDirectWorkspace() {
               </div>
             )}
 
+            {/* 失败状态 */}
             {isTerminal && uploadedTask.trans_status === 106 && (
               <PanelShell tone="danger" className="space-y-2">
                 <p className="font-bold text-red-500">{t("pdfDirect.status.failed")}</p>
@@ -458,6 +525,7 @@ export function PdfDirectWorkspace() {
               </PanelShell>
             )}
 
+            {/* 取消状态 */}
             {isTerminal && uploadedTask.trans_status === 104 && (
               <PanelShell tone="glass" className="space-y-2">
                 <p className="font-bold text-[color:var(--px-shell-muted)]">{t("pdfDirect.status.canceled")}</p>
@@ -467,6 +535,7 @@ export function PdfDirectWorkspace() {
         )}
       </div>
 
+      {/* 错误提示 */}
       {error && (
         <NoticeBanner
           tone={errorCode === "PDF_DIRECT_CREDIT_INSUFFICIENT" ? "warning" : "danger"}
@@ -495,7 +564,7 @@ export function PdfDirectWorkspace() {
         />
       )}
 
-      {/* Task list */}
+      {/* 任务列表 */}
       <div className="rounded-lg border border-[color:var(--px-shell-line)] bg-[color:var(--px-shell-panel)] p-6">
         <div className="mb-4 flex items-center gap-2">
           <List className="h-4 w-4 text-[color:var(--px-shell-muted)]" />

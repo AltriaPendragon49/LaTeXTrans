@@ -1,3 +1,5 @@
+"""Agent 工具调用验证器 - 确保 LLM 输出的工具调用合法且可信"""
+
 from __future__ import annotations
 
 import re
@@ -5,9 +7,11 @@ from typing import Any, Dict, Set
 
 
 class ValidationError(ValueError):
+    """工具调用验证失败异常"""
     pass
 
 
+# 需拒绝的填充语模式（防止 LLM 把用户对话原文当作搜索查询）
 _FILLER_PATTERNS = (
     "please search",
     "search the web",
@@ -18,6 +22,7 @@ _FILLER_PATTERNS = (
     "请搜索",
 )
 
+# 时间范围提示词
 _TIME_RANGE_HINTS = (
     "today",
     "yesterday",
@@ -35,23 +40,28 @@ _TIME_RANGE_HINTS = (
     "最近",
 )
 
+# 域名提取正则
 _DOMAIN_PATTERN = re.compile(r"(?:site:)?([a-z0-9-]+\.[a-z]{2,})(?:/[^\s]*)?", re.IGNORECASE)
 
 
 def _normalize_text(value: Any) -> str:
+    """规范化文本：去多余空白"""
     return " ".join(str(value or "").split()).strip()
 
 
 def _extract_domains(text: str) -> Set[str]:
+    """从文本中提取域名"""
     return {match.group(1).lower() for match in _DOMAIN_PATTERN.finditer(text)}
 
 
 def _mentions_time_constraint(text: str) -> bool:
+    """检测文本是否包含时间范围限制"""
     normalized = text.lower()
     return any(marker in normalized for marker in _TIME_RANGE_HINTS)
 
 
 def _looks_like_paper_title_query(text: str) -> bool:
+    """判断文本是否看起来像论文标题查询（而非对话语句）"""
     normalized = _normalize_text(text)
     if not normalized:
         return False
@@ -73,6 +83,13 @@ def validate_search_query(
     arguments: Dict[str, Any] | None = None,
     require_constraint_capture: bool = False,
 ) -> None:
+    """验证搜索查询参数
+
+    检查:
+    1. 查询非空
+    2. 查询不与用户原始输入相同（防止复制对话原文）
+    3. 必要时检查域名和时间约束是否被正确捕获
+    """
     normalized_input = _normalize_text(raw_input).lower()
     normalized_query = _normalize_text(query).lower()
     normalized_arguments = arguments or {}
@@ -83,7 +100,7 @@ def validate_search_query(
     if normalized_query == normalized_input:
         if any(pattern in normalized_query for pattern in _FILLER_PATTERNS):
             raise ValidationError("search query copied the raw conversational utterance")
-        token_count = len(re.findall(r"\w+|[\u4e00-\u9fff]", normalized_query))
+        token_count = len(re.findall(r"\w+|[一-鿿]", normalized_query))
         if token_count >= 8 and not _looks_like_paper_title_query(normalized_query):
             raise ValidationError("search query is too close to the raw utterance")
 
@@ -101,6 +118,7 @@ def validate_search_query(
 
 
 def _collect_known_paper_ids(runtime_state: Any) -> Set[str]:
+    """从运行时状态中收集所有已知的论文 ID"""
     known_paper_ids: Set[str] = set()
     paper_context = getattr(runtime_state, "paper_context", None)
     if isinstance(paper_context, dict) and paper_context.get("paper_id"):
@@ -127,6 +145,13 @@ def validate_skill_call(
     raw_input: str,
     visible_skill_names: Set[str],
 ) -> None:
+    """验证技能调用是否合法
+
+    检查:
+    1. 技能在可见集合内
+    2. 搜索类技能的查询参数合法性
+    3. 外部搜索的约束条件捕获要求
+    """
     if skill_name not in visible_skill_names:
         raise ValidationError(f"skill '{skill_name}' is not visible")
 
@@ -147,6 +172,10 @@ def validate_finalize_payload(
     runtime_state: Any,
     visible_skill_names: Set[str],
 ) -> None:
+    """验证终态输出的完整性和一致性
+
+    检查摘要、槽位完整性、引用有效性、动作合法性等。
+    """
     if payload.get("summary"):
         raise ValidationError("finalize payload must not contain raw summary text")
 

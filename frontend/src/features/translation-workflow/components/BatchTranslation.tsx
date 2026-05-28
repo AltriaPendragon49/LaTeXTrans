@@ -37,9 +37,13 @@ import {
 import { DEFAULT_CONFIG } from "@/types/config"
 import type { AdvancedConfig } from "@/types/config"
 
+/** 批量任务的默认最大数量 */
 const MAX_BATCH = 9
+/** 支持的文件扩展名 */
 const VALID_EXTS = [".zip", ".rar", ".tar", ".gz", ".tgz", ".tex"]
+/** 批量任务轮询间隔（毫秒） */
 const BATCH_POLL_INTERVAL_MS = 3000
+/** 批量任务终端状态集合 */
 const TERMINAL_BATCH_STATUSES = new Set([
   "completed",
   "completed_with_warnings",
@@ -48,8 +52,10 @@ const TERMINAL_BATCH_STATUSES = new Set([
   "structure_invalid",
 ])
 
+/** 翻译函数类型 */
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
+/** 单个批量任务的状态 */
 interface BatchTask {
   task_id: string
   label: string
@@ -63,31 +69,43 @@ interface BatchTask {
   failure_reason_code?: string | null
 }
 
+/** 上传队列中的文件 */
 interface QueuedFile {
   file: File
   id: string
 }
 
+/** 暴露给父组件的批量翻译操作方法 */
 export interface BatchTranslationHandle {
+  /** 提交当前标签页的批量请求 */
   submitCurrent: () => void
 }
 
+/** 批量翻译的 UI 状态 */
 export interface BatchTranslationState {
   isSubmitting: boolean
   activeTab: "arxiv" | "upload"
   canSubmit: boolean
 }
 
+/** 批量翻译组件的 Props */
 interface BatchTranslationProps {
+  /** 高级配置 */
   advancedConfig?: AdvancedConfig
+  /** 目标语言 */
   targetLanguage?: string
+  /** 源语言 */
   sourceLanguage?: string
+  /** 状态变更回调 */
   onStateChange?: (state: BatchTranslationState) => void
+  /** 额度变更回调 */
   onQuotaChanged?: () => void | Promise<void>
 }
 
+/** 生成唯一 ID */
 const uid = () => Math.random().toString(36).slice(2, 9)
 
+/** 根据任务状态返回对应的图标 */
 function statusIcon(status: string) {
   switch (status) {
     case "completed":
@@ -105,6 +123,7 @@ function statusIcon(status: string) {
   }
 }
 
+/** 根据任务状态返回状态徽章的色调 */
 function statusBadgeTone(status: string): "success" | "danger" | "accent" | "warning" | "muted" {
   if (status === "completed" || status === "completed_with_warnings") {
     return "success"
@@ -121,6 +140,10 @@ function statusBadgeTone(status: string): "success" | "danger" | "accent" | "war
   return "muted"
 }
 
+/**
+ * 任务列表子组件
+ * 展示批量任务中每个子任务的状态、进度和操作按钮
+ */
 function TaskList({ tasks, translate }: { tasks: BatchTask[]; translate: Translate }) {
   const navigate = useNavigate()
 
@@ -187,6 +210,13 @@ function TaskList({ tasks, translate }: { tasks: BatchTask[]; translate: Transla
   )
 }
 
+/**
+ * 批量翻译组件
+ * 支持两种批量模式：
+ * 1. arXiv 批量：每行一个 arXiv ID，调用 POST /api/batch/translate
+ * 2. 文件批量：拖拽/选择多个文件，调用 POST /api/batch/upload 上传后翻译
+ * 提交后自动对每个子任务轮询状态
+ */
 export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslationProps>(function BatchTranslation({
   advancedConfig = DEFAULT_CONFIG.advanced_config,
   targetLanguage = "ch",
@@ -205,6 +235,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
   const [uploadTasks, setUploadTasks] = useState<BatchTask[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // 解析 arXiv ID 列表（每行一个，去重后的有效 ID）
   const parsedIds = arxivText.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, MAX_BATCH)
   const isOverLimit = arxivText.split("\n").map((line) => line.trim()).filter(Boolean).length > MAX_BATCH
   const submitRef = useRef<() => void>(() => {})
@@ -216,10 +247,12 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     }
   }
 
+  // 暴露 submitCurrent 方法给父组件调用
   useImperativeHandle(ref, () => ({
     submitCurrent: () => submitRef.current(),
   }), [])
 
+  // 向上通知状态变更
   useEffect(() => {
     onStateChange?.({
       isSubmitting: activeTab === "arxiv" ? isArxivSubmitting : isUploadSubmitting,
@@ -234,6 +267,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
   const activePollsRef = useRef<Set<string>>(new Set())
   const isMountedRef = useRef(true)
 
+  // 组件卸载时清理轮询
   useEffect(() => {
     const activePolls = activePollsRef.current
     isMountedRef.current = true
@@ -244,6 +278,10 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     }
   }, [])
 
+  /**
+   * 轮询单个任务的状态
+   * 调用 GET /api/status/{task_id}，每 3 秒一次直到达到终端状态
+   */
   const pollTask = useCallback(async (task_id: string, setter: Dispatch<SetStateAction<BatchTask[]>>) => {
     if (activePollsRef.current.has(task_id)) {
       return
@@ -269,6 +307,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
           break
         }
 
+        // 如果后端上报持久化失败，提示用户手动保存
         if (status.persist_failed && !warnedPersistFailed.current.has(task_id)) {
           warnedPersistFailed.current.add(task_id)
           toast.warning(
@@ -293,6 +332,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
             : task
         )))
 
+        // 到达终端状态则停止轮询
         if (TERMINAL_BATCH_STATUSES.has(String(status.status || "").toLowerCase())) {
           break
         }
@@ -302,6 +342,10 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     }
   }, [t])
 
+  /**
+   * 提交 arXiv 批量翻译
+   * 调用 POST /api/batch/translate，传入 arXiv ID 列表
+   */
   async function handleArxivSubmit() {
     if (parsedIds.length === 0) {
       toast.error(t("batch.enter_at_least_one_arxiv_id"))
@@ -330,6 +374,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
       setArxivText("")
       toast.success(t("batch.batch_translation_submitted_tasks_created_successfully", { count: response.queued_count }))
       void onQuotaChanged?.()
+      // 为每个子任务启动轮询
       for (const task of initial) {
         void pollTask(task.task_id, setArxivTasks)
       }
@@ -345,6 +390,10 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     }
   }
 
+  /**
+   * 校验并添加文件到上传队列
+   * 限制：支持 VALID_EXTS 格式、单文件不超过 50MB、总数不超过 MAX_BATCH
+   */
   const addFiles = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files)
     const valid = arr.filter((file) => {
@@ -369,12 +418,14 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     })
   }, [t])
 
+  /** 处理拖拽事件 */
   const handleDrag = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
     setIsDragActive(event.type === "dragenter" || event.type === "dragover")
   }, [])
 
+  /** 处理文件拖放 */
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -384,6 +435,7 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     }
   }, [addFiles])
 
+  /** 处理文件输入框变更 */
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     if (event.target.files?.length) {
       addFiles(event.target.files)
@@ -391,10 +443,15 @@ export const BatchTranslation = forwardRef<BatchTranslationHandle, BatchTranslat
     event.target.value = ""
   }
 
+  /** 从上传队列中移除文件 */
   function removeFile(id: string) {
     setQueuedFiles((prev) => prev.filter((file) => file.id !== id))
   }
 
+  /**
+   * 提交文件批量翻译
+   * 调用 POST /api/batch/upload，将队列中的文件作为 multipart/form-data 上传
+   */
   async function handleUploadSubmit() {
     if (queuedFiles.length === 0) {
       toast.error(t("batch.add_files_first"))

@@ -1,4 +1,4 @@
-# Services module
+"""服务层模块 - 业务服务层入口"""
 
 from . import paper_preview_service
 from . import task_artifact_storage

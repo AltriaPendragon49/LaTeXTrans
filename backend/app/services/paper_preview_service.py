@@ -13,6 +13,12 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import quote_plus
 
 
+"""论文预览 HTML 生成服务
+
+将翻译后的 LaTeX 内容渲染为结构化 HTML 预览页面，
+支持图表内联、数学公式、参考文献链接和读者交互。
+"""
+
 PREVIEW_READER_VERSION = "reader-v13"
 
 HEADING_COMMAND_PATTERN = re.compile(
@@ -112,6 +118,7 @@ ORPHAN_DELIMITER_COMMAND_PATTERN = re.compile(
 
 
 def _load_json(path: Path) -> List[Dict[str, Any]]:
+    """安全地从路径加载 JSON 数组"""
     if not path.exists():
         return []
     try:
@@ -122,6 +129,7 @@ def _load_json(path: Path) -> List[Dict[str, Any]]:
 
 
 def _build_placeholder_map(output_dir: Path) -> Dict[str, str]:
+    """构建占位符 -> 翻译内容的映射表"""
     placeholder_map: Dict[str, str] = {}
     for filename in ("envs_map.json", "captions_map.json", "newcommands_map.json"):
         for row in _load_json(output_dir / filename):
@@ -217,6 +225,7 @@ def _unwrap_formatting_commands(text: str) -> str:
 
 
 def _normalize_inline_text(text: str, *, preserve_references: bool = False) -> str:
+    """规范化内联文本：去除 LaTeX 结构命令、引用、格式化命令等"""
     cleaned = _strip_structural_commands(text, preserve_references=preserve_references)
     cleaned = _replace_display_math_environments_with_dollars(cleaned)
     cleaned = _strip_control_command_residue(cleaned)
@@ -1873,6 +1882,7 @@ def _replace_reference_commands_in_html(html_body: str, render_state: Dict[str, 
 
 
 def _render_preview_header(paper_metadata: Optional[Dict[str, Any]]) -> str:
+    """渲染预览页面头部（论文标题和作者）"""
     if not isinstance(paper_metadata, dict):
         return ""
 
@@ -1907,6 +1917,20 @@ def generate_preview_html(
     source_dirs: Optional[Iterable[Path | str]] = None,
     paper_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
+    """从翻译输出目录生成结构化 HTML 预览页面
+
+    参数:
+        output_dir: 翻译输出目录（包含 sections_map.json 等）
+        target_dir: 预览文件输出目录（可选，默认使用 output_dir）
+        source_dirs: LaTeX 源文件目录列表（用于解析图像路径）
+        paper_metadata: 论文元数据（标题、作者等）
+
+    返回:
+        包含 asset_type, file_path, file_name, mime_type 的字典
+
+    异常:
+        FileNotFoundError: 当 sections_map.json 不存在或无可翻译章节时
+    """
     output_root = Path(output_dir)
     sections = _load_json(output_root / "sections_map.json")
     if not sections:

@@ -9,17 +9,31 @@ import { Pill } from "@/ui/pill/Pill"
 import { cn } from "@/lib/utils"
 import type { CommunityConversationRecord } from "@/types/community"
 
+/** 对话侧栏 Props */
 interface ConversationRailProps {
+  /** 用户邮箱 */
   userEmail?: string
+  /** 对话列表 */
   conversations: CommunityConversationRecord[]
+  /** 当前活跃对话 ID */
   activeConversationId: string
+  /** 是否正在加载对话列表 */
   conversationsLoading: boolean
+  /** 正在删除的对话 ID */
   deletingConversationId: string | null
+  /** 新建对话回调 */
   onNewChat: () => void
+  /** 打开对话回调 */
   onOpenConversation: (conversationId: string) => void
+  /** 删除对话回调 */
   onDeleteConversation: (conversationId: string) => void
 }
 
+/**
+ * 对话侧栏组件
+ * 展示已保存的 Agent 对话列表，支持新建对话、切换对话和删除操作。
+ * 活跃对话高亮显示
+ */
 export function ConversationRail({
   userEmail,
   conversations,

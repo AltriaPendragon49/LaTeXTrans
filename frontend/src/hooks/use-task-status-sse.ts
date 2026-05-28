@@ -1,16 +1,17 @@
-﻿/**
- * useTaskStatusSSE - Real-time task status updates via Server-Sent Events
- * 
- * Features:
- * - SSE connection for real-time updates
- * - Automatic polling fallback if SSE fails
- * - Heartbeat detection for connection health
- * - Auto-cleanup on component unmount
+/**
+ * useTaskStatusSSE — 通过 Server-Sent Events 获取任务实时状态更新
+ *
+ * 功能：
+ * - SSE 连接接收实时更新
+ * - SSE 失败后自动切换到轮询降级模式
+ * - 心跳检测以监控连接健康状态
+ * - 组件卸载时自动清理连接
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE_URL } from '@/api-base';
 
+/** 任务状态数据 */
 export interface TaskStatus {
     task_id: string;
     status: string;
@@ -28,32 +29,41 @@ export interface TaskStatus {
     source_available: boolean;
 }
 
+/** useTaskStatusSSE 配置选项 */
 interface UseTaskStatusSSEOptions {
-    /** Enable SSE connection (default: true) */
+    /** 是否启用 SSE 连接，默认 true */
     enabled?: boolean;
-    /** Polling interval in ms for fallback (default: 2000) */
+    /** 降级轮询间隔（毫秒），默认 2000 */
     pollInterval?: number;
-    /** Callback when task completes */
+    /** 任务完成回调 */
     onComplete?: (status: TaskStatus) => void;
-    /** Callback on error */
+    /** 错误回调 */
     onError?: (error: Error) => void;
 }
 
+/** useTaskStatusSSE 返回值 */
 interface UseTaskStatusSSEReturn {
-    /** Current task status */
+    /** 当前任务状态 */
     status: TaskStatus | null;
-    /** Whether currently connected via SSE */
+    /** 是否通过 SSE 连接 */
     isConnected: boolean;
-    /** Whether using polling fallback */
+    /** 是否使用轮询降级模式 */
     isPolling: boolean;
-    /** Current error if any */
+    /** 当前错误 */
     error: Error | null;
-    /** Loading state */
+    /** 是否正在加载 */
     isLoading: boolean;
-    /** Manually retry connection */
+    /** 手动重试连接 */
     retry: () => void;
 }
 
+/**
+ * SSE 任务状态 Hook
+ *
+ * @param taskId - 任务 ID，null 时不发起连接
+ * @param options - 配置选项
+ * @returns 包含状态、连接状态和重试方法的对象
+ */
 export function useTaskStatusSSE(
     taskId: string | null,
     options: UseTaskStatusSSEOptions = {}
@@ -76,7 +86,7 @@ export function useTaskStatusSSE(
     const retryCountRef = useRef(0);
     const maxRetries = 3;
 
-    // Cleanup function
+    /** 清理 SSE 连接和轮询定时器 */
     const cleanup = useCallback(() => {
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
@@ -90,7 +100,7 @@ export function useTaskStatusSSE(
         setIsPolling(false);
     }, []);
 
-    // Polling fallback
+    /** 启动轮询降级模式 */
     const startPolling = useCallback(async () => {
         if (!taskId || isPolling) return;
 
@@ -107,7 +117,7 @@ export function useTaskStatusSSE(
                 setStatus(data);
                 setError(null);
 
-                // Check for terminal state
+                // 检查是否为终止状态
                 if (
                     data.status === 'completed' ||
                     data.status === 'completed_with_warnings' ||
@@ -125,14 +135,14 @@ export function useTaskStatusSSE(
             }
         };
 
-        // Initial poll
+        // 立即执行首次轮询
         await poll();
 
-        // Setup interval
+        // 设置定时轮询
         pollIntervalRef.current = setInterval(poll, pollInterval);
     }, [taskId, isPolling, pollInterval, cleanup, onComplete, onError]);
 
-    // SSE connection
+    /** 建立 SSE 连接，失败时自动降级为轮询 */
     const connectSSE = useCallback(() => {
         if (!taskId || !enabled) return;
 
@@ -193,7 +203,7 @@ export function useTaskStatusSSE(
                     setError(new Error(data.message || 'SSE Error'));
                     onError?.(new Error(data.message || 'SSE Error'));
                 } catch {
-                    // General connection error
+                    // 通用连接错误
                     console.error('[SSE] Connection error');
                 }
             });
@@ -203,11 +213,13 @@ export function useTaskStatusSSE(
                 setIsConnected(false);
                 setIsLoading(false);
 
+                // 指数退避重试，最多 3 次
                 if (retryCountRef.current < maxRetries) {
                     retryCountRef.current++;
                     console.log(`[SSE] Retry ${retryCountRef.current}/${maxRetries}`);
                     setTimeout(connectSSE, 1000 * retryCountRef.current);
                 } else {
+                    // 重试用尽，降级为轮询
                     cleanup();
                     startPolling();
                 }
@@ -220,13 +232,13 @@ export function useTaskStatusSSE(
         }
     }, [taskId, enabled, cleanup, startPolling, onComplete, onError]);
 
-    // Retry function
+    /** 手动重试连接（重置重试计数并重新建立 SSE） */
     const retry = useCallback(() => {
         retryCountRef.current = 0;
         connectSSE();
     }, [connectSSE]);
 
-    // Effect: connect when taskId changes
+    /** 副作用：当 taskId 变更时建立/清理连接 */
     useEffect(() => {
         if (!taskId || !enabled) {
             cleanup();
@@ -249,4 +261,3 @@ export function useTaskStatusSSE(
 }
 
 export default useTaskStatusSSE;
-

@@ -1,18 +1,31 @@
+/**
+ * 分区卡片组件
+ * 基于 Card 封装，渲染带图标、标题、描述和头部操作的区块卡片
+ */
 import type { HTMLAttributes, ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card/Card"
 
+/** SectionCard 组件 Props */
 interface SectionCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+  /** 可选图标 */
   icon?: ReactNode
+  /** 区块标题 */
   title: ReactNode
+  /** 可选描述 */
   description?: ReactNode
+  /** 头部右侧操作区域 */
   headerAside?: ReactNode
+  /** 头部额外样式 */
   headerClassName?: string
+  /** 内容区额外样式 */
   contentClassName?: string
+  /** 图标额外样式 */
   iconClassName?: string
 }
 
+/** 分区卡片，基于 Card 构建，提供 icon + title + description + headerAside 的标准布局 */
 export function SectionCard({
   icon,
   title,

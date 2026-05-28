@@ -16,8 +16,14 @@ import { WorkflowStepper, type WorkflowStepState } from "@/ui/workflow-stepper/W
 import { useTranslationTask } from "../hooks/useTranslationTask"
 import { ProcessingLogViewer } from "./ProcessingLogViewer"
 
+/** 处理步骤的顺序定义 */
 const stepOrder = ["downloading", "translating", "validating", "compiling"] as const
 
+/**
+ * 处理工作区组件
+ * 展示翻译任务的处理进度，包括步骤引导、实时日志和结果操作按钮。
+ * 支持通过 URL 参数 taskId 恢复任务状态，对未登录用户显示提示横幅
+ */
 export function ProcessingWorkspace() {
   const {
     taskId: storeTaskId,
@@ -41,12 +47,14 @@ export function ProcessingWorkspace() {
   const effectiveTaskId = urlTaskId || storeTaskId
   const isGuest = !user
 
+  // 从 URL 参数恢复任务 ID
   useEffect(() => {
     if (urlTaskId && urlTaskId !== storeTaskId) {
       setTaskId(urlTaskId)
     }
   }, [urlTaskId, storeTaskId, setTaskId])
 
+  // 启动/停止任务状态轮询
   useEffect(() => {
     if (effectiveTaskId) {
       pollStatus()
@@ -76,6 +84,7 @@ export function ProcessingWorkspace() {
     { id: "compiling", label: t("task.stage.compiling") },
   ]
 
+  /** 计算当前所处的步骤索引 */
   const currentStepIndex = (() => {
     if (canPreview) {
       return stepOrder.length
@@ -110,6 +119,8 @@ export function ProcessingWorkspace() {
       ? "text-[color:var(--px-shell-danger)]"
       : "text-[color:var(--px-shell-accent)]"
   const summaryTone = canPreview ? "success" : isFailed ? "danger" : "accent"
+
+  /** 根据当前进度构建步骤引导项状态列表 */
   const stepperItems = steps.map((step, index) => {
     const state: WorkflowStepState = index < currentStepIndex || canPreview
       ? "complete"

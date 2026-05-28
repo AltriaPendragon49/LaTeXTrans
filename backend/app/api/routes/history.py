@@ -1,5 +1,5 @@
 """
-History API routes backed by local authenticated users and translation task persistence.
+历史记录 API 路由，基于本地认证用户和翻译任务持久化。
 """
 
 from __future__ import annotations
@@ -25,15 +25,17 @@ router = APIRouter()
 
 
 def get_translation_task_repository() -> TranslationTaskRepository:
+    """获取翻译任务仓库实例"""
     return TranslationTaskRepository()
 
 
 def _resolve_translation_task_repository() -> TranslationTaskRepository:
+    """解析翻译任务仓库（用于 FastAPI 依赖注入）"""
     return get_translation_task_repository()
 
 
 # ---------------------------------------------------------------------------
-# Lazy task-log status reconciliation
+# 延迟任务日志状态协调
 # ---------------------------------------------------------------------------
 _TASK_LOG_TERMINAL_EVENT_MAP: Dict[str, str] = {
     "compilation_completed": "completed",
@@ -44,6 +46,7 @@ _TASK_LOG_TERMINAL_EVENT_MAP: Dict[str, str] = {
 
 
 def _infer_status_from_task_log(output_path: Optional[str]) -> Optional[str]:
+    """从 task_log.json 推断任务的终端状态"""
     if not output_path:
         return None
     root = Path(output_path)
@@ -79,6 +82,7 @@ def _ensure_task_authorized(
     *,
     owner_user_id: Optional[str] = None,
 ) -> None:
+    """校验用户对任务的操作权限，未授权时抛出 403"""
     decision = authorize(
         current_user,
         "task",
@@ -94,6 +98,7 @@ def _ensure_task_authorized(
 
 
 def _reconcile_task_snapshot(task: Dict[str, Any]) -> tuple[str, int, Optional[str], Optional[str]]:
+    """用 task_log.json 中的实际状态协调数据库任务快照，返回有效状态、进度、输出路径"""
     db_status = str(task.get("status") or "pending")
     effective_status = db_status
     effective_progress = int(task.get("progress") or 0)
@@ -119,6 +124,7 @@ def _serialize_optional_timestamp(value: Any) -> Optional[str]:
 
 
 class TaskHistoryItem(BaseModel):
+    """历史记录中的单条任务摘要"""
     task_id: str
     source_type: str
     arxiv_id: Optional[str] = None
@@ -137,6 +143,7 @@ class TaskHistoryItem(BaseModel):
 
 
 class TaskHistoryResponse(BaseModel):
+    """历史记录分页响应体"""
     tasks: List[TaskHistoryItem]
     total: int
     page: int
@@ -145,6 +152,7 @@ class TaskHistoryResponse(BaseModel):
 
 
 class TaskDetailResponse(BaseModel):
+    """任务详情响应体"""
     task_id: str
     source_type: str
     arxiv_id: Optional[str] = None
@@ -175,6 +183,7 @@ async def get_user_history(
     page_size: int = Query(10, ge=1, le=50, description="Items per page"),
     status_filter: Optional[str] = Query(None, description="Filter by status"),
 ):
+    """获取当前用户的翻译历史记录（分页），并自动协调实际任务状态"""
     _ensure_task_authorized(current_user, "list")
     try:
         rows, total = await run_db_blocking(
@@ -254,6 +263,7 @@ async def get_task_detail(
     current_user: Dict[str, Any] = Depends(require_current_user),
     repository: TranslationTaskRepository = Depends(_resolve_translation_task_repository),
 ):
+    """获取指定任务的详细信息，并自动协调实际任务状态"""
     _ensure_task_authorized(current_user, "view")
     try:
         task = await run_db_blocking(
@@ -309,6 +319,7 @@ async def delete_task_history(
     current_user: Dict[str, Any] = Depends(require_current_user),
     repository: TranslationTaskRepository = Depends(_resolve_translation_task_repository),
 ):
+    """删除指定任务的历史记录及其关联文件"""
     from backend.app.services.task_manager import get_task_manager
 
     task_manager = get_task_manager()
@@ -348,6 +359,7 @@ async def delete_task_history(
 
 
 class BatchDeleteRequest(BaseModel):
+    """批量删除任务请求体"""
     task_ids: List[str]
 
 
@@ -357,6 +369,7 @@ async def delete_tasks_batch(
     current_user: Dict[str, Any] = Depends(require_current_user),
     repository: TranslationTaskRepository = Depends(_resolve_translation_task_repository),
 ):
+    """批量删除多条任务历史记录及其关联文件"""
     from backend.app.services.task_manager import get_task_manager
 
     task_manager = get_task_manager()

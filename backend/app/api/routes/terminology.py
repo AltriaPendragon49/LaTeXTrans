@@ -1,7 +1,6 @@
-"""RAG Terminology API Routes.
+"""RAG 术语 API 路由。
 
-Provides endpoints for uploading, reviewing, and querying
-terminology entries used in the RAG-enhanced translation pipeline.
+提供上传、审阅和查询用于 RAG 增强翻译管线的术语条目的接口。
 """
 
 from __future__ import annotations
@@ -26,11 +25,11 @@ security = HTTPBearer(auto_error=False)
 settings = get_settings()
 
 
-# ---- Pydantic models ----
+# ---- Pydantic 模型 ----
 
 
 class TermItem(BaseModel):
-    """A single terminology term record."""
+    """单条术语记录"""
     id: str
     source_term: str
     target_term: str
@@ -58,7 +57,7 @@ class TermItem(BaseModel):
 
 
 class TermListResponse(BaseModel):
-    """Paginated term list response."""
+    """分页术语列表响应体"""
     terms: list[TermItem]
     total: int
     page: int
@@ -66,7 +65,7 @@ class TermListResponse(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    """Response from a terminology file upload."""
+    """术语文件上传响应体"""
     accepted: int
     rejected: int
     errors: list[str]
@@ -74,12 +73,12 @@ class UploadResponse(BaseModel):
 
 
 class RejectRequest(BaseModel):
-    """Request body for rejecting a term."""
+    """拒绝术语的请求体"""
     reason: Optional[str] = Field(default=None, description="Reason for rejection")
 
 
 class GlossaryLookupRequest(BaseModel):
-    """Request body for a glossary lookup."""
+    """术语表查找请求体"""
     chunk_text: str = Field(..., description="Source text chunk to look up terms for")
     source_lang: str = Field(default="en", description="Source language code")
     target_lang: str = Field(default="zh", description="Target language code")
@@ -88,7 +87,7 @@ class GlossaryLookupRequest(BaseModel):
 
 
 class GlossaryLookupResponse(BaseModel):
-    """Response from a glossary lookup request."""
+    """术语表查找响应体"""
     terms: list[TermItem]
     glossary_block: str
     match_count: int
@@ -96,7 +95,7 @@ class GlossaryLookupResponse(BaseModel):
 
 
 class MatchLogItem(BaseModel):
-    """A single glossary match log entry."""
+    """单条术语匹配日志条目"""
     id: str
     task_id: str
     term_id: str
@@ -116,7 +115,7 @@ class MatchLogItem(BaseModel):
         return v
 
 
-# ---- Helpers ----
+# ---- 辅助函数 ----
 
 
 def _get_terminology_service() -> TerminologyService:
@@ -127,14 +126,14 @@ def _error_detail(code: str, message: str) -> dict:
     return {"code": code, "message": message}
 
 
-# ---- Endpoints ----
+# ---- 接口 ----
 
 
-# ---- Domain listing ----
+# ---- 领域列表 ----
 
 @router.get("/domains")
 async def list_domains():
-    """List all available terminology domains with labels and groups."""
+    """列出所有可用的术语领域及其标签和分组"""
     domains = []
     for domain in TermDomain:
         domains.append({
@@ -148,11 +147,11 @@ async def list_domains():
     }
 
 
-# ---- CRUD endpoints (admin) ----
+# ---- CRUD 接口（管理员）----
 
 
 class CreateTermRequest(BaseModel):
-    """Request body for creating a new term."""
+    """创建新术语的请求体"""
     source_term: str = Field(..., min_length=1, description="Source-language term")
     target_term: str = Field(..., min_length=1, description="Target-language translation")
     source_lang: str = Field(default="en", description="Source language code")
@@ -163,7 +162,7 @@ class CreateTermRequest(BaseModel):
 
 
 class UpdateTermRequest(BaseModel):
-    """Request body for updating an existing term (all fields optional)."""
+    """更新已有术语的请求体（所有字段可选）"""
     source_term: Optional[str] = Field(default=None, min_length=1)
     target_term: Optional[str] = Field(default=None, min_length=1)
     source_lang: Optional[str] = None
@@ -173,7 +172,7 @@ class UpdateTermRequest(BaseModel):
 
 
 class BatchOperationRequest(BaseModel):
-    """Request body for batch operations on terms."""
+    """批量操作术语的请求体"""
     term_ids: list[str] = Field(..., min_length=1)
     operation: str = Field(..., pattern="^(approve|reject|delete)$")
     reason: Optional[str] = None
@@ -184,7 +183,7 @@ async def create_term(
     body: CreateTermRequest,
     _admin: dict = Depends(require_admin_user),
 ):
-    """Create a new terminology term (admin only)."""
+    """创建新术语（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -218,7 +217,7 @@ async def update_term(
     body: UpdateTermRequest,
     _admin: dict = Depends(require_admin_user),
 ):
-    """Update an existing terminology term (admin only)."""
+    """更新已有术语（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -247,7 +246,7 @@ async def delete_term(
     term_id: str,
     _admin: dict = Depends(require_admin_user),
 ):
-    """Delete a terminology term (admin only)."""
+    """删除术语（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -269,7 +268,7 @@ async def share_term(
     term_id: str,
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """Share a personal term to admin for review (creates a copy as pending_review)."""
+    """将个人术语分享给管理员审阅（创建 pending_review 副本）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -312,7 +311,7 @@ async def batch_operate_terms(
     body: BatchOperationRequest,
     _admin: dict = Depends(require_admin_user),
 ):
-    """Batch approve, reject, or delete terms (admin only)."""
+    """批量批准、拒绝或删除术语（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -351,7 +350,7 @@ async def list_my_terms(
     status: Optional[str] = Query(default=None, description="Filter by status"),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """List the current user's own terminology terms."""
+    """列出当前用户自己的术语"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -383,7 +382,7 @@ async def list_terms(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """List all terminology terms with optional filters and pagination."""
+    """列出所有术语条目，支持可选过滤和分页"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -406,7 +405,7 @@ async def list_pending_terms(
     domain: Optional[str] = Query(default=None, description="Filter by domain"),
     _admin: dict = Depends(require_admin_user),
 ):
-    """List pending-review terms (admin only)."""
+    """列出待审阅的术语（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -427,20 +426,20 @@ async def upload_terminology_file(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """Upload a CSV or BibTeX file to import terminology terms.
+    """上传 CSV 或 BibTeX 文件以导入术语条目。
 
-    Supported file types:
-      - ``.csv``: Comma-, semicolon-, or tab-separated values.
-      - ``.bib``: BibTeX bibliography file.
+    支持的文件类型：
+      - ``.csv``: 逗号、分号或制表符分隔的值。
+      - ``.bib``: BibTeX 参考文献文件。
 
-    CSV columns (case-insensitive):
-      - ``source_term`` (required): The source-language term.
-      - ``target_term`` (required): The target-language translation.
-      - ``source_lang`` (optional, default ``en``).
-      - ``target_lang`` (optional, default ``zh``).
-      - ``domain`` (optional).
+    CSV 列名（不区分大小写）：
+      - ``source_term``（必需）：源语言术语。
+      - ``target_term``（必需）：目标语言翻译。
+      - ``source_lang``（可选，默认 ``en``）。
+      - ``target_lang``（可选，默认 ``zh``）。
+      - ``domain``（可选）。
 
-    BibTeX files have term candidates extracted from entry titles.
+    BibTeX 文件中，从条目标题提取候选术语。
     """
     if not settings.rag_terminology_enabled:
         raise HTTPException(
@@ -494,7 +493,7 @@ async def approve_term(
     term_id: str,
     _admin: dict = Depends(require_admin_user),
 ):
-    """Approve a pending term (admin only)."""
+    """批准待审阅的术语（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -520,7 +519,7 @@ async def reject_term(
     body: RejectRequest,
     _admin: dict = Depends(require_admin_user),
 ):
-    """Reject a pending term with an optional reason (admin only)."""
+    """拒绝待审阅的术语，可选附上拒绝原因（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -546,7 +545,7 @@ async def get_task_match_logs(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """Get glossary match logs for a translation task."""
+    """获取翻译任务的术语匹配日志"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -564,10 +563,9 @@ async def lookup_glossary(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     current_user: dict[str, Any] | None = Depends(optional_current_user),
 ):
-    """Look up glossary terms matching a text chunk (internal pipeline use).
+    """查找与文本块匹配的术语表条目（内部管线使用）。
 
-    Returns matching approved terms and a formatted glossary block
-    suitable for injection into a translation prompt.
+    返回匹配的已批准术语和格式化的术语块，适用于注入到翻译提示中。
     """
     if not settings.rag_terminology_enabled:
         return GlossaryLookupResponse(
@@ -595,7 +593,7 @@ async def lookup_glossary(
 async def refresh_bm25_index(
     _admin: dict = Depends(require_admin_user),
 ):
-    """Trigger a BM25 index refresh (admin only)."""
+    """触发 BM25 索引刷新（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -611,7 +609,7 @@ async def refresh_bm25_index(
 async def build_vector_index(
     _admin: dict = Depends(require_admin_user),
 ):
-    """Trigger a vector index rebuild (admin only)."""
+    """触发向量索引重建（仅管理员）"""
     if not settings.rag_terminology_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

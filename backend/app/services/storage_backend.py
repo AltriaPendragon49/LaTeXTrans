@@ -1,3 +1,9 @@
+"""存储后端抽象层
+
+提供统一的对象存储接口，支持本地磁盘和腾讯云 COS 两种后端。
+工厂函数根据配置自动选择存储后端。
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -12,6 +18,7 @@ from backend.app.core.config import Settings
 
 @dataclass(frozen=True)
 class StoredObjectRef:
+    """存储对象的引用信息"""
     storage_backend: str
     object_key: str
     content_type: Optional[str] = None
@@ -19,7 +26,7 @@ class StoredObjectRef:
 
 
 class StorageBackend(ABC):
-    """Shared abstraction for storage backends so the factory can stay lean."""
+    """存储后端抽象基类，定义统一的对象存储接口"""
 
     @abstractmethod
     def put_file(
@@ -30,22 +37,27 @@ class StorageBackend(ABC):
         content_type: Optional[str],
         delete_local: bool,
     ) -> StoredObjectRef:
+        """将本地文件上传到存储后端"""
         raise NotImplementedError
 
     @abstractmethod
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
+        """将存储对象引用解析为本地路径"""
         raise NotImplementedError
 
     @abstractmethod
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
+        """读取存储对象的文本内容"""
         raise NotImplementedError
 
     @abstractmethod
     def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
+        """列出指定前缀下的所有对象"""
         raise NotImplementedError
 
     @abstractmethod
     def download_file(self, *, object_key: str, local_path: Path) -> Path:
+        """下载对象到本地文件"""
         raise NotImplementedError
 
     def build_download_url(
@@ -55,13 +67,16 @@ class StorageBackend(ABC):
         expires_in: int,
         params: Optional[dict[str, str]] = None,
     ) -> Optional[str]:
+        """构建签名下载 URL（仅对象存储后端支持）"""
         return None
 
     def object_exists(self, *, object_key: str) -> bool:
+        """检查对象是否存在"""
         return False
 
     @staticmethod
     def _normalize_object_key(object_key: str) -> Sequence[str]:
+        """规范化对象键，拒绝路径遍历和不安全字符"""
         normalized = PurePosixPath(object_key)
         if normalized.is_absolute():
             raise ValueError("Object keys must be relative paths without leading separators.")
@@ -77,6 +92,7 @@ class StorageBackend(ABC):
 
     @staticmethod
     def _fs_path(path: Path) -> str:
+        """将 Path 对象转换为文件系统路径字符串，处理 Windows 长路径"""
         raw = os.path.abspath(os.fspath(path))
         if os.name != "nt" or raw.startswith("\\\\?\\") or len(raw) < 240:
             return raw
@@ -86,13 +102,19 @@ class StorageBackend(ABC):
 
 
 class LocalDiskStorageBackend(StorageBackend):
-    """Simple backend that persists objects to a local filesystem root."""
+    """本地磁盘存储后端，将对象持久化到本地文件系统"""
 
     def __init__(self, *, root: Path) -> None:
+        """初始化本地磁盘存储后端
+
+        参数:
+            root: 存储根目录
+        """
         self._root = root.resolve()
         self._root.mkdir(parents=True, exist_ok=True)
 
     def _build_target_path(self, object_key: str) -> Path:
+        """根据对象键构建目标路径，防止路径遍历攻击"""
         parts = self._normalize_object_key(object_key)
         target = self._root.joinpath(*parts)
         resolved = target.resolve(strict=False)
@@ -108,6 +130,7 @@ class LocalDiskStorageBackend(StorageBackend):
         content_type: Optional[str],
         delete_local: bool,
     ) -> StoredObjectRef:
+        """将本地文件复制到存储目标"""
         target = self._build_target_path(object_key)
         os.makedirs(self._fs_path(target.parent), exist_ok=True)
         same_path = False
@@ -129,16 +152,20 @@ class LocalDiskStorageBackend(StorageBackend):
         )
 
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
+        """将存储引用解析为本地文件路径"""
         relative = Path(*self._normalize_object_key(ref.object_key))
         return self._root.joinpath(relative)
 
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
+        """读取存储对象的文本内容"""
         return self.resolve_local_path(ref).read_text(encoding=encoding)
 
     def object_exists(self, *, object_key: str) -> bool:
+        """检查对象文件是否存在"""
         return self._build_target_path(object_key).is_file()
 
     def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
+        """列出指定前缀下的所有文件"""
         target = self._build_target_path(prefix)
         if not target.exists():
             return []
@@ -162,6 +189,7 @@ class LocalDiskStorageBackend(StorageBackend):
         return results
 
     def download_file(self, *, object_key: str, local_path: Path) -> Path:
+        """下载文件到本地路径"""
         source = self._build_target_path(object_key)
         local_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, local_path)
@@ -169,7 +197,7 @@ class LocalDiskStorageBackend(StorageBackend):
 
 
 class CosStorageBackend(StorageBackend):
-    """Tencent COS-backed storage for production object persistence."""
+    """腾讯云 COS 对象存储后端"""
 
     def __init__(
         self,
@@ -181,6 +209,16 @@ class CosStorageBackend(StorageBackend):
         base_prefix: str,
         client: Optional[Any] = None,
     ) -> None:
+        """初始化 COS 存储后端
+
+        参数:
+            bucket: COS 存储桶名称
+            region: COS 区域
+            secret_id: 腾讯云 SecretId
+            secret_key: 腾讯云 SecretKey
+            base_prefix: 对象键基础前缀
+            client: 预创建的 COS 客户端（可选，用于测试注入）
+        """
         self.bucket = bucket
         self.region = region
         self.secret_id = secret_id
@@ -196,6 +234,7 @@ class CosStorageBackend(StorageBackend):
         content_type: Optional[str],
         delete_local: bool,
     ) -> StoredObjectRef:
+        """上传文件到 COS"""
         full_key = self._full_object_key(object_key)
         upload_kwargs: dict[str, Any] = {
             "Bucket": self.bucket,
@@ -217,9 +256,11 @@ class CosStorageBackend(StorageBackend):
         )
 
     def resolve_local_path(self, ref: StoredObjectRef) -> Path:
+        """COS 对象不存储在本地，不支持此操作"""
         raise NotImplementedError("COS objects are not stored locally.")
 
     def read_text(self, *, ref: StoredObjectRef, encoding: str = "utf-8") -> str:
+        """从 COS 读取对象文本内容"""
         response = self._get_client().get_object(
             Bucket=self.bucket,
             Key=self._full_object_key(ref.object_key),
@@ -236,6 +277,7 @@ class CosStorageBackend(StorageBackend):
         expires_in: int,
         params: Optional[dict[str, str]] = None,
     ) -> Optional[str]:
+        """构建 COS 预签名下载 URL"""
         full_key = self._full_object_key(object_key)
         request_kwargs: dict[str, Any] = {
             "Bucket": self.bucket,
@@ -249,6 +291,7 @@ class CosStorageBackend(StorageBackend):
         )
 
     def list_files(self, *, prefix: str) -> list[StoredObjectRef]:
+        """列出 COS 指定前缀下的所有对象（处理分页）"""
         full_prefix = self._full_object_key(prefix)
         marker: Optional[str] = None
         results: list[StoredObjectRef] = []
@@ -288,6 +331,7 @@ class CosStorageBackend(StorageBackend):
         return results
 
     def download_file(self, *, object_key: str, local_path: Path) -> Path:
+        """从 COS 下载文件到本地"""
         response = self._get_client().get_object(
             Bucket=self.bucket,
             Key=self._full_object_key(object_key),
@@ -305,6 +349,7 @@ class CosStorageBackend(StorageBackend):
         return local_path
 
     def object_exists(self, *, object_key: str) -> bool:
+        """检查 COS 对象是否存在"""
         try:
             self._get_client().head_object(
                 Bucket=self.bucket,
@@ -315,12 +360,14 @@ class CosStorageBackend(StorageBackend):
             return False
 
     def _full_object_key(self, object_key: str) -> str:
+        """拼接基础前缀，构建完整的对象键"""
         normalized = "/".join(self._normalize_object_key(object_key))
         if self.base_prefix and normalized != self.base_prefix and not normalized.startswith(f"{self.base_prefix}/"):
             return f"{self.base_prefix}/{normalized}"
         return normalized
 
     def _get_client(self) -> Any:
+        """延迟初始化 COS 客户端"""
         if self._client is not None:
             return self._client
 
@@ -342,6 +389,10 @@ class CosStorageBackend(StorageBackend):
 
 
 def build_storage_backend(settings: Settings) -> StorageBackend:
+    """根据配置构建存储后端实例
+
+    支持的模式: local_disk, cos
+    """
     mode = settings.storage_backend_mode.strip().lower()
     if mode in {"local_disk", "disk", "local"}:
         return LocalDiskStorageBackend(root=settings.local_storage_root)
@@ -360,6 +411,7 @@ def build_storage_backend(settings: Settings) -> StorageBackend:
 
 
 def _ensure_cos_config(settings: Settings) -> None:
+    """验证 COS 配置完整性，缺失时抛出 ValueError"""
     missing = []
     if not settings.cos_bucket:
         missing.append("COS_BUCKET")
