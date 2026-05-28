@@ -319,7 +319,7 @@ class Settings(BaseSettings):
         validation_alias="HOT_RANKING_CRON_MINUTE",
     )
     hot_ranking_cron_lock_ttl_seconds: int = Field(
-        default=7200,
+        default=43200,
         validation_alias="HOT_RANKING_CRON_LOCK_TTL_SECONDS",
     )
 

@@ -421,11 +421,6 @@ async def startup_event():
             async def _hot_ranking_daily_cron():
                 """Daily hot ranking cron: refresh rankings, auto-intake new papers, write summary."""
                 while True:
-                    try:
-                        await paper_service.run_hot_ranking_daily_cron()
-                    except Exception as exc:
-                        logger.warning("[Startup] Hot ranking daily cron failed: %s", exc)
-
                     # Compute seconds until next CST trigger time
                     now_cst = timezone_utils.get_cst_now()
                     hour = int(getattr(settings, "hot_ranking_cron_hour", 3) or 3)
@@ -448,6 +443,10 @@ async def startup_event():
                         wait_seconds,
                     )
                     await asyncio.sleep(wait_seconds)
+                    try:
+                        await paper_service.run_hot_ranking_daily_cron()
+                    except Exception as exc:
+                        logger.warning("[Startup] Hot ranking daily cron failed: %s", exc)
 
             app.state.hot_ranking_cron_task = asyncio.create_task(_hot_ranking_daily_cron())
             logger.info("[Startup] Hot ranking daily cron started")
