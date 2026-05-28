@@ -341,6 +341,7 @@ class TestHotRankingService:
         async def _submit_batch(**kwargs):
             assert kwargs["arxiv_ids"] == ["2501.12345"]
             assert kwargs["current_user"] == {"id": "admin-user"}
+            assert kwargs["schedule_jobs"] is False
             return {
                 "items": [
                     {
@@ -351,12 +352,21 @@ class TestHotRankingService:
                 ]
             }
 
+        mock_repo = MagicMock()
         service = HotRankingService(settings=mock_settings)
         with patch(
             "backend.app.services.paper_service.submit_admin_arxiv_curation_batch",
             side_effect=_submit_batch,
-        ):
+        ), patch(
+            "backend.app.services.paper_service.get_community_paper_repository",
+            return_value=mock_repo,
+        ), patch(
+            "backend.app.services.paper_service._schedule_curation_job",
+        ) as schedule_job:
             result = await service.auto_intake([candidate])
+
+        mock_repo.update_curation_job.assert_called_once()
+        schedule_job.assert_called_once_with("job-1")
 
         assert result["errors"] == []
         assert result["skipped"] == []

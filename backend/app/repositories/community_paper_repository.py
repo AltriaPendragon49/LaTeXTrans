@@ -612,7 +612,8 @@ class CommunityPaperRepository:
         )
         if normalized_sort == "hot":
             order_by = (
-                " order by coalesce(hot_score, 0) desc, "
+                " order by case when community_status = 'official' and trans_status = 'completed' "
+                "then coalesce(hot_score, 0) else 0 end desc, "
                 "coalesce(view_count, 0) desc, "
                 "coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
                 "coalesce(created_at, '') desc"

@@ -4651,8 +4651,14 @@ def _timestamp_key(value: Any) -> float:
 
 
 def _hot_tuple(paper: Dict[str, Any]) -> Any:
+    hot_score = float(paper.get("hot_score") or 0)
+    if (
+        str(paper.get("community_status") or "").strip() != COMMUNITY_STATUS_OFFICIAL
+        or str(paper.get("trans_status") or "").strip() != "completed"
+    ):
+        hot_score = 0.0
     return (
-        -(float(paper.get("hot_score") or 0)),
+        -hot_score,
         -(paper.get("view_count") or 0),
         -_timestamp_key(_primary_published_timestamp_value(paper)),
         -_timestamp_key(paper.get("created_at")),
@@ -4695,6 +4701,11 @@ def _paper_rank_score(paper: Dict[str, Any], sort: str) -> float:
     normalized_sort = str(sort or "latest").strip().lower()
     if normalized_sort == "hot":
         hot_score = float(paper.get("hot_score") or 0)
+        if (
+            str(paper.get("community_status") or "").strip() != COMMUNITY_STATUS_OFFICIAL
+            or str(paper.get("trans_status") or "").strip() != "completed"
+        ):
+            hot_score = 0.0
         return float(hot_score * _PUBLIC_FEED_SCORE_FACTOR + int(_latest_rank_score(paper)))
     if normalized_sort == "views":
         return _count_rank_score(count=paper.get("view_count"), paper=paper)
@@ -7452,6 +7463,7 @@ async def submit_admin_arxiv_curation_batch(
     current_user: Dict[str, Any],
     source_language: str = "en",
     target_language: str = "zh",
+    schedule_jobs: bool = True,
 ) -> Dict[str, Any]:
     normalized_ids = _normalize_curation_arxiv_ids(arxiv_ids)
     if not normalized_ids:
@@ -7488,7 +7500,8 @@ async def submit_admin_arxiv_curation_batch(
         }
         stored = await _run_local_repo(lambda job_payload=job_payload: repository.insert_curation_job(job_payload))
         items.append(stored)
-        _schedule_curation_job(str(stored.get("job_id") or ""))
+        if schedule_jobs:
+            _schedule_curation_job(str(stored.get("job_id") or ""))
     return _curation_batch_payload(items)
 
 
@@ -8772,6 +8785,5 @@ async def record_community_paper_view(
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
         raise HTTPException(status_code=404, detail="Paper not found")
     return {"paper_id": paper_id, "view_count": int(paper.get("view_count") or 0)}
-
 
 

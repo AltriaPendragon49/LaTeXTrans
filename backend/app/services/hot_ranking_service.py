@@ -320,6 +320,7 @@ class HotRankingService:
         # Late imports (avoid circular deps)
         try:
             from backend.app.services.paper_service import (
+                _schedule_curation_job,
                 submit_admin_arxiv_curation_batch,
             )
         except ImportError as exc:
@@ -353,6 +354,7 @@ class HotRankingService:
                 current_user={"id": system_user_id},
                 source_language="en",
                 target_language="zh",
+                schedule_jobs=False,
             )
         except Exception as exc:
             logger.error("Hot ranking auto_intake: curation batch submission failed: %s", exc, exc_info=True)
@@ -397,9 +399,10 @@ class HotRankingService:
                             },
                         },
                     )
+                    _schedule_curation_job(str(item.get("job_id") or ""))
                 except Exception as exc:
                     logger.warning(
-                        "Hot ranking auto_intake: failed to attach score metadata to job %s: %s",
+                        "Hot ranking auto_intake: failed to attach score metadata or schedule job %s: %s",
                         item.get("job_id"),
                         exc,
                     )
