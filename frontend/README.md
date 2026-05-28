@@ -1,244 +1,224 @@
-# LaTeXTrans 前端应用
+# PaperX Frontend
 
-LaTeX论文自动翻译系统的Web前端,基于 React + TypeScript + Vite 构建。支持用户注册登录、翻译历史管理、系统设置持久化和访客模式。
+基于 React 19 + TypeScript + Vite 7 构建的 PaperX 前端应用，提供论文翻译、社区浏览、术语管理、AI 对话等完整用户界面。
 
-## 🚀 快速开始
+## 技术栈
 
-### 1. 安装依赖
+| 类别 | 技术 |
+|------|------|
+| 框架 | React 19, TypeScript 5.9 |
+| 构建 | Vite 7 |
+| 样式 | TailwindCSS 4, tailwind-merge, class-variance-authority |
+| UI 组件 | shadcn/ui (Radix UI), lucide-react |
+| 路由 | React Router 7 |
+| 状态管理 | Zustand 5 |
+| HTTP | Axios |
+| 国际化 | i18next, react-i18next |
+| PDF 预览 | react-pdf 10 |
+| 动画 | framer-motion, lottie-react |
+| 数学渲染 | KaTeX |
+| 测试 | Vitest 4, Testing Library, jsdom |
+| 校验 | ESLint 9, TypeScript strict |
 
-```bash
-cd frontend
-npm install
+## 环境配置
+
+```env
+# .env.development
+VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-### 2. 开发模式
-
-```bash
-npm run dev
+```env
+# .env.production
+VITE_API_BASE_URL=/api
 ```
 
-访问 http://localhost:5173
-
-### 3. 生产构建
-
-```bash
-npm run build
-npm run preview
-```
-
-## ✨ 主要功能
-
-### 📦 多种输入方式
-
-#### 1. ArXiv ID 输入
-- 输入 arXiv 论文 ID（如 `2508.18791`）
-- 自动下载论文源码并准备翻译
-- 支持自动检测并显示原文 PDF 预览
-
-#### 2. 拖拽上传
-- **支持文件夹拖拽**: 直接拖拽包含 `.tex` 文件的文件夹
-- **支持压缩包**: 支持 `.zip`, `.tar.gz`, `.rar` 格式
-- **自动校验**: 上传后自动检测主入口文件和 LaTeX 结构
-- **实时反馈**: 显示文件数量、主文件名、校验结果
-
-### ⚙️ 高级配置选项
-
-点击"高级配置"展开以下选项：
-
-#### 翻译模式
-- **全文翻译**: 翻译整篇论文的所有内容
-- **文献快速筛查**: 仅翻译摘要(Abstract)和结论(Conclusion)部分，适合快速了解论文核心内容
-
-#### 编译策略
-- **自动**: 智能选择 pdflatex 或 xelatex 或 lualatex
-- **pdflatex**: 适用于大多数英文论文
-- **xelatex**: 支持中文和Unicode字符
-- **lualatex**: 支持中文和Unicode字符
-
-#### 翻译模型
-- 选择不同的 LLM 模型（如 `gpt-4.1-mini`, `deepseek` 等）
-- 根据需求平衡速度和质量
-
-#### 其他选项
-- **启用验证代理**: 额外的翻译质量检查（更慢但更准确）
-- **生成术语表**: 自动生成专业术语对照表（Source Term ↔ Translation）
-- **接收邮件通知**: 任务完成或失败时自动发送邮件提醒（需在系统设置中绑定邮箱）
-
-#### 进阶排版 (Typography)
-- **单/双栏排版切换**: 根据源文档格式或阅读偏好，强制译文生成单栏或双栏 PDF
-- **行距控制**: 自定义 LaTeX 行距比例（例如 1.5 倍行距），提升可读性
-- **字号控制**: 覆盖默认 LaTeX 字体大小（10pt-12pt）
-
-#### 自定义 API
-- **自定义 API Key**: 使用您自己的 LLM API 密钥
-- **自定义 Base URL**: 支持任何兼容 OpenAI 格式的 API 端点
-
-### 📊 翻译结果查看
-
-#### PDF 对比查看
-- **分屏模式**: 左侧原文，右侧译文，支持拖拽调整比例
-- **单屏模式**: 仅显示译文 PDF
-- **实时预览**: PDF 在浏览器内直接显示，无需下载
-
-#### 术语表查看
-- 点击工具栏中的 **"术语表"** 按钮
-- 侧边栏展示所有提取的专业术语及翻译
-- 支持单独下载 CSV 格式术语表
-
-#### 实时日志
-- 查看翻译进度和详细日志
-- 实时更新翻译状态
-
-### 🔐 用户认证
-
-- **邮箱注册/登录**: 基于 Supabase Auth
-- **访客模式**: 未登录用户可使用临时翻译（不持久化）
-- **自动配置加载**: 登录后自动应用用户保存的默认配置
-- **会话管理**: JWT 自动刷新，支持登出
-
-### 📋 翻译历史
-
-- 查看所有翻译任务记录及配置快照
-- 点击历史任务直接预览 PDF 或查看进度
-- 支持单条删除（含处理中任务中断）和批量删除
-- 可折叠配置详情展示
-
-### ⚙️ 系统设置
-
-- 保存个人默认翻译配置（语言、模型、编译策略等）
-- 新建翻译时自动填充已保存的配置
-- 支持自定义 API Key（AES-256 加密存储）
-
-### 💾 下载选项
-- **译文 PDF**: 翻译后的完整 PDF
-- **译文源码**: 翻译后的 LaTeX 源文件（ZIP 压缩包）
-- **术语表**: CSV 格式的术语对照表
-- **编译日志**: LaTeX 编译日志（用于调试）
-
-## 📁 项目结构
+## 项目结构
 
 ```
 frontend/
 ├── src/
-│   ├── components/          # React 组件
-│   │   ├── AdvancedConfig.tsx    # 高级配置面板
-│   │   ├── DropZone.tsx          # 拖拽上传组件
-│   │   ├── TerminologyTable.tsx  # 术语表侧边栏
-│   │   ├── ui/                   # shadcn/ui 基础组件
-│   │   └── ...
-│   ├── pages/               # 页面组件
-│   │   ├── Dashboard.tsx         # 主页面（输入+配置）
-│   │   ├── Processing.tsx        # 处理中页面（进度+日志）
-│   │   ├── Comparisons.tsx       # 结果页面（PDF对比+下载）
-│   │   ├── Login.tsx             # 登录/注册页面
-│   │   ├── Profile.tsx           # 用户资料页面
-│   │   ├── Settings.tsx          # 系统设置页面
-│   │   └── History.tsx           # 翻译历史页面
-│   ├── contexts/            # React Context
-│   │   └── AuthContext.tsx       # 认证上下文（NiuTrans 本地会话）
-│   ├── store/               # 状态管理 (zustand)
-│   │   └── useStore.ts           # 全局状态（含用户配置加载）
-│   ├── types/               # TypeScript 类型定义
-│   │   └── config.ts             # 配置相关类型
-│   ├── lib/
-│   │   ├── api.ts                # API 调用封装（含可选JWT）
-│   │   ├── local-auth.ts         # 本地认证客户端封装
-│   │   └── utils.ts              # 工具函数
-│   ├── App.tsx              # 应用入口
-│   └── main.tsx             # Vite 入口
-├── package.json
-└── vite.config.ts
+│   ├── App.tsx                    # 根组件，路由定义
+│   ├── main.tsx                   # 应用入口
+│   ├── layout.tsx                 # 主布局（侧边栏 + 内容区）
+│   ├── layout/                    # 布局组件
+│   │   ├── AppSidebar.tsx         # 侧边导航栏
+│   │   └── shell-navigation.tsx   # 导航配置
+│   ├── contexts/
+│   │   └── AuthContext.tsx        # 认证上下文（登录/注册/会话）
+│   ├── theme/
+│   │   └── theme-provider.tsx     # 亮色/暗色主题
+│   ├── features/                  # 业务功能模块
+│   │   ├── admin-curation/        # 管理员策展
+│   │   │   ├── components/        # AdminCurationWorkspace, AdminCurationTasksWorkspace
+│   │   │   ├── services/          # admin-curation-api.ts
+│   │   │   └── utils/             # admin-access.ts
+│   │   ├── auth-shell/            # 认证界面
+│   │   │   └── components/        # LoginPrompt, LoginWorkspace
+│   │   ├── community-conversation/ # AI 学术对话
+│   │   │   ├── components/        # ConversationComposer, ConversationRail, ConversationThread
+│   │   │   ├── services/          # community-conversation-api.ts
+│   │   │   └── utils/             # conversation-records.ts, conversation-runtime.ts
+│   │   ├── community-paper/       # 社区论文
+│   │   │   ├── components/        # PaperCard, PaperDetailHeader/Screen/Workspace,
+│   │   │   │                       # CommunityFeedSurface, CommunitySubmitPanel, FavoritePicker,
+│   │   │   │                       # HotWindowFilter, PaperPreviewReader, PaperStatusBadge 等
+│   │   │   ├── hooks/             # useCommunityPapers, use-paper-detail
+│   │   │   ├── services/          # community-paper-api.ts
+│   │   │   └── utils/             # paper-detail-mode-resolution.ts
+│   │   ├── rag-terminology/       # RAG 术语管理
+│   │   │   ├── components/        # TermFormModal, TerminologyBrowserPage, TerminologyMatchLog,
+│   │   │   │                       # TerminologyReviewPanel
+│   │   │   ├── hooks/             # useDomains
+│   │   │   ├── services/          # rag-terminology-api.ts
+│   │   │   └── types.ts
+│   │   ├── translation-workflow/  # 翻译工作流
+│   │   │   ├── components/        # TranslationWorkspace, ProcessingWorkspace, ComparisonWorkbench,
+│   │   │   │                       # DropZone, AdvancedConfig, FormattingPanel, TerminologyTable,
+│   │   │   │                       # ProcessingLogViewer, BatchTranslation, PdfDirectWorkspace
+│   │   │   ├── hooks/             # useTranslationConfig, useTranslationTask
+│   │   │   └── store/             # useTranslationStore (Zustand)
+│   │   └── user-workspace/        # 用户工作区
+│   │       ├── accountIdentity.ts  # 账户身份工具
+│   │       └── components/        # HistoryWorkspace, ProfileWorkspace, GlossaryWorkspace,
+│   │                               # TranslationSettingsWorkspace, WorkspaceAccountMenu
+│   ├── pages/                     # 页面入口
+│   │   ├── home/                  # 首页（含 HomeFeedSection）
+│   │   ├── login/                 # 登录页
+│   │   ├── translate/             # 翻译页
+│   │   ├── processing/            # 处理进度页
+│   │   ├── preview/               # PDF 预览页
+│   │   ├── paper-detail/          # 论文详情页
+│   │   ├── tools-hub/             # 工具中心页
+│   │   ├── favorites/             # 收藏页
+│   │   ├── profile/               # 个人资料页
+│   │   ├── workspace-history/     # 翻译历史页
+│   │   ├── workspace-settings/    # 翻译设置页
+│   │   ├── workspace-glossary/    # 术语表页
+│   │   ├── community-conversation/  # AI 对话页
+│   │   ├── community-admin-curation/          # 管理员策展页
+│   │   ├── community-admin-curation-tasks/    # 策展任务列表页
+│   │   └── rag-terminology-admin/            # RAG 术语后台页
+│   ├── ui/                        # 通用 UI 组件库（40+ 组件）
+│   │   ├── primitives/            # Radix 封装（Button, Badge, Dialog, Tabs 等 18 个）
+│   │   ├── button/ card/ input/   # 基础组件
+│   │   ├── chat-bubble/           # 聊天气泡
+│   │   ├── data-table/            # 数据表格
+│   │   ├── filter-toolbar/        # 筛选工具栏
+│   │   ├── language-selector/     # 语言选择器
+│   │   ├── loading-state/         # 加载状态
+│   │   ├── search-bar/            # 搜索框
+│   │   ├── sidebar-shell/         # 侧边栏外壳
+│   │   ├── status-badge/          # 状态标签
+│   │   ├── upload-card/           # 上传卡片
+│   │   └── workflow-stepper/      # 工作流步骤器
+│   ├── lib/                       # 工具库
+│   │   ├── api.ts                 # Axios 实例与请求封装
+│   │   ├── local-auth.ts          # 本地认证客户端
+│   │   ├── community-api.ts       # 社区 API 客户端
+│   │   ├── community-agent-conversations.ts  # 对话管理
+│   │   ├── paper-preview-enhancer.ts  # PDF 预览增强
+│   │   ├── paper-reader-html.ts   # 论文阅读器 HTML 生成
+│   │   ├── network-retry.ts       # 网络重试策略
+│   │   └── utils.ts               # 通用工具
+│   ├── hooks/                     # 全局 Hooks
+│   │   ├── use-mobile.tsx         # 移动端检测
+│   │   └── use-task-status-sse.ts # 任务状态 SSE 订阅
+│   ├── i18n/                      # 国际化
+│   │   ├── config.ts              # i18next 配置
+│   │   ├── ui-text.ts             # UI 文案辅助
+│   │   ├── task-copy.ts           # 任务相关文案
+│   │   └── formatting-copy.ts     # 格式文案
+│   ├── locales/                   # 8 语言翻译文件
+│   │   └── en/ zh/ ja/ ko/ de/ fr/ es/ ru/
+│   ├── types/                     # TypeScript 类型
+│   │   ├── community.ts           # 社区类型
+│   │   ├── config.ts              # 配置类型
+│   │   └── katex-auto-render.d.ts # KaTeX 声明
+│   └── test/                      # 测试基础设施
+│       ├── setup.ts               # 测试环境配置
+│       ├── theme.ts               # 主题测试工具
+│       └── viewport.ts            # 视口测试工具
+├── scripts/i18n/                  # i18n 检查/同步脚本
+├── functions/                     # Cloudflare Functions
+├── vite.config.ts                 # Vite 配置
+├── tailwind.config.js             # Tailwind 配置
+├── vitest.config.ts               # Vitest 配置
+├── components.json                # shadcn/ui 配置
+├── tsconfig.json                  # TypeScript 配置
+├── package.json                   # 依赖与脚本
+└── index.html                     # 入口 HTML
 ```
 
-## 🛠️ 技术栈
+## 路由设计
 
-- **构建工具**: Vite 6.x
-- **框架**: React 19.x
-- **语言**: TypeScript 5.x
-- **状态管理**: Zustand
-- **UI 组件**: shadcn/ui + Radix UI
-- **样式**: Tailwind CSS 4.x
-- **图标**: Lucide React
-- **认证**: NiuTrans Local Auth（经后端 `/api/auth/*`）
+| 路径 | 页面 | 权限 |
+|------|------|------|
+| `/` | 首页（社区 Feed） | 公开 |
+| `/login` | 登录/注册 | 公开 |
+| `/paper/:paperId` | 论文详情 | 公开 |
+| `/preview` | PDF 预览 | 公开 |
+| `/processing` | 翻译进度 | 公开 |
+| `/tools` | 工具中心 | 公开 |
+| `/translate` | 翻译页 | 需登录 |
+| `/workspace/history` | 翻译历史 | 需登录 |
+| `/workspace/settings` | 翻译设置 | 需登录 |
+| `/workspace/glossary` | 术语表 | 需登录 |
+| `/favorites` / `/favorites/:folderId` | 收藏夹 | 需登录 |
+| `/profile` | 个人资料 | 需登录 |
+| `/agent[/:conversationId]` | AI 对话 | 管理员 |
+| `/admin/curation` | 策展管理 | 管理员 |
+| `/admin/curation/tasks` | 策展任务 | 管理员 |
+| `/admin/rag-terminology` | 术语后台 | 管理员 |
 
-## 🔗 API 集成
+## 核心功能模块说明
 
-前端通过 `src/lib/api.ts` 与后端通信，主要端点：
+### 翻译工作流 (translation-workflow)
 
-- `POST /api/arxiv` - 下载 arXiv 论文（可选JWT）
-- `POST /api/upload` - 上传本地文件（可选JWT）
-- `POST /api/translate/{task_id}` - 启动翻译
-- `GET /api/task/{task_id}` - 查询进度
-- `GET /api/download/{task_id}/pdf` - 下载译文 PDF
-- `GET /api/download/{task_id}/terminology` - 下载术语表
-- `GET /api/preview/{task_id}/source-pdf` - 预览原文 PDF
-- `GET /api/settings` - 获取用户设置（需JWT）
-- `PUT /api/settings` - 更新用户设置（需JWT）
-- `GET /api/history` - 获取翻译历史（需JWT）
-- `DELETE /api/history/{task_id}` - 删除历史记录（需JWT）
+核心翻译功能，支持三种输入：
+1. **上传 .tex 文件**：拖拽 `.tex` 文件或 `.zip`/`.tar.gz` 压缩包
+2. **arXiv ID 获取**：输入 arXiv ID 自动下载源码
+3. **批量翻译**：多文件同时提交
 
-## 📝 配置说明
+包含组件：TranslationWorkspace（翻译输入）、ProcessingWorkspace（进度监控）、ComparisonWorkbench（结果对比）、AdvancedConfig（高级配置）、DropZone（拖拽上传）、PdfDirectWorkspace（PDF 直译）、BatchTranslation（批量翻译）
 
-### 环境变量
+### 社区论文 (community-paper)
 
-创建 `.env` 文件（可选）：
+论文社区功能：
+- **Feed 流**：按热度/时间浏览已发布论文，支持热榜窗口筛选（24h/7d/30d）
+- **论文详情**：结构化内容解读、PDF 预览、源码/译文下载
+- **收藏系统**：创建文件夹、管理收藏
+- **互动**：点赞、浏览计数
+- **论文提交**：用户提交 arXiv 论文
 
-```env
-VITE_API_BASE_URL=http://localhost:8000
-VITE_NIUTRANS_LOGIN_URL=https://niutrans.com/login?active=0
-VITE_NIUTRANS_REGISTER_URL=https://niutrans.com/login?active=3
-VITE_NIUTRANS_ACCOUNT_URL=https://niutrans.com/login?active=0
-```
+### 管理员策展 (admin-curation)
 
-> **注意**: 本地开发与验证不需要 Supabase 凭据。`VITE_NIUTRANS_*` 仅用于覆盖默认跳转地址，可按需配置。
+- 策展管理：审核和发布论文
+- 任务监控：查看进度、失败原因
+- 硬删除：批量管理策展任务
 
-### 高级配置默认值
+### RAG 术语管理 (rag-terminology)
 
-配置项的默认值定义在 `src/types/config.ts`：
+- 术语浏览（含 ~50 个学科领域筛选）
+- 术语审核（管理员审批/拒绝）
+- 匹配日志查看
+- CSV/BibTeX 批量导入
 
-```typescript
-export const DEFAULT_ADVANCED_CONFIG: AdvancedConfig = {
-    translation_mode: 'full',           // 全文翻译
-    compile_strategy: 'auto',           // 自动选择编译器
-    enable_verification: true,          // 启用验证代理
-    translation_model: 'gpt-4.1-mini',  // 默认模型
-    generate_terminology_table: true,   // 生成术语表
-    use_author_api: true,               // 使用默认 API
-    custom_base_url: undefined,         // 自定义 URL
-    custom_api_key: undefined           // 自定义 Key
-}
-```
+### AI 学术对话 (community-conversation)
 
-## 🐛 故障排除
+- 对话式论文检索
+- 学术问答
+- 论文导入与翻译触发
 
-### 无法连接后端
+## 开发命令
 
-确保后端服务在正确端口运行：
 ```bash
-cd backend
-python -m uvicorn backend.app.main:app --port 8000
+npm run dev          # 启动开发服务器
+npm run build        # 生产构建
+npm run lint         # ESLint 检查
+npm run test         # 运行测试
+npm run test:watch   # 测试监听
+npm run test:coverage # 测试覆盖率
+npm run i18n:check   # 检查翻译文件完整性
+npm run i18n:sync    # 同步缺失翻译
+npm run preview      # 预览生产构建
 ```
-
-### CORS 错误
-
-后端需要允许前端 origin，检查 `backend/app/main.py`:
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    ...
-)
-```
-
-### 拖拽上传无反应
-
-- 确保浏览器支持拖拽 API（现代浏览器均支持）
-- 检查控制台是否有报错信息
-- 尝试先压缩文件夹为 `.zip` 再上传
-
-## 📚 更多资源
-
-- **后端文档**: `backend/README.md`
-- **OpenSpec 变更记录**: `openspec/changes/archive/`
-- **UI 组件文档**: https://ui.shadcn.com/
-- **NiuTrans 登录入口**: https://niutrans.com/login

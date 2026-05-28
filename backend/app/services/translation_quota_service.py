@@ -123,12 +123,14 @@ class TranslationQuotaService:
         *,
         user_id: str,
         unused_num_integral: Optional[int],
+        unused_num_page: Optional[int],
         status: str,
         fetched_at: Optional[datetime],
     ) -> None:
         self._repository.upsert_pdf_direct_snapshot(
             user_id=user_id,
             unused_num_integral=unused_num_integral,
+            unused_num_page=unused_num_page,
             status=self._normalize_pdf_status(status),
             source=PDF_DIRECT_SOURCE,
             fetched_at=fetched_at,
@@ -170,6 +172,7 @@ class TranslationQuotaService:
         if row is None:
             return {
                 "unused_integral": None,
+                "unused_pages": None,
                 "source": PDF_DIRECT_SOURCE,
                 "status": "unavailable",
                 "fetched_at": None,
@@ -178,6 +181,7 @@ class TranslationQuotaService:
         fetched_at = row.get("fetched_at")
         return {
             "unused_integral": row.get("unused_num_integral"),
+            "unused_pages": row.get("unused_num_page"),
             "source": str(row.get("source") or PDF_DIRECT_SOURCE),
             "status": self._normalize_pdf_status(str(row.get("status") or "unavailable")),
             "fetched_at": _serialize_datetime(fetched_at),

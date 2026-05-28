@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ChevronDown, Download, FileText, Info, Loader2, RefreshCw, X, Zap } from "lucide-react"
+import { ChevronDown, Download, FileText, Info, Loader2, RefreshCw, X, Zap, FileCheck } from "lucide-react"
 
 import { Button } from "@/ui/button/Button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/primitives/collapsible"
@@ -21,11 +21,14 @@ import {
   type BatchTranslationState,
 } from "@/features/translation-workflow/components/BatchTranslation"
 import { DropZone } from "@/features/translation-workflow/components/DropZone"
+import { PdfDirectWorkspace } from "@/features/translation-workflow/components/PdfDirectWorkspace"
 import { useTranslationConfig } from "@/features/translation-workflow/hooks/useTranslationConfig"
 import { useTranslationTask } from "@/features/translation-workflow/hooks/useTranslationTask"
 import { LoginPrompt } from "@/features/auth-shell/components/LoginPrompt"
 import { getDailyLatexQuotaExceededDetail } from "@/lib/api"
 import { cn } from "@/lib/utils"
+
+const WORKSPACE_MODE_KEY = "latextrans.translation.workspaceMode"
 
 export function TranslationWorkspace() {
   const navigate = useNavigate()
@@ -44,6 +47,9 @@ export function TranslationWorkspace() {
   } = useTranslationTask()
   const canStartSingleTranslation = Boolean(taskId && status === "ready")
 
+  const [workspaceMode, setWorkspaceMode] = useState<string>(() => {
+    try { return localStorage.getItem(WORKSPACE_MODE_KEY) ?? "latex" } catch { return "latex" }
+  })
   const [activeTab, setActiveTab] = useState("arxiv")
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [localArxivId, setLocalArxivId] = useState("")
@@ -56,6 +62,11 @@ export function TranslationWorkspace() {
     activeTab: "arxiv",
     canSubmit: false,
   })
+
+  function handleWorkspaceModeChange(mode: string) {
+    setWorkspaceMode(mode)
+    try { localStorage.setItem(WORKSPACE_MODE_KEY, mode) } catch { /* noop */ }
+  }
 
   const stageMap: Record<string, string> = {
     downloading: t("dashboard.downloading_source_files_from_arxiv"),
@@ -112,20 +123,37 @@ export function TranslationWorkspace() {
   return (
     <div className="mx-auto w-full max-w-[1400px] px-6 py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       <div className="space-y-8 animate-in fade-in duration-500">
-        <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        {/* First-level workspace mode selector */}
+        <EditorialTabs value={workspaceMode} onValueChange={handleWorkspaceModeChange} className="space-y-6">
         <div className="flex justify-start">
           <EditorialTabsList className="gap-1">
-            <EditorialTabsTrigger value="arxiv">
-              {t("dashboard.arxiv_id")}
+            <EditorialTabsTrigger value="latex">
+              <FileText className="mr-2 h-4 w-4" />
+              {t("workspace.latexTranslation")}
             </EditorialTabsTrigger>
-            <EditorialTabsTrigger value="upload">
-              {t("dashboard.local_upload")}
-            </EditorialTabsTrigger>
-            <EditorialTabsTrigger value="batch">
-              {t("dashboard.batch_translation")}
+            <EditorialTabsTrigger value="pdf">
+              <FileCheck className="mr-2 h-4 w-4" />
+              {t("workspace.pdfDirect")}
             </EditorialTabsTrigger>
           </EditorialTabsList>
         </div>
+
+        {/* LaTeX Translation content */}
+        <TabsContent value="latex" className="mt-0">
+          <EditorialTabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <div className="flex justify-start">
+            <EditorialTabsList className="gap-1">
+              <EditorialTabsTrigger value="arxiv">
+                {t("dashboard.arxiv_id")}
+              </EditorialTabsTrigger>
+              <EditorialTabsTrigger value="upload">
+                {t("dashboard.local_upload")}
+              </EditorialTabsTrigger>
+              <EditorialTabsTrigger value="batch">
+                {t("dashboard.batch_translation")}
+              </EditorialTabsTrigger>
+            </EditorialTabsList>
+          </div>
 
         <div className="overflow-visible">
           <div className="py-6 sm:py-8">
@@ -313,8 +341,15 @@ export function TranslationWorkspace() {
           </CollapsibleContent>
         </Collapsible>
       </div>
+        </TabsContent>
+
+        {/* PDF Direct Translation content */}
+        <TabsContent value="pdf" className="mt-0">
+          <PdfDirectWorkspace />
+        </TabsContent>
 
         <div className="pb-12" />
+      </EditorialTabs>
       </div>
     </div>
   )

@@ -149,6 +149,7 @@ class TranslationQuotaRepository:
         *,
         user_id: str,
         unused_num_integral: Optional[int],
+        unused_num_page: Optional[int],
         status: str,
         source: str,
         fetched_at: Optional[datetime],
@@ -166,20 +167,21 @@ class TranslationQuotaRepository:
                     (
                         "update niutrans_balance_snapshots "
                         f"set unused_num_integral = {_placeholder(0)}, "
-                        f"status = {_placeholder(1)}, source = {_placeholder(2)}, "
-                        f"fetched_at = {_placeholder(3)}, updated_at = {_placeholder(4)} "
-                        f"where user_id = {_placeholder(5)}"
+                        f"unused_num_page = {_placeholder(1)}, "
+                        f"status = {_placeholder(2)}, source = {_placeholder(3)}, "
+                        f"fetched_at = {_placeholder(4)}, updated_at = {_placeholder(5)} "
+                        f"where user_id = {_placeholder(6)}"
                     ),
-                    (unused_num_integral, status, source, fetched_value, now, user_id),
+                    (unused_num_integral, unused_num_page, status, source, fetched_value, now, user_id),
                 )
             else:
                 cursor.execute(
                     (
                         "insert into niutrans_balance_snapshots "
-                        "(user_id, unused_num_integral, status, source, fetched_at, updated_at) "
-                        f"values ({_placeholders(6)})"
+                        "(user_id, unused_num_integral, unused_num_page, status, source, fetched_at, updated_at) "
+                        f"values ({_placeholders(7)})"
                     ),
-                    (user_id, unused_num_integral, status, source, fetched_value, now),
+                    (user_id, unused_num_integral, unused_num_page, status, source, fetched_value, now),
                 )
             return self.get_pdf_direct_snapshot_for_user_with_cursor(cursor, user_id)
 
@@ -191,7 +193,7 @@ class TranslationQuotaRepository:
     def get_pdf_direct_snapshot_for_user_with_cursor(self, cursor, user_id: str) -> Optional[dict[str, Any]]:
         cursor.execute(
             (
-                "select user_id, unused_num_integral, status, source, fetched_at, updated_at "
+                "select user_id, unused_num_integral, unused_num_page, status, source, fetched_at, updated_at "
                 f"from niutrans_balance_snapshots where user_id = {_placeholder(0)} limit 1"
             ),
             (user_id,),

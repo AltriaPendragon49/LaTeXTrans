@@ -11,6 +11,7 @@ from typing import Any, Optional
 import httpx
 
 from backend.app.core.config import get_settings
+from backend.app.core.encryption import encrypt_api_key
 from backend.app.db import DatabaseUnavailableError
 from backend.app.repositories import AuthRepository
 from backend.app.services.translation_quota_service import TranslationQuotaService
@@ -213,6 +214,8 @@ class NiuTransAuthClient:
         except httpx.HTTPError:
             return {
                 "unused_num_integral": None,
+                "unused_num_page": None,
+                "apikey": None,
                 "status": "unavailable",
                 "fetched_at": fetched_at,
             }
@@ -220,6 +223,8 @@ class NiuTransAuthClient:
         if response.status_code >= 400:
             return {
                 "unused_num_integral": None,
+                "unused_num_page": None,
+                "apikey": None,
                 "status": "unavailable",
                 "fetched_at": fetched_at,
             }
@@ -229,6 +234,8 @@ class NiuTransAuthClient:
         except ValueError:
             return {
                 "unused_num_integral": None,
+                "unused_num_page": None,
+                "apikey": None,
                 "status": "unavailable",
                 "fetched_at": fetched_at,
             }
@@ -240,14 +247,32 @@ class NiuTransAuthClient:
             ("data", "user", "unusedNumIntegral"),
             ("user", "unusedNumIntegral"),
         )
+        unused_num_page = self._extract_int(
+            payload,
+            ("unusedNumPage",),
+            ("data", "unusedNumPage"),
+            ("data", "user", "unusedNumPage"),
+            ("user", "unusedNumPage"),
+        )
+        apikey = self._extract_first(
+            payload,
+            ("apikey",),
+            ("data", "apikey"),
+            ("data", "user", "apikey"),
+            ("user", "apikey"),
+        )
         if unused_num_integral is None:
             return {
                 "unused_num_integral": None,
+                "unused_num_page": None,
+                "apikey": None,
                 "status": "unavailable",
                 "fetched_at": fetched_at,
             }
         return {
             "unused_num_integral": unused_num_integral,
+            "unused_num_page": unused_num_page,
+            "apikey": apikey,
             "status": "available",
             "fetched_at": fetched_at,
         }
@@ -306,6 +331,7 @@ class LocalAuthService:
                 lambda: self._quota_service.store_pdf_direct_snapshot(
                     user_id=user_id,
                     unused_num_integral=None,
+                    unused_num_page=None,
                     status="unavailable",
                     fetched_at=_now_utc(),
                 )
@@ -320,10 +346,17 @@ class LocalAuthService:
             lambda: self._quota_service.store_pdf_direct_snapshot(
                 user_id=user_id,
                 unused_num_integral=balance.get("unused_num_integral"),
+                unused_num_page=balance.get("unused_num_page"),
                 status=str(balance.get("status") or "unavailable"),
                 fetched_at=balance.get("fetched_at"),
             )
         )
+        apikey = balance.get("apikey")
+        if apikey:
+            encrypted = encrypt_api_key(apikey)
+            await run_blocking(
+                lambda: self._repository.store_encrypted_apikey(user_id, encrypted)
+            )
 
     async def get_quota_snapshot_for_user(self, user_id: str, roles: Optional[list[str]] = None) -> dict[str, Any]:
         try:
@@ -431,6 +464,7 @@ class LocalAuthService:
                 lambda: self._quota_service.store_pdf_direct_snapshot(
                     user_id=user["id"],
                     unused_num_integral=None,
+                    unused_num_page=None,
                     status="unavailable",
                     fetched_at=_now_utc(),
                 )

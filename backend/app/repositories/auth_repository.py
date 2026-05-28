@@ -243,3 +243,26 @@ class AuthRepository:
                 ),
                 ("revoked", _utc_now_naive(), session_id),
             )
+
+    def store_encrypted_apikey(self, user_id: str, encrypted_apikey: Optional[str]) -> None:
+        with db_connection(commit=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                (
+                    "update users set encrypted_apikey = "
+                    f"{_placeholder(0)}, updated_at = {_placeholder(1)} where id = {_placeholder(2)}"
+                ),
+                (encrypted_apikey, _utc_now_naive(), user_id),
+            )
+
+    def get_encrypted_apikey(self, user_id: str) -> Optional[str]:
+        with db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"select encrypted_apikey from users where id = {_placeholder(0)} limit 1",
+                (user_id,),
+            )
+            row = _fetchone(cursor)
+            if row is None:
+                return None
+            return row.get("encrypted_apikey")

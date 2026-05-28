@@ -22,6 +22,7 @@ export interface LatexTranslationQuotaSnapshot {
 
 export interface PdfDirectQuotaSnapshot {
     unused_integral: number | null
+    unused_pages: number | null
     source: string
     status: string
     fetched_at: string | null
@@ -110,6 +111,7 @@ export function normalizeQuotaSnapshot(input: unknown): QuotaSnapshot | null {
 
     const pdf = isRecord(input.pdf_direct) ? input.pdf_direct : {}
     const unusedIntegral = normalizeNumber(pdf.unused_integral)
+    const unusedPages = normalizeNumber(pdf.unused_pages)
 
     return {
         latex_translation: {
@@ -121,6 +123,7 @@ export function normalizeQuotaSnapshot(input: unknown): QuotaSnapshot | null {
         },
         pdf_direct: {
             unused_integral: unusedIntegral,
+            unused_pages: unusedPages,
             source: normalizeString(pdf.source, "niutrans"),
             status: normalizeString(pdf.status, unusedIntegral === null ? "unavailable" : "available"),
             fetched_at: typeof pdf.fetched_at === "string" && pdf.fetched_at.trim() ? pdf.fetched_at : null,

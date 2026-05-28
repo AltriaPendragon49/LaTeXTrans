@@ -189,6 +189,26 @@ class Settings(BaseSettings):
         validation_alias="NIUTRANS_USER_INFO_URL",
         description="NiuTrans account user-info endpoint used only for safe PDF direct credit snapshots.",
     )
+    pdf_direct_translation_enabled: bool = Field(
+        default=False,
+        validation_alias="PDF_DIRECT_TRANSLATION_ENABLED",
+        description="Enable the PDF direct translation workspace and API routes.",
+    )
+    niutrans_doc_api_base_url: str = Field(
+        default="https://api-doc.niutrans.com/documentTransApi",
+        validation_alias="NIUTRANS_DOC_API_BASE_URL",
+        description="NiuTrans document translation API base URL for paper translation endpoints.",
+    )
+    niutrans_doc_api_app_id: Optional[str] = Field(
+        default=None,
+        validation_alias="NIUTRANS_DOC_API_APP_ID",
+        description="Product-level document translation API application ID for NiuTrans request signing.",
+    )
+    pdf_direct_poll_interval_seconds: float = Field(
+        default=2.0,
+        validation_alias="PDF_DIRECT_POLL_INTERVAL_SECONDS",
+        description="Polling interval in seconds for PDF direct task status checks.",
+    )
     daily_latex_translation_quota_limit: int = Field(
         default=3,
         validation_alias="DAILY_LATEX_TRANSLATION_QUOTA_LIMIT",
