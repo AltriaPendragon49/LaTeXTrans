@@ -644,6 +644,7 @@ async def list_papers(
     response: Response,
     sort: str = "latest",
     q: Optional[str] = None,
+    hot_window: Optional[str] = None,
     limit: Optional[int] = Query(default=12, ge=1, le=24),
     offset: int = Query(default=0, ge=0),
     current_user: Optional[Dict[str, Any]] = Depends(optional_current_user),
@@ -652,6 +653,7 @@ async def list_papers(
     payload = await paper_service.list_community_papers(
         sort=sort,
         q=q,
+        hot_window=hot_window if str(sort or "").strip().lower() == "hot" else None,
         viewer_user_id=user_id,
         limit=limit,
         offset=offset,

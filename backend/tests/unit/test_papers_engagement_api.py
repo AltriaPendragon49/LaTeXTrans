@@ -196,6 +196,37 @@ def test_list_papers_route_uses_private_cache_for_authenticated_viewers(monkeypa
     assert anonymous.headers["vary"] == "Authorization, Cookie"
 
 
+def test_list_papers_route_forwards_hot_window_only_for_hot_sort(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def fake_list_community_papers(**kwargs: object):  # type: ignore[no-untyped-def]
+        calls.append(dict(kwargs))
+        return {
+            "items": [],
+            "total": 0,
+            "offset": 0,
+            "limit": 12,
+            "has_more": False,
+            "next_offset": None,
+            "source_mode": "database",
+        }
+
+    monkeypatch.setattr(paper_service, "list_community_papers", fake_list_community_papers, raising=False)
+
+    async def _call() -> tuple[httpx.Response, httpx.Response]:
+        async with _make_client() as client:
+            hot = await client.get("/api/papers?sort=hot&hot_window=7d")
+            latest = await client.get("/api/papers?sort=latest&hot_window=7d")
+            return hot, latest
+
+    hot_response, latest_response = asyncio.run(_call())
+
+    assert hot_response.status_code == 200
+    assert latest_response.status_code == 200
+    assert calls[0]["hot_window"] == "7d"
+    assert calls[1]["hot_window"] is None
+
+
 def test_paper_detail_route_uses_private_cache_for_authenticated_viewers(monkeypatch) -> None:
     async def fake_get_community_paper_detail(**_: object):  # type: ignore[no-untyped-def]
         return {

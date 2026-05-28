@@ -1,5 +1,5 @@
 ﻿import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 
 from backend.app.db import DatabaseUnavailableError
@@ -1090,6 +1090,69 @@ def test_list_papers_paginates_and_reports_has_more(monkeypatch):
     assert list_calls == [("latest", None, 2, 1)]
 
 
+def test_list_hot_papers_applies_publication_window_without_shared_cache(monkeypatch):
+    now = datetime.now(timezone.utc)
+    recent_paper = {
+        "id": "paper-recent",
+        "source": "arxiv",
+        "arxiv_id": "2605.00001",
+        "title": "Recent hot paper",
+        "authors": [],
+        "categories": [],
+        "visibility": "public",
+        "status": "published",
+        "community_status": "official",
+        "trans_status": "completed",
+        "hot_score": 3.0,
+        "view_count": 0,
+        "like_count": 0,
+        "favorite_count": 0,
+        "comment_count": 0,
+        "download_count": 0,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "arxiv_published_at": (now - timedelta(days=1)).isoformat(),
+    }
+    stale_paper = {
+        **recent_paper,
+        "id": "paper-stale",
+        "arxiv_id": "2604.99999",
+        "title": "Stale hot paper",
+        "hot_score": 99.0,
+        "arxiv_published_at": (now - timedelta(days=10)).isoformat(),
+    }
+
+    class _FakeCommunityRepository:
+        def list_public_papers(self):
+            return [stale_paper, recent_paper]
+
+    store = _FakeSharedFeedStore()
+    store.cached_payloads["hot:12:0"] = {
+        "items": [stale_paper],
+        "total": 1,
+        "offset": 0,
+        "limit": 12,
+        "has_more": False,
+        "next_offset": None,
+        "source_mode": "redis",
+    }
+
+    monkeypatch.setattr(paper_service, "get_community_paper_repository", lambda: _FakeCommunityRepository())
+    monkeypatch.setattr(paper_service, "_public_feed_store", store, raising=False)
+    monkeypatch.setattr(
+        paper_service,
+        "_fetch_asset_maps_for_papers",
+        lambda _paper_ids: asyncio.sleep(0, result={}),
+    )
+
+    result = asyncio.run(
+        paper_service.list_community_papers(sort="hot", hot_window="3d", limit=12, offset=0)
+    )
+
+    assert result["source_mode"] == "database"
+    assert [item["id"] for item in result["items"]] == ["paper-recent"]
+
+
 def test_list_papers_reuses_cached_first_page_for_latest_sort(monkeypatch):
     calls = {"count": 0, "list": 0}
 
@@ -1371,6 +1434,4 @@ def test_detail_reports_favorite_folder_count_in_viewer_state(monkeypatch):
         "favorited": True,
         "favorite_folder_count": 2,
     }
-
-
 

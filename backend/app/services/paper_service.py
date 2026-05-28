@@ -17,7 +17,7 @@ import threading
 import time
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urljoin
@@ -4650,6 +4650,27 @@ def _timestamp_key(value: Any) -> float:
         return 0.0
 
 
+def _normalize_hot_window(value: Optional[str]) -> Optional[str]:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in {"3d", "7d", "30d", "90d", "all"} else None
+
+
+def _hot_window_cutoff_timestamp(value: Optional[str]) -> Optional[float]:
+    normalized = _normalize_hot_window(value)
+    days = {"3d": 3, "7d": 7, "30d": 30, "90d": 90}.get(str(normalized or ""))
+    if days is None:
+        return None
+    return (datetime.now(timezone.utc) - timedelta(days=days)).timestamp()
+
+
+def _matches_hot_window(paper: Dict[str, Any], hot_window: Optional[str]) -> bool:
+    cutoff = _hot_window_cutoff_timestamp(hot_window)
+    if cutoff is None:
+        return True
+    published_at = _timestamp_key(_primary_published_timestamp_value(paper))
+    return published_at >= cutoff if published_at else False
+
+
 def _hot_tuple(paper: Dict[str, Any]) -> Any:
     hot_score = float(paper.get("hot_score") or 0)
     if (
@@ -8338,6 +8359,7 @@ async def list_community_papers(
     *,
     sort: str = "latest",
     q: Optional[str] = None,
+    hot_window: Optional[str] = None,
     viewer_user_id: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -8345,7 +8367,9 @@ async def list_community_papers(
     repository = get_community_paper_repository()
     normalized_limit = int(limit) if limit is not None and int(limit) > 0 else None
     normalized_offset = max(0, int(offset or 0))
-    if not _normalize_search_text(q):
+    normalized_sort = str(sort or "latest").strip().lower()
+    normalized_hot_window = _normalize_hot_window(hot_window) if normalized_sort == "hot" else None
+    if not _normalize_search_text(q) and normalized_hot_window is None:
         cached_payload = await _list_public_papers_from_shared_feed_store(
             sort=sort,
             limit=normalized_limit,
@@ -8366,15 +8390,31 @@ async def list_community_papers(
             and hasattr(repository, "list_public_papers_page")
             and hasattr(repository, "count_public_papers")
         ):
-            total = await _run_local_repo(lambda: repository.count_public_papers(query=q))
-            papers = await _run_local_repo(
-                lambda: repository.list_public_papers_page(
-                    sort=sort,
-                    query=q,
-                    limit=normalized_limit,
-                    offset=normalized_offset,
+            if normalized_hot_window is not None:
+                total = await _run_local_repo(
+                    lambda: repository.count_public_papers(query=q, hot_window=normalized_hot_window)
                 )
-            )
+            else:
+                total = await _run_local_repo(lambda: repository.count_public_papers(query=q))
+            if normalized_hot_window is not None:
+                papers = await _run_local_repo(
+                    lambda: repository.list_public_papers_page(
+                        sort=sort,
+                        query=q,
+                        limit=normalized_limit,
+                        offset=normalized_offset,
+                        hot_window=normalized_hot_window,
+                    )
+                )
+            else:
+                papers = await _run_local_repo(
+                    lambda: repository.list_public_papers_page(
+                        sort=sort,
+                        query=q,
+                        limit=normalized_limit,
+                        offset=normalized_offset,
+                    )
+                )
         else:
             papers = await _run_local_repo(repository.list_public_papers)
     except DatabaseUnavailableError:
@@ -8392,6 +8432,8 @@ async def list_community_papers(
     if total <= 0 or normalized_limit is None or not hasattr(repository, "list_public_papers_page"):
         papers = [paper for paper in papers if _is_public_community_paper(paper)]
         papers = [paper for paper in papers if _matches_paper_query(paper, q)]
+        if normalized_hot_window is not None:
+            papers = [paper for paper in papers if _matches_hot_window(paper, normalized_hot_window)]
         papers = _sort_papers(papers, sort)
         total = len(papers)
         if normalized_offset:
@@ -8419,13 +8461,14 @@ async def list_community_papers(
         "next_offset": (normalized_offset + len(items)) if has_more else None,
         "source_mode": source_mode,
     }
-    _set_cached_public_feed_payload(
-        sort=sort,
-        query=q,
-        limit=normalized_limit,
-        offset=normalized_offset,
-        payload=payload,
-    )
+    if normalized_hot_window is None:
+        _set_cached_public_feed_payload(
+            sort=sort,
+            query=q,
+            limit=normalized_limit,
+            offset=normalized_offset,
+            payload=payload,
+        )
     return await _attach_viewer_state_to_feed_payload(
         payload,
         viewer_user_id=viewer_user_id,
@@ -8785,5 +8828,3 @@ async def record_community_paper_view(
     if paper is None or paper.get("visibility") != "public" or paper.get("status") == "removed":
         raise HTTPException(status_code=404, detail="Paper not found")
     return {"paper_id": paper_id, "view_count": int(paper.get("view_count") or 0)}
-
-

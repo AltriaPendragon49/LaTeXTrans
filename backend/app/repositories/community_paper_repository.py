@@ -562,7 +562,12 @@ class CommunityPaperRepository:
                 if normalized is not None
             ]
 
-    def _public_paper_query_parts(self, *, query: Optional[str] = None) -> tuple[str, list[Any]]:
+    def _public_paper_query_parts(
+        self,
+        *,
+        query: Optional[str] = None,
+        hot_window: Optional[str] = None,
+    ) -> tuple[str, list[Any]]:
         filters = [
             "visibility = " + _placeholder(0),
             "status <> " + _placeholder(1),
@@ -586,10 +591,25 @@ class CommunityPaperRepository:
                 params.append(like_value)
             filters.append("(" + " or ".join(placeholders) + ")")
 
+        normalized_window = str(hot_window or "").strip().lower()
+        window_days = {"3d": 3, "7d": 7, "30d": 30, "90d": 90}.get(normalized_window)
+        if window_days is not None:
+            cutoff = datetime.utcnow() - timedelta(days=window_days)
+            filters.append(
+                "coalesce(arxiv_published_at, official_published_at, created_at) >= "
+                + _placeholder(len(params))
+            )
+            params.append(cutoff.strftime("%Y-%m-%d %H:%M:%S"))
+
         return " where " + " and ".join(filters), params
 
-    def count_public_papers(self, *, query: Optional[str] = None) -> int:
-        where_sql, params = self._public_paper_query_parts(query=query)
+    def count_public_papers(
+        self,
+        *,
+        query: Optional[str] = None,
+        hot_window: Optional[str] = None,
+    ) -> int:
+        where_sql, params = self._public_paper_query_parts(query=query, hot_window=hot_window)
         with db_connection() as connection:
             cursor = connection.cursor()
             cursor.execute("select count(*) as total from papers" + where_sql, tuple(params))
@@ -603,9 +623,10 @@ class CommunityPaperRepository:
         query: Optional[str],
         limit: int,
         offset: int,
+        hot_window: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         normalized_sort = str(sort or "latest").strip().lower()
-        where_sql, params = self._public_paper_query_parts(query=query)
+        where_sql, params = self._public_paper_query_parts(query=query, hot_window=hot_window)
         order_by = (
             " order by coalesce(arxiv_published_at, official_published_at, created_at, '') desc, "
             "coalesce(created_at, '') desc"
