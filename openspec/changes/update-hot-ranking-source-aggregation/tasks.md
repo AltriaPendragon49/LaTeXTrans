@@ -22,7 +22,7 @@
 - [x] 5.1 Add the filter icon beside the feed sort tabs and render an active date-window pill.
 - [x] 5.2 Add the desktop anchored popover for publication-date window selection.
 - [x] 5.3 Add the mobile bottom-sheet equivalent.
-- [ ] 5.4 Wire selected windows into feed requests, loading states, empty states, and cache keys. **BUG: hotWindow state exists in CommunityFeedSurface but is NOT passed to useCommunityPapers hook or API calls.**
+- [x] 5.4 Wire selected windows into feed requests, loading states, empty states, and cache keys. ~~BUG: hotWindow state exists in CommunityFeedSurface but is NOT passed to useCommunityPapers hook or API calls.~~ (已在 f18df94 修复接线，本次添加 AnimatePresence 过渡动效)
 
 ## 6. Verification
 - [x] 6.1 Run unit tests for ranking adapters, component scoring, and time decay.
@@ -53,5 +53,5 @@
 
 ## Additional Bugs Found (2026-05-27)
 - [ ] **BUG-1: export_hot_ranking.py imports nonexistent `collect_candidates_from_sources`** from source_adapters.py. The actual function is `enrich_candidates_with_sources`. Script always falls back to demo data.
-- [ ] **BUG-2: Frontend hotWindow not wired to API** — `hotWindow` state is managed in CommunityFeedSurface but never passed to `useCommunityPapers()` hook or `getCommunityPapers()` API calls.
+- [x] **BUG-2: Frontend hotWindow not wired to API** — `hotWindow` state is managed in CommunityFeedSurface but never passed to `useCommunityPapers()` hook or `getCommunityPapers()` API calls. （已在 f18df94 修复）
 - [ ] **BUG-3: Auto-intake doesn't create curation jobs** — `auto_intake()` in hot_ranking_service.py imports papers but has a TODO for creating curation jobs. No curation job creation method exists in the repository.

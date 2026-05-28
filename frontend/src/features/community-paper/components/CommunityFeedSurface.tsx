@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion"
 import { Clock3, Eye, Flame, Heart, Search, X, type LucideIcon } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -178,54 +179,79 @@ export default function CommunityFeedSurface() {
       <div className="relative">
         {error ? <PaperFeedErrorState onRetry={refetch} /> : null}
 
-        {!error && loading ? (
-          <div className="grid gap-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-full">
-                <PaperCardSkeleton />
-              </div>
-            ))}
-            <div className="flex justify-center py-8">
-              <div className="flex items-center gap-3 text-[color:var(--px-shell-muted)]">
-                <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--px-shell-accent)]" />
-                <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--px-shell-accent)] [animation-delay:-0.15s]" />
-                <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--px-shell-accent)] [animation-delay:-0.3s]" />
-                <span className="ml-2 text-[10px] font-black uppercase tracking-[0.3em]">
-                  {t("common.status.loading")}
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {!error && !loading && !items.length ? <PaperFeedEmptyState /> : null}
-
-        {!error && !loading && items.length > 0 ? (
-          <>
-            <div className="grid gap-3">
-              {items.map((paper) => (
-                <PaperCard
-                  key={paper.id}
-                  paper={paper}
-                  onDelete={isAdmin ? handleDelete : undefined}
-                  deleting={deletingPaperId === paper.id}
-                />
+        <AnimatePresence mode="wait">
+          {!error && loading ? (
+            <motion.div
+              key={`skeleton-${hotWindow}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="grid gap-3"
+            >
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="h-full">
+                  <PaperCardSkeleton />
+                </div>
               ))}
-            </div>
-            {hasMore ? (
-              <div className="flex justify-center pt-4">
-                <Button
-                  type="button"
-                  onClick={() => void loadMore()}
-                  disabled={loadingMore}
-                  variant="outline"
-                >
-                  {loadingMore ? `${t("common.actions.loadMore")}...` : t("common.actions.loadMore")}
-                </Button>
+              <div className="flex justify-center py-8">
+                <div className="flex items-center gap-3 text-[color:var(--px-shell-muted)]">
+                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--px-shell-accent)]" />
+                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--px-shell-accent)] [animation-delay:-0.15s]" />
+                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--px-shell-accent)] [animation-delay:-0.3s]" />
+                  <span className="ml-2 text-[10px] font-black uppercase tracking-[0.3em]">
+                    {t("common.status.loading")}
+                  </span>
+                </div>
               </div>
-            ) : null}
-          </>
-        ) : null}
+            </motion.div>
+          ) : null}
+
+          {!error && !loading && !items.length ? (
+            <motion.div
+              key={`empty-${hotWindow}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <PaperFeedEmptyState />
+            </motion.div>
+          ) : null}
+
+          {!error && !loading && items.length > 0 ? (
+            <motion.div
+              key={`items-${hotWindow}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="grid gap-3">
+                {items.map((paper) => (
+                  <PaperCard
+                    key={paper.id}
+                    paper={paper}
+                    onDelete={isAdmin ? handleDelete : undefined}
+                    deleting={deletingPaperId === paper.id}
+                  />
+                ))}
+              </div>
+              {hasMore ? (
+                <div className="flex justify-center pt-4">
+                  <Button
+                    type="button"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                    variant="outline"
+                  >
+                    {loadingMore ? `${t("common.actions.loadMore")}...` : t("common.actions.loadMore")}
+                  </Button>
+                </div>
+              ) : null}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
     </section>
   )
