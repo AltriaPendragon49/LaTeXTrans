@@ -165,6 +165,22 @@ describe("PaperCard", () => {
     expect(screen.queryByText("42")).not.toBeInTheDocument()
   })
 
+  it("renders the arxiv publication date as a highlighted time badge", () => {
+    render(
+      <MemoryRouter>
+        <PaperCard paper={{ ...paper, arxiv_published_at: "2026-03-10T00:00:00Z" }} />
+      </MemoryRouter>,
+    )
+
+    const publishedTime = screen.getByLabelText("Published March 10, 2026")
+
+    expect(publishedTime.tagName).toBe("TIME")
+    expect(publishedTime).toHaveAttribute("dateTime", "2026-03-10T00:00:00Z")
+    expect(screen.getByTestId("paper-card-published-at-row")).toHaveClass("mt-auto", "justify-end")
+    expect(screen.getByText("Published")).toBeInTheDocument()
+    expect(screen.getByText("March 10, 2026")).toBeInTheDocument()
+  })
+
   it("prefetches detail payload on intent signals", () => {
     render(
       <MemoryRouter>

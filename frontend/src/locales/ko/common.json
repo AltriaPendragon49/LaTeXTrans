@@ -326,6 +326,7 @@
   "community.feed.title": "커뮤니티 피드",
   "community.feed.sort.hot": "인기",
   "community.feed.sort.latest": "최신",
+  "community.feed.hotExplanation": "인기 순위는 논문 공개 시점, 외부 관심도, 학술 영향력, 코드 근거, 사이트 내 피드백을 종합해 매일 새벽 자동 갱신됩니다.",
   "community.feed.searchPlaceholder": "제목 또는 arXiv ID 검색",
   "community.feed.searchAriaLabel": "커뮤니티 논문 검색",
   "community.card.authorsUnavailable": "저자 정보 없음",

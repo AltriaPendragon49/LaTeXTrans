@@ -374,6 +374,7 @@
   "community.feed.title": "社区动态",
   "community.feed.sort.hot": "热门",
   "community.feed.sort.latest": "最新",
+  "community.feed.hotExplanation": "热门排序会融合论文发布时间、外部关注度、学术影响、代码证据与站内反馈等各方面因素，每日凌晨自动更新。",
   "community.feed.searchPlaceholder": "可以通过arxivID、标题、摘要、作者、关键词搜索论文",
   "community.feed.searchAriaLabel": "搜索社区论文",
   "community.card.authorsUnavailable": "作者信息暂缺",

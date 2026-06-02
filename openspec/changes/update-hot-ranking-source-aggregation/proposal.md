@@ -9,6 +9,7 @@ The current community `hot` feed is only an alias for internal view-count sortin
 - Apply a window-specific time-decay factor so recent papers can outrank older papers with similar raw evidence.
 - Require every ranked candidate to include score breakdowns, source evidence, freshness metadata, and operator-readable selection reasons.
 - Extend the community discovery UI contract so the `Hot` feed can be filtered by publication-date window through a left-side filter icon, anchored popover, active date pill, and mobile-safe sheet behavior.
+- Add a compact `Hot`-only explanation line below the feed sort row, explaining the ranking signals and daily refresh behavior without adding excessive vertical spacing before the paper list.
 - Define how ranked hot candidates feed later admin curation or content-pool prewarm work without automatically translating unapproved papers.
 - Add a daily scheduled cron task on the Worker process that refreshes hot rankings, compares against the existing community catalog, auto-starts admin-curation translation for new top-ranked papers that are not yet translated or queued, and writes a daily intake summary (Markdown) with score breakdowns and intake reasons for each paper.
 

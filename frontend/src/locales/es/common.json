@@ -326,6 +326,7 @@
   "community.feed.title": "Feed de la comunidad",
   "community.feed.sort.hot": "Tendencia",
   "community.feed.sort.latest": "Recientes",
+  "community.feed.hotExplanation": "La clasificación popular combina fecha de publicación, atención externa, impacto académico, evidencia de código y comentarios locales. Se actualiza automáticamente cada madrugada.",
   "community.feed.searchPlaceholder": "Buscar títulos o IDs de arXiv",
   "community.feed.searchAriaLabel": "Buscar artículos de la comunidad",
   "community.card.authorsUnavailable": "Autores no disponibles",

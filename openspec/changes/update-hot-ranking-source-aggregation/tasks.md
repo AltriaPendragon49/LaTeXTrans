@@ -23,12 +23,14 @@
 - [x] 5.2 Add the desktop anchored popover for publication-date window selection.
 - [x] 5.3 Add the mobile bottom-sheet equivalent.
 - [x] 5.4 Wire selected windows into feed requests, loading states, empty states, and cache keys. ~~BUG: hotWindow state exists in CommunityFeedSurface but is NOT passed to useCommunityPapers hook or API calls.~~ (已在 f18df94 修复接线，本次添加 AnimatePresence 过渡动效)
+- [x] 5.5 Add the compact `Hot`-only algorithm explanation row below the sort/filter controls, using tight vertical spacing and localized copy.
 
 ## 6. Verification
 - [x] 6.1 Run unit tests for ranking adapters, component scoring, and time decay.
 - [ ] 6.2 Run backend feed API tests for `hotWindow` semantics. (pending)
 - [ ] 6.3 Run frontend tests for filter popover/sheet behavior and active-pill reset. (pending)
 - [ ] 6.4 Manually inspect generated `latest.md` artifacts for a representative window. (pending)
+- [x] 6.5 Verify the `Hot` explanation row appears only on the `Hot` tab and does not introduce excessive vertical spacing on desktop or mobile.
 
 ## 7. Scheduled Daily Cron
 - [x] 7.1 Add `hot_ranking_cron_*` and `hot_ranking_auto_intake_*` configuration parameters to `backend/app/core/config.py`.

@@ -326,6 +326,7 @@
   "community.feed.title": "Flux communautaire",
   "community.feed.sort.hot": "Tendances",
   "community.feed.sort.latest": "Récents",
+  "community.feed.hotExplanation": "Le classement populaire combine date de publication, attention externe, impact scientifique, preuves de code et retours locaux. Mis à jour automatiquement chaque matin très tôt.",
   "community.feed.searchPlaceholder": "Rechercher des titres ou des identifiants arXiv",
   "community.feed.searchAriaLabel": "Rechercher des papiers communautaires",
   "community.card.authorsUnavailable": "Auteurs indisponibles",

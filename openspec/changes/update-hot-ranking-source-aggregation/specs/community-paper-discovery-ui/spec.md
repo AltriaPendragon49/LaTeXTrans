@@ -38,3 +38,21 @@ The community homepage SHALL provide a mobile-safe equivalent of the feed filter
 - **WHEN** the active hot window pill and sort controls render on a narrow screen
 - **THEN** the controls SHALL wrap or stack predictably
 - **AND** labels, icons, and active states SHALL not overlap or clip.
+
+### Requirement: Hot feed explains ranking freshness
+The community homepage SHALL show a compact explanation of the `Hot` ranking algorithm and refresh cadence only while the `Hot` feed is active.
+
+#### Scenario: User views the hot feed explanation
+- **WHEN** a user views the `Hot` feed
+- **THEN** the UI SHALL show a compact pill-like explanation row below the feed sort controls and above the paper list
+- **AND** the explanation SHALL state that the ranking combines public attention, scholarly impact, implementation signals, and local engagement
+- **AND** the explanation SHALL state that the hot list refreshes daily.
+
+#### Scenario: User switches away from the hot feed
+- **WHEN** a user changes from `Hot` to `Latest`, `Views`, or `Likes`
+- **THEN** the hot-ranking explanation SHALL no longer be visible.
+
+#### Scenario: Hot explanation keeps tight spacing
+- **WHEN** the hot-ranking explanation renders on desktop or narrow screens
+- **THEN** it SHALL preserve compact vertical spacing between the sort row and the first paper card
+- **AND** its text SHALL wrap without overlapping the filter controls, active window pill, or paper content.

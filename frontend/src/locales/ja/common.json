@@ -326,6 +326,7 @@
   "community.feed.title": "コミュニティフィード",
   "community.feed.sort.hot": "人気",
   "community.feed.sort.latest": "最新",
+  "community.feed.hotExplanation": "人気ランキングは論文の公開時期、外部での注目度、学術的影響、コード証拠、サイト内フィードバックを総合し、毎日未明に自動更新されます。",
   "community.feed.searchPlaceholder": "タイトルまたは arXiv ID を検索",
   "community.feed.searchAriaLabel": "コミュニティ論文を検索",
   "community.card.authorsUnavailable": "著者情報なし",

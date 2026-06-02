@@ -388,6 +388,7 @@
   "community.agent.error": "Unable to run the community agent right now.",
   "community.feed.sort.hot": "Hot",
   "community.feed.sort.latest": "Latest",
+  "community.feed.hotExplanation": "Hot ranking combines publication timing, external attention, scholarly impact, code evidence, and local feedback signals. Updated automatically every early morning.",
   "community.feed.searchPlaceholder": "Search titles or arXiv IDs (placeholder)",
   "community.feed.searchAriaLabel": "Search community papers",
   "community.card.authorsUnavailable": "Authors unavailable",

@@ -326,6 +326,7 @@
   "community.feed.title": "Лента сообщества",
   "community.feed.sort.hot": "Популярные",
   "community.feed.sort.latest": "Новые",
+  "community.feed.hotExplanation": "Популярный рейтинг учитывает время публикации, внешний интерес, научное влияние, наличие кода и локальную обратную связь. Автоматически обновляется каждое раннее утро.",
   "community.feed.searchPlaceholder": "Искать по названию или arXiv ID",
   "community.feed.searchAriaLabel": "Искать статьи сообщества",
   "community.card.authorsUnavailable": "Авторы недоступны",

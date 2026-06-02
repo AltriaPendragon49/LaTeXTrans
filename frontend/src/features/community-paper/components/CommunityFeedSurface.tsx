@@ -159,31 +159,40 @@ export default function CommunityFeedSurface() {
         </button>
       </form>
 
-      <FilterToolbar
-        options={feedSortOptions.map((option) => ({
-          value: option.value,
-          label: option.label,
-          icon: <option.icon className="h-4 w-4" />,
-        }))}
-        value={activeTab}
-        onValueChange={(nextValue) => setActiveTab(nextValue as CommunityFeedSort)}
-        className="mt-2 pb-2"
-        actions={
-          activeTab === "hot" ? (
-            <HotWindowFilter
-              selectedWindow={hotWindow}
-              onWindowChange={setHotWindow}
-            />
-          ) : undefined
-        }
-        meta={
-          query ? (
-            <Pill className="px-3 py-2 text-xs font-medium normal-case tracking-normal">
-              {t("community.feed.resultsFiltered", { count: total, query })}
-            </Pill>
-          ) : undefined
-        }
-      />
+      <div className="mt-2 flex flex-col gap-1">
+        <FilterToolbar
+          options={feedSortOptions.map((option) => ({
+            value: option.value,
+            label: option.label,
+            icon: <option.icon className="h-4 w-4" />,
+          }))}
+          value={activeTab}
+          onValueChange={(nextValue) => setActiveTab(nextValue as CommunityFeedSort)}
+          className="pb-1"
+          actions={
+            activeTab === "hot" ? (
+              <HotWindowFilter
+                selectedWindow={hotWindow}
+                onWindowChange={setHotWindow}
+              />
+            ) : undefined
+          }
+          meta={
+            query ? (
+              <Pill className="px-3 py-2 text-xs font-medium normal-case tracking-normal">
+                {t("community.feed.resultsFiltered", { count: total, query })}
+              </Pill>
+            ) : undefined
+          }
+        />
+
+        {activeTab === "hot" ? (
+          <div className="inline-flex max-w-full items-center gap-2 self-start rounded-full border border-[color:var(--px-shell-line-strong)] bg-[color:var(--px-shell-panel-strong)]/85 px-3 py-1.5 text-xs leading-relaxed text-[color:var(--px-shell-muted)] shadow-[0_14px_32px_-30px_rgba(8,23,38,0.28)] sm:text-sm">
+            <Flame className="h-3.5 w-3.5 shrink-0 text-[color:var(--px-shell-accent)]" />
+            <span className="min-w-0">{t("community.feed.hotExplanation")}</span>
+          </div>
+        ) : null}
+      </div>
 
       <div className="relative">
         {error ? <PaperFeedErrorState onRetry={refetch} /> : null}

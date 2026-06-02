@@ -125,6 +125,7 @@ The homepage `Hot` tab should request the selected hot window from the backend. 
 - Publication-date choices: `3 Days`, `7 Days`, `30 Days`, `90 Days`, `All time`.
 - An active window pill when the selected window differs from the default.
 - A desktop popover and mobile bottom sheet.
+- A compact, pill-like explanation row that appears only while the `Hot` tab is active. It should state that hot ranking combines public attention, scholarly impact, implementation signals, and local engagement, and that the list refreshes daily. The row should sit below the sort/filter controls and above the first paper card with tight vertical spacing so it reads as context for the selected tab rather than a separate banner.
 
 The UI should not show topic search or extra filters until the backend supports them. Keeping the first version limited to publication-date windows makes the control useful without implying unfinished functionality.
 

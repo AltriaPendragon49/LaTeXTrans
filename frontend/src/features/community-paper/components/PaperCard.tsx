@@ -1,5 +1,6 @@
 import {
   Bookmark,
+  CalendarDays,
   Download,
   ExternalLink,
   Eye,
@@ -241,7 +242,7 @@ function PreviewLink({
  * 支持乐观更新点赞状态
  */
 export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [sourceDownloadPending, setSourceDownloadPending] = useState(false)
@@ -307,6 +308,22 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
   const abstractText =
     paper.abstract_raw || paper.abstract_translated || t("community.card.abstractPlaceholder")
   const detailHref = `/paper/${paper.id}`
+  const arxivPublishedDateLabel = useMemo(() => {
+    if (!paper.arxiv_published_at) {
+      return null
+    }
+
+    const publishedAt = new Date(paper.arxiv_published_at)
+    if (Number.isNaN(publishedAt.getTime())) {
+      return paper.arxiv_published_at
+    }
+
+    return publishedAt.toLocaleDateString(i18n.language || undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }, [i18n.language, paper.arxiv_published_at])
 
   /** 下载源 PDF */
   async function handleSourceDownload() {
@@ -626,40 +643,65 @@ export function PaperCard({ paper, onDelete, deleting = false }: PaperCardProps)
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 items-start">
-        <PreviewLink
-          to={detailHref}
-          label={t("community.detail.originalSource")}
-          testId="paper-card-source-preview-link"
-          onIntent={prefetchDetailNavigation}
-        >
-          <PdfPreviewFrame
-            imageUrl={sourcePdfUrl}
-            unavailableIcon={<FileText className="h-7 w-7" />}
-            placeholderTone="neutral"
-            testId="paper-card-source-preview-image"
-          />
-          <span className="px-1 text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--px-shell-muted)]">
-            {paper.source === "arxiv" ? t("community.detail.originalSource") : t("community.detail.sourceTitle")}
-          </span>
-        </PreviewLink>
+      <div className="flex h-full flex-col gap-3">
+        <div className="grid grid-cols-2 gap-4 items-start">
+          <PreviewLink
+            to={detailHref}
+            label={t("community.detail.originalSource")}
+            testId="paper-card-source-preview-link"
+            onIntent={prefetchDetailNavigation}
+          >
+            <PdfPreviewFrame
+              imageUrl={sourcePdfUrl}
+              unavailableIcon={<FileText className="h-7 w-7" />}
+              placeholderTone="neutral"
+              testId="paper-card-source-preview-image"
+            />
+            <span className="px-1 text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--px-shell-muted)]">
+              {paper.source === "arxiv" ? t("community.detail.originalSource") : t("community.detail.sourceTitle")}
+            </span>
+          </PreviewLink>
 
-        <PreviewLink
-          to={translatedPdfUrl ? detailHref : null}
-          label={t("community.detail.mode.translatedPdf")}
-          testId="paper-card-translated-preview-link"
-          onIntent={prefetchDetailNavigation}
-        >
-          <PdfPreviewFrame
-            imageUrl={translatedPdfUrl}
-            unavailableIcon={<Languages className="h-7 w-7" />}
-            placeholderTone="accent"
-            testId="paper-card-translated-preview-image"
-          />
-          <span className="px-1 text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--px-shell-muted)]">
-            {t("community.detail.mode.translatedPdf")}
-          </span>
-        </PreviewLink>
+          <PreviewLink
+            to={translatedPdfUrl ? detailHref : null}
+            label={t("community.detail.mode.translatedPdf")}
+            testId="paper-card-translated-preview-link"
+            onIntent={prefetchDetailNavigation}
+          >
+            <PdfPreviewFrame
+              imageUrl={translatedPdfUrl}
+              unavailableIcon={<Languages className="h-7 w-7" />}
+              placeholderTone="accent"
+              testId="paper-card-translated-preview-image"
+            />
+            <span className="px-1 text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--px-shell-muted)]">
+              {t("community.detail.mode.translatedPdf")}
+            </span>
+          </PreviewLink>
+        </div>
+        {paper.arxiv_published_at && arxivPublishedDateLabel ? (
+          <div data-testid="paper-card-published-at-row" className="mt-auto flex justify-end pt-4">
+            <time
+              dateTime={paper.arxiv_published_at}
+              aria-label={t("community.detail.publishedAt", {
+                value: arxivPublishedDateLabel,
+              })}
+              className="inline-flex max-w-full items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--px-shell-accent)_28%,var(--px-shell-line))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--px-shell-accent-soft)_82%,white),color-mix(in_srgb,var(--px-shell-panel-strong)_90%,white))] px-3 py-2 text-[color:var(--px-shell-accent-strong)] shadow-[0_14px_34px_-26px_rgba(18,118,199,0.58)]"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--px-shell-accent)] text-white shadow-[0_8px_18px_-12px_rgba(18,118,199,0.75)]">
+                <CalendarDays className="h-3.5 w-3.5" />
+              </span>
+              <span className="flex min-w-0 flex-col leading-none">
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[color:color-mix(in_srgb,var(--px-shell-accent)_72%,var(--px-shell-muted))]">
+                  {t("community.detail.infoPublished")}
+                </span>
+                <span className="mt-1 truncate text-xs font-bold text-[color:var(--px-shell-ink)]">
+                  {arxivPublishedDateLabel}
+                </span>
+              </span>
+            </time>
+          </div>
+        ) : null}
       </div>
     </article>
   )

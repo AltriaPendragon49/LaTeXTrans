@@ -88,6 +88,30 @@ describe("CommunityFeedSurface", () => {
     expect(screen.queryByText("Translated")).not.toBeInTheDocument()
   })
 
+  it("shows the hot ranking explanation only on the hot feed", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MemoryRouter>
+        <CommunityFeedSurface />
+      </MemoryRouter>,
+    )
+
+    expect(
+      screen.getByText(
+        "Hot ranking combines publication timing, external attention, scholarly impact, code evidence, and local feedback signals. Updated automatically every early morning.",
+      ),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /Latest/i }))
+
+    expect(
+      screen.queryByText(
+        "Hot ranking combines publication timing, external attention, scholarly impact, code evidence, and local feedback signals. Updated automatically every early morning.",
+      ),
+    ).not.toBeInTheDocument()
+  })
+
   it("restores the legacy homepage hero copy above the search bar", () => {
     render(
       <MemoryRouter>
