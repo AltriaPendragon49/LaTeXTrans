@@ -386,12 +386,15 @@ class PdfDirectService:
 
         params = self._build_signed_params(apikey, fileNo=task["upstream_file_no"])
         url = f"{self._settings.niutrans_doc_api_base_url}/interrupt"
-        query_string = urlencode(params)
 
         timeout = httpx.Timeout(15.0, connect=10.0)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(f"{url}?{query_string}")
+                response = await client.post(
+                    url,
+                    data=params,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
         except httpx.HTTPError as exc:
             raise PdfDirectServiceError(
                 PDF_DIRECT_RETRYABLE_ERROR,
